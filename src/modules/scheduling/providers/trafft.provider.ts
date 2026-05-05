@@ -1,13 +1,18 @@
 import type { SchedulingProvider, TimeSlot, BookingResult } from './provider.interface.js';
+import { CircuitBreaker } from '../../../shared/circuit-breaker.js';
 
 /**
- * Trafft.com scheduling provider.
+ * Trafft scheduling provider.
  *
- * Auth flow: POST /auth/token with email+password → Bearer token.
+ * Auth flow: POST /api/v1/auth/token with email+password → Bearer token.
  * All subsequent requests use Authorization: Bearer <token>.
  *
- * Trafft API base: https://<subdomain>.trafft.com/api/v1
+ * Pass the full admin base URL, e.g. https://booking.admin.pusher.li
  */
+const TRAFFT_TIMEOUT_MS = 15_000;
+
+const trafftCircuit = new CircuitBreaker({ name: 'trafft', failureThreshold: 5, cooldownMs: 30_000 });
+
 export class TrafftProvider implements SchedulingProvider {
   private baseUrl: string;
   private token: string | null = null;
@@ -15,12 +20,13 @@ export class TrafftProvider implements SchedulingProvider {
 
   constructor(
     private config: {
-      subdomain: string;
+      baseUrl: string;
       email: string;
       password: string;
     },
   ) {
-    this.baseUrl = `https://${config.subdomain}.trafft.com/api/v1`;
+    // Strip trailing slash, append /api/v1
+    this.baseUrl = `${config.baseUrl.replace(/\/$/, '')}/api/v1`;
   }
 
   private async authenticate(): Promise<string> {
@@ -36,6 +42,7 @@ export class TrafftProvider implements SchedulingProvider {
         email: this.config.email,
         password: this.config.password,
       }),
+      signal: AbortSignal.timeout(TRAFFT_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -60,52 +67,54 @@ export class TrafftProvider implements SchedulingProvider {
       }
     }
 
-    const response = await fetch(url.toString(), {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: body ? JSON.stringify(body) : undefined,
+    return trafftCircuit.execute(async () => {
+      const response = await fetch(url.toString(), {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(TRAFFT_TIMEOUT_MS),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Trafft API ${method} ${path} failed: ${response.status} — ${text}`);
+      }
+
+      return (await response.json()) as T;
     });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Trafft API ${method} ${path} failed: ${response.status} — ${text}`);
-    }
-
-    return (await response.json()) as T;
   }
 
   async getAvailableSlots(params: {
     startDate: string;
     endDate: string;
-    serviceId: number;
+    serviceId: string;
     timezone: string;
-    employeeId?: number;
+    employeeId?: string;
   }): Promise<TimeSlot[]> {
+    // Trafft uses /appointments/entities/date-time which returns:
+    // { payload: { "YYYY-MM-DD": { "HH:MM": { s: [svcId], b: 1, e: [empId], l: [locId] } } }, status: "success" }
     const queryParams: Record<string, string> = {
-      serviceId: params.serviceId.toString(),
-      startDate: params.startDate,
-      endDate: params.endDate,
-      timeZone: params.timezone,
+      calendarStartDate: params.startDate,
+      calendarEndDate: params.endDate,
+      service: params.serviceId,
     };
     if (params.employeeId) {
-      queryParams.employeeId = params.employeeId.toString();
+      queryParams.employee = params.employeeId;
     }
 
-    const data = await this.request<any>('GET', '/appointments/slots', undefined, queryParams);
+    const data = await this.request<any>('GET', '/appointments/entities/date-time', undefined, queryParams);
 
-    // Trafft returns slots grouped by date: { "2026-04-08": ["09:00", "09:30", ...] }
     const slots: TimeSlot[] = [];
-    const slotsData = data.data?.slots ?? data.slots ?? data.data ?? {};
+    const payload = data.payload ?? {};
 
-    for (const [date, times] of Object.entries(slotsData)) {
-      if (!Array.isArray(times)) continue;
-      for (const time of times) {
+    for (const [date, times] of Object.entries(payload)) {
+      for (const time of Object.keys(times as Record<string, unknown>)) {
         slots.push({
           start: `${date} ${time}`,
-          end: '', // Trafft slots are start-time only; duration comes from service config
+          end: '',
         });
       }
     }
@@ -115,9 +124,9 @@ export class TrafftProvider implements SchedulingProvider {
 
   async createBooking(params: {
     start: string;
-    serviceId: number;
+    serviceId: string;
     attendee: { name: string; email: string; phone?: string; timezone: string };
-    employeeId?: number;
+    employeeId?: string;
     notes?: string;
   }): Promise<BookingResult> {
     const [firstName, ...lastParts] = params.attendee.name.split(' ');

@@ -1,0 +1,282 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createHash } from 'node:crypto';
+import type { FastifyInstance } from 'fastify';
+import { buildTestApp, createMockDb } from '../test/helpers.js';
+
+// ──────────────────────────────────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────────────────────────────────
+
+function hashApiKey(key: string) {
+  return createHash('sha256').update(key).digest('hex');
+}
+
+/** Build a query-builder chain that always resolves to `rows`. */
+function makeSelectChain(rows: any[]) {
+  const b: any = {
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockResolvedValue(rows),
+  };
+  return b;
+}
+
+/**
+ * Build a test app that mounts the *real* auth plugin (not the stub from
+ * helpers.ts) plus a protected route so we can exercise it end-to-end.
+ */
+async function buildAuthTestApp(db: ReturnType<typeof createMockDb>) {
+  // We build a Fastify instance using the helpers' base, then swap the
+  // `authenticate` decorator for the real one.
+  const Fastify = (await import('fastify')).default;
+  const fp = (await import('fastify-plugin')).default;
+
+  const env = {
+    NODE_ENV: 'test' as const,
+    PORT: 3000,
+    HOST: '127.0.0.1',
+    LOG_LEVEL: 'silent' as const,
+    DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
+    REDIS_URL: 'redis://localhost:6379',
+    ENCRYPTION_KEY: 'a'.repeat(64),
+    JWT_SECRET: 'test-jwt-secret-minimum-16-chars',
+    CORS_ORIGINS: 'http://localhost:3001',
+    AI_MODEL: 'gemini-2.5-flash',
+  };
+
+  const app = Fastify({ logger: false });
+  app.decorate('env', env);
+  app.decorate('db', db as any);
+  app.decorate('redis', { duplicate: vi.fn() } as any);
+  app.decorate('queues', {} as any);
+
+  // Register the real auth plugin
+  const authPlugin = (await import('./auth.js')).default;
+  await app.register(authPlugin);
+
+  // Error handler
+  const { AppError } = await import('../shared/errors.js');
+  app.setErrorHandler((error, _req, reply) => {
+    if (error instanceof AppError) {
+      reply.status(error.statusCode).send({ error: error.code, message: error.message });
+      return;
+    }
+    reply.status((error as any).statusCode ?? 500).send({
+      error: 'INTERNAL_ERROR',
+      message: (error as Error).message,
+    });
+  });
+
+  // A protected route
+  app.get('/protected', { preHandler: app.authenticate }, async (req: any) => ({
+    tenantId: req.tenantId,
+    authMethod: req.authMethod,
+    userId: req.userId ?? null,
+  }));
+
+  await app.ready();
+  return app;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Tests
+// ──────────────────────────────────────────────────────────────────────────
+
+describe('auth plugin — API key', () => {
+  let app: FastifyInstance;
+  let db: ReturnType<typeof createMockDb>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db = createMockDb();
+  });
+
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  it('valid API key passes and sets tenantId + authMethod', async () => {
+    const tenantId = 'tenant-uuid-123';
+    const rawKey = 'my-raw-api-key';
+    const hashed = hashApiKey(rawKey);
+
+    // The auth plugin queries tenants.id == hashed key
+    db.select.mockReturnValue(makeSelectChain([{ id: tenantId }]));
+
+    app = await buildAuthTestApp(db);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/protected',
+      headers: { authorization: `Bearer ${rawKey}` },
+    });
+
+    // JWT verify will fail (not a JWT), so it falls through to API key path.
+    // The DB query will match and return the tenant.
+    // NOTE: the plugin uses eq(tenants.id, hashedKey) — so `tenant.id` is the
+    // UUID returned from the row, not the hash.
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.tenantId).toBe(tenantId);
+    expect(body.authMethod).toBe('api_key');
+  });
+
+  it('unknown API key → 401', async () => {
+    // No tenant found
+    db.select.mockReturnValue(makeSelectChain([]));
+
+    app = await buildAuthTestApp(db);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/protected',
+      headers: { authorization: 'Bearer unknown-key' },
+    });
+
+    expect(res.statusCode).toBe(401);
+    expect(res.json().error).toBe('UNAUTHORIZED');
+  });
+
+  it('missing Authorization header → 401', async () => {
+    app = await buildAuthTestApp(db);
+
+    const res = await app.inject({ method: 'GET', url: '/protected' });
+
+    expect(res.statusCode).toBe(401);
+    expect(res.json().error).toBe('UNAUTHORIZED');
+    expect(res.json().message).toMatch(/missing authorization header/i);
+  });
+
+  it('Authorization header with wrong scheme → 401', async () => {
+    app = await buildAuthTestApp(db);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/protected',
+      headers: { authorization: 'Basic dXNlcjpwYXNz' },
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('auth plugin — JWT', () => {
+  let app: FastifyInstance;
+  let db: ReturnType<typeof createMockDb>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db = createMockDb();
+  });
+
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  it('valid JWT passes and sets tenantId + userId + authMethod', async () => {
+    const tenantId = 'tenant-jwt-uuid';
+    const userId = 'user-sub-123';
+
+    // DB should NOT be called for JWT — but mock it just in case
+    db.select.mockReturnValue(makeSelectChain([]));
+
+    app = await buildAuthTestApp(db);
+
+    // Sign with the same secret the plugin uses
+    const token = app.jwt.sign({ tenantId, sub: userId });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/protected',
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.tenantId).toBe(tenantId);
+    expect(body.userId).toBe(userId);
+    expect(body.authMethod).toBe('jwt');
+  });
+
+  it('expired JWT → 401', async () => {
+    db.select.mockReturnValue(makeSelectChain([]));
+
+    app = await buildAuthTestApp(db);
+
+    // Sign with very short expiry — use past iat trick
+    const token = app.jwt.sign({ tenantId: 't1', sub: 'u1', exp: Math.floor(Date.now() / 1000) - 100 });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/protected',
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('malformed JWT → 401', async () => {
+    db.select.mockReturnValue(makeSelectChain([]));
+
+    app = await buildAuthTestApp(db);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/protected',
+      headers: { authorization: 'Bearer not.a.jwt.at.all' },
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('auth plugin — dual auth (both paths work on API routes)', () => {
+  let app: FastifyInstance;
+  let db: ReturnType<typeof createMockDb>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db = createMockDb();
+  });
+
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  it('JWT path works when DB returns no tenant', async () => {
+    // JWT is tried first — if valid, DB is never queried
+    db.select.mockReturnValue(makeSelectChain([]));
+
+    app = await buildAuthTestApp(db);
+
+    const tenantId = 'tenant-dual-jwt';
+    const token = app.jwt.sign({ tenantId, sub: 'user-1' });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/protected',
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().authMethod).toBe('jwt');
+    expect(res.json().tenantId).toBe(tenantId);
+  });
+
+  it('API key path works when token is not a JWT', async () => {
+    const tenantId = 'tenant-dual-apikey';
+    db.select.mockReturnValue(makeSelectChain([{ id: tenantId }]));
+
+    app = await buildAuthTestApp(db);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/protected',
+      headers: { authorization: 'Bearer plain-api-key-not-a-jwt' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().authMethod).toBe('api_key');
+    expect(res.json().tenantId).toBe(tenantId);
+  });
+});

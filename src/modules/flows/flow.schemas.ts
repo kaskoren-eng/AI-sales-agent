@@ -16,7 +16,36 @@ const callStepSchema = z.object({
   delayMinutes: z.number().int().min(0).max(10080),
 });
 
-const flowStepSchema = z.discriminatedUnion('type', [whatsappStepSchema, callStepSchema]);
+const emailStepSchema = z.object({
+  type: z.literal('send_email'),
+  delayMinutes: z.number().int().min(0).max(10080),
+  content: z.object({
+    subject: z.string().max(998),
+    html: z.string().max(100_000),
+  }),
+});
+
+const updateMondayStepSchema = z.object({
+  type: z.literal('update_monday'),
+  delayMinutes: z.number().int().min(0).max(10080),
+  // Column ID → value. Values support {{name}}, {{callSummary}}, {{meetingLink}}, {{meetingTime}}, {{meetingDate}}, {{phone}}
+  columnValues: z.record(z.string(), z.string()),
+});
+
+const bookCalendarStepSchema = z.object({
+  type: z.literal('book_calendar'),
+  delayMinutes: z.number().int().min(0).max(10080),
+  // Optional event description. Supports interpolation. Booking uses the next available slot.
+  notes: z.string().max(2000).optional(),
+});
+
+const flowStepSchema = z.discriminatedUnion('type', [
+  whatsappStepSchema,
+  callStepSchema,
+  emailStepSchema,
+  updateMondayStepSchema,
+  bookCalendarStepSchema,
+]);
 
 export const flowDefinitionSchema = z.object({
   enabled: z.boolean(),

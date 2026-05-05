@@ -1,3 +1,4 @@
+import { randomBytes, createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { tenants } from '../../db/schema/index.js';
 import type { Database } from '../../db/client.js';
@@ -18,12 +19,16 @@ export class TenantService {
 
     if (existing) throw new ConflictError(`Slug "${input.slug}" is already taken`);
 
+    // Generate a random API key — return the raw key once, store only the hash
+    const apiKey = `sk_${randomBytes(32).toString('hex')}`;
+    const apiKeyHash = createHash('sha256').update(apiKey).digest('hex');
+
     const [tenant] = await this.db
       .insert(tenants)
-      .values({ name: input.name, slug: input.slug })
+      .values({ name: input.name, slug: input.slug, apiKeyHash })
       .returning();
 
-    return tenant;
+    return { ...tenant, apiKey };
   }
 
   async list() {
@@ -86,6 +91,20 @@ export class TenantService {
       .returning();
 
     return updated;
+  }
+
+  async rotateApiKey(id: string) {
+    const apiKey = `sk_${randomBytes(32).toString('hex')}`;
+    const apiKeyHash = createHash('sha256').update(apiKey).digest('hex');
+
+    const [tenant] = await this.db
+      .update(tenants)
+      .set({ apiKeyHash, updatedAt: new Date() })
+      .where(eq(tenants.id, id))
+      .returning({ id: tenants.id, name: tenants.name });
+
+    if (!tenant) throw new NotFoundError('Tenant', id);
+    return { ...tenant, apiKey };
   }
 
   async getFlows(id: string) {

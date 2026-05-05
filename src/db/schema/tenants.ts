@@ -4,6 +4,7 @@ export const tenants = pgTable('tenants', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: varchar('name', { length: 255 }).notNull(),
   slug: varchar('slug', { length: 100 }).unique().notNull(),
+  apiKeyHash: varchar('api_key_hash', { length: 64 }).unique(),
   settings: jsonb('settings').default({}),
   isActive: boolean('is_active').default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),

@@ -1,12 +1,12 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 import type { Env } from '../../config/index.js';
 
 export class AIEngineService {
-  private genAI: GoogleGenerativeAI;
+  private client: OpenAI;
   private model: string;
 
   constructor(env: Env) {
-    this.genAI = new GoogleGenerativeAI(env.GOOGLE_AI_API_KEY!);
+    this.client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
     this.model = env.AI_MODEL;
   }
 
@@ -15,42 +15,37 @@ export class AIEngineService {
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>;
     leadContext?: Record<string, unknown>;
   }): Promise<string> {
-    const model = this.genAI.getGenerativeModel({
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      { role: 'system', content: params.systemPrompt },
+      ...params.conversationHistory.map((m) => ({ role: m.role, content: m.content })),
+    ];
+
+    const completion = await this.client.chat.completions.create({
       model: this.model,
-      systemInstruction: params.systemPrompt,
+      messages,
     });
 
-    const chat = model.startChat({
-      history: params.conversationHistory.slice(0, -1).map((m) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }],
-      })),
-    });
-
-    const lastMessage = params.conversationHistory.at(-1);
-    const result = await chat.sendMessage(lastMessage?.content ?? '');
-    return result.response.text();
+    return completion.choices[0]?.message.content ?? '';
   }
 
   async qualifyLead(params: {
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>;
     qualificationCriteria: string;
   }): Promise<{ qualified: boolean; score: number; reasoning: string }> {
-    const model = this.genAI.getGenerativeModel({
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      {
+        role: 'system',
+        content: `You are a lead qualification assistant. Evaluate the conversation against these criteria: ${params.qualificationCriteria}. Respond with JSON only: { "qualified": boolean, "score": 0-100, "reasoning": "brief explanation" }`,
+      },
+      ...params.conversationHistory.map((m) => ({ role: m.role, content: m.content })),
+    ];
+
+    const completion = await this.client.chat.completions.create({
       model: this.model,
-      systemInstruction: `You are a lead qualification assistant. Evaluate the conversation against these criteria: ${params.qualificationCriteria}. Respond with JSON only: { "qualified": boolean, "score": 0-100, "reasoning": "brief explanation" }`,
-      generationConfig: { responseMimeType: 'application/json' },
+      messages,
+      response_format: { type: 'json_object' },
     });
 
-    const chat = model.startChat({
-      history: params.conversationHistory.slice(0, -1).map((m) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }],
-      })),
-    });
-
-    const lastMessage = params.conversationHistory.at(-1);
-    const result = await chat.sendMessage(lastMessage?.content ?? '');
-    return JSON.parse(result.response.text());
+    return JSON.parse(completion.choices[0]?.message.content ?? '{}');
   }
 }

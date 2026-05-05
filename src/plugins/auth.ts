@@ -30,6 +30,14 @@ export default fp(async (app) => {
     const authHeader = request.headers.authorization;
 
     if (!authHeader) {
+      request.log.warn({
+        audit: true,
+        event: 'auth_failure',
+        reason: 'missing_auth_header',
+        ip: request.ip,
+        method: request.method,
+        url: request.url,
+      });
       throw new UnauthorizedError('Missing authorization header');
     }
 
@@ -44,7 +52,7 @@ export default fp(async (app) => {
         request.authMethod = 'jwt';
         return;
       } catch {
-        // Not a valid JWT — try as API key
+        // Not a valid JWT — fall through to API key check
       }
 
       // Try API key
@@ -52,7 +60,7 @@ export default fp(async (app) => {
       const [tenant] = await app.db
         .select({ id: tenants.id })
         .from(tenants)
-        .where(eq(tenants.id, hashedKey))
+        .where(eq(tenants.apiKeyHash, hashedKey))
         .limit(1);
 
       if (tenant) {
@@ -60,8 +68,30 @@ export default fp(async (app) => {
         request.authMethod = 'api_key';
         return;
       }
+
+      // Both JWT and API key failed
+      request.log.warn({
+        audit: true,
+        event: 'auth_failure',
+        reason: 'invalid_credentials',
+        ip: request.ip,
+        method: request.method,
+        url: request.url,
+        // Never log the token itself
+      });
+      throw new UnauthorizedError('Invalid credentials');
     }
 
+    // Unrecognised auth scheme (not Bearer)
+    request.log.warn({
+      audit: true,
+      event: 'auth_failure',
+      reason: 'invalid_scheme',
+      scheme: scheme ?? 'none',
+      ip: request.ip,
+      method: request.method,
+      url: request.url,
+    });
     throw new UnauthorizedError('Invalid credentials');
   });
 });

@@ -55,7 +55,7 @@ export async function buildTestApp(
     ENCRYPTION_KEY: 'a'.repeat(64), // 32 bytes in hex
     JWT_SECRET: 'test-jwt-secret-minimum-16-chars',
     CORS_ORIGINS: 'http://localhost:3001',
-    AI_MODEL: 'gemini-2.5-flash',
+    AI_MODEL: 'gpt-5.4',
     ...opts.envOverrides,
   };
 
@@ -69,6 +69,9 @@ export async function buildTestApp(
     messageProcessor: mockQueue,
     outboundSender: mockQueue,
     flowExecutor: mockQueue,
+    deadLetter: mockQueue,
+    csvImport: mockQueue,
+    callAnalysis: mockQueue,
   } as any);
 
   // Register JWT + cookie (needed by auth plugin logic)
@@ -107,7 +110,7 @@ export async function buildTestApp(
     }
     reply.status((error as any).statusCode ?? 500).send({
       error: 'INTERNAL_ERROR',
-      message: error.message,
+      message: (error as Error).message,
     });
   });
 

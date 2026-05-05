@@ -1,21 +1,26 @@
 import { Worker } from 'bullmq';
-import { eq } from 'drizzle-orm';
+import type { Queue } from 'bullmq';
 import type { OutboundSenderJob } from '../outbound-sender.queue.js';
 import type { Database } from '../../db/client.js';
 import { messages } from '../../db/schema/index.js';
 import type { WhatsAppService } from '../../modules/channels/whatsapp/whatsapp.service.js';
 import type { EmailService } from '../../modules/channels/email/email.service.js';
 import type { Redis } from 'ioredis';
+import { handleDeadLetter } from '../dead-letter.js';
+import { eq } from 'drizzle-orm';
+import type { FastifyBaseLogger } from 'fastify';
 
 interface WorkerDeps {
   db: Database;
   redis: Redis;
+  deadLetterQueue: Queue;
   whatsapp?: WhatsAppService;
   email?: EmailService;
+  logger?: FastifyBaseLogger;
 }
 
 export function createOutboundSenderWorker(deps: WorkerDeps) {
-  const { db, redis, whatsapp, email } = deps;
+  const { db, redis, deadLetterQueue, whatsapp, email, logger } = deps;
 
   const worker = new Worker<OutboundSenderJob>(
     'outbound-sender',
@@ -35,7 +40,7 @@ export function createOutboundSenderWorker(deps: WorkerDeps) {
 
         case 'voice':
           // Voice is real-time, not queue-based — log and skip
-          console.log(`Voice outbound skipped (real-time channel): ${to}`);
+          logger?.info({ channel, jobId: job.id }, 'Voice outbound skipped — real-time channel');
           return;
       }
 
@@ -48,7 +53,8 @@ export function createOutboundSenderWorker(deps: WorkerDeps) {
   );
 
   worker.on('failed', (job, err) => {
-    console.error(`Outbound send failed for job ${job?.id}:`, err);
+    logger?.error({ jobId: job?.id, err }, 'Outbound send failed');
+    handleDeadLetter(deadLetterQueue, job, err);
   });
 
   return worker;

@@ -8,22 +8,23 @@ export interface BookingResult {
   start: string;
   end: string;
   status: string;
+  meetLink?: string;
 }
 
 export interface SchedulingProvider {
   getAvailableSlots(params: {
     startDate: string;
     endDate: string;
-    serviceId: number;
+    serviceId: string;
     timezone: string;
-    employeeId?: number;
+    employeeId?: string;
   }): Promise<TimeSlot[]>;
 
   createBooking(params: {
     start: string;
-    serviceId: number;
+    serviceId: string;
     attendee: { name: string; email: string; phone?: string; timezone: string };
-    employeeId?: number;
+    employeeId?: string;
     notes?: string;
   }): Promise<BookingResult>;
 

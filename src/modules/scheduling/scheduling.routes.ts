@@ -1,42 +1,41 @@
 import type { FastifyInstance } from 'fastify';
 import { getTenantId } from '../../shared/tenant-context.js';
-import { TrafftProvider } from './providers/trafft.provider.js';
+import { GoogleCalendarProvider } from './providers/google-calendar.provider.js';
 import { scheduledCalls } from '../../db/schema/index.js';
 import { eq, and } from 'drizzle-orm';
 
-function getTrafftProvider(app: FastifyInstance): TrafftProvider | null {
-  const { TRAFFT_SUBDOMAIN, TRAFFT_EMAIL, TRAFFT_PASSWORD } = app.env;
-  if (!TRAFFT_SUBDOMAIN || !TRAFFT_EMAIL || !TRAFFT_PASSWORD) return null;
-  return new TrafftProvider({
-    subdomain: TRAFFT_SUBDOMAIN,
-    email: TRAFFT_EMAIL,
-    password: TRAFFT_PASSWORD,
+function getCalendarProvider(app: FastifyInstance): GoogleCalendarProvider | null {
+  const { GOOGLE_CALENDAR_ID, GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL, GOOGLE_CALENDAR_PRIVATE_KEY } = app.env;
+  if (!GOOGLE_CALENDAR_ID || !GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL || !GOOGLE_CALENDAR_PRIVATE_KEY) return null;
+  return new GoogleCalendarProvider({
+    calendarId: GOOGLE_CALENDAR_ID,
+    serviceAccountEmail: GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL,
+    privateKey: GOOGLE_CALENDAR_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    slotMinutes: app.env.GOOGLE_CALENDAR_SLOT_MINUTES ?? 30,
+    workStart: app.env.GOOGLE_CALENDAR_WORK_START ?? '09:00',
+    workEnd: app.env.GOOGLE_CALENDAR_WORK_END ?? '18:00',
   });
 }
 
 export async function schedulingRoutes(app: FastifyInstance) {
-  // GET /slots — available time slots for a service
+  // GET /slots — available time slots
   app.get<{
     Querystring: { startDate: string; endDate: string; timezone?: string };
   }>('/slots', async (request, reply) => {
     const tenantId = getTenantId(request);
-    const provider = getTrafftProvider(app);
+    const provider = getCalendarProvider(app);
     if (!provider) {
       return reply.status(503).send({ error: 'Scheduling not configured' });
     }
 
     const { startDate, endDate, timezone = 'UTC' } = request.query;
-    const serviceId = app.env.TRAFFT_SERVICE_ID;
-    if (!serviceId) {
-      return reply.status(400).send({ error: 'TRAFFT_SERVICE_ID not configured' });
-    }
+    const calendarId = app.env.GOOGLE_CALENDAR_ID!;
 
     const slots = await provider.getAvailableSlots({
       startDate,
       endDate,
-      serviceId,
+      serviceId: calendarId,
       timezone,
-      employeeId: app.env.TRAFFT_EMPLOYEE_ID,
     });
 
     return { slots };
@@ -52,39 +51,34 @@ export async function schedulingRoutes(app: FastifyInstance) {
       timezone?: string;
       notes?: string;
       leadId?: string;
+      conversationId?: string;
     };
   }>('/book', async (request, reply) => {
     const tenantId = getTenantId(request);
-    const provider = getTrafftProvider(app);
+    const provider = getCalendarProvider(app);
     if (!provider) {
       return reply.status(503).send({ error: 'Scheduling not configured' });
     }
 
-    const serviceId = app.env.TRAFFT_SERVICE_ID;
-    if (!serviceId) {
-      return reply.status(400).send({ error: 'TRAFFT_SERVICE_ID not configured' });
-    }
-
-    const { start, name, email, phone, timezone = 'UTC', notes, leadId } = request.body;
+    const { start, name, email, phone, timezone = 'UTC', notes, leadId, conversationId } = request.body;
 
     const booking = await provider.createBooking({
       start,
-      serviceId,
+      serviceId: app.env.GOOGLE_CALENDAR_ID!,
       attendee: { name, email, phone, timezone },
-      employeeId: app.env.TRAFFT_EMPLOYEE_ID,
       notes,
     });
 
-    // Persist to scheduled_calls table
     await app.db.insert(scheduledCalls).values({
       tenantId,
       leadId: leadId ?? undefined,
+      conversationId: conversationId ?? undefined,
       providerRef: booking.uid,
       scheduledAt: new Date(booking.start),
       status: 'scheduled',
     });
 
-    app.log.info({ tenantId, booking }, 'Trafft booking created');
+    app.log.info({ tenantId, booking }, 'Google Calendar booking created');
     reply.status(201).send({ booking });
   });
 
@@ -93,7 +87,7 @@ export async function schedulingRoutes(app: FastifyInstance) {
     Params: { bookingUid: string };
   }>('/cancel/:bookingUid', async (request, reply) => {
     const tenantId = getTenantId(request);
-    const provider = getTrafftProvider(app);
+    const provider = getCalendarProvider(app);
     if (!provider) {
       return reply.status(503).send({ error: 'Scheduling not configured' });
     }
@@ -101,7 +95,6 @@ export async function schedulingRoutes(app: FastifyInstance) {
     const { bookingUid } = request.params;
     await provider.cancelBooking(bookingUid);
 
-    // Update local record
     await app.db
       .update(scheduledCalls)
       .set({ status: 'cancelled', updatedAt: new Date() })
@@ -112,7 +105,7 @@ export async function schedulingRoutes(app: FastifyInstance) {
         ),
       );
 
-    app.log.info({ tenantId, bookingUid }, 'Trafft booking cancelled');
+    app.log.info({ tenantId, bookingUid }, 'Google Calendar booking cancelled');
     return { ok: true };
   });
 }

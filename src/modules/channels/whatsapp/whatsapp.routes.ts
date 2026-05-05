@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { WhatsAppService } from './whatsapp.service.js';
 import { enqueueMessage } from '../../../queues/message-processor.queue.js';
+import { isTimestampFresh } from '../../../shared/webhook-timestamp.js';
 
 /**
  * Expected webhook payload from UChat's External Request action.
@@ -17,14 +18,14 @@ import { enqueueMessage } from '../../../queues/message-processor.queue.js';
  *    - phone: {{phone}}
  *    - name: {{name}}
  *    - message: {{last_user_input}}
- *    - tenant_id: <your tenant UUID>
+ *
+ * Tenant is resolved server-side from UCHAT_WEBHOOK_TENANT_ID — never from the body.
  */
 const webhookPayloadSchema = z.object({
   user_ns: z.string().min(1),
   phone: z.string().min(1),
   name: z.string().optional(),
   message: z.string().min(1),
-  tenant_id: z.string().uuid(),
   // Optional fields UChat can forward
   channel: z.string().optional(),
   message_type: z.string().default('text'),
@@ -42,6 +43,14 @@ export async function whatsappRoutes(app: FastifyInstance) {
       return;
     }
 
+    // 1b. Replay attack protection — reject stale requests (optional header)
+    const ts = request.headers['x-timestamp'] as string | undefined;
+    if (ts && !isTimestampFresh(Number(ts))) {
+      app.log.warn({ ts }, 'WhatsApp webhook: stale timestamp — possible replay attack');
+      reply.status(401).send({ error: 'Stale request' });
+      return;
+    }
+
     // 2. Parse and validate payload
     const parsed = webhookPayloadSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -50,11 +59,19 @@ export async function whatsappRoutes(app: FastifyInstance) {
       return;
     }
 
-    const { user_ns, phone, name, message, tenant_id, message_type } = parsed.data;
+    const { user_ns, phone, name, message, message_type } = parsed.data;
 
-    // 3. Enqueue for processing
+    // 3. Resolve tenant from server config — never from request body
+    const tenantId = app.env.UCHAT_WEBHOOK_TENANT_ID;
+    if (!tenantId) {
+      app.log.error('WhatsApp webhook: UCHAT_WEBHOOK_TENANT_ID not configured');
+      reply.status(503).send({ error: 'WhatsApp intake not configured' });
+      return;
+    }
+
+    // 4. Enqueue for processing
     await enqueueMessage(app.queues.messageProcessor, {
-      tenantId: tenant_id,
+      tenantId,
       channel: 'whatsapp',
       channelRef: user_ns,
       from: phone,
@@ -63,7 +80,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
       rawPayload: request.body as Record<string, unknown>,
     });
 
-    app.log.info({ phone, userNs: user_ns, tenantId: tenant_id }, 'WhatsApp message enqueued');
+    app.log.info({ phone, userNs: user_ns, tenantId }, 'WhatsApp message enqueued');
 
     // 4. Return 200 immediately — processing happens async in the worker
     reply.status(200).send({ ok: true });

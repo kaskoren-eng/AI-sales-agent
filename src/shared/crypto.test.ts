@@ -48,4 +48,27 @@ describe('crypto', () => {
     const encrypted = encrypt(text, TEST_KEY);
     expect(decrypt(encrypted, TEST_KEY)).toBe(text);
   });
+
+  it('throws when ciphertext is tampered (auth tag check fails)', () => {
+    const encrypted = encrypt('sensitive-data', TEST_KEY);
+    const parts = encrypted.split(':');
+    // Flip the last character of the ciphertext portion
+    const tampered = parts[2].slice(0, -1) + (parts[2].endsWith('f') ? '0' : 'f');
+    const tamperedString = `${parts[0]}:${parts[1]}:${tampered}`;
+    expect(() => decrypt(tamperedString, TEST_KEY)).toThrow();
+  });
+
+  it('throws when auth tag is tampered', () => {
+    const encrypted = encrypt('sensitive-data', TEST_KEY);
+    const parts = encrypted.split(':');
+    // Flip a character in the auth tag
+    const tamperedTag = parts[1].slice(0, -1) + (parts[1].endsWith('a') ? 'b' : 'a');
+    const tamperedString = `${parts[0]}:${tamperedTag}:${parts[2]}`;
+    expect(() => decrypt(tamperedString, TEST_KEY)).toThrow();
+  });
+
+  it('decrypts long strings correctly', () => {
+    const long = 'a'.repeat(10000);
+    expect(decrypt(encrypt(long, TEST_KEY), TEST_KEY)).toBe(long);
+  });
 });

@@ -11,11 +11,14 @@ import redisPlugin from './plugins/redis.js';
 import queuePlugin from './plugins/queue.js';
 import authPlugin from './plugins/auth.js';
 import auditPlugin from './plugins/audit.js';
+import sentryPlugin from './plugins/sentry.js';
 
 // Workers
 import { createMessageProcessorWorker } from './queues/workers/message-processor.worker.js';
 import { createOutboundSenderWorker } from './queues/workers/outbound-sender.worker.js';
 import { createFlowExecutorWorker } from './queues/workers/flow-executor.worker.js';
+import { createCsvImportWorker } from './queues/workers/csv-import.worker.js';
+import { createCallAnalysisWorker } from './queues/workers/call-analysis.worker.js';
 import { WhatsAppService } from './modules/channels/whatsapp/whatsapp.service.js';
 import { EmailService } from './modules/channels/email/email.service.js';
 import { VoiceService } from './modules/channels/voice/voice.service.js';
@@ -29,11 +32,13 @@ import schedulingModule from './modules/scheduling/index.js';
 import integrationsModule from './modules/integrations/index.js';
 import leadIntakeModule from './modules/webhooks/index.js';
 import tenantsModule from './modules/tenants/index.js';
+import callsModule from './modules/calls/index.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
     env: Env;
     authenticate: (request: any, reply: any) => Promise<void>;
+    sentry?: typeof import('@sentry/node');
   }
 }
 
@@ -73,6 +78,9 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(authPlugin);
   await app.register(auditPlugin);
 
+  // --- Observability ---
+  await app.register(sentryPlugin);
+
   // --- Global error handler (must be before route registration for scope fallback to work) ---
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof AppError) {
@@ -84,6 +92,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
 
     request.log.error(error);
+    app.sentry?.captureException(error);
     reply.status(500).send({
       error: 'INTERNAL_ERROR',
       message: 'An unexpected error occurred',
@@ -99,11 +108,15 @@ export async function buildApp(): Promise<FastifyInstance> {
       max: 200,
       timeWindow: '1 minute',
     });
+    // Parse JSON and keep the raw string on req.rawBody for signature verification (svix, Monday, etc.)
     webhookScope.addContentTypeParser('application/json', { bodyLimit: 262_144 }, (req, body, done) => {
       let data = '';
       body.on('data', (chunk: Buffer) => { data += chunk.toString(); });
       body.on('end', () => {
-        try { done(null, JSON.parse(data)); }
+        try {
+          (req as any).rawBody = data;
+          done(null, JSON.parse(data));
+        }
         catch (err) { done(err as Error, undefined); }
       });
     });
@@ -114,15 +127,22 @@ export async function buildApp(): Promise<FastifyInstance> {
     await webhookScope.register(leadIntakeModule, { prefix: '/webhooks/leads' });
   });
 
-  // --- Tenant management (no auth for MVP — secure before production) ---
-  await app.register(tenantsModule, { prefix: '/api/v1/tenants' });
-
-  // --- API routes (auth required) ---
+  // --- API routes (auth required, per-tenant rate limiting) ---
   await app.register(async (apiScope) => {
+    // Per-tenant rate limiting: each tenant gets their own 200 req/min bucket.
+    // Without this, one tenant hammering the API would slow down all others.
+    await apiScope.register(rateLimit, {
+      max: 200,
+      timeWindow: '1 minute',
+      keyGenerator: (request: any) => request.tenantId ?? request.ip,
+    });
+
     apiScope.addHook('onRequest', app.authenticate);
+    await apiScope.register(tenantsModule, { prefix: '/api/v1/tenants' });
     await apiScope.register(leadsModule, { prefix: '/api/v1/leads' });
     await apiScope.register(schedulingModule, { prefix: '/api/v1/scheduling' });
     await apiScope.register(integrationsModule, { prefix: '/api/v1/integrations' });
+    await apiScope.register(callsModule, { prefix: '/api/v1/calls' });
   });
 
   // --- Workers ---
@@ -131,6 +151,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     env,
     redis: app.redis,
     outboundQueue: app.queues.outboundSender,
+    flowExecutorQueue: app.queues.flowExecutor,
+    deadLetterQueue: app.queues.deadLetter,
+    logger: app.log,
   });
 
   const whatsappService = new WhatsAppService(app);
@@ -140,8 +163,10 @@ export async function buildApp(): Promise<FastifyInstance> {
   const outboundSenderWorker = createOutboundSenderWorker({
     db: app.db,
     redis: app.redis,
+    deadLetterQueue: app.queues.deadLetter,
     whatsapp: whatsappService,
     email: emailService,
+    logger: app.log,
   });
 
   const flowExecutorWorker = createFlowExecutorWorker({
@@ -149,14 +174,32 @@ export async function buildApp(): Promise<FastifyInstance> {
     env,
     redis: app.redis,
     flowExecutorQueue: app.queues.flowExecutor,
+    deadLetterQueue: app.queues.deadLetter,
     whatsapp: whatsappService,
     voice: voiceService,
+    email: emailService,
+    logger: app.log,
+  });
+
+  const csvImportWorker = createCsvImportWorker({
+    db: app.db,
+    redis: app.redis,
+    deadLetterQueue: app.queues.deadLetter,
+  });
+
+  const callAnalysisWorker = createCallAnalysisWorker({
+    db: app.db,
+    env,
+    redis: app.redis,
+    deadLetterQueue: app.queues.deadLetter,
   });
 
   app.addHook('onClose', async () => {
     await messageProcessorWorker.close();
     await outboundSenderWorker.close();
     await flowExecutorWorker.close();
+    await csvImportWorker.close();
+    await callAnalysisWorker.close();
   });
 
   return app;

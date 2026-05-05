@@ -1,5 +1,12 @@
 import type { Queue } from 'bullmq';
 
+export interface FlowContext {
+  callSummary?: string;
+  meetingLink?: string;
+  meetingTime?: string;
+  meetingDate?: string;
+}
+
 export interface FlowExecutorJob {
   tenantId: string;
   leadId: string;
@@ -8,6 +15,7 @@ export interface FlowExecutorJob {
   leadPhone: string;
   leadName?: string;
   leadEmail?: string;
+  flowContext?: FlowContext;
 }
 
 export function enqueueFlowStep(queue: Queue, job: FlowExecutorJob, delayMs: number = 0) {
@@ -15,6 +23,6 @@ export function enqueueFlowStep(queue: Queue, job: FlowExecutorJob, delayMs: num
     attempts: 3,
     backoff: { type: 'exponential', delay: 1000 },
     delay: delayMs,
-    jobId: `flow-${job.tenantId}-${job.leadId}-${job.flowName}-${job.stepIndex}`,
+    jobId: `flow-${job.tenantId}-${job.leadId}-${job.flowName}-${job.stepIndex}-${Date.now()}`,
   });
 }

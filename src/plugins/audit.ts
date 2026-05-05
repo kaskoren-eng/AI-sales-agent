@@ -7,8 +7,10 @@ export default fp(async (app) => {
 
     request.log.info({
       audit: true,
+      event: 'api_request',
       tenantId,
       userId: (request as any).userId,
+      authMethod: (request as any).authMethod,
       method: request.method,
       url: request.url,
       statusCode: reply.statusCode,

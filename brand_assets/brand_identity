@@ -1,0 +1,290 @@
+# Danie — Brand & Build Brief
+
+**Version:** 2.0
+**Status:** Handoff-ready
+**Owner:** Koren
+**Stack pin:** Next.js 15 (App Router) · React 19 · Tailwind CSS 4 · TypeScript · shadcn/ui (Radix primitives) · Lucide-React · Framer Motion
+
+---
+
+## 0. Product Definition
+
+**Danie** is an autonomous AI sales agent (SDR-class). The product personifies Danie as a "digital worker" — a refined synthetic colleague the customer manages, not a tool they operate.
+
+- **Pronouns:** they/them (gender-neutral, written as "Danie" not "he/she").
+- **Voice:** warm, precise, confident, never cute. Concise sentences. Active voice.
+- **Sample lines:**
+  - "I researched 47 leads this morning. 4 look promising — want me to draft outreach?"
+  - "Meeting booked with Sarah Chen for Thursday 2pm. Calendar updated."
+  - "I paused the campaign. Reply rate dropped below your threshold."
+- **Out of scope for v1:** real-time voice conversations, mobile native app, light mode, multi-language UI.
+
+---
+
+## 1. Design Tokens
+
+### 1.1 Color tokens
+
+```css
+/* Backgrounds */
+--bg-primary:        #0B132B;   /* Deep midnight — page background */
+--bg-surface:        #1C2541;   /* Cards, panels */
+--bg-elevated:       #1F2A4A;   /* Modals, popovers, hover state on surface */
+--bg-inset:          #060A1A;   /* Code blocks, deep recesses */
+
+/* Accents */
+--accent-cyan:       #00F5FF;   /* CTAs, active states, focus rings, status pulse */
+--accent-cyan-dim:   #00B8C2;   /* Cyan hover/pressed state */
+--accent-violet:     #6366F1;   /* Data viz, secondary highlights */
+--accent-violet-dim: #4F46E5;   /* Violet hover */
+
+/* Text */
+--text-primary:      #F0F4FF;   /* Body, headings */
+--text-secondary:    #A0AEC0;   /* Supporting text, labels */
+--text-muted:        #6B7280;   /* Captions, metadata, timestamps */
+--text-disabled:     #4A5568;
+--text-on-cyan:      #0B132B;   /* Text on cyan buttons */
+
+/* Semantic */
+--success:           #10B981;   /* "Meeting booked", "Lead qualified" */
+--warning:           #F59E0B;   /* "Awaiting approval", "Low confidence" */
+--error:             #EF4444;   /* "Call failed", "Disconnected" */
+--info:              #3B82F6;
+
+/* Borders & dividers */
+--border-subtle:     rgba(255,255,255,0.08);
+--border-default:    rgba(255,255,255,0.12);
+--border-strong:     rgba(255,255,255,0.20);
+--focus-ring:        #00F5FF;
+```
+
+**Cyan usage rule:** Electric Cyan is reserved for CTAs, focus rings, status indicators, and icon highlights. **Never use cyan for body text or paragraph copy** — fails comfortable reading even when it passes contrast math.
+
+### 1.2 Type scale
+
+**Fonts loaded:** Montserrat (700, 800) for display headings only · Assistant (400, 600) for everything else.
+
+| Token | Size | Line-height | Weight | Treatment |
+|---|---|---|---|---|
+| `display` | 56px | 1.05 | 800 | Montserrat, `letter-spacing: 0.12em`, UPPERCASE |
+| `h1` | 40px | 1.15 | 700 | Montserrat, `letter-spacing: 0.08em`, UPPERCASE |
+| `h2` | 28px | 1.2 | 700 | Montserrat, normal case, normal tracking |
+| `h3` | 20px | 1.3 | 600 | Assistant Semibold, normal case |
+| `h4` | 16px | 1.4 | 600 | Assistant Semibold, normal case |
+| `body` | 15px | 1.55 | 400 | Assistant Regular |
+| `body-sm` | 13px | 1.5 | 400 | Assistant Regular |
+| `caption` | 12px | 1.4 | 400 | Assistant Regular, `--text-muted` |
+| `mono` | 13px | 1.5 | — | JetBrains Mono (for IDs, JSON, technical chips) |
+
+**Rule:** uppercase + wide tracking applies **only to `display` and `h1`**. Everything else is normal case.
+
+### 1.3 Spacing & radii
+
+- Spacing scale: Tailwind defaults (`4 / 8 / 12 / 16 / 24 / 32 / 48 / 64`).
+- Radii: `sm: 6px`, `md: 10px`, `lg: 16px`, `xl: 24px`, `full: 9999px`. Cards default to `lg`.
+
+### 1.4 Motion tokens
+
+```
+--duration-fast:   150ms
+--duration-base:   220ms
+--duration-slow:   400ms
+--duration-glow:   1600ms (looping pulse)
+--ease-standard:   cubic-bezier(0.4, 0, 0.2, 1)
+--ease-emphasized: cubic-bezier(0.2, 0, 0, 1)
+```
+
+**Library:** Framer Motion for orchestrated animations (page transitions, list reorders, the Live Feed). Plain CSS for hover/focus micro-interactions.
+
+**Accessibility:** every animation must respect `prefers-reduced-motion: reduce` and fall back to opacity-only or instant transitions.
+
+### 1.5 Elevation
+
+- `elev-1`: `box-shadow: 0 1px 2px rgba(0,0,0,0.4)` + 1px subtle border
+- `elev-2`: `box-shadow: 0 8px 24px rgba(0,0,0,0.45)` + 1px default border
+- `elev-glow`: `box-shadow: 0 0 24px rgba(0,245,255,0.35)` — used **only** for Danie's active-state cards and CTA hover.
+
+**No global glassmorphism.** `backdrop-filter: blur` is restricted to **at most two surfaces per page** (e.g., the floating chat dock, the top nav on scroll). Cards use solid `--bg-surface` + 1px borders for depth. This is a deliberate trade for 60fps scroll performance on dense dashboards.
+
+---
+
+## 2. Accessibility & Performance Budget
+
+- **Contrast:** target WCAG **AAA (7:1)** for body text, AA (4.5:1) minimum for UI controls. All cyan-on-dark combinations must be checked manually — passing math is not the same as comfortable.
+- **Keyboard:** every interactive element reachable via Tab; focus ring uses `--focus-ring` at 2px offset.
+- **Reduced motion:** required, see §1.4.
+- **Performance:**
+  - LCP target: **< 2.0s** on 4G
+  - JS bundle (initial route): **< 180kb gzipped**
+  - CLS: **< 0.05**
+  - Glow effects use `box-shadow` only, never `filter: blur` on scrolling surfaces.
+
+---
+
+## 3. Component Architecture — "The Digital Worker"
+
+### 3.1 Danie Presence (persistent)
+
+A status chip in the top nav, always visible:
+
+> 🔵 **Danie is qualifying 4 leads** · _live since 09:14_
+
+- Pulsing cyan dot uses `--duration-glow` loop, opacity 0.4 → 1.0.
+- Click opens the Live Feed in a side drawer.
+
+### 3.2 Live Interaction Feed
+
+Vertical timeline showing Danie's reasoning steps in near-real-time. Each entry:
+
+```
+[icon] [timestamp]  Action title
+                    Optional one-line context
+                    [chips: confidence · source · related lead]
+```
+
+**States required:**
+- **Empty** ("Danie hasn't started yet — connect your CRM to begin")
+- **Booting** (skeleton with shimmer)
+- **Live** (entries stream in from top)
+- **Error** ("Connection lost — retrying in 8s")
+
+### 3.3 Autonomy Control
+
+**Replace the "knob" with a 3-stop segmented control:**
+
+```
+[ Suggest ]  [ Draft ]  [ Auto-Execute ]
+   Low           Mid          High
+```
+
+- Keyboard: arrow keys cycle, Enter confirms.
+- Each stop has a tooltip explaining what Danie will and won't do at that level.
+- Changes confirm with a toast: "Autonomy set to Draft — Danie will prepare outreach for your approval."
+
+### 3.4 Pipeline Visualizer
+
+Vertical flow, top-down: `Sourced → Researched → Qualified → Engaged → Booked`.
+- Each stage shows count + delta vs. yesterday.
+- Lead cards drag-able between stages (with confirmation toast).
+- On mobile (<768px), collapses to horizontally scrollable stages.
+
+### 3.5 Task Completion Affordance
+
+When Danie finishes a task: **glow pulse + checkmark + microcopy**, in that order. Glow is the premium feel; checkmark is the clarity. Never glow alone — ambiguous as success.
+
+---
+
+## 4. Iconography
+
+- **Library:** Lucide-React (locked — no Phosphor, no Heroicons, no mixing).
+- **Stroke width:** 1.5px global default.
+- **Size scale:** 14 / 16 / 20 / 24px.
+- **No filled icons.** No emoji in UI chrome (emoji allowed in user-generated content only).
+
+---
+
+## 5. Mobile & Responsive Strategy
+
+Breakpoints (Tailwind defaults):
+- `sm: 640px` — phones
+- `md: 768px` — small tablets
+- `lg: 1024px` — tablets / small laptops
+- `xl: 1280px` — desktops
+- `2xl: 1536px` — large desktops
+
+Per-component collapse rules:
+- **Pipeline Visualizer:** vertical desktop → horizontal scroll-snap stages on mobile.
+- **Live Feed:** sidebar on desktop → bottom drawer on mobile.
+- **Autonomy Control:** segmented control stays as-is, no collapse.
+- **Top nav status chip:** truncates copy, dot stays visible.
+
+---
+
+## 6. Localization
+
+**v1 is English-only.** RTL and Hebrew are explicitly out of scope. If/when added in v2:
+- Hebrew typeface: **Heebo** (matches Assistant's tone, has full glyph coverage).
+- Drop uppercase + letter-spacing on Hebrew strings (semantically meaningless).
+- `dir="rtl"` flip required for the Pipeline Visualizer arrows and Live Feed chevrons.
+
+---
+
+## 7. Website Sections
+
+### 7.1 Hero
+
+- **Layout:** split-screen on `lg+`, stacked on `md-`.
+- **Left:** display headline + subhead + two CTAs ("Talk to Danie", "See it work").
+- **Right:** cinematic render of Danie. Asset spec below.
+- **CTA "Talk to Danie":** opens a floating dock with **text-only chat** (v1). Voice/WebRTC is v2 — do not build voice in v1.
+
+### 7.2 The Brain
+
+Interactive diagram: **CRM sources → Danie → Outcomes**.
+- Thin 1px lines, glowing nodes, animated data packets traveling along the lines (Framer Motion path animations).
+- Hover a node → reveal what Danie does at that step.
+- Reduced-motion: packets become static dots.
+
+### 7.3 Integration Grid
+
+Grayscale logos that colorize on hover. v1 set: HubSpot, Salesforce, Gmail, Google Calendar, Slack, LinkedIn, Twilio, ElevenLabs.
+- Logo grid is 4×2 on desktop, 2×4 on mobile.
+
+---
+
+## 8. What NOT to Build
+
+To prevent generic-SaaS drift:
+
+- ❌ Aurora / blob / mesh-gradient backgrounds.
+- ❌ Stock isometric illustrations or 3D blob shapes.
+- ❌ Emoji in UI chrome (status, nav, buttons).
+- ❌ Stacked gradient buttons (cyan → violet). Use solid cyan with subtle glow on hover.
+- ❌ Generic stock photography of "diverse teams in offices."
+- ❌ Marquee logo carousels.
+- ❌ Light mode toggle (v1).
+- ❌ A clone of 11x.ai's hero — they're inspiration, not a template.
+
+---
+
+## 9. Asset Inventory
+
+**Required before dev starts:**
+
+| Asset | Spec | Status | Owner |
+|---|---|---|---|
+| Danie hero render | 1600×2000px PNG, transparent BG, retina | ⚠️ TBD | Koren |
+| Danie idle micro-animation | Optional v2 — Lottie or WebM, < 400kb | ❌ v2 | — |
+| Integration logos (8) | SVG, single-color + full-color variants | ⚠️ TBD | Koren |
+| Favicon set | 16/32/180/512px | ⚠️ TBD | Koren |
+| OG image | 1200×630px | ⚠️ TBD | Koren |
+
+**Blocker:** the Hero render must exist before the marketing site ships.
+
+---
+
+## 10. Component Library Posture
+
+- Use **shadcn/ui** as the base (Radix primitives, accessible by default).
+- Theme shadcn components against the tokens in §1.
+- **Do not** rebuild Dialog, Dropdown, Tooltip, Popover, Toast, Tabs, Select, or Command from scratch. If shadcn doesn't ship it, build on top of Radix primitives.
+- Custom-built (not from shadcn): Live Feed, Pipeline Visualizer, Autonomy Control, Danie Status Chip.
+
+---
+
+## 11. Definition of Done (per component)
+
+A component ships only when it has:
+
+- [ ] Tokens used (no hex literals in JSX/CSS).
+- [ ] Keyboard navigation.
+- [ ] Focus-visible state.
+- [ ] Empty / loading / error states.
+- [ ] `prefers-reduced-motion` fallback (if animated).
+- [ ] AAA contrast for text, AA for controls.
+- [ ] Mobile breakpoint behavior.
+- [ ] Storybook story (or equivalent isolated demo).
+
+---
+
+_End of brief. Questions to resolve before kickoff: Hero render delivery date, integration logo licensing, analytics provider, hosting (Vercel assumed)._

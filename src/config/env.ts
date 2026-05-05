@@ -1,11 +1,15 @@
 import { z } from 'zod';
+import { config } from 'dotenv';
+
+// Always load .env with override=true so .env values win over inherited shell env vars
+config({ override: true });
 
 const envSchema = z.object({
   // Server
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(3000),
   HOST: z.string().default('0.0.0.0'),
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 
   // Database
   DATABASE_URL: z.string().url(),
@@ -22,6 +26,8 @@ const envSchema = z.object({
   // Lead intake webhooks
   META_APP_SECRET: z.string().min(1).optional(),
   LEAD_WEBHOOK_SECRET: z.string().min(1).optional(),
+  // Tenant that receives generic (non-Meta) webhook leads — prevents body spoofing
+  LEAD_WEBHOOK_TENANT_ID: z.string().uuid().optional(),
 
   // App base URL (for callback URLs)
   BASE_URL: z.string().url().optional(),
@@ -29,10 +35,14 @@ const envSchema = z.object({
   // Channels - WhatsApp (UChat)
   UCHAT_WEBHOOK_SECRET: z.string().min(1).optional(),
   UCHAT_API_TOKEN: z.string().min(1).optional(),
+  // UUID of the tenant that receives inbound WhatsApp messages (server-side only — prevents body spoofing)
+  UCHAT_WEBHOOK_TENANT_ID: z.string().uuid().optional(),
 
   // Channels - Email (Resend)
   RESEND_API_KEY: z.string().startsWith('re_').optional(),
   RESEND_FROM_EMAIL: z.string().email().optional(),
+  RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
+  RESEND_INBOUND_TENANT_ID: z.string().uuid().optional(),
 
   // Channels - Voice (Twilio + ElevenLabs)
   TWILIO_ACCOUNT_SID: z.string().startsWith('AC').optional(),
@@ -40,24 +50,34 @@ const envSchema = z.object({
   TWILIO_PHONE_NUMBER: z.string().min(1).optional(),
   ELEVENLABS_API_KEY: z.string().min(1).optional(),
   ELEVENLABS_AGENT_ID: z.string().min(1).optional(),
+  ELEVENLABS_PHONE_NUMBER_ID: z.string().min(1).optional(),
+  ELEVENLABS_WEBHOOK_SECRET: z.string().min(1).optional(),
+  // UUID of the tenant that receives inbound voice calls (enables learning injection)
+  VOICE_WEBHOOK_TENANT_ID: z.string().uuid().optional(),
 
-  // Scheduling (Trafft)
-  TRAFFT_SUBDOMAIN: z.string().min(1).optional(),
-  TRAFFT_EMAIL: z.string().email().optional(),
-  TRAFFT_PASSWORD: z.string().min(1).optional(),
-  TRAFFT_SERVICE_ID: z.string().min(1).optional(),
-  TRAFFT_EMPLOYEE_ID: z.string().min(1).optional(),
+  // Scheduling (Google Calendar) — uses a service account; share the target calendar with the service account email
+  GOOGLE_CALENDAR_ID: z.string().min(1).optional(),
+  GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: z.string().email().optional(),
+  // PEM private key — store with literal \n, the provider will unescape them
+  GOOGLE_CALENDAR_PRIVATE_KEY: z.string().min(1).optional(),
+  GOOGLE_CALENDAR_SLOT_MINUTES: z.coerce.number().int().positive().optional(),
+  GOOGLE_CALENDAR_WORK_START: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  GOOGLE_CALENDAR_WORK_END: z.string().regex(/^\d{2}:\d{2}$/).optional(),
 
-  // AI (Google Gemini)
-  GOOGLE_AI_API_KEY: z.string().min(1).optional(),
-  AI_MODEL: z.string().default('gemini-2.5-flash'),
+  // AI (OpenAI)
+  OPENAI_API_KEY: z.string().min(1).optional(),
+  AI_MODEL: z.string().default('gpt-5.4'),
 
-  // Integrations - Nango
-  NANGO_SECRET_KEY: z.string().min(1).optional(),
+  // Integrations - Monday.com
+  MONDAY_WEBHOOK_SECRET: z.string().min(1).optional(),
 
   // Integrations - Google Sheets
   GOOGLE_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+
+  // Observability
+  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_ENVIRONMENT: z.string().optional(),
 
   // CORS
   CORS_ORIGINS: z.string().default('http://localhost:3001'),

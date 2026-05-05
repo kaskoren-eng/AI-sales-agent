@@ -1,17 +1,16 @@
 import type { FastifyInstance } from 'fastify';
-import { createHash, randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
-import { tenants } from '../../db/schema/index.js';
 import { TenantService } from './tenant.service.js';
 import { createTenantSchema, updateTenantSchema, updateFlowSchema } from './tenant.schemas.js';
+import { ValidationError } from '../../shared/errors.js';
 
 export async function tenantRoutes(app: FastifyInstance) {
   const service = new TenantService(app.db);
 
   // Create tenant
   app.post('/', async (request, reply) => {
-    const input = createTenantSchema.parse(request.body);
-    const tenant = await service.create(input);
+    const result = createTenantSchema.safeParse(request.body);
+    if (!result.success) throw new ValidationError(result.error.issues[0]?.message ?? 'Invalid input');
+    const tenant = await service.create(result.data);
     reply.status(201).send(tenant);
   });
 
@@ -29,8 +28,15 @@ export async function tenantRoutes(app: FastifyInstance) {
   // Update tenant
   app.patch('/:id', async (request) => {
     const { id } = request.params as { id: string };
-    const input = updateTenantSchema.parse(request.body);
-    return service.update(id, input);
+    const result = updateTenantSchema.safeParse(request.body);
+    if (!result.success) throw new ValidationError(result.error.issues[0]?.message ?? 'Invalid input');
+    return service.update(id, result.data);
+  });
+
+  // Rotate API key — returns new plaintext key once
+  app.post('/:id/rotate-key', async (request) => {
+    const { id } = request.params as { id: string };
+    return service.rotateApiKey(id);
   });
 
   // Get tenant flows
@@ -42,8 +48,9 @@ export async function tenantRoutes(app: FastifyInstance) {
   // Update a specific flow
   app.put('/:id/flows', async (request) => {
     const { id } = request.params as { id: string };
-    const { flowName, flow } = updateFlowSchema.parse(request.body);
-    const tenant = await service.updateFlow(id, flowName, flow);
+    const result = updateFlowSchema.safeParse(request.body);
+    if (!result.success) throw new ValidationError(result.error.issues[0]?.message ?? 'Invalid input');
+    const tenant = await service.updateFlow(id, result.data.flowName, result.data.flow);
     return { ok: true, flows: ((tenant.settings as any)?.flows) ?? {} };
   });
 }

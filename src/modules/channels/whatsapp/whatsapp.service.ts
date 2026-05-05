@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 
 const UCHAT_API_BASE = 'https://www.uchat.com.au/api';
@@ -136,7 +137,15 @@ export class WhatsAppService {
    */
   verifyWebhookSecret(headerValue: string | undefined): boolean {
     const secret = this.app.env.UCHAT_WEBHOOK_SECRET;
-    if (!secret) return true; // No secret configured = skip verification
-    return headerValue === secret;
+    if (!secret) {
+      this.app.log.warn({ event: 'whatsapp_webhook_no_secret' }, 'UCHAT_WEBHOOK_SECRET is not configured — rejecting webhook');
+      return false;
+    }
+    if (!headerValue) return false;
+    try {
+      return timingSafeEqual(Buffer.from(headerValue), Buffer.from(secret));
+    } catch {
+      return false;
+    }
   }
 }
