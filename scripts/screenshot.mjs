@@ -23,6 +23,7 @@ const ROUTES = [
   { name: 'overview',     path: '/' },
   { name: 'calls',        path: '/calls' },
   { name: 'call-detail',  path: '/calls/00000000-0000-0000-0000-000000000000' },
+  { name: 'settings',     path: '/settings' },
 ]
 
 mkdirSync(OUT_DIR, { recursive: true })
