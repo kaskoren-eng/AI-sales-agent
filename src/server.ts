@@ -2,6 +2,10 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
+import staticFiles from '@fastify/static';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 import { loadEnv, type Env } from './config/index.js';
 import { AppError } from './shared/errors.js';
 
@@ -146,6 +150,19 @@ export async function buildApp(): Promise<FastifyInstance> {
     await apiScope.register(callsModule, { prefix: '/api/v1/calls' });
     await apiScope.register(settingsModule, { prefix: '/api/v1/settings' });
   });
+
+  // --- Dashboard static files (production) ---
+  // Serve the built React dashboard. In production the dist folder is copied into the image.
+  // In development the dashboard runs on its own Vite dev server (port 3001).
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const dashboardDist = join(__dirname, '..', 'dashboard', 'dist');
+  if (existsSync(dashboardDist)) {
+    await app.register(staticFiles, { root: dashboardDist, prefix: '/' });
+    // Serve index.html for all unmatched routes so React Router handles navigation
+    app.setNotFoundHandler((_req, reply) => {
+      reply.sendFile('index.html');
+    });
+  }
 
   // --- Workers ---
   const messageProcessorWorker = createMessageProcessorWorker({
