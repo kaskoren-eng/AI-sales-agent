@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { CircuitBreaker } from '../../../shared/circuit-breaker.js';
 import { callLearnings } from '../../../db/schema/call-learnings.js';
 import { CallAnalysisService } from '../../calls/call-analysis.service.js';
+import { SettingsService } from '../../settings/settings.service.js';
 
 const ELEVENLABS_API_BASE = 'https://api.elevenlabs.io';
 const ELEVENLABS_TIMEOUT_MS = 15_000;
@@ -11,7 +12,11 @@ const AGENT_PROMPT_CACHE_TTL = 3600; // 1 hour
 const elevenLabsCircuit = new CircuitBreaker({ name: 'elevenlabs', failureThreshold: 5, cooldownMs: 30_000 });
 
 export class VoiceService {
-  constructor(private app: FastifyInstance) {}
+  private settingsService: SettingsService;
+
+  constructor(private app: FastifyInstance) {
+    this.settingsService = new SettingsService(app.db, app.env.ENCRYPTION_KEY);
+  }
 
   private _fetch(url: string, opts: RequestInit): Promise<Response> {
     return elevenLabsCircuit.execute(() => fetch(url, opts));
@@ -51,34 +56,63 @@ export class VoiceService {
   }
 
   /**
-   * Build an ElevenLabs override_config block that injects learnings from past monitored calls.
-   * Returns null if there are no learnings or the base prompt cannot be fetched.
+   * Build an ElevenLabs override_config block that injects:
+   * 1. Tenant business profile (who they are, what they sell, tone, language)
+   * 2. Learnings from past monitored calls (winning patterns)
+   * Returns null if neither is available or base prompt cannot be fetched.
    */
-  private async _buildLearningsOverride(tenantId: string): Promise<Record<string, unknown> | null> {
+  private async _buildAgentOverride(tenantId: string): Promise<Record<string, unknown> | null> {
     const { ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID } = this.app.env;
     if (!ELEVENLABS_API_KEY || !ELEVENLABS_AGENT_ID) return null;
 
     try {
-      const rows = await this.app.db
-        .select({ analysis: callLearnings.analysis, outcome: callLearnings.outcome })
-        .from(callLearnings)
-        .where(
-          and(
-            eq(callLearnings.tenantId, tenantId),
-            eq(callLearnings.status, 'analyzed'),
-            ne(callLearnings.outcome, 'lost'),
-          ),
-        )
-        .orderBy(desc(callLearnings.createdAt))
-        .limit(5);
+      const [businessProfile, learningRows] = await Promise.all([
+        this.settingsService.getBusinessProfile(tenantId).catch(() => null),
+        this.app.db
+          .select({ analysis: callLearnings.analysis, outcome: callLearnings.outcome })
+          .from(callLearnings)
+          .where(
+            and(
+              eq(callLearnings.tenantId, tenantId),
+              eq(callLearnings.status, 'analyzed'),
+              ne(callLearnings.outcome, 'lost'),
+            ),
+          )
+          .orderBy(desc(callLearnings.createdAt))
+          .limit(5),
+      ]);
 
-      if (!rows.length) return null;
+      const hasProfile = !!businessProfile;
+      const hasLearnings = learningRows.length > 0;
+
+      if (!hasProfile && !hasLearnings) return null;
 
       const basePrompt = await this._fetchAgentBasePrompt(ELEVENLABS_AGENT_ID, ELEVENLABS_API_KEY);
       if (!basePrompt) return null;
 
-      const learningsText = CallAnalysisService.formatLearningsForPrompt(rows);
-      const enhancedPrompt = `${basePrompt}${learningsText}`;
+      let enhancedPrompt = basePrompt;
+
+      if (hasProfile && businessProfile) {
+        const profileBlock = [
+          '\n\n--- BUSINESS CONTEXT ---',
+          `Company: ${businessProfile.companyName}`,
+          `What we do: ${businessProfile.description}`,
+          `What we sell: ${businessProfile.product}`,
+          businessProfile.targetAudience ? `Our ideal customer: ${businessProfile.targetAudience}` : '',
+          businessProfile.pricing ? `Pricing: ${businessProfile.pricing}` : '',
+          businessProfile.commonObjections ? `How to handle objections: ${businessProfile.commonObjections}` : '',
+          businessProfile.toneOfVoice ? `Tone of voice: ${businessProfile.toneOfVoice}` : '',
+          businessProfile.language !== 'english' ? `Speak primarily in Hebrew unless the lead speaks English.` : '',
+          '--- END BUSINESS CONTEXT ---',
+        ]
+          .filter(Boolean)
+          .join('\n');
+        enhancedPrompt += profileBlock;
+      }
+
+      if (hasLearnings) {
+        enhancedPrompt += CallAnalysisService.formatLearningsForPrompt(learningRows);
+      }
 
       return {
         override_config: {
@@ -86,9 +120,18 @@ export class VoiceService {
         },
       };
     } catch (err) {
-      this.app.log.warn({ err }, 'VoiceService: learnings injection failed — proceeding without override');
+      this.app.log.warn({ err }, 'VoiceService: agent override build failed — proceeding without override');
       return null;
     }
+  }
+
+  /**
+   * Get the Twilio auth token for a tenant — first from their settings, then from global env.
+   * Returns null if neither is configured.
+   */
+  async getTwilioAuthToken(tenantId: string): Promise<string | null> {
+    const tenantToken = await this.settingsService.getTwilioAuthToken(tenantId).catch(() => null);
+    return tenantToken ?? this.app.env.TWILIO_AUTH_TOKEN ?? null;
   }
 
   /**
@@ -113,7 +156,7 @@ export class VoiceService {
     };
 
     if (tenantId) {
-      const override = await this._buildLearningsOverride(tenantId);
+      const override = await this._buildAgentOverride(tenantId);
       if (override) Object.assign(body, override);
     }
 

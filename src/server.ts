@@ -33,6 +33,7 @@ import integrationsModule from './modules/integrations/index.js';
 import leadIntakeModule from './modules/webhooks/index.js';
 import tenantsModule from './modules/tenants/index.js';
 import callsModule from './modules/calls/index.js';
+import settingsModule from './modules/settings/index.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -143,6 +144,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     await apiScope.register(schedulingModule, { prefix: '/api/v1/scheduling' });
     await apiScope.register(integrationsModule, { prefix: '/api/v1/integrations' });
     await apiScope.register(callsModule, { prefix: '/api/v1/calls' });
+    await apiScope.register(settingsModule, { prefix: '/api/v1/settings' });
   });
 
   // --- Workers ---

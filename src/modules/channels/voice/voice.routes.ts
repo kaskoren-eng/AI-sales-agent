@@ -36,8 +36,11 @@ export async function voiceRoutes(app: FastifyInstance) {
   app.post('/', async (request, reply) => {
     const params = request.body as Record<string, string>;
 
-    // 1. Verify Twilio request signature (skip if AUTH_TOKEN not configured)
-    const authToken = app.env.TWILIO_AUTH_TOKEN;
+    // 1. Verify Twilio request signature — use tenant's auth token if configured, else global env
+    const tenantId = app.env.VOICE_WEBHOOK_TENANT_ID;
+    const authToken = tenantId
+      ? await service.getTwilioAuthToken(tenantId)
+      : (app.env.TWILIO_AUTH_TOKEN ?? null);
     if (authToken) {
       const signature = request.headers['x-twilio-signature'] as string | undefined;
       const baseUrl = app.env.BASE_URL ?? `https://${request.hostname}`;
@@ -62,8 +65,7 @@ export async function voiceRoutes(app: FastifyInstance) {
     app.log.info({ callSid: CallSid, from: From, to: To }, 'Voice inbound call received');
 
     // 3. Register call with ElevenLabs and return TwiML (pass tenant for learning injection)
-    const tenantId = app.env.VOICE_WEBHOOK_TENANT_ID;
-    const twiml = await service.handleIncomingCall(CallSid, From, To, tenantId);
+    const twiml = await service.handleIncomingCall(CallSid, From, To, app.env.VOICE_WEBHOOK_TENANT_ID);
     reply.type('text/xml').send(twiml);
   });
 
@@ -219,13 +221,16 @@ export async function voiceRoutes(app: FastifyInstance) {
   app.post('/recording-status', async (request, reply) => {
     const params = request.body as Record<string, string>;
 
-    // Verify Twilio signature
-    const authToken = app.env.TWILIO_AUTH_TOKEN;
-    if (authToken) {
+    // Verify Twilio signature — use tenant's auth token if configured, else global env
+    const tenantIdForRecording = app.env.VOICE_WEBHOOK_TENANT_ID;
+    const recordingAuthToken = tenantIdForRecording
+      ? await service.getTwilioAuthToken(tenantIdForRecording)
+      : (app.env.TWILIO_AUTH_TOKEN ?? null);
+    if (recordingAuthToken) {
       const signature = request.headers['x-twilio-signature'] as string | undefined;
       const baseUrl = app.env.BASE_URL ?? `https://${request.hostname}`;
       const webhookUrl = `${baseUrl}/webhooks/voice/recording-status`;
-      if (!twilio.validateRequest(authToken, signature ?? '', webhookUrl, params)) {
+      if (!twilio.validateRequest(recordingAuthToken, signature ?? '', webhookUrl, params)) {
         app.log.warn('Recording-status webhook: invalid Twilio signature');
         return reply.status(403).send();
       }

@@ -54,3 +54,52 @@ export function updateTenantMe(data: Partial<Pick<TenantMe, 'name' | 'settings'>
 export function regenerateApiKey(): Promise<{ apiKey: string }> {
   return apiFetch<{ apiKey: string }>('/tenants/me/api-key', { method: 'POST' })
 }
+
+// --- Settings: Business Profile ---
+
+export interface BusinessProfile {
+  companyName: string
+  description: string
+  product: string
+  targetAudience: string
+  pricing: string
+  commonObjections: string
+  toneOfVoice: string
+  language: 'hebrew' | 'english' | 'both'
+}
+
+export function fetchBusinessProfile(): Promise<{ businessProfile: BusinessProfile | null }> {
+  return apiFetch('/settings/business-profile')
+}
+
+export function saveBusinessProfile(profile: BusinessProfile): Promise<{ ok: boolean; businessProfile: BusinessProfile }> {
+  return apiFetch('/settings/business-profile', {
+    method: 'PUT',
+    body: JSON.stringify(profile),
+  })
+}
+
+// --- Settings: Twilio ---
+
+export interface TwilioStatus {
+  configured: boolean
+  accountSid: string | null
+  phoneNumber: string | null
+  authTokenMasked: string | null
+  configuredAt: string | null
+}
+
+export function fetchTwilioSettings(): Promise<TwilioStatus> {
+  return apiFetch('/settings/twilio')
+}
+
+export function saveTwilioSettings(data: { accountSid: string; authToken: string; phoneNumber: string }): Promise<{ ok: boolean }> {
+  return apiFetch('/settings/twilio', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+export function deleteTwilioSettings(): Promise<{ ok: boolean }> {
+  return apiFetch('/settings/twilio', { method: 'DELETE' })
+}
