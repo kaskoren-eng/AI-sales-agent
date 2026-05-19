@@ -5,6 +5,7 @@ import { VoiceService } from './voice.service.js';
 import { conversations, messages, callLearnings, leads, tenants } from '../../../db/schema/index.js';
 import { enqueueCallAnalysis } from '../../../queues/call-analysis.queue.js';
 import { enqueueFlowStep } from '../../../queues/flow-executor.queue.js';
+import { GoogleCalendarProvider } from '../../scheduling/providers/google-calendar.provider.js';
 
 export async function voiceRoutes(app: FastifyInstance) {
   const service = new VoiceService(app);
@@ -152,6 +153,14 @@ export async function voiceRoutes(app: FastifyInstance) {
         await app.db.insert(messages).values(turns);
       }
 
+      // Extract any live booking made during the call via /retell-tools before overwriting summary
+      let bookingContext: { meetingLink?: string; meetingTime?: string; meetingDate?: string } = {};
+      if (convo.summary?.startsWith('__booking__:')) {
+        try {
+          bookingContext = JSON.parse(convo.summary.slice('__booking__:'.length));
+        } catch { /* malformed — ignore */ }
+      }
+
       // Update conversation status and summary
       const summary = callAnalysis?.['call_summary'] as string | undefined;
       await app.db
@@ -195,7 +204,7 @@ export async function voiceRoutes(app: FastifyInstance) {
                 leadPhone: lead.phone,
                 leadName: lead.name ?? undefined,
                 leadEmail: lead.email ?? undefined,
-                flowContext: { callSummary: summary ?? '' },
+                flowContext: { callSummary: summary ?? '', ...bookingContext },
               },
               0,
             );
@@ -211,6 +220,150 @@ export async function voiceRoutes(app: FastifyInstance) {
 
     // Unknown event — acknowledge without error
     return reply.status(200).send({ ok: true });
+  });
+
+  /**
+   * Retell AI custom tool webhook — called synchronously during a live call when the agent
+   * invokes a configured tool (e.g. book_appointment).
+   *
+   * Retell POSTs: { call_id, name, args: { lead_email, lead_name, timezone? } }
+   * We must respond within ~15s with: { result: "<string the agent reads back>" }
+   *
+   * Configure in Retell dashboard → Agent → Tools → Add Custom Tool:
+   *   Name: book_appointment
+   *   Webhook URL: https://<your-domain>/webhooks/voice/retell-tools
+   *   speak_during_execution: true
+   */
+  app.post('/retell-tools', async (request, reply) => {
+    const apiKey = app.env.RETELL_API_KEY;
+
+    if (apiKey) {
+      const sig = request.headers['x-retell-signature'] as string | undefined;
+      const rawBody = (request as any).rawBody as string | undefined;
+
+      if (!sig || !rawBody) {
+        app.log.warn('Retell tools webhook: missing signature or raw body');
+        return reply.status(401).send({ error: 'Missing signature' });
+      }
+
+      if (!verifyRetellSignature(rawBody, sig, apiKey)) {
+        app.log.warn('Retell tools webhook: invalid signature');
+        return reply.status(401).send({ error: 'Invalid signature' });
+      }
+    }
+
+    const body = request.body as Record<string, any>;
+    const callId = body?.call_id as string | undefined;
+    const toolName = body?.name as string | undefined;
+    const args = (body?.args ?? {}) as Record<string, string>;
+
+    if (!callId || !toolName) {
+      return reply.status(400).send({ result: 'Invalid tool call payload.' });
+    }
+
+    app.log.info({ callId, toolName }, 'Retell tool call received');
+
+    if (toolName !== 'book_appointment') {
+      app.log.warn({ callId, toolName }, 'Retell tool call: unknown tool name');
+      return reply.status(200).send({ result: 'That tool is not available right now.' });
+    }
+
+    // Resolve conversation → lead
+    const [convo] = await app.db
+      .select()
+      .from(conversations)
+      .where(and(eq(conversations.channel, 'voice'), eq(conversations.channelRef, callId)))
+      .limit(1);
+
+    if (!convo) {
+      app.log.warn({ callId }, 'Retell tool call: no matching conversation');
+      return reply.status(200).send({ result: 'I was unable to find your details. Please call back and we will book manually.' });
+    }
+
+    const [lead] = await app.db
+      .select({ name: leads.name, email: leads.email })
+      .from(leads)
+      .where(and(eq(leads.id, convo.leadId), eq(leads.tenantId, convo.tenantId)))
+      .limit(1);
+
+    const { GOOGLE_CALENDAR_ID, GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL, GOOGLE_CALENDAR_PRIVATE_KEY } = app.env;
+
+    if (!GOOGLE_CALENDAR_ID || !GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL || !GOOGLE_CALENDAR_PRIVATE_KEY) {
+      app.log.warn({ callId }, 'Retell tool call: Google Calendar not configured');
+      return reply.status(200).send({ result: 'Calendar booking is not set up yet. Our team will follow up to schedule.' });
+    }
+
+    const attendeeEmail = lead?.email ?? args['lead_email'];
+    if (!attendeeEmail) {
+      app.log.warn({ callId, leadId: convo.leadId }, 'Retell tool call: no email for booking');
+      return reply.status(200).send({ result: 'I need your email address to send you a calendar invite. Could you share it with me?' });
+    }
+
+    try {
+      const timezone = args['timezone'] ?? 'UTC';
+
+      const provider = new GoogleCalendarProvider({
+        calendarId: GOOGLE_CALENDAR_ID,
+        serviceAccountEmail: GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL,
+        privateKey: GOOGLE_CALENDAR_PRIVATE_KEY.replace(/\\n/g, '\n'),
+        slotMinutes: app.env.GOOGLE_CALENDAR_SLOT_MINUTES ?? 30,
+        workStart: app.env.GOOGLE_CALENDAR_WORK_START ?? '09:00',
+        workEnd: app.env.GOOGLE_CALENDAR_WORK_END ?? '18:00',
+      });
+
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const searchEnd = new Date(tomorrow);
+      searchEnd.setDate(searchEnd.getDate() + 7);
+
+      const slots = await provider.getAvailableSlots({
+        startDate: tomorrow.toISOString().slice(0, 10),
+        endDate: searchEnd.toISOString().slice(0, 10),
+        serviceId: GOOGLE_CALENDAR_ID,
+        timezone,
+      });
+
+      if (!slots.length) {
+        app.log.warn({ callId }, 'Retell tool call: no available slots');
+        return reply.status(200).send({ result: 'There are no open slots in the next 7 days. Our team will reach out to find a time.' });
+      }
+
+      const booking = await provider.createBooking({
+        start: slots[0].start,
+        serviceId: GOOGLE_CALENDAR_ID,
+        attendee: {
+          name: lead?.name ?? args['lead_name'] ?? 'Lead',
+          email: attendeeEmail,
+          timezone,
+        },
+        notes: `Booked via AI sales call (call_id: ${callId})`,
+      });
+
+      const startDt = new Date(booking.start);
+      const meetingDate = startDt.toLocaleDateString('en-US', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: timezone,
+      });
+      const meetingTime = startDt.toLocaleTimeString('en-US', {
+        hour: '2-digit', minute: '2-digit', timeZone: timezone,
+      });
+      const meetingLink = booking.meetLink ?? 'https://calendar.google.com/calendar/r';
+
+      // Persist booking on the conversation so call_analyzed can forward it into the post-call flow
+      await app.db
+        .update(conversations)
+        .set({ summary: `__booking__:${JSON.stringify({ meetingLink, meetingTime, meetingDate })}`, updatedAt: new Date() } as any)
+        .where(eq(conversations.id, convo.id));
+
+      app.log.info({ callId, convoId: convo.id, bookingUid: booking.uid, start: booking.start }, 'Live booking created via Retell tool call');
+
+      return reply.status(200).send({
+        result: `Perfect! I have booked your appointment for ${meetingDate} at ${meetingTime}. You will receive a calendar invite at ${attendeeEmail}. The meeting link is ${meetingLink}.`,
+      });
+
+    } catch (err) {
+      app.log.error({ err, callId }, 'Retell tool call: booking failed');
+      return reply.status(200).send({ result: 'I ran into a technical issue while booking. Our team will follow up by email to confirm a time.' });
+    }
   });
 
   /**
