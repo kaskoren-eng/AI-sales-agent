@@ -20,6 +20,7 @@
   "dependencies": {
     "@fastify/cookie": "^11.0.0",
     "@fastify/cors": "^10.0.0",
+    "@fastify/formbody": "^8.0.2",
     "@fastify/helmet": "^13.0.0",
     "@fastify/jwt": "^9.0.0",
     "@fastify/rate-limit": "^10.2.0",
@@ -36,7 +37,6 @@
     "papaparse": "^5.4.0",
     "pg": "^8.13.0",
     "resend": "^4.1.0",
-    "twilio": "^5.4.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {

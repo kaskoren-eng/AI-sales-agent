@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
+import formbody from '@fastify/formbody';
 import staticFiles from '@fastify/static';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -62,6 +63,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // Decorate env
   app.decorate('env', env);
+
+  // --- Body parsers ---
+  await app.register(formbody);
 
   // --- Security ---
   await app.register(helmet);

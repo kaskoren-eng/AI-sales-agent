@@ -2,6 +2,7 @@ import fp from 'fastify-plugin';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { CallsService } from './calls.service.js';
+import { VoiceService } from '../channels/voice/voice.service.js';
 
 // ---------------------------------------------------------------------------
 // Query / param schemas
@@ -24,8 +25,15 @@ const callIdParamSchema = z.object({
 // Plugin
 // ---------------------------------------------------------------------------
 
+const outboundCallBodySchema = z.object({
+  to: z.string().min(7),
+  leadName: z.string().optional(),
+  leadEmail: z.string().optional(),
+});
+
 async function callsRoutes(app: FastifyInstance) {
   const service = new CallsService({ db: app.db, redis: app.redis, env: app.env, logger: app.log });
+  const voiceService = new VoiceService(app);
 
   // -------------------------------------------------------------------------
   // GET / — list calls
@@ -120,7 +128,7 @@ async function callsRoutes(app: FastifyInstance) {
   );
 
   // -------------------------------------------------------------------------
-  // GET /:id/audio — proxy ElevenLabs audio
+  // GET /:id/audio — proxy Retell recording audio
   // -------------------------------------------------------------------------
   app.get(
     '/:id/audio',
@@ -159,15 +167,27 @@ async function callsRoutes(app: FastifyInstance) {
 
       const channelRef = audioCheck;
 
-      // 2. Proxy to ElevenLabs
-      const elRes = await fetch(
-        `https://api.elevenlabs.io/v1/convai/conversations/${channelRef}/audio`,
+      // 2. Fetch recording URL from Retell call details
+      const retellCallRes = await fetch(
+        `https://api.retellai.com/v1/call/${channelRef}`,
         {
-          headers: {
-            'xi-api-key': app.env.ELEVENLABS_API_KEY ?? '',
-          },
+          headers: { Authorization: `Bearer ${app.env.RETELL_API_KEY ?? ''}` },
         },
       );
+
+      if (!retellCallRes.ok) {
+        return reply.status(502).send({ error: 'Upstream audio fetch failed' });
+      }
+
+      const retellCall = (await retellCallRes.json()) as Record<string, unknown>;
+      const recordingUrl = retellCall['recording_url'] as string | undefined;
+
+      if (!recordingUrl) {
+        return reply.status(404).send({ error: 'Audio not yet available' });
+      }
+
+      // 3. Proxy recording from Retell's storage URL
+      const elRes = await fetch(recordingUrl);
 
       if (elRes.status === 404) {
         return reply.status(404).send({ error: 'Audio not yet available' });
@@ -199,6 +219,26 @@ async function callsRoutes(app: FastifyInstance) {
       return reply.send(nodeStream);
     },
   );
+  // -------------------------------------------------------------------------
+  // POST /outbound — initiate an outbound call via Retell AI
+  // -------------------------------------------------------------------------
+  app.post('/outbound', async (request, reply) => {
+    const body = outboundCallBodySchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(422).send({ error: 'VALIDATION_ERROR', details: body.error.flatten().fieldErrors });
+    }
+
+    const { to, leadName, leadEmail } = body.data;
+    const tenantId = request.tenantId;
+
+    const result = await voiceService.initiateOutboundCall(to, tenantId, {
+      name: leadName,
+      email: leadEmail,
+      phone: to,
+    });
+
+    return reply.status(200).send({ ok: true, callId: result.callId });
+  });
 }
 
 export default fp(callsRoutes);
