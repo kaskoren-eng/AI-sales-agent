@@ -5,11 +5,10 @@ import { callLearnings } from '../../../db/schema/call-learnings.js';
 import { CallAnalysisService } from '../../calls/call-analysis.service.js';
 import { SettingsService } from '../../settings/settings.service.js';
 
-const ELEVENLABS_API_BASE = 'https://api.elevenlabs.io';
-const ELEVENLABS_TIMEOUT_MS = 15_000;
-const AGENT_PROMPT_CACHE_TTL = 3600; // 1 hour
+const RETELL_API_BASE = 'https://api.retellai.com';
+const RETELL_TIMEOUT_MS = 15_000;
 
-const elevenLabsCircuit = new CircuitBreaker({ name: 'elevenlabs', failureThreshold: 5, cooldownMs: 30_000 });
+const retellCircuit = new CircuitBreaker({ name: 'retell', failureThreshold: 5, cooldownMs: 30_000 });
 
 export class VoiceService {
   private settingsService: SettingsService;
@@ -19,52 +18,21 @@ export class VoiceService {
   }
 
   private _fetch(url: string, opts: RequestInit): Promise<Response> {
-    return elevenLabsCircuit.execute(() => fetch(url, opts));
+    return retellCircuit.execute(() => fetch(url, opts));
+  }
+
+  private retellHeaders(): Record<string, string> {
+    return {
+      Authorization: `Bearer ${this.app.env.RETELL_API_KEY ?? ''}`,
+      'Content-Type': 'application/json',
+    };
   }
 
   /**
-   * Fetch ElevenLabs agent base prompt and cache in Redis for 1 hour.
-   * Returns null if unavailable — callers should degrade gracefully.
+   * Build Retell LLM dynamic variables from tenant business profile and call learnings.
+   * These are injected into the Retell agent's prompt at call time.
    */
-  private async _fetchAgentBasePrompt(agentId: string, apiKey: string): Promise<string | null> {
-    const cacheKey = `el:agent:prompt:${agentId}`;
-    const cached = await this.app.redis.get(cacheKey);
-    if (cached) return cached;
-
-    try {
-      const res = await this._fetch(`${ELEVENLABS_API_BASE}/v1/convai/agents/${agentId}`, {
-        headers: { 'xi-api-key': apiKey },
-        signal: AbortSignal.timeout(ELEVENLABS_TIMEOUT_MS),
-      });
-      if (!res.ok) return null;
-
-      const data = (await res.json()) as Record<string, unknown>;
-      const prompt =
-        (data?.conversation_config as Record<string, unknown> | undefined)
-          ?.agent as Record<string, unknown> | undefined;
-      const basePrompt =
-        (prompt?.prompt as Record<string, unknown> | undefined)?.prompt as string | undefined;
-
-      if (basePrompt) {
-        await this.app.redis.set(cacheKey, basePrompt, 'EX', AGENT_PROMPT_CACHE_TTL);
-        return basePrompt;
-      }
-    } catch {
-      // Non-fatal — learning injection is best-effort
-    }
-    return null;
-  }
-
-  /**
-   * Build an ElevenLabs override_config block that injects:
-   * 1. Tenant business profile (who they are, what they sell, tone, language)
-   * 2. Learnings from past monitored calls (winning patterns)
-   * Returns null if neither is available or base prompt cannot be fetched.
-   */
-  private async _buildAgentOverride(tenantId: string): Promise<Record<string, unknown> | null> {
-    const { ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID } = this.app.env;
-    if (!ELEVENLABS_API_KEY || !ELEVENLABS_AGENT_ID) return null;
-
+  async buildDynamicVariables(tenantId: string): Promise<Record<string, string> | null> {
     try {
       const [businessProfile, learningRows] = await Promise.all([
         this.settingsService.getBusinessProfile(tenantId).catch(() => null),
@@ -82,214 +50,134 @@ export class VoiceService {
           .limit(5),
       ]);
 
-      const hasProfile = !!businessProfile;
-      const hasLearnings = learningRows.length > 0;
+      const vars: Record<string, string> = {};
 
-      if (!hasProfile && !hasLearnings) return null;
-
-      const basePrompt = await this._fetchAgentBasePrompt(ELEVENLABS_AGENT_ID, ELEVENLABS_API_KEY);
-      if (!basePrompt) return null;
-
-      let enhancedPrompt = basePrompt;
-
-      if (hasProfile && businessProfile) {
-        const profileBlock = [
-          '\n\n--- BUSINESS CONTEXT ---',
-          `Company: ${businessProfile.companyName}`,
-          `What we do: ${businessProfile.description}`,
-          `What we sell: ${businessProfile.product}`,
-          businessProfile.targetAudience ? `Our ideal customer: ${businessProfile.targetAudience}` : '',
-          businessProfile.pricing ? `Pricing: ${businessProfile.pricing}` : '',
-          businessProfile.commonObjections ? `How to handle objections: ${businessProfile.commonObjections}` : '',
-          businessProfile.toneOfVoice ? `Tone of voice: ${businessProfile.toneOfVoice}` : '',
-          businessProfile.language !== 'english' ? `Speak primarily in Hebrew unless the lead speaks English.` : '',
-          '--- END BUSINESS CONTEXT ---',
-        ]
-          .filter(Boolean)
-          .join('\n');
-        enhancedPrompt += profileBlock;
+      if (businessProfile) {
+        vars['company_name'] = businessProfile.companyName;
+        vars['company_description'] = businessProfile.description;
+        vars['product'] = businessProfile.product;
+        if (businessProfile.targetAudience) vars['target_audience'] = businessProfile.targetAudience;
+        if (businessProfile.pricing) vars['pricing'] = businessProfile.pricing;
+        if (businessProfile.toneOfVoice) vars['tone'] = businessProfile.toneOfVoice;
+        if (businessProfile.language) vars['language'] = businessProfile.language;
+        if (businessProfile.commonObjections) vars['common_objections'] = businessProfile.commonObjections;
       }
 
-      if (hasLearnings) {
-        enhancedPrompt += CallAnalysisService.formatLearningsForPrompt(learningRows);
+      if (learningRows.length > 0) {
+        vars['call_learnings'] = CallAnalysisService.formatLearningsForPrompt(learningRows);
       }
 
-      return {
-        override_config: {
-          agent: { prompt: { prompt: enhancedPrompt } },
-        },
-      };
+      return Object.keys(vars).length > 0 ? vars : null;
     } catch (err) {
-      this.app.log.warn({ err }, 'VoiceService: agent override build failed — proceeding without override');
+      this.app.log.warn({ err }, 'VoiceService: dynamic variables build failed — proceeding without context');
       return null;
     }
   }
 
   /**
-   * Get the Twilio auth token for a tenant — first from their settings, then from global env.
-   * Returns null if neither is configured.
-   */
-  async getTwilioAuthToken(tenantId: string): Promise<string | null> {
-    const tenantToken = await this.settingsService.getTwilioAuthToken(tenantId).catch(() => null);
-    return tenantToken ?? this.app.env.TWILIO_AUTH_TOKEN ?? null;
-  }
-
-  /**
-   * Handle an inbound Twilio call by registering it with ElevenLabs.
-   * Calls POST /v1/convai/twilio/register-call and returns the TwiML response
-   * that Twilio uses to connect the caller to the ElevenLabs AI agent.
-   * When tenantId is provided, injects learnings from monitored calls into the agent prompt.
-   */
-  async handleIncomingCall(callSid: string, from: string, to: string, tenantId?: string): Promise<string> {
-    const { ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID } = this.app.env;
-
-    if (!ELEVENLABS_API_KEY || !ELEVENLABS_AGENT_ID) {
-      this.app.log.warn({ callSid }, 'ElevenLabs not configured — using fallback TwiML');
-      return '<Response><Say>Thank you for calling. Our team will be with you shortly.</Say></Response>';
-    }
-
-    const body: Record<string, unknown> = {
-      agent_id: ELEVENLABS_AGENT_ID,
-      from_number: from,
-      to_number: to,
-      direction: 'inbound',
-    };
-
-    if (tenantId) {
-      const override = await this._buildAgentOverride(tenantId);
-      if (override) Object.assign(body, override);
-    }
-
-    const response = await this._fetch(`${ELEVENLABS_API_BASE}/v1/convai/twilio/register-call`, {
-      method: 'POST',
-      headers: {
-        'xi-api-key': ELEVENLABS_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      signal: AbortSignal.timeout(ELEVENLABS_TIMEOUT_MS),
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      this.app.log.error({ status: response.status, body, callSid }, 'ElevenLabs register-call failed');
-      return '<Response><Say>Sorry, our AI agent is temporarily unavailable. Please try again later.</Say></Response>';
-    }
-
-    const twiml = await response.text();
-    this.app.log.info({ callSid, from }, 'ElevenLabs call registered');
-    return twiml;
-  }
-
-  /**
-   * Initiate an outbound call via ElevenLabs' Twilio integration.
-   * Requires ELEVENLABS_PHONE_NUMBER_ID — the phone number ID from the ElevenLabs
-   * dashboard after importing your Twilio number.
+   * Initiate an outbound call via Retell AI.
+   * Uses the Zadarma number as the caller ID (configured as a SIP trunk in Retell).
    */
   async initiateOutboundCall(
     to: string,
     tenantId: string,
     leadContext?: { name?: string; email?: string; phone?: string; [key: string]: string | undefined },
-  ): Promise<{ callSid: string; conversationId: string | null }> {
-    const { ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID, ELEVENLABS_PHONE_NUMBER_ID } = this.app.env;
+  ): Promise<{ callId: string }> {
+    const { RETELL_API_KEY, RETELL_AGENT_ID, ZADARMA_PHONE_NUMBER } = this.app.env;
 
-    if (!ELEVENLABS_API_KEY || !ELEVENLABS_AGENT_ID || !ELEVENLABS_PHONE_NUMBER_ID) {
-      this.app.log.warn({ to }, 'ElevenLabs outbound not fully configured — skipping call');
-      return { callSid: 'skipped', conversationId: null };
+    if (!RETELL_API_KEY || !RETELL_AGENT_ID || !ZADARMA_PHONE_NUMBER) {
+      this.app.log.warn({ to }, 'Retell outbound not fully configured — skipping call');
+      return { callId: 'skipped' };
     }
+
+    const dynamicVars = await this.buildDynamicVariables(tenantId);
+
+    const mergedVars: Record<string, string> = {};
+    if (leadContext) {
+      for (const [k, v] of Object.entries(leadContext)) {
+        if (v !== undefined) mergedVars[k] = v;
+      }
+    }
+    if (dynamicVars) Object.assign(mergedVars, dynamicVars);
 
     const body: Record<string, unknown> = {
-      agent_id: ELEVENLABS_AGENT_ID,
-      agent_phone_number_id: ELEVENLABS_PHONE_NUMBER_ID,
+      from_number: ZADARMA_PHONE_NUMBER,
       to_number: to,
+      override_agent_id: RETELL_AGENT_ID,
     };
 
-    if (leadContext && Object.keys(leadContext).length > 0) {
-      // Filter out undefined values before sending
-      body.dynamic_variables = Object.fromEntries(
-        Object.entries(leadContext).filter(([, v]) => v !== undefined),
-      );
+    if (Object.keys(mergedVars).length > 0) {
+      body['retell_llm_dynamic_variables'] = mergedVars;
     }
 
-    const response = await this._fetch(`${ELEVENLABS_API_BASE}/v1/convai/twilio/outbound-call`, {
+    const response = await this._fetch(`${RETELL_API_BASE}/v2/create-phone-call`, {
       method: 'POST',
-      headers: {
-        'xi-api-key': ELEVENLABS_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      signal: AbortSignal.timeout(ELEVENLABS_TIMEOUT_MS),
+      headers: this.retellHeaders(),
+      signal: AbortSignal.timeout(RETELL_TIMEOUT_MS),
       body: JSON.stringify(body),
     });
 
     if (!response.ok) {
-      const body = await response.text();
-      this.app.log.error({ status: response.status, body, to }, 'ElevenLabs outbound-call failed');
-      throw new Error(`ElevenLabs outbound call failed: ${response.status} — ${body}`);
+      const errBody = await response.text();
+      this.app.log.error({ status: response.status, body: errBody, to }, 'Retell outbound call failed');
+      throw new Error(`Retell outbound call failed: ${response.status}`);
     }
 
-    const data = (await response.json()) as {
-      success: boolean;
-      message?: string;
-      conversation_id?: string;
-      callSid?: string;
-    };
-
-    this.app.log.info(
-      { to, tenantId, callSid: data.callSid, conversationId: data.conversation_id },
-      'Outbound call initiated via ElevenLabs',
-    );
-    return { callSid: data.callSid ?? 'initiated', conversationId: data.conversation_id ?? null };
+    const data = (await response.json()) as { call_id: string };
+    this.app.log.info({ to, tenantId, callId: data.call_id }, 'Outbound call initiated via Retell');
+    return { callId: data.call_id };
   }
 
   /**
-   * Fetch the full conversation transcript from ElevenLabs.
+   * Fetch call details from Retell AI (transcript, analysis, recording URL).
    * Returns null if the API key is not configured or the request fails.
    */
-  async fetchConversationTranscript(conversationId: string): Promise<ElevenLabsConversation | null> {
-    const apiKey = this.app.env.ELEVENLABS_API_KEY;
+  async fetchCallDetails(callId: string): Promise<RetellCall | null> {
+    const apiKey = this.app.env.RETELL_API_KEY;
     if (!apiKey) return null;
 
-    const response = await this._fetch(
-      `${ELEVENLABS_API_BASE}/v1/convai/conversations/${conversationId}`,
-      {
-        headers: { 'xi-api-key': apiKey },
-        signal: AbortSignal.timeout(ELEVENLABS_TIMEOUT_MS),
-      },
-    );
+    const response = await this._fetch(`${RETELL_API_BASE}/v1/call/${callId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(RETELL_TIMEOUT_MS),
+    });
 
     if (!response.ok) {
-      this.app.log.warn(
-        { conversationId, status: response.status },
-        'ElevenLabs: failed to fetch conversation transcript',
-      );
+      this.app.log.warn({ callId, status: response.status }, 'Retell: failed to fetch call details');
       return null;
     }
 
-    return (await response.json()) as ElevenLabsConversation;
+    return (await response.json()) as RetellCall;
   }
 }
 
-// ---- ElevenLabs API types ----
+// ---- Retell API types ----
 
-export interface ElevenLabsTranscriptTurn {
+export interface RetellTranscriptTurn {
   role: 'agent' | 'user';
-  message: string;
-  time_in_call_secs?: number;
+  content: string;
+  words?: Array<{ word: string; start: number; end: number }>;
 }
 
-export interface ElevenLabsConversation {
-  conversation_id: string;
-  agent_id: string;
-  status: 'processing' | 'done' | 'failed';
-  transcript: ElevenLabsTranscriptTurn[];
-  metadata?: {
-    start_time_unix_secs?: number;
-    call_duration_secs?: number;
-    from?: string;
-    to?: string;
-  };
-  analysis?: {
-    call_successful?: 'success' | 'failure' | 'unknown';
-    transcript_summary?: string;
-  };
+export interface RetellCallAnalysis {
+  call_summary?: string;
+  in_voicemail?: boolean;
+  user_sentiment?: string;
+  call_successful?: boolean;
+}
+
+export interface RetellCall {
+  call_id: string;
+  call_type: string;
+  call_status: string;
+  agent_id?: string;
+  from_number?: string;
+  to_number?: string;
+  start_timestamp?: number;
+  end_timestamp?: number;
+  duration_ms?: number;
+  recording_url?: string;
+  transcript?: string;
+  transcript_object?: RetellTranscriptTurn[];
+  call_analysis?: RetellCallAnalysis;
+  retell_llm_dynamic_variables?: Record<string, string>;
 }
