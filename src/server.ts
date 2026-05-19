@@ -2,7 +2,6 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
-import formbody from '@fastify/formbody';
 import staticFiles from '@fastify/static';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -64,9 +63,6 @@ export async function buildApp(): Promise<FastifyInstance> {
   // Decorate env
   app.decorate('env', env);
 
-  // --- Body parsers ---
-  await app.register(formbody);
-
   // --- Security ---
   await app.register(helmet);
   await app.register(cors, {
@@ -117,6 +113,18 @@ export async function buildApp(): Promise<FastifyInstance> {
       max: 200,
       timeWindow: '1 minute',
     });
+    // Parse application/x-www-form-urlencoded (Zadarma webhooks)
+    webhookScope.addContentTypeParser('application/x-www-form-urlencoded', { bodyLimit: 262_144 }, (req, body, done) => {
+      let data = '';
+      body.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+      body.on('end', () => {
+        try {
+          const parsed = Object.fromEntries(new URLSearchParams(data));
+          done(null, parsed);
+        } catch (err) { done(err as Error, undefined); }
+      });
+    });
+
     // Parse JSON and keep the raw string on req.rawBody for signature verification (svix, Monday, etc.)
     webhookScope.addContentTypeParser('application/json', { bodyLimit: 262_144 }, (req, body, done) => {
       let data = '';
