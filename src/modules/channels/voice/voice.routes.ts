@@ -1,6 +1,4 @@
-import { z } from 'zod';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import twilio from 'twilio';
 import type { FastifyInstance } from 'fastify';
 import { eq, and } from 'drizzle-orm';
 import { VoiceService } from './voice.service.js';
@@ -8,321 +6,308 @@ import { conversations, messages, callLearnings, leads, tenants } from '../../..
 import { enqueueCallAnalysis } from '../../../queues/call-analysis.queue.js';
 import { enqueueFlowStep } from '../../../queues/flow-executor.queue.js';
 
-// Twilio sends voice webhooks as application/x-www-form-urlencoded
-const twilioWebhookSchema = z.object({
-  CallSid: z.string().min(1),
-  From: z.string().min(1),
-  To: z.string().min(1),
-  Direction: z.string().optional(),
-  CallStatus: z.string().optional(),
-});
-
 export async function voiceRoutes(app: FastifyInstance) {
   const service = new VoiceService(app);
 
-  // Parse form-encoded bodies that Twilio sends for voice webhooks
-  app.addContentTypeParser(
-    'application/x-www-form-urlencoded',
-    { parseAs: 'string' },
-    (_req, body, done) => {
-      try {
-        done(null, Object.fromEntries(new URLSearchParams(body as string)));
-      } catch (err) {
-        done(err as Error, undefined);
-      }
-    },
-  );
-
-  app.post('/', async (request, reply) => {
-    const params = request.body as Record<string, string>;
-
-    // 1. Verify Twilio request signature — use tenant's auth token if configured, else global env
-    const tenantId = app.env.VOICE_WEBHOOK_TENANT_ID;
-    const authToken = tenantId
-      ? await service.getTwilioAuthToken(tenantId)
-      : (app.env.TWILIO_AUTH_TOKEN ?? null);
-    if (authToken) {
-      const signature = request.headers['x-twilio-signature'] as string | undefined;
-      const baseUrl = app.env.BASE_URL ?? `https://${request.hostname}`;
-      const webhookUrl = `${baseUrl}/webhooks/voice`;
-      const isValid = twilio.validateRequest(authToken, signature ?? '', webhookUrl, params);
-      if (!isValid) {
-        app.log.warn({ webhookUrl }, 'Voice webhook: invalid Twilio signature');
-        reply.status(403).type('text/xml').send('<Response><Reject/></Response>');
-        return;
-      }
-    }
-
-    // 2. Parse required Twilio fields
-    const parsed = twilioWebhookSchema.safeParse(params);
-    if (!parsed.success) {
-      app.log.warn({ errors: parsed.error.flatten() }, 'Voice webhook: invalid payload');
-      reply.type('text/xml').send('<Response><Reject/></Response>');
-      return;
-    }
-
-    const { CallSid, From, To } = parsed.data;
-    app.log.info({ callSid: CallSid, from: From, to: To }, 'Voice inbound call received');
-
-    // 3. Register call with ElevenLabs and return TwiML (pass tenant for learning injection)
-    const twiml = await service.handleIncomingCall(CallSid, From, To, app.env.VOICE_WEBHOOK_TENANT_ID);
-    reply.type('text/xml').send(twiml);
-  });
-
   /**
-   * ElevenLabs post-call webhook — fired when a conversation ends.
-   * ElevenLabs sends:
-   *   Header: ElevenLabs-Signature: t=<unix_timestamp>,v0=<hmac_sha256_hex>
-   *   HMAC key: ELEVENLABS_WEBHOOK_SECRET
-   *   HMAC message: "<timestamp>.<raw_body>"
+   * Retell AI webhook — receives call_started and call_analyzed events.
    *
-   * To enable: go to ElevenLabs → Agent settings → Post-call webhook
-   * and point it to: https://<your-domain>/webhooks/voice/conversation-end
+   * Retell sends:
+   *   Header: x-retell-signature: <hmac_sha256_hex>
+   *   HMAC key: RETELL_API_KEY
+   *   HMAC message: raw request body
+   *
+   * Configure in Retell dashboard → Agent settings → Webhook URL:
+   *   https://<your-domain>/webhooks/voice/retell
+   *
+   * call_started  → create conversation record, link to lead by phone
+   * call_analyzed → store transcript, update conversation, trigger post-call flow
    */
-  app.post('/conversation-end', async (request, reply) => {
-    const secret = app.env.ELEVENLABS_WEBHOOK_SECRET;
+  app.post('/retell', async (request, reply) => {
+    const apiKey = app.env.RETELL_API_KEY;
 
-    // 1. Verify signature (skip if secret not configured)
-    if (secret) {
-      const sigHeader = request.headers['elevenlabs-signature'] as string | undefined;
-      if (!sigHeader) {
-        app.log.warn('ElevenLabs webhook: missing signature header');
+    if (apiKey) {
+      const sig = request.headers['x-retell-signature'] as string | undefined;
+      const rawBody = (request as any).rawBody as string | undefined;
+
+      if (!sig || !rawBody) {
+        app.log.warn('Retell webhook: missing signature or raw body');
         return reply.status(401).send({ error: 'Missing signature' });
       }
 
-      const rawBody = (request as any).rawBody as string | undefined;
-      if (!rawBody) {
-        app.log.warn('ElevenLabs webhook: rawBody not available');
-        return reply.status(400).send({ error: 'Could not read raw body' });
-      }
-
-      if (!verifyElevenLabsSignature(rawBody, sigHeader, secret)) {
-        app.log.warn('ElevenLabs webhook: invalid signature');
+      if (!verifyRetellSignature(rawBody, sig, apiKey)) {
+        app.log.warn('Retell webhook: invalid signature');
         return reply.status(401).send({ error: 'Invalid signature' });
       }
     }
 
-    // 2. Parse conversation_id from body
     const body = request.body as Record<string, any>;
-    const conversationId: string | undefined = body?.data?.conversation_id ?? body?.conversation_id;
-    if (!conversationId) {
-      app.log.warn({ body }, 'ElevenLabs webhook: no conversation_id in payload');
-      return reply.status(400).send({ error: 'Missing conversation_id' });
+    const event = body?.event as string | undefined;
+    const call = body?.call as Record<string, any> | undefined;
+
+    if (!event || !call) {
+      return reply.status(400).send({ error: 'Invalid payload' });
     }
 
-    app.log.info({ conversationId }, 'ElevenLabs conversation-end webhook received');
-
-    // 3. Fetch full transcript from ElevenLabs
-    const transcript = await service.fetchConversationTranscript(conversationId);
-    if (!transcript || transcript.status !== 'done' || !transcript.transcript.length) {
-      app.log.warn({ conversationId, status: transcript?.status }, 'ElevenLabs: transcript not ready or empty');
-      return reply.status(200).send({ ok: true, skipped: true });
+    const callId = call['call_id'] as string | undefined;
+    if (!callId) {
+      return reply.status(400).send({ error: 'Missing call_id' });
     }
 
-    // 4. Find the conversation record linked to this ElevenLabs conversationId
-    const [convo] = await app.db
-      .select()
-      .from(conversations)
-      .where(
-        and(
-          eq(conversations.channel, 'voice'),
-          eq(conversations.channelRef, conversationId),
-        ),
-      )
-      .limit(1);
+    app.log.info({ event, callId }, 'Retell webhook received');
 
-    if (!convo) {
-      app.log.warn({ conversationId }, 'ElevenLabs webhook: no matching conversation record — skipping storage');
-      return reply.status(200).send({ ok: true, skipped: true });
-    }
+    // ----------------------------------------------------------------
+    // call_started — create conversation record and link to lead
+    // ----------------------------------------------------------------
+    if (event === 'call_started') {
+      const tenantId = app.env.VOICE_WEBHOOK_TENANT_ID;
+      if (!tenantId) {
+        app.log.warn('VOICE_WEBHOOK_TENANT_ID not set — skipping call_started');
+        return reply.status(200).send({ ok: true });
+      }
 
-    // 5. Store each transcript turn as a message
-    const turns = transcript.transcript.map((turn) => ({
-      tenantId: convo.tenantId,
-      conversationId: convo.id,
-      direction: turn.role === 'agent' ? 'outbound' : 'inbound',
-      role: turn.role === 'agent' ? 'agent' : 'lead',
-      content: turn.message,
-      contentType: 'transcript',
-      metadata: turn.time_in_call_secs != null ? { timeInCallSecs: turn.time_in_call_secs } : {},
-    }));
+      const fromNumber = call['from_number'] as string | undefined;
 
-    if (turns.length > 0) {
-      await app.db.insert(messages).values(turns);
-    }
-
-    // 6. Update conversation: mark ended, store AI-generated summary if available
-    const summary = transcript.analysis?.transcript_summary;
-    await app.db
-      .update(conversations)
-      .set({
-        status: 'ended',
-        ...(summary ? { summary } : {}),
-        updatedAt: new Date(),
-      } as any)
-      .where(eq(conversations.id, convo.id));
-
-    app.log.info(
-      { conversationId, convoId: convo.id, turns: turns.length },
-      'ElevenLabs transcript stored',
-    );
-
-    // 7. Trigger post-call flow if tenant has one configured
-    try {
-      const [lead] = await app.db
-        .select({ id: leads.id, phone: leads.phone, name: leads.name, email: leads.email })
-        .from(leads)
-        .where(and(eq(leads.id, convo.leadId), eq(leads.tenantId, convo.tenantId)))
-        .limit(1);
-
-      if (lead?.phone) {
-        const [tenantRow] = await app.db
-          .select({ settings: tenants.settings })
-          .from(tenants)
-          .where(eq(tenants.id, convo.tenantId))
+      // Find existing lead by phone number, or create a placeholder
+      let leadId: string | null = null;
+      if (fromNumber) {
+        const [existingLead] = await app.db
+          .select({ id: leads.id })
+          .from(leads)
+          .where(and(eq(leads.tenantId, tenantId), eq(leads.phone, fromNumber)))
           .limit(1);
 
-        const postCallFlow = (tenantRow?.settings as Record<string, any> | null)?.flows?.['post-call'];
-        if (postCallFlow?.enabled) {
-          await enqueueFlowStep(
-            app.queues.flowExecutor,
-            {
-              tenantId: convo.tenantId,
-              leadId: convo.leadId,
-              flowName: 'post-call',
-              stepIndex: 0,
-              leadPhone: lead.phone,
-              leadName: lead.name ?? undefined,
-              leadEmail: lead.email ?? undefined,
-              flowContext: {
-                callSummary: transcript.analysis?.transcript_summary ?? '',
-              },
-            },
-            0,
-          );
-          app.log.info({ tenantId: convo.tenantId, leadId: convo.leadId, conversationId }, 'Post-call flow enqueued');
+        if (existingLead) {
+          leadId = existingLead.id;
+        } else {
+          // Create placeholder lead so the conversation record is valid
+          const [newLead] = await app.db
+            .insert(leads)
+            .values({ tenantId, phone: fromNumber, name: null, status: 'new' })
+            .returning({ id: leads.id });
+          leadId = newLead?.id ?? null;
         }
       }
-    } catch (err) {
-      app.log.warn({ err, conversationId }, 'Post-call flow trigger failed — non-fatal');
+
+      if (!leadId) {
+        app.log.warn({ callId, tenantId }, 'Retell call_started: no phone number — skipping conversation creation');
+        return reply.status(200).send({ ok: true });
+      }
+
+      await app.db
+        .insert(conversations)
+        .values({
+          tenantId,
+          leadId,
+          channel: 'voice',
+          channelRef: callId,
+          status: 'active',
+        })
+        .onConflictDoNothing();
+
+      app.log.info({ callId, tenantId, leadId }, 'Retell conversation record created');
+      return reply.status(200).send({ ok: true });
     }
 
-    return reply.status(200).send({ ok: true, turns: turns.length });
+    // ----------------------------------------------------------------
+    // call_analyzed — store transcript, update conversation, post-call flow
+    // ----------------------------------------------------------------
+    if (event === 'call_analyzed') {
+      const transcriptObject = call['transcript_object'] as Array<Record<string, any>> | undefined;
+      const callAnalysis = call['call_analysis'] as Record<string, any> | undefined;
+      const durationMs = call['duration_ms'] as number | undefined;
+
+      // Find conversation by Retell call_id
+      const [convo] = await app.db
+        .select()
+        .from(conversations)
+        .where(
+          and(
+            eq(conversations.channel, 'voice'),
+            eq(conversations.channelRef, callId),
+          ),
+        )
+        .limit(1);
+
+      if (!convo) {
+        app.log.warn({ callId }, 'Retell call_analyzed: no matching conversation record — skipping');
+        return reply.status(200).send({ ok: true, skipped: true });
+      }
+
+      // Store transcript turns as messages
+      if (transcriptObject?.length) {
+        const turns = transcriptObject.map((turn, idx) => ({
+          tenantId: convo.tenantId,
+          conversationId: convo.id,
+          direction: turn['role'] === 'agent' ? 'outbound' : 'inbound',
+          role: turn['role'] === 'agent' ? 'agent' : 'lead',
+          content: typeof turn['content'] === 'string' ? turn['content'] : '',
+          contentType: 'transcript',
+          metadata:
+            durationMs && idx === transcriptObject.length - 1
+              ? { call_duration_secs: Math.round(durationMs / 1000) }
+              : {},
+        }));
+
+        await app.db.insert(messages).values(turns);
+      }
+
+      // Update conversation status and summary
+      const summary = callAnalysis?.['call_summary'] as string | undefined;
+      await app.db
+        .update(conversations)
+        .set({
+          status: 'ended',
+          ...(summary ? { summary } : {}),
+          updatedAt: new Date(),
+        } as any)
+        .where(eq(conversations.id, convo.id));
+
+      app.log.info(
+        { callId, convoId: convo.id, turns: transcriptObject?.length ?? 0 },
+        'Retell transcript stored',
+      );
+
+      // Trigger post-call flow if configured
+      try {
+        const [lead] = await app.db
+          .select({ id: leads.id, phone: leads.phone, name: leads.name, email: leads.email })
+          .from(leads)
+          .where(and(eq(leads.id, convo.leadId), eq(leads.tenantId, convo.tenantId)))
+          .limit(1);
+
+        if (lead?.phone) {
+          const [tenantRow] = await app.db
+            .select({ settings: tenants.settings })
+            .from(tenants)
+            .where(eq(tenants.id, convo.tenantId))
+            .limit(1);
+
+          const postCallFlow = (tenantRow?.settings as Record<string, any> | null)?.flows?.['post-call'];
+          if (postCallFlow?.enabled) {
+            await enqueueFlowStep(
+              app.queues.flowExecutor,
+              {
+                tenantId: convo.tenantId,
+                leadId: convo.leadId,
+                flowName: 'post-call',
+                stepIndex: 0,
+                leadPhone: lead.phone,
+                leadName: lead.name ?? undefined,
+                leadEmail: lead.email ?? undefined,
+                flowContext: { callSummary: summary ?? '' },
+              },
+              0,
+            );
+            app.log.info({ tenantId: convo.tenantId, leadId: convo.leadId, callId }, 'Post-call flow enqueued');
+          }
+        }
+      } catch (err) {
+        app.log.warn({ err, callId }, 'Post-call flow trigger failed — non-fatal');
+      }
+
+      return reply.status(200).send({ ok: true, turns: transcriptObject?.length ?? 0 });
+    }
+
+    // Unknown event — acknowledge without error
+    return reply.status(200).send({ ok: true });
   });
 
   /**
-   * Twilio recording-status webhook — fired when a conference recording is ready.
-   * Looks up the conference by FriendlyName in Redis to resolve the tenant,
-   * then enqueues a call-analysis job to transcribe and learn from the recording.
-   *
-   * To enable: set BASE_URL so Twilio can reach this endpoint at:
-   *   POST /webhooks/voice/recording-status
+   * Zadarma verification challenge — responds to GET ?zd_echo=<value> with the value as plain text.
+   * Zadarma sends this when you first register a notification URL to confirm ownership.
    */
-  app.post('/recording-status', async (request, reply) => {
-    const params = request.body as Record<string, string>;
-
-    // Verify Twilio signature — use tenant's auth token if configured, else global env
-    const tenantIdForRecording = app.env.VOICE_WEBHOOK_TENANT_ID;
-    const recordingAuthToken = tenantIdForRecording
-      ? await service.getTwilioAuthToken(tenantIdForRecording)
-      : (app.env.TWILIO_AUTH_TOKEN ?? null);
-    if (recordingAuthToken) {
-      const signature = request.headers['x-twilio-signature'] as string | undefined;
-      const baseUrl = app.env.BASE_URL ?? `https://${request.hostname}`;
-      const webhookUrl = `${baseUrl}/webhooks/voice/recording-status`;
-      if (!twilio.validateRequest(recordingAuthToken, signature ?? '', webhookUrl, params)) {
-        app.log.warn('Recording-status webhook: invalid Twilio signature');
-        return reply.status(403).send();
-      }
+  app.get('/zadarma', async (request, reply) => {
+    const query = request.query as Record<string, string>;
+    const echo = query['zd_echo'];
+    if (echo) {
+      return reply.status(200).type('text/plain').send(echo);
     }
+    return reply.status(200).send({ ok: true });
+  });
 
-    const { FriendlyName, RecordingSid, RecordingUrl, RecordingDuration, ConferenceSid, RecordingStatus } = params;
+  /**
+   * Zadarma notification webhook — fired when a monitored call ends and recording is ready.
+   * Zadarma POSTs application/x-www-form-urlencoded with:
+   *   call_id, disposition, recording (URL), from_number, called_number, duration
+   *
+   * Configure in Zadarma portal → My Notifications:
+   *   https://<your-domain>/webhooks/voice/zadarma
+   */
+  app.post('/zadarma', async (request, reply) => {
+    const params = request.body as Record<string, string>;
+    const { call_id, disposition, recording, duration } = params;
 
-    // Only process completed recordings
-    if (RecordingStatus !== 'completed') {
+    // Only process answered calls with a recording
+    if (disposition !== 'answered' || !recording) {
       return reply.status(204).send();
     }
 
-    app.log.info({ FriendlyName, RecordingSid, ConferenceSid }, 'Conference recording ready');
+    app.log.info({ call_id, recording }, 'Zadarma recording notification received');
 
-    if (!FriendlyName || !RecordingSid || !RecordingUrl) {
-      app.log.warn({ params }, 'Recording-status webhook: missing required fields');
+    if (!call_id) {
+      app.log.warn({ params }, 'Zadarma notify: missing call_id');
       return reply.status(200).send({ ok: true, skipped: true });
     }
 
     // Resolve tenant from Redis mapping created when the monitor call was started
-    const redisKey = `monitor_call:${FriendlyName}`;
+    const redisKey = `monitor_call:${call_id}`;
     const mapping = await app.redis.get(redisKey);
     if (!mapping) {
-      app.log.warn({ FriendlyName }, 'Recording-status webhook: no tenant mapping found — not a monitored call');
+      app.log.warn({ call_id }, 'Zadarma notify: no tenant mapping found — not a monitored call');
       return reply.status(200).send({ ok: true, skipped: true });
     }
 
     const { tenantId } = JSON.parse(mapping) as { tenantId: string };
 
-    // Update the placeholder learning record with recording details
+    // Update the learning record with recording details
     await app.db
       .update(callLearnings)
-      .set({
-        conferenceSid: ConferenceSid ?? null,
-        recordingSid: RecordingSid,
-        recordingUrl: RecordingUrl,
-      })
+      .set({ recordingUrl: recording })
       .where(
         and(
           eq(callLearnings.tenantId, tenantId),
-          eq(callLearnings.conferenceName, FriendlyName),
+          eq(callLearnings.conferenceName, call_id),
         ),
       );
 
-    // Fetch the learning ID for the queue job
+    // Fetch learning ID for the queue job
     const [row] = await app.db
       .select({ id: callLearnings.id })
       .from(callLearnings)
       .where(
         and(
           eq(callLearnings.tenantId, tenantId),
-          eq(callLearnings.conferenceName, FriendlyName),
+          eq(callLearnings.conferenceName, call_id),
         ),
       )
       .limit(1);
 
     if (!row) {
-      app.log.warn({ FriendlyName, tenantId }, 'Recording-status webhook: learning record not found');
+      app.log.warn({ call_id, tenantId }, 'Zadarma notify: learning record not found');
       return reply.status(200).send({ ok: true, skipped: true });
     }
 
-    // Enqueue the analysis job
     await enqueueCallAnalysis(app.queues.callAnalysis, {
       tenantId,
       learningId: row.id,
-      recordingUrl: RecordingUrl,
-      recordingSid: RecordingSid,
-      durationSecs: RecordingDuration ? parseInt(RecordingDuration, 10) : 0,
+      recordingUrl: recording,
+      recordingSid: call_id,
+      durationSecs: duration ? parseInt(duration, 10) : 0,
     });
 
-    app.log.info({ learningId: row.id, tenantId }, 'Call analysis job enqueued');
+    app.log.info({ learningId: row.id, tenantId }, 'Call analysis job enqueued from Zadarma');
     return reply.status(200).send({ ok: true });
   });
 }
 
 /**
- * Verify ElevenLabs webhook signature.
- * Header format: ElevenLabs-Signature: t=<timestamp>,v0=<hmac_sha256_hex>
- * Signed content: "<timestamp>.<raw_body>"
+ * Verify Retell webhook signature.
+ * Retell signs the raw request body with HMAC-SHA256 using the API key.
  */
-function verifyElevenLabsSignature(rawBody: string, header: string, secret: string): boolean {
+function verifyRetellSignature(rawBody: string, signature: string, apiKey: string): boolean {
   try {
-    const parts = Object.fromEntries(header.split(',').map((p) => p.split('=')));
-    const timestamp = parts['t'];
-    const signature = parts['v0'];
-    if (!timestamp || !signature) return false;
-
-    // Reject signatures older than 5 minutes
-    if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false;
-
-    const signed = `${timestamp}.${rawBody}`;
-    const expected = createHmac('sha256', secret).update(signed).digest('hex');
+    const expected = createHmac('sha256', apiKey).update(rawBody).digest('hex');
     return timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'));
   } catch {
     return false;
