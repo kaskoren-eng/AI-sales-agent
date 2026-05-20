@@ -16,6 +16,7 @@ import type { Queue } from 'bullmq';
 import { handleDeadLetter } from '../dead-letter.js';
 import { decrypt } from '../../shared/crypto.js';
 import { MondayService } from '../../modules/integrations/monday/monday.service.js';
+import { AirtableService } from '../../modules/integrations/airtable/airtable.service.js';
 import { GoogleCalendarProvider } from '../../modules/scheduling/providers/google-calendar.provider.js';
 
 interface WorkerDeps {
@@ -160,7 +161,7 @@ export function createFlowExecutorWorker(deps: WorkerDeps) {
           return {};
         }
 
-        // Build lead context to pass to ElevenLabs as dynamic_variables
+        // Build lead context to pass to Retell as dynamic variables
         const leadContext: Record<string, string> = {};
         if (ctx.leadName) leadContext.name = ctx.leadName;
         if (ctx.leadEmail) leadContext.email = ctx.leadEmail;
@@ -281,6 +282,74 @@ export function createFlowExecutorWorker(deps: WorkerDeps) {
         if (Object.keys(colVals).length > 0) {
           await svc.updateItem(mondayCfg.boardId, mondayItemId, colVals);
           logger?.info({ tenantId: ctx.tenantId, leadId: ctx.leadId, mondayItemId }, 'Monday item updated via flow');
+        }
+        return {};
+      }
+
+      case 'update_airtable': {
+        const [tenantRow] = await db
+          .select({ settings: tenants.settings })
+          .from(tenants)
+          .where(eq(tenants.id, ctx.tenantId))
+          .limit(1);
+
+        const airtableCfg = (tenantRow?.settings as Record<string, any> | null)?.airtable;
+        if (!airtableCfg?.encryptedApiKey) {
+          logger?.warn(
+            { event: 'flow_step_skip', tenantId: ctx.tenantId },
+            'Flow executor: Airtable not configured — skipping update_airtable step',
+          );
+          return {};
+        }
+
+        const apiKey = decrypt(airtableCfg.encryptedApiKey, env.ENCRYPTION_KEY);
+        const svc = new AirtableService({
+          apiKey,
+          baseId: airtableCfg.baseId,
+          tableId: airtableCfg.tableId,
+          phoneFieldName: airtableCfg.phoneFieldName,
+          emailFieldName: airtableCfg.emailFieldName,
+        });
+
+        // Look up cached Airtable record ID, or search by phone/email
+        const [lead] = await db
+          .select({ metadata: leads.metadata, email: leads.email })
+          .from(leads)
+          .where(and(eq(leads.id, ctx.leadId), eq(leads.tenantId, ctx.tenantId)))
+          .limit(1);
+
+        let recordId = (lead?.metadata as Record<string, any> | null)?.airtableRecordId as string | undefined;
+
+        if (!recordId) {
+          const found = await svc.findByPhone(ctx.leadPhone).catch(() => null)
+            ?? (lead?.email ? await svc.findByEmail(lead.email).catch(() => null) : null);
+
+          if (found) {
+            recordId = found.id;
+            const existingMeta = (lead?.metadata as Record<string, any>) ?? {};
+            await db
+              .update(leads)
+              .set({ metadata: { ...existingMeta, airtableRecordId: recordId }, updatedAt: new Date() } as any)
+              .where(and(eq(leads.id, ctx.leadId), eq(leads.tenantId, ctx.tenantId)));
+          }
+        }
+
+        if (!recordId) {
+          logger?.warn(
+            { event: 'flow_step_skip', tenantId: ctx.tenantId, leadId: ctx.leadId },
+            'Flow executor: update_airtable skipped — no matching record found by phone or email',
+          );
+          return {};
+        }
+
+        const fields: Record<string, unknown> = {};
+        for (const [fieldName, value] of Object.entries(step.fields)) {
+          fields[fieldName] = interpolate(value, ctx);
+        }
+
+        if (Object.keys(fields).length > 0) {
+          await svc.updateRecord(recordId, fields);
+          logger?.info({ tenantId: ctx.tenantId, leadId: ctx.leadId, recordId }, 'Airtable record updated via flow');
         }
         return {};
       }

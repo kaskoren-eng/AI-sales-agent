@@ -39,12 +39,20 @@ const bookCalendarStepSchema = z.object({
   notes: z.string().max(2000).optional(),
 });
 
+const updateAirtableStepSchema = z.object({
+  type: z.literal('update_airtable'),
+  delayMinutes: z.number().int().min(0).max(10080),
+  // Airtable field name → value. Values support {{name}}, {{callSummary}}, {{meetingLink}}, {{meetingTime}}, {{meetingDate}}, {{phone}}
+  fields: z.record(z.string(), z.string()),
+});
+
 const flowStepSchema = z.discriminatedUnion('type', [
   whatsappStepSchema,
   callStepSchema,
   emailStepSchema,
   updateMondayStepSchema,
   bookCalendarStepSchema,
+  updateAirtableStepSchema,
 ]);
 
 export const flowDefinitionSchema = z.object({
