@@ -294,7 +294,29 @@ export function createFlowExecutorWorker(deps: WorkerDeps) {
           .limit(1);
 
         const airtableCfg = (tenantRow?.settings as Record<string, any> | null)?.airtable;
-        if (!airtableCfg?.encryptedApiKey) {
+
+        // Resolve credentials: tenant settings (encrypted) takes priority, env vars are the fallback
+        let apiKey: string | undefined;
+        let baseId: string | undefined;
+        let tableId: string | undefined;
+        let phoneFieldName: string | undefined;
+        let emailFieldName: string | undefined;
+
+        if (airtableCfg?.encryptedApiKey) {
+          apiKey = decrypt(airtableCfg.encryptedApiKey, env.ENCRYPTION_KEY);
+          baseId = airtableCfg.baseId;
+          tableId = airtableCfg.tableId;
+          phoneFieldName = airtableCfg.phoneFieldName;
+          emailFieldName = airtableCfg.emailFieldName;
+        } else if (env.AIRTABLE_API_KEY && env.AIRTABLE_BASE_ID && env.AIRTABLE_TABLE_ID) {
+          apiKey = env.AIRTABLE_API_KEY;
+          baseId = env.AIRTABLE_BASE_ID;
+          tableId = env.AIRTABLE_TABLE_ID;
+          phoneFieldName = env.AIRTABLE_PHONE_FIELD;
+          emailFieldName = env.AIRTABLE_EMAIL_FIELD;
+        }
+
+        if (!apiKey || !baseId || !tableId) {
           logger?.warn(
             { event: 'flow_step_skip', tenantId: ctx.tenantId },
             'Flow executor: Airtable not configured — skipping update_airtable step',
@@ -302,14 +324,7 @@ export function createFlowExecutorWorker(deps: WorkerDeps) {
           return {};
         }
 
-        const apiKey = decrypt(airtableCfg.encryptedApiKey, env.ENCRYPTION_KEY);
-        const svc = new AirtableService({
-          apiKey,
-          baseId: airtableCfg.baseId,
-          tableId: airtableCfg.tableId,
-          phoneFieldName: airtableCfg.phoneFieldName,
-          emailFieldName: airtableCfg.emailFieldName,
-        });
+        const svc = new AirtableService({ apiKey, baseId, tableId, phoneFieldName, emailFieldName });
 
         // Look up cached Airtable record ID, or search by phone/email
         const [lead] = await db
