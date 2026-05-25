@@ -68,14 +68,21 @@ export async function voiceRoutes(app: FastifyInstance) {
       }
 
       const fromNumber = call['from_number'] as string | undefined;
+      const toNumber = call['to_number'] as string | undefined;
+
+      // For outbound calls our SIP number is from_number; the lead is to_number.
+      // Detect by checking if from_number matches our configured outbound number.
+      const ourNumber = app.env.ZADARMA_PHONE_NUMBER;
+      const isOutbound = ourNumber && fromNumber === ourNumber;
+      const leadPhone = isOutbound ? toNumber : fromNumber;
 
       // Find existing lead by phone number, or create a placeholder
       let leadId: string | null = null;
-      if (fromNumber) {
+      if (leadPhone) {
         const [existingLead] = await app.db
           .select({ id: leads.id })
           .from(leads)
-          .where(and(eq(leads.tenantId, tenantId), eq(leads.phone, fromNumber)))
+          .where(and(eq(leads.tenantId, tenantId), eq(leads.phone, leadPhone)))
           .limit(1);
 
         if (existingLead) {
@@ -84,7 +91,7 @@ export async function voiceRoutes(app: FastifyInstance) {
           // Create placeholder lead so the conversation record is valid
           const [newLead] = await app.db
             .insert(leads)
-            .values({ tenantId, phone: fromNumber, name: null, status: 'new' })
+            .values({ tenantId, phone: leadPhone, name: null, status: 'new' })
             .returning({ id: leads.id });
           leadId = newLead?.id ?? null;
         }

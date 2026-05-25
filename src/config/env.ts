@@ -44,6 +44,11 @@ const envSchema = z.object({
   RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
   RESEND_INBOUND_TENANT_ID: z.string().uuid().optional(),
 
+  // Channels - WhatsApp (Twilio)
+  TWILIO_ACCOUNT_SID: z.string().min(1).optional(),
+  TWILIO_AUTH_TOKEN: z.string().min(1).optional(),
+  TWILIO_WHATSAPP_NUMBER: z.string().min(1).optional(),
+
   // Channels - Voice (Zadarma + Retell AI + Cartesia)
   RETELL_API_KEY: z.string().min(1).optional(),
   RETELL_AGENT_ID: z.string().min(1).optional(),
