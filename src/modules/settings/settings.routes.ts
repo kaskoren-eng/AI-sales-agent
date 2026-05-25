@@ -14,9 +14,9 @@ const businessProfileSchema = z.object({
   language: z.enum(['hebrew', 'english', 'both']).default('hebrew'),
 });
 
-const twilioSettingsSchema = z.object({
-  accountSid: z.string().startsWith('AC').min(34).max(34),
-  authToken: z.string().min(32).max(64),
+const zadarmaSettingsSchema = z.object({
+  apiKey: z.string().min(1),
+  apiSecret: z.string().min(1),
   phoneNumber: z.string().min(7).max(20),
 });
 
@@ -40,25 +40,25 @@ export async function settingsRoutes(app: FastifyInstance) {
     return reply.status(200).send({ ok: true, businessProfile: saved });
   });
 
-  // --- Twilio ---
+  // --- Zadarma ---
 
-  app.get('/twilio', async (request) => {
+  app.get('/zadarma', async (request) => {
     const tenantId = (request as any).tenantId as string;
-    return service.getTwilioSettings(tenantId);
+    return service.getZadarmaSettings(tenantId);
   });
 
-  app.put('/twilio', async (request, reply) => {
+  app.put('/zadarma', async (request, reply) => {
     const tenantId = (request as any).tenantId as string;
-    const result = twilioSettingsSchema.safeParse(request.body);
+    const result = zadarmaSettingsSchema.safeParse(request.body);
     if (!result.success) throw new ValidationError(result.error.issues[0]?.message ?? 'Invalid input');
 
-    await service.saveTwilioSettings(tenantId, result.data);
+    await service.saveZadarmaSettings(tenantId, result.data);
     return reply.status(200).send({ ok: true });
   });
 
-  app.delete('/twilio', async (request, reply) => {
+  app.delete('/zadarma', async (request, reply) => {
     const tenantId = (request as any).tenantId as string;
-    await service.deleteTwilioSettings(tenantId);
+    await service.deleteZadarmaSettings(tenantId);
     return reply.status(200).send({ ok: true });
   });
 }

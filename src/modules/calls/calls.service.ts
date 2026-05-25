@@ -8,15 +8,14 @@ import { CircuitBreaker } from '../../shared/circuit-breaker.js';
 
 // ---------------------------------------------------------------------------
 // Module-level circuit breaker — shared across all CallsService instances
-// (same pattern as voice.service.ts)
 // ---------------------------------------------------------------------------
 
-const ELEVENLABS_API_BASE = 'https://api.elevenlabs.io';
-const ELEVENLABS_TIMEOUT_MS = 15_000;
-const ELEVENLABS_CACHE_TTL_SECS = 600; // 10 minutes
+const RETELL_API_BASE = 'https://api.retellai.com';
+const RETELL_TIMEOUT_MS = 15_000;
+const RETELL_CACHE_TTL_SECS = 600; // 10 minutes
 
-const elevenLabsCircuit = new CircuitBreaker({
-  name: 'elevenlabs',
+const retellCircuit = new CircuitBreaker({
+  name: 'retell',
   failureThreshold: 5,
   cooldownMs: 30_000,
 });
@@ -140,11 +139,8 @@ export class CallsService {
     this.logger = logger;
   }
 
-  /**
-   * Execute a fetch through the module-level ElevenLabs circuit breaker.
-   */
   private _fetch(url: string, opts: RequestInit): Promise<Response> {
-    return elevenLabsCircuit.execute(() => fetch(url, opts));
+    return retellCircuit.execute(() => fetch(url, opts));
   }
 
   // -------------------------------------------------------------------------
@@ -324,89 +320,69 @@ export class CallsService {
     let transcript: CallTranscriptTurn[] = fallbackTranscript;
     let analysis: CallAnalysis | null = null;
 
-    // Attempt live ElevenLabs fetch when: channel_ref set, status ended, API key configured
-    if (row.channelRef && row.status === 'ended' && this.env.ELEVENLABS_API_KEY) {
-      const cacheKey = `el:conv:${row.channelRef}`;
+    // Attempt live Retell fetch when: channel_ref set, status ended, API key configured
+    if (row.channelRef && row.status === 'ended' && this.env.RETELL_API_KEY) {
+      const cacheKey = `retell:call:${row.channelRef}`;
 
       try {
-        // Check Redis cache first
         const cached = await this.redis.get(cacheKey);
 
         if (cached) {
           const parsed = JSON.parse(cached) as {
             transcript?: CallTranscriptTurn[];
             analysis?: CallAnalysis | null;
-            qualification?: CallQualification;
           };
           transcript = parsed.transcript ?? fallbackTranscript;
           analysis = parsed.analysis ?? null;
-          // Restore merged qualification if cached
-          if (parsed.qualification) {
-            Object.assign(qual, parsed.qualification);
-          }
         } else {
-          // Live fetch through circuit breaker with 15 s timeout
-          const elRes = await this._fetch(
-            `${ELEVENLABS_API_BASE}/v1/convai/conversations/${row.channelRef}`,
+          const retellRes = await this._fetch(
+            `${RETELL_API_BASE}/v1/call/${row.channelRef}`,
             {
-              headers: { 'xi-api-key': this.env.ELEVENLABS_API_KEY },
-              signal: AbortSignal.timeout(ELEVENLABS_TIMEOUT_MS),
+              headers: { Authorization: `Bearer ${this.env.RETELL_API_KEY}` },
+              signal: AbortSignal.timeout(RETELL_TIMEOUT_MS),
             },
           );
 
-          if (elRes.ok) {
-            const elData = (await elRes.json()) as Record<string, unknown>;
+          if (retellRes.ok) {
+            const retellData = (await retellRes.json()) as Record<string, unknown>;
 
-            // Parse transcript turns
-            const elTurns = Array.isArray(elData['transcript']) ? elData['transcript'] : [];
-            transcript = (elTurns as Array<Record<string, unknown>>).map((turn) => ({
+            // Parse transcript_object turns
+            const turns = Array.isArray(retellData['transcript_object'])
+              ? retellData['transcript_object']
+              : [];
+            transcript = (turns as Array<Record<string, unknown>>).map((turn) => ({
               role: typeof turn['role'] === 'string' ? turn['role'] : 'unknown',
-              message: typeof turn['message'] === 'string' ? turn['message'] : '',
-              time_in_call_secs:
-                typeof turn['time_in_call_secs'] === 'number' ? turn['time_in_call_secs'] : null,
+              message: typeof turn['content'] === 'string' ? turn['content'] : '',
+              time_in_call_secs: null,
             }));
 
-            // Parse analysis block
-            const elAnalysis = elData['analysis'] as Record<string, unknown> | undefined;
-            if (elAnalysis) {
+            // Parse call_analysis
+            const retellAnalysis = retellData['call_analysis'] as Record<string, unknown> | undefined;
+            if (retellAnalysis) {
               analysis = {
                 call_successful:
-                  typeof elAnalysis['call_successful'] === 'string' ? elAnalysis['call_successful'] : null,
+                  retellAnalysis['call_successful'] != null
+                    ? String(retellAnalysis['call_successful'])
+                    : null,
                 transcript_summary:
-                  typeof elAnalysis['transcript_summary'] === 'string'
-                    ? elAnalysis['transcript_summary']
+                  typeof retellAnalysis['call_summary'] === 'string'
+                    ? retellAnalysis['call_summary']
                     : null,
               };
             }
 
-            // Parse data_collection — merge into qualification (ElevenLabs wins over DB)
-            const elDC = elData['data_collection'] as Record<string, unknown> | undefined;
-            if (elDC) {
-              const dcQual = extractQualification(elDC);
-              if (dcQual.status !== null) qual.status = dcQual.status;
-              if (dcQual.company_name !== null) qual.company_name = dcQual.company_name;
-              if (dcQual.lead_name !== null) qual.lead_name = dcQual.lead_name;
-              if (dcQual.lead_email !== null) qual.lead_email = dcQual.lead_email;
-              if (dcQual.follow_up_scheduled !== null) qual.follow_up_scheduled = dcQual.follow_up_scheduled;
-              if (dcQual.lead_primary_challenge !== null)
-                qual.lead_primary_challenge = dcQual.lead_primary_challenge;
-            }
-
-            // Cache enriched result for 10 minutes
             await this.redis.set(
               cacheKey,
-              JSON.stringify({ transcript, analysis, qualification: qual }),
+              JSON.stringify({ transcript, analysis }),
               'EX',
-              ELEVENLABS_CACHE_TTL_SECS,
+              RETELL_CACHE_TTL_SECS,
             );
           }
-          // Non-ok ElevenLabs response → fall through; transcript already set to fallback
         }
       } catch (err) {
-        // Network error, circuit open, timeout, JSON parse failure — warn and use fallback
         this.logger?.warn(
-          { event: 'elevenlabs_fetch_failed', conversationId: id, error: err instanceof Error ? err.message : String(err) },
-          'ElevenLabs fetch failed; falling back to DB transcript',
+          { event: 'retell_fetch_failed', conversationId: id, error: err instanceof Error ? err.message : String(err) },
+          'Retell fetch failed; falling back to DB transcript',
         );
       }
     }
@@ -444,7 +420,7 @@ export class CallsService {
    * Returns:
    *   null   → conversation not found, wrong tenant, or not a voice call → routes layer sends 404
    *   false  → conversation found but channel_ref is null or API key not configured → routes layer sends 404
-   *   string → the channel_ref to use when proxying to ElevenLabs → proceed
+   *   string → the channel_ref (Retell call_id) to use when proxying audio → proceed
    */
   async checkAudioAvailable(tenantId: string, id: string): Promise<string | null | false> {
     const [row] = await this.db
@@ -460,8 +436,8 @@ export class CallsService {
     // Not found, wrong tenant, or not a voice call
     if (!row || row.channel !== 'voice') return null;
 
-    // Audio requires a channel_ref AND a configured ElevenLabs API key
-    if (!row.channelRef || !this.env.ELEVENLABS_API_KEY) return false;
+    // Audio requires a channel_ref AND a configured Retell API key
+    if (!row.channelRef || !this.env.RETELL_API_KEY) return false;
 
     return row.channelRef;
   }

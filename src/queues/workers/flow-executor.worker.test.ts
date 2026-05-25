@@ -251,7 +251,11 @@ describe('flow-executor worker', () => {
     const result = await processor(makeJob({ stepIndex: 0 }));
 
     expect(voice.initiateOutboundCall).toHaveBeenCalledOnce();
-    expect(voice.initiateOutboundCall).toHaveBeenCalledWith('+15551234567', TENANT_ID);
+    expect(voice.initiateOutboundCall).toHaveBeenCalledWith('+15551234567', TENANT_ID, {
+      name: 'Alice',
+      email: 'alice@example.com',
+      phone: '+15551234567',
+    });
     expect(result).toMatchObject({ action: 'make_call' });
   });
 

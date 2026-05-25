@@ -15,14 +15,14 @@ export interface BusinessProfile {
   language: string;
 }
 
-export interface TwilioSettings {
-  accountSid: string;
+export interface ZadarmaSettings {
   phoneNumber: string;
   configuredAt: string;
 }
 
-interface TwilioStoredSettings extends TwilioSettings {
-  authTokenEncrypted: string;
+interface ZadarmaStoredSettings extends ZadarmaSettings {
+  apiKeyEncrypted: string;
+  apiSecretEncrypted: string;
 }
 
 function getTenantSettings(raw: unknown): Record<string, unknown> {
@@ -68,7 +68,7 @@ export class SettingsService {
     return profile;
   }
 
-  async getTwilioSettings(tenantId: string): Promise<{ configured: boolean; accountSid: string | null; phoneNumber: string | null; authTokenMasked: string | null; configuredAt: string | null }> {
+  async getZadarmaSettings(tenantId: string): Promise<{ configured: boolean; phoneNumber: string | null; configuredAt: string | null }> {
     const [tenant] = await this.db
       .select({ settings: tenants.settings })
       .from(tenants)
@@ -78,24 +78,22 @@ export class SettingsService {
     if (!tenant) throw new NotFoundError('Tenant', tenantId);
 
     const settings = getTenantSettings(tenant.settings);
-    const twilio = settings.twilio as TwilioStoredSettings | undefined;
+    const zadarma = settings.zadarma as ZadarmaStoredSettings | undefined;
 
-    if (!twilio?.accountSid || !twilio?.authTokenEncrypted) {
-      return { configured: false, accountSid: null, phoneNumber: null, authTokenMasked: null, configuredAt: null };
+    if (!zadarma?.apiKeyEncrypted) {
+      return { configured: false, phoneNumber: null, configuredAt: null };
     }
 
     return {
       configured: true,
-      accountSid: twilio.accountSid,
-      phoneNumber: twilio.phoneNumber ?? null,
-      authTokenMasked: '••••••••' + twilio.authTokenEncrypted.slice(-4),
-      configuredAt: twilio.configuredAt ?? null,
+      phoneNumber: zadarma.phoneNumber ?? null,
+      configuredAt: zadarma.configuredAt ?? null,
     };
   }
 
-  async saveTwilioSettings(
+  async saveZadarmaSettings(
     tenantId: string,
-    input: { accountSid: string; authToken: string; phoneNumber: string },
+    input: { apiKey: string; apiSecret: string; phoneNumber: string },
   ): Promise<void> {
     const [tenant] = await this.db
       .select({ settings: tenants.settings })
@@ -106,13 +104,13 @@ export class SettingsService {
     if (!tenant) throw new NotFoundError('Tenant', tenantId);
 
     const settings = getTenantSettings(tenant.settings);
-    const stored: TwilioStoredSettings = {
-      accountSid: input.accountSid,
-      authTokenEncrypted: encrypt(input.authToken, this.encryptionKey),
+    const stored: ZadarmaStoredSettings = {
+      apiKeyEncrypted: encrypt(input.apiKey, this.encryptionKey),
+      apiSecretEncrypted: encrypt(input.apiSecret, this.encryptionKey),
       phoneNumber: input.phoneNumber,
       configuredAt: new Date().toISOString(),
     };
-    settings.twilio = stored;
+    settings.zadarma = stored;
 
     await this.db
       .update(tenants)
@@ -120,7 +118,7 @@ export class SettingsService {
       .where(eq(tenants.id, tenantId));
   }
 
-  async deleteTwilioSettings(tenantId: string): Promise<void> {
+  async deleteZadarmaSettings(tenantId: string): Promise<void> {
     const [tenant] = await this.db
       .select({ settings: tenants.settings })
       .from(tenants)
@@ -130,7 +128,7 @@ export class SettingsService {
     if (!tenant) throw new NotFoundError('Tenant', tenantId);
 
     const settings = getTenantSettings(tenant.settings);
-    delete settings.twilio;
+    delete settings.zadarma;
 
     await this.db
       .update(tenants)
@@ -138,7 +136,7 @@ export class SettingsService {
       .where(eq(tenants.id, tenantId));
   }
 
-  async getTwilioAuthToken(tenantId: string): Promise<string | null> {
+  async getZadarmaCredentials(tenantId: string): Promise<{ apiKey: string; apiSecret: string } | null> {
     const [tenant] = await this.db
       .select({ settings: tenants.settings })
       .from(tenants)
@@ -148,26 +146,16 @@ export class SettingsService {
     if (!tenant) return null;
 
     const settings = getTenantSettings(tenant.settings);
-    const twilio = settings.twilio as TwilioStoredSettings | undefined;
-    if (!twilio?.authTokenEncrypted) return null;
+    const zadarma = settings.zadarma as ZadarmaStoredSettings | undefined;
+    if (!zadarma?.apiKeyEncrypted || !zadarma?.apiSecretEncrypted) return null;
 
     try {
-      return decrypt(twilio.authTokenEncrypted, this.encryptionKey);
+      return {
+        apiKey: decrypt(zadarma.apiKeyEncrypted, this.encryptionKey),
+        apiSecret: decrypt(zadarma.apiSecretEncrypted, this.encryptionKey),
+      };
     } catch {
       return null;
     }
-  }
-
-  async getTwilioPhoneNumber(tenantId: string): Promise<string | null> {
-    const [tenant] = await this.db
-      .select({ settings: tenants.settings })
-      .from(tenants)
-      .where(eq(tenants.id, tenantId))
-      .limit(1);
-
-    if (!tenant) return null;
-    const settings = getTenantSettings(tenant.settings);
-    const twilio = settings.twilio as TwilioStoredSettings | undefined;
-    return twilio?.phoneNumber ?? null;
   }
 }

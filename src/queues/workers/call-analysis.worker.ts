@@ -31,7 +31,7 @@ export function createCallAnalysisWorker(deps: WorkerDeps) {
         .set({ status: 'transcribing', durationSecs, recordingUrl })
         .where(and(eq(callLearnings.id, learningId), eq(callLearnings.tenantId, tenantId)));
 
-      // 2. Download from Twilio + transcribe with Whisper
+      // 2. Download recording + transcribe with Whisper
       const transcript = await analysisService.downloadAndTranscribe(recordingUrl);
 
       // 3. Analyze transcript with GPT
@@ -43,10 +43,10 @@ export function createCallAnalysisWorker(deps: WorkerDeps) {
         .set({ transcript, analysis, status: 'analyzed' })
         .where(and(eq(callLearnings.id, learningId), eq(callLearnings.tenantId, tenantId)));
 
-      // 5. Bust the agent prompt cache so the next call gets fresh learnings
-      const agentId = env.ELEVENLABS_AGENT_ID;
+      // 5. Bust Retell dynamic-variables cache so the next call gets fresh learnings
+      const agentId = env.RETELL_AGENT_ID;
       if (agentId) {
-        await redis.del(`el:agent:prompt:${agentId}`);
+        await redis.del(`retell:dynvars:${agentId}`);
       }
 
       return { learningId, transcriptSegments: transcript.length };

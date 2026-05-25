@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, ilike, or, count } from 'drizzle-orm';
 import { leads } from '../../db/schema/index.js';
 import type { Database } from '../../db/client.js';
 import type { CreateLeadInput, UpdateLeadInput } from './lead.schemas.js';
@@ -26,12 +26,20 @@ export class LeadService {
     return lead;
   }
 
-  async list(tenantId: string) {
-    return this.db
-      .select()
-      .from(leads)
-      .where(eq(leads.tenantId, tenantId))
-      .orderBy(leads.createdAt);
+  async list(tenantId: string, opts: { page: number; limit: number; status?: string; search?: string } = { page: 1, limit: 20 }) {
+    const { page, limit, status, search } = opts;
+    const offset = (page - 1) * limit;
+
+    const conditions = [eq(leads.tenantId, tenantId)];
+    if (status) conditions.push(eq(leads.status, status as any));
+    if (search) conditions.push(or(ilike(leads.name, `%${search}%`), ilike(leads.phone, `%${search}%`), ilike(leads.email, `%${search}%`))!);
+
+    const where = and(...conditions);
+
+    const [{ value: total }] = await this.db.select({ value: count() }).from(leads).where(where);
+    const data = await this.db.select().from(leads).where(where).orderBy(leads.createdAt).limit(limit).offset(offset);
+
+    return { data, total };
   }
 
   async update(tenantId: string, id: string, input: UpdateLeadInput) {

@@ -1,4 +1,5 @@
 import OpenAI, { toFile } from 'openai';
+import { createHash, createHmac } from 'node:crypto';
 import type { Env } from '../../config/env.js';
 import type { TranscriptSegment, SalesCallAnalysis } from '../../db/schema/call-learnings.js';
 
@@ -31,16 +32,20 @@ export class CallAnalysisService {
   }
 
   async downloadAndTranscribe(recordingUrl: string): Promise<TranscriptSegment[]> {
-    const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = this.env;
+    const { ZADARMA_API_KEY, ZADARMA_API_SECRET } = this.env;
 
-    const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
-    const audioRes = await fetch(`${recordingUrl}.mp3`, {
-      headers: { Authorization: `Basic ${auth}` },
+    const headers: Record<string, string> = {};
+    if (ZADARMA_API_KEY && ZADARMA_API_SECRET) {
+      headers['Authorization'] = buildZadarmaAuth(ZADARMA_API_KEY, ZADARMA_API_SECRET, {});
+    }
+
+    const audioRes = await fetch(recordingUrl, {
+      headers,
       signal: AbortSignal.timeout(90_000),
     });
 
     if (!audioRes.ok) {
-      throw new Error(`Twilio recording download failed: HTTP ${audioRes.status}`);
+      throw new Error(`Recording download failed: HTTP ${audioRes.status}`);
     }
 
     const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
@@ -90,6 +95,7 @@ export class CallAnalysisService {
   static formatLearningsForPrompt(
     learnings: Array<{ analysis: SalesCallAnalysis | null; outcome: string | null }>,
   ): string {
+
     if (!learnings.length) return '';
 
     const items = learnings
@@ -109,4 +115,18 @@ export class CallAnalysisService {
 
     return `\n\n---\nLEARNINGS FROM RECENT REAL SALES CALLS (apply these patterns):\n${items}\n---`;
   }
+}
+
+/**
+ * Build Zadarma API Authorization header value.
+ * Format: "{api_key}:{base64(hmac_sha1(md5(params_sorted), api_secret))}"
+ */
+function buildZadarmaAuth(apiKey: string, apiSecret: string, params: Record<string, string>): string {
+  const sorted = Object.keys(params)
+    .sort()
+    .map((k) => `${k}=${params[k]}`)
+    .join('&');
+  const md5 = createHash('md5').update(sorted).digest('hex');
+  const sig = createHmac('sha1', apiSecret).update(md5).digest('base64');
+  return `${apiKey}:${sig}`;
 }
