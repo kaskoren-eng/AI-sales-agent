@@ -37,8 +37,7 @@ export async function voiceRoutes(app: FastifyInstance) {
       }
 
       if (!verifyRetellSignature(rawBody, sig, apiKey)) {
-        const expected = createHmac('sha256', apiKey).update(rawBody).digest('hex');
-        app.log.warn({ sigReceived: sig, sigExpectedHex: expected, bodyLen: rawBody.length }, 'Retell webhook: invalid signature');
+        app.log.warn('Retell webhook: invalid signature');
         return reply.status(401).send({ error: 'Invalid signature' });
       }
     }
@@ -468,12 +467,22 @@ export async function voiceRoutes(app: FastifyInstance) {
  */
 function verifyRetellSignature(rawBody: string, signature: string, apiKey: string): boolean {
   try {
-    // Retell SDK signs with HMAC-SHA256, sends hex digest, compared as UTF-8 string buffers
-    const digest = createHmac('sha256', apiKey).update(rawBody).digest('hex');
-    const digestBuf = Buffer.from(digest, 'utf8');
-    const sigBuf = Buffer.from(signature, 'utf8');
-    if (digestBuf.byteLength !== sigBuf.byteLength) return false;
-    return timingSafeEqual(digestBuf, sigBuf);
+    // Retell sends: v=<epoch_ms>,d=<hmac_sha256_hex>
+    // Signed content: timestamp + rawBody
+    const match = signature.match(/^v=(\d+),d=([0-9a-f]+)$/i);
+    if (!match) return false;
+
+    const [, tsStr, receivedHex] = match;
+    const ts = parseInt(tsStr, 10);
+
+    // Reject requests older than 5 minutes
+    if (Math.abs(Date.now() - ts) > 5 * 60 * 1000) return false;
+
+    const expected = createHmac('sha256', apiKey).update(tsStr + rawBody).digest('hex');
+    const expBuf = Buffer.from(expected, 'utf8');
+    const sigBuf = Buffer.from(receivedHex, 'utf8');
+    if (expBuf.byteLength !== sigBuf.byteLength) return false;
+    return timingSafeEqual(expBuf, sigBuf);
   } catch {
     return false;
   }
