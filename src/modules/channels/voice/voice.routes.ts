@@ -467,11 +467,11 @@ export async function voiceRoutes(app: FastifyInstance) {
  */
 function verifyRetellSignature(rawBody: string, signature: string, apiKey: string): boolean {
   try {
-    const expected = createHmac('sha256', apiKey).update(rawBody).digest('hex');
-    const expBuf = Buffer.from(expected, 'hex');
-    const sigBuf = Buffer.from(signature, 'hex');
-    if (sigBuf.length !== expBuf.length) return false;
-    return timingSafeEqual(sigBuf, expBuf);
+    const expectedBuf = createHmac('sha256', apiKey).update(rawBody).digest();
+    // Retell sends base64-encoded HMAC-SHA256
+    const sigBuf = Buffer.from(signature, 'base64');
+    if (sigBuf.length !== expectedBuf.length) return false;
+    return timingSafeEqual(sigBuf, expectedBuf);
   } catch {
     return false;
   }
