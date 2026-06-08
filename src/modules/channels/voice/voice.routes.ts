@@ -463,29 +463,13 @@ export async function voiceRoutes(app: FastifyInstance) {
 
 /**
  * Verify Retell webhook signature.
- * Retell signs the raw request body with HMAC-SHA256 using the API key.
- */
-/**
- * Verify Retell webhook signature.
- * Format: v=<unix_timestamp_ms>,<hmac_sha256_hex>
- * Retell signs: <timestamp><rawBody> with HMAC-SHA256 using the API key.
- * Rejects requests older than 5 minutes to prevent replay attacks.
+ * Retell signs: HMAC-SHA256(apiKey, rawBody) — signature is plain hex in x-retell-signature header.
  */
 function verifyRetellSignature(rawBody: string, signature: string, apiKey: string): boolean {
   try {
-    // Parse "v=<ts>,<hex_sig>" format
-    const match = signature.match(/^v=(\d+),([0-9a-f]+)$/i);
-    if (!match) return false;
-
-    const [, tsStr, receivedHex] = match;
-    const ts = parseInt(tsStr, 10);
-
-    // Reject requests older than 5 minutes
-    if (Math.abs(Date.now() - ts) > 5 * 60 * 1000) return false;
-
-    const expected = createHmac('sha256', apiKey).update(tsStr + rawBody).digest('hex');
+    const expected = createHmac('sha256', apiKey).update(rawBody).digest('hex');
     const expBuf = Buffer.from(expected, 'hex');
-    const sigBuf = Buffer.from(receivedHex, 'hex');
+    const sigBuf = Buffer.from(signature, 'hex');
     if (sigBuf.length !== expBuf.length) return false;
     return timingSafeEqual(sigBuf, expBuf);
   } catch {

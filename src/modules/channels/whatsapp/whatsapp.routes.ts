@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { WhatsAppService } from './whatsapp.service.js';
@@ -31,8 +32,75 @@ const webhookPayloadSchema = z.object({
   message_type: z.string().default('text'),
 });
 
+/**
+ * Verify Twilio's X-Twilio-Signature header.
+ * HMAC-SHA1(authToken, url + sorted_params_concat), base64-encoded.
+ */
+function verifyTwilioSignature(authToken: string, url: string, params: Record<string, string>, signature: string): boolean {
+  const sorted = Object.keys(params).sort();
+  const data = url + sorted.map(k => k + params[k]).join('');
+  const expected = createHmac('sha1', authToken).update(data).digest('base64');
+  return expected === signature;
+}
+
 export async function whatsappRoutes(app: FastifyInstance) {
   const service = new WhatsAppService(app);
+
+  /**
+   * POST /webhooks/whatsapp/twilio — inbound WhatsApp messages from Twilio.
+   *
+   * Configure in Twilio Console → Phone Numbers → +15559689713 → Messaging → Webhook:
+   *   https://<your-domain>/webhooks/whatsapp/twilio
+   *   Method: HTTP POST
+   */
+  app.post('/twilio', async (request, reply) => {
+    const { TWILIO_AUTH_TOKEN, TWILIO_ACCOUNT_SID, TWILIO_WHATSAPP_TENANT_ID } = app.env;
+
+    if (!TWILIO_AUTH_TOKEN || !TWILIO_ACCOUNT_SID) {
+      return reply.status(503).send({ error: 'Twilio not configured' });
+    }
+
+    // Verify Twilio signature
+    const sig = request.headers['x-twilio-signature'] as string | undefined;
+    if (sig && app.env.BASE_URL) {
+      const fullUrl = `${app.env.BASE_URL}/webhooks/whatsapp/twilio`;
+      const params = request.body as Record<string, string>;
+      if (!verifyTwilioSignature(TWILIO_AUTH_TOKEN, fullUrl, params, sig)) {
+        app.log.warn('Twilio WhatsApp webhook: invalid signature');
+        return reply.status(403).send({ error: 'Invalid signature' });
+      }
+    }
+
+    const body = request.body as Record<string, string>;
+    const from = body['From']?.replace('whatsapp:', '') ?? '';
+    const messageSid = body['MessageSid'] ?? '';
+    const text = body['Body'] ?? '';
+
+    if (!from || !text) {
+      return reply.status(400).send({ error: 'Missing From or Body' });
+    }
+
+    const tenantId = TWILIO_WHATSAPP_TENANT_ID;
+    if (!tenantId) {
+      app.log.error('Twilio WhatsApp webhook: TWILIO_WHATSAPP_TENANT_ID not configured');
+      return reply.status(503).send({ error: 'WhatsApp intake not configured' });
+    }
+
+    await enqueueMessage(app.queues.messageProcessor, {
+      tenantId,
+      channel: 'whatsapp',
+      channelRef: messageSid,
+      from,
+      content: text,
+      contentType: 'text',
+      rawPayload: body,
+    });
+
+    app.log.info({ from, messageSid, tenantId }, 'Twilio WhatsApp message enqueued');
+
+    // Twilio expects TwiML response (empty is fine — we send outbound separately)
+    return reply.status(200).type('text/xml').send('<Response></Response>');
+  });
 
   app.post('/', async (request, reply) => {
     // 1. Verify shared secret

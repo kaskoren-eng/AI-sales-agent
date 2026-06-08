@@ -19,6 +19,16 @@ export async function tenantRoutes(app: FastifyInstance) {
     return service.list();
   });
 
+  // Get current tenant (from auth context)
+  app.get('/me', async (request) => {
+    return service.getById(request.tenantId);
+  });
+
+  // Regenerate API key for current tenant
+  app.post('/me/api-key', async (request) => {
+    return service.rotateApiKey(request.tenantId);
+  });
+
   // Get tenant by ID
   app.get('/:id', async (request) => {
     const { id } = request.params as { id: string };

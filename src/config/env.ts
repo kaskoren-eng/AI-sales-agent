@@ -48,6 +48,7 @@ const envSchema = z.object({
   TWILIO_ACCOUNT_SID: z.string().min(1).optional(),
   TWILIO_AUTH_TOKEN: z.string().min(1).optional(),
   TWILIO_WHATSAPP_NUMBER: z.string().min(1).optional(),
+  TWILIO_WHATSAPP_TENANT_ID: z.string().uuid().optional(),
 
   // Channels - Voice (Zadarma + Retell AI + Cartesia)
   RETELL_API_KEY: z.string().min(1).optional(),
