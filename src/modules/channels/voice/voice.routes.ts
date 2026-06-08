@@ -37,7 +37,17 @@ export async function voiceRoutes(app: FastifyInstance) {
       }
 
       if (!verifyRetellSignature(rawBody, sig, apiKey)) {
-        app.log.warn('Retell webhook: invalid signature');
+        const match = sig.match(/^v=(\d+),d=([0-9a-f]+)$/i);
+        const tsStr = match?.[1] ?? '';
+        const expWithTs = createHmac('sha256', apiKey).update(tsStr + rawBody).digest('hex');
+        const expBodyOnly = createHmac('sha256', apiKey).update(rawBody).digest('hex');
+        app.log.warn({
+          sigReceived: sig.slice(0, 60),
+          expWithTs: expWithTs.slice(0, 20),
+          expBodyOnly: expBodyOnly.slice(0, 20),
+          bodyStart: rawBody.slice(0, 80),
+          bodyLen: rawBody.length,
+        }, 'Retell webhook: invalid signature');
         return reply.status(401).send({ error: 'Invalid signature' });
       }
     }
