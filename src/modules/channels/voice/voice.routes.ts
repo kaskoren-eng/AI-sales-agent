@@ -37,14 +37,20 @@ export async function voiceRoutes(app: FastifyInstance) {
       }
 
       if (!verifyRetellSignature(rawBody, sig, apiKey)) {
-        const match = sig.match(/^v=(\d+),d=([0-9a-f]+)$/i);
+        const match = sig.match(/^v=(\d+),d=(.+)$/);
         const tsStr = match?.[1] ?? '';
-        const expWithTs = createHmac('sha256', apiKey).update(tsStr + rawBody).digest('hex');
-        const expBodyOnly = createHmac('sha256', apiKey).update(rawBody).digest('hex');
+        const receivedD = match?.[2] ?? '';
+        const expHex = createHmac('sha256', apiKey).update(tsStr + rawBody).digest('hex');
+        const expB64 = createHmac('sha256', apiKey).update(tsStr + rawBody).digest('base64');
+        const expBodyHex = createHmac('sha256', apiKey).update(rawBody).digest('hex');
+        const expBodyB64 = createHmac('sha256', apiKey).update(rawBody).digest('base64');
         app.log.warn({
-          sigReceived: sig.slice(0, 60),
-          expWithTs: expWithTs.slice(0, 20),
-          expBodyOnly: expBodyOnly.slice(0, 20),
+          sigFull: sig,
+          receivedD,
+          expHex: expHex.slice(0, 20),
+          expB64: expB64.slice(0, 20),
+          expBodyHex: expBodyHex.slice(0, 20),
+          expBodyB64: expBodyB64.slice(0, 20),
           bodyStart: rawBody.slice(0, 80),
           bodyLen: rawBody.length,
         }, 'Retell webhook: invalid signature');
@@ -477,22 +483,33 @@ export async function voiceRoutes(app: FastifyInstance) {
  */
 function verifyRetellSignature(rawBody: string, signature: string, apiKey: string): boolean {
   try {
-    // Retell sends: v=<epoch_ms>,d=<hmac_sha256_hex>
-    // Signed content: timestamp + rawBody
-    const match = signature.match(/^v=(\d+),d=([0-9a-f]+)$/i);
+    // Retell sends: v=<epoch_ms>,d=<hmac_value>
+    const match = signature.match(/^v=(\d+),d=(.+)$/);
     if (!match) return false;
 
-    const [, tsStr, receivedHex] = match;
+    const [, tsStr, receivedD] = match;
     const ts = parseInt(tsStr, 10);
 
     // Reject requests older than 5 minutes
     if (Math.abs(Date.now() - ts) > 5 * 60 * 1000) return false;
 
-    const expected = createHmac('sha256', apiKey).update(tsStr + rawBody).digest('hex');
-    const expBuf = Buffer.from(expected, 'utf8');
-    const sigBuf = Buffer.from(receivedHex, 'utf8');
-    if (expBuf.byteLength !== sigBuf.byteLength) return false;
-    return timingSafeEqual(expBuf, sigBuf);
+    const hmacResult = createHmac('sha256', apiKey).update(tsStr + rawBody).digest();
+
+    // Try base64 comparison (Retell d= value may be base64-encoded)
+    const sigBufB64 = Buffer.from(receivedD, 'base64');
+    if (sigBufB64.length === hmacResult.length) {
+      return timingSafeEqual(sigBufB64, hmacResult);
+    }
+
+    // Try hex comparison (d= value as hex string)
+    const expectedHex = hmacResult.toString('hex');
+    const expBuf = Buffer.from(expectedHex, 'utf8');
+    const sigBuf = Buffer.from(receivedD, 'utf8');
+    if (expBuf.byteLength === sigBuf.byteLength) {
+      return timingSafeEqual(expBuf, sigBuf);
+    }
+
+    return false;
   } catch {
     return false;
   }
