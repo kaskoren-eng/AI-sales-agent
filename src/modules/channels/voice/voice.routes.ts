@@ -30,29 +30,27 @@ export async function voiceRoutes(app: FastifyInstance) {
     if (apiKey) {
       const sig = request.headers['x-retell-signature'] as string | undefined;
       const rawBody = (request as any).rawBody as string | undefined;
+      const rawBodyBuf = (request as any).rawBodyBuf as Buffer | undefined;
 
       if (!sig || !rawBody) {
         app.log.warn('Retell webhook: missing signature or raw body');
         return reply.status(401).send({ error: 'Missing signature' });
       }
 
-      if (!verifyRetellSignature(rawBody, sig, apiKey)) {
+      if (!verifyRetellSignature(rawBody, rawBodyBuf, sig, apiKey)) {
         const match = sig.match(/^v=(\d+),d=(.+)$/);
         const tsStr = match?.[1] ?? '';
         const receivedD = match?.[2] ?? '';
-        const expHex = createHmac('sha256', apiKey).update(tsStr + rawBody).digest('hex');
-        const expB64 = createHmac('sha256', apiKey).update(tsStr + rawBody).digest('base64');
-        const expBodyHex = createHmac('sha256', apiKey).update(rawBody).digest('hex');
-        const expBodyB64 = createHmac('sha256', apiKey).update(rawBody).digest('base64');
+        const buf = rawBodyBuf ?? Buffer.from(rawBody, 'utf8');
         app.log.warn({
           sigFull: sig,
           receivedD,
-          expHex: expHex.slice(0, 20),
-          expB64: expB64.slice(0, 20),
-          expBodyHex: expBodyHex.slice(0, 20),
-          expBodyB64: expBodyB64.slice(0, 20),
-          bodyStart: rawBody.slice(0, 80),
-          bodyLen: rawBody.length,
+          expStrHex: createHmac('sha256', apiKey).update(tsStr + rawBody).digest('hex').slice(0, 20),
+          expBufHex: createHmac('sha256', apiKey).update(tsStr).update(buf).digest('hex').slice(0, 20),
+          expBodyStrHex: createHmac('sha256', apiKey).update(rawBody).digest('hex').slice(0, 20),
+          expBodyBufHex: createHmac('sha256', apiKey).update(buf).digest('hex').slice(0, 20),
+          bufLen: buf.length,
+          strLen: rawBody.length,
         }, 'Retell webhook: invalid signature');
         return reply.status(401).send({ error: 'Invalid signature' });
       }
@@ -481,9 +479,9 @@ export async function voiceRoutes(app: FastifyInstance) {
  * Verify Retell webhook signature.
  * Retell signs: HMAC-SHA256(apiKey, rawBody) — signature is plain hex in x-retell-signature header.
  */
-function verifyRetellSignature(rawBody: string, signature: string, apiKey: string): boolean {
+function verifyRetellSignature(rawBody: string, rawBodyBuf: Buffer | undefined, signature: string, apiKey: string): boolean {
   try {
-    // Retell sends: v=<epoch_ms>,d=<hmac_value>
+    // Retell sends: v=<epoch_ms>,d=<hmac_sha256_hex>
     const match = signature.match(/^v=(\d+),d=(.+)$/);
     if (!match) return false;
 
@@ -493,21 +491,18 @@ function verifyRetellSignature(rawBody: string, signature: string, apiKey: strin
     // Reject requests older than 5 minutes
     if (Math.abs(Date.now() - ts) > 5 * 60 * 1000) return false;
 
-    const hmacResult = createHmac('sha256', apiKey).update(tsStr + rawBody).digest();
-
-    // Try base64 comparison (Retell d= value may be base64-encoded)
-    const sigBufB64 = Buffer.from(receivedD, 'base64');
-    if (sigBufB64.length === hmacResult.length) {
-      return timingSafeEqual(sigBufB64, hmacResult);
-    }
-
-    // Try hex comparison (d= value as hex string)
-    const expectedHex = hmacResult.toString('hex');
-    const expBuf = Buffer.from(expectedHex, 'utf8');
     const sigBuf = Buffer.from(receivedD, 'utf8');
-    if (expBuf.byteLength === sigBuf.byteLength) {
-      return timingSafeEqual(expBuf, sigBuf);
-    }
+    const bodyBuf = rawBodyBuf ?? Buffer.from(rawBody, 'utf8');
+
+    // Try: HMAC(ts + rawBodyBuf) — correct approach for multi-byte UTF-8 bodies
+    const h1 = createHmac('sha256', apiKey).update(tsStr).update(bodyBuf).digest('hex');
+    const h1Buf = Buffer.from(h1, 'utf8');
+    if (h1Buf.length === sigBuf.length && timingSafeEqual(h1Buf, sigBuf)) return true;
+
+    // Try: HMAC(ts + rawBody string) — fallback
+    const h2 = createHmac('sha256', apiKey).update(tsStr + rawBody).digest('hex');
+    const h2Buf = Buffer.from(h2, 'utf8');
+    if (h2Buf.length === sigBuf.length && timingSafeEqual(h2Buf, sigBuf)) return true;
 
     return false;
   } catch {

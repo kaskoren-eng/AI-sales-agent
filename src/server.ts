@@ -125,14 +125,18 @@ export async function buildApp(): Promise<FastifyInstance> {
       });
     });
 
-    // Parse JSON and keep the raw string on req.rawBody for signature verification (svix, Monday, etc.)
+    // Parse JSON and keep the raw bytes on req.rawBody for signature verification.
+    // Using Buffer.concat to avoid corrupting multi-byte UTF-8 chars split across chunks.
     webhookScope.addContentTypeParser('application/json', { bodyLimit: 262_144 }, (req, body, done) => {
-      let data = '';
-      body.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+      const chunks: Buffer[] = [];
+      body.on('data', (chunk: Buffer) => { chunks.push(chunk); });
       body.on('end', () => {
         try {
-          (req as any).rawBody = data;
-          done(null, JSON.parse(data));
+          const rawBuf = Buffer.concat(chunks);
+          const rawStr = rawBuf.toString('utf8');
+          (req as any).rawBody = rawStr;
+          (req as any).rawBodyBuf = rawBuf;
+          done(null, JSON.parse(rawStr));
         }
         catch (err) { done(err as Error, undefined); }
       });
