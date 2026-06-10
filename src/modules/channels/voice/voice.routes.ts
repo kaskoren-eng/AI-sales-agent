@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { eq, and } from 'drizzle-orm';
+import OpenAI from 'openai';
 import { VoiceService } from './voice.service.js';
 import { conversations, messages, callLearnings, leads, tenants } from '../../../db/schema/index.js';
 import { enqueueCallAnalysis } from '../../../queues/call-analysis.queue.js';
@@ -178,8 +179,30 @@ export async function voiceRoutes(app: FastifyInstance) {
         } catch { /* malformed — ignore */ }
       }
 
-      // Update conversation status and summary
-      const summary = callAnalysis?.['call_summary'] as string | undefined;
+      // Generate Hebrew summary from transcript using GPT
+      let summary: string | undefined = callAnalysis?.['call_summary'];
+      if (transcriptObject?.length && app.env.OPENAI_API_KEY) {
+        try {
+          const transcriptText = transcriptObject
+            .map(t => `${t['role'] === 'agent' ? 'סוכן' : 'לקוח'}: ${t['content']}`)
+            .join('\n');
+          const oai = new OpenAI({ apiKey: app.env.OPENAI_API_KEY });
+          const completion = await oai.chat.completions.create({
+            model: app.env.AI_MODEL,
+            messages: [
+              {
+                role: 'system',
+                content: 'אתה מסכם שיחות מכירה בעברית. כתוב סיכום קצר (2-3 משפטים) של השיחה הבאה. ציין מה הלקוח צריך, מה הוצע לו, ומה הצעד הבא. כתוב בעברית בלבד.',
+              },
+              { role: 'user', content: transcriptText },
+            ],
+          });
+          summary = completion.choices[0]?.message.content ?? summary;
+        } catch (err) {
+          app.log.warn({ err, callId }, 'Hebrew summary generation failed — using Retell summary');
+        }
+      }
+
       await app.db
         .update(conversations)
         .set({
