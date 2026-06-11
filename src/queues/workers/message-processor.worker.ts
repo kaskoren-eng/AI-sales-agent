@@ -48,8 +48,9 @@ export function createMessageProcessorWorker(deps: WorkerDeps) {
     async (job) => {
       const { tenantId, channel, channelRef, from, content, contentType } = job.data;
 
-      // 1. Find or create lead
-      let lead = await findOrCreateLead(db, tenantId, channel, from);
+      // 1. Find or create lead (track whether it was just created)
+      const { lead: initialLead, isNew: isNewLead } = await findOrCreateLead(db, tenantId, channel, from);
+      let lead = initialLead;
 
       // Skip processing if lead is already in a terminal state
       if (lead.status === 'qualified' || lead.status === 'disqualified') {
@@ -58,6 +59,23 @@ export function createMessageProcessorWorker(deps: WorkerDeps) {
 
       // 2. Find or create conversation
       const conversation = await findOrCreateConversation(db, tenantId, lead.id, channel, channelRef);
+
+      // 3a. New WhatsApp lead — trigger lead-intake flow (reply + call) instead of AI
+      if (isNewLead && channel === 'whatsapp') {
+        await db.insert(messages).values({
+          tenantId,
+          conversationId: conversation.id,
+          direction: 'inbound',
+          role: 'lead',
+          content,
+          contentType,
+        });
+        const triggered = await triggerLeadIntakeFlow(db, flowExecutorQueue, tenantId, lead);
+        if (triggered) {
+          logger?.info({ leadId: lead.id, tenantId }, 'New WhatsApp lead — lead-intake flow triggered');
+          return { leadId: lead.id, conversationId: conversation.id, triggeredFlow: 'lead-intake' };
+        }
+      }
 
       // 3. Store inbound message
       await db.insert(messages).values({
@@ -256,7 +274,7 @@ async function findOrCreateLead(db: Database, tenantId: string, channel: string,
     .where(and(eq(leads.tenantId, tenantId), eq(identifierColumn, from)))
     .limit(1);
 
-  if (existing) return existing;
+  if (existing) return { lead: existing, isNew: false };
 
   const [created] = await db
     .insert(leads)
@@ -268,7 +286,47 @@ async function findOrCreateLead(db: Database, tenantId: string, channel: string,
     })
     .returning();
 
-  return created;
+  return { lead: created, isNew: true };
+}
+
+async function triggerLeadIntakeFlow(
+  db: Database,
+  flowExecutorQueue: Queue,
+  tenantId: string,
+  lead: any,
+): Promise<boolean> {
+  try {
+    const [tenant] = await db
+      .select({ settings: tenants.settings })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+
+    const settings = tenant?.settings as Record<string, any> | null;
+    const rawFlow = settings?.flows?.['lead-intake'];
+    if (!rawFlow) return false;
+
+    const flowParsed = flowDefinitionSchema.safeParse(rawFlow);
+    if (!flowParsed.success || !flowParsed.data.enabled || !flowParsed.data.steps.length) return false;
+
+    const firstStep = flowParsed.data.steps[0];
+    await enqueueFlowStep(
+      flowExecutorQueue,
+      {
+        tenantId,
+        leadId: lead.id,
+        flowName: 'lead-intake',
+        stepIndex: 0,
+        leadPhone: lead.phone ?? '',
+        leadName: lead.name,
+        leadEmail: lead.email,
+      },
+      firstStep.delayMinutes * 60_000,
+    );
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function findOrCreateConversation(
