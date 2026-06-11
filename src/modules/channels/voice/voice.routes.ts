@@ -181,14 +181,16 @@ export async function voiceRoutes(app: FastifyInstance) {
 
       // Generate Hebrew summary from transcript using GPT
       let summary: string | undefined = callAnalysis?.['call_summary'];
-      if (transcriptObject?.length && app.env.OPENAI_API_KEY) {
+      if (transcriptObject?.length) {
+        const openaiKey = app.env.OPENAI_API_KEY;
+        app.log.info({ hasKey: !!openaiKey, callId }, 'Attempting Hebrew summary generation');
         try {
           const transcriptText = transcriptObject
             .map(t => `${t['role'] === 'agent' ? 'סוכן' : 'לקוח'}: ${t['content']}`)
             .join('\n');
-          const oai = new OpenAI({ apiKey: app.env.OPENAI_API_KEY });
+          const oai = new OpenAI({ apiKey: openaiKey! });
           const completion = await oai.chat.completions.create({
-            model: app.env.AI_MODEL,
+            model: app.env.AI_MODEL ?? 'gpt-4o',
             messages: [
               {
                 role: 'system',
@@ -197,7 +199,11 @@ export async function voiceRoutes(app: FastifyInstance) {
               { role: 'user', content: transcriptText },
             ],
           });
-          summary = completion.choices[0]?.message.content ?? summary;
+          const generated = completion.choices[0]?.message.content;
+          if (generated) {
+            summary = generated;
+            app.log.info({ callId }, 'Hebrew summary generated successfully');
+          }
         } catch (err) {
           app.log.warn({ err, callId }, 'Hebrew summary generation failed — using Retell summary');
         }
