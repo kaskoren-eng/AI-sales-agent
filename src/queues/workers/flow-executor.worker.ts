@@ -18,6 +18,7 @@ import { decrypt } from '../../shared/crypto.js';
 import { MondayService } from '../../modules/integrations/monday/monday.service.js';
 import { AirtableService } from '../../modules/integrations/airtable/airtable.service.js';
 import { GoogleCalendarProvider } from '../../modules/scheduling/providers/google-calendar.provider.js';
+import { resolveOperatingHours, getDelayUntilNextActiveSlot } from '../../shared/operating-hours.js';
 
 interface WorkerDeps {
   db: Database;
@@ -90,6 +91,26 @@ export function createFlowExecutorWorker(deps: WorkerDeps) {
       // 2. Get current step
       const step = flow.steps[stepIndex];
       if (!step) return;
+
+      // 3a. Operating-hours guard for make_call steps:
+      //     if outside the allowed window, re-enqueue the same step with the calculated delay.
+      if (step.type === 'make_call') {
+        const opHours = resolveOperatingHours(settings);
+        const delayMs = getDelayUntilNextActiveSlot(new Date(), opHours);
+        if (delayMs > 0) {
+          const minutesUntil = Math.round(delayMs / 60_000);
+          logger?.info(
+            { tenantId, leadId, flowName, stepIndex, minutesUntil },
+            'Flow executor: make_call outside operating hours — rescheduling',
+          );
+          await enqueueFlowStep(
+            flowExecutorQueue,
+            { tenantId, leadId, flowName, stepIndex, leadPhone, leadName, leadEmail, flowContext: job.data.flowContext },
+            delayMs,
+          );
+          return { tenantId, leadId, flowName, stepIndex, action: 'make_call_rescheduled', minutesUntil };
+        }
+      }
 
       // 3. Execute the step — may return context updates (e.g. book_calendar returns meetingLink)
       const ctx: StepContext = { leadPhone, leadName, leadEmail, leadId, tenantId, stepIndex, flowContext: job.data.flowContext };
