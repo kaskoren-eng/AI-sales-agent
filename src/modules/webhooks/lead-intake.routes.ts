@@ -44,7 +44,10 @@ export async function leadIntakeRoutes(app: FastifyInstance) {
 
   // Lead intake (POST)
   app.post('/', async (request, reply) => {
-    const source = (request.headers['x-lead-source'] as string) ?? 'generic';
+    // Auto-detect Meta: they always send x-hub-signature-256; fallback to explicit header or generic
+    const source = request.headers['x-hub-signature-256']
+      ? 'meta'
+      : ((request.headers['x-lead-source'] as string) ?? 'generic');
 
     // 1. Verify signature + resolve tenantId — source-specific
     let tenantId: string;
