@@ -28,29 +28,24 @@ export async function voiceRoutes(app: FastifyInstance) {
   app.post('/retell', async (request, reply) => {
     const apiKey = app.env.RETELL_API_KEY;
 
-    if (apiKey) {
-      const sig = request.headers['x-retell-signature'] as string | undefined;
-      const rawBody = (request as any).rawBody as string | undefined;
-      const rawBodyBuf = (request as any).rawBodyBuf as Buffer | undefined;
+    // Fail closed: this webhook writes call transcripts/summaries to the DB and CRM
+    // and feeds future agent prompts, so an unverified request must never be processed.
+    if (!apiKey) {
+      app.log.error('Retell webhook rejected: RETELL_API_KEY not configured');
+      return reply.status(401).send({ error: 'Webhook not configured' });
+    }
 
-      if (!sig || !rawBody) {
-        app.log.warn('Retell webhook: missing signature or raw body');
-        return reply.status(401).send({ error: 'Missing signature' });
-      }
+    const sig = request.headers['x-retell-signature'] as string | undefined;
+    const rawBody = (request as any).rawBody as string | undefined;
 
-      if (!verifyRetellSignature(rawBody, rawBodyBuf, sig, apiKey)) {
-        // Signature mismatch — log but continue processing (URL is secret, low risk).
-        // TODO: fix once Retell confirms their exact signing format.
-        const match = sig.match(/^v=(\d+),d=(.+)$/);
-        const tsStr = match?.[1] ?? '';
-        const buf = rawBodyBuf ?? Buffer.from(rawBody, 'utf8');
-        app.log.warn({
-          sigFull: sig,
-          expBufHex: createHmac('sha256', apiKey).update(tsStr).update(buf).digest('hex').slice(0, 20),
-          expBodyBufHex: createHmac('sha256', apiKey).update(buf).digest('hex').slice(0, 20),
-          bufLen: buf.length,
-        }, 'Retell webhook: signature mismatch (proceeding anyway)');
-      }
+    if (!sig || !rawBody) {
+      app.log.warn('Retell webhook: missing signature or raw body');
+      return reply.status(401).send({ error: 'Missing signature' });
+    }
+
+    if (!verifyRetellSignature(rawBody, sig, apiKey)) {
+      app.log.warn('Retell webhook: invalid signature');
+      return reply.status(401).send({ error: 'Invalid signature' });
     }
 
     const body = request.body as Record<string, any>;
@@ -283,19 +278,23 @@ export async function voiceRoutes(app: FastifyInstance) {
   app.post('/retell-tools', async (request, reply) => {
     const apiKey = app.env.RETELL_API_KEY;
 
-    if (apiKey) {
-      const sig = request.headers['x-retell-signature'] as string | undefined;
-      const rawBody = (request as any).rawBody as string | undefined;
+    // Fail closed: this tool webhook can book appointments and mutate data.
+    if (!apiKey) {
+      app.log.error('Retell tools webhook rejected: RETELL_API_KEY not configured');
+      return reply.status(401).send({ error: 'Webhook not configured' });
+    }
 
-      if (!sig || !rawBody) {
-        app.log.warn('Retell tools webhook: missing signature or raw body');
-        return reply.status(401).send({ error: 'Missing signature' });
-      }
+    const sig = request.headers['x-retell-signature'] as string | undefined;
+    const rawBody = (request as any).rawBody as string | undefined;
 
-      if (!verifyRetellSignature(rawBody, sig, apiKey)) {
-        app.log.warn('Retell tools webhook: invalid signature');
-        return reply.status(401).send({ error: 'Invalid signature' });
-      }
+    if (!sig || !rawBody) {
+      app.log.warn('Retell tools webhook: missing signature or raw body');
+      return reply.status(401).send({ error: 'Missing signature' });
+    }
+
+    if (!verifyRetellSignature(rawBody, sig, apiKey)) {
+      app.log.warn('Retell tools webhook: invalid signature');
+      return reply.status(401).send({ error: 'Invalid signature' });
     }
 
     const body = request.body as Record<string, any>;
@@ -501,35 +500,33 @@ export async function voiceRoutes(app: FastifyInstance) {
 }
 
 /**
- * Verify Retell webhook signature.
- * Retell signs: HMAC-SHA256(apiKey, rawBody) — signature is plain hex in x-retell-signature header.
+ * Verify a Retell webhook signature.
+ *
+ * Matches the official algorithm in RetellAI/retell-typescript-sdk (src/lib/webhook_auth.ts):
+ *   - Header `x-retell-signature` has the form `v=<epoch_ms>,d=<hmac_sha256_hex>`
+ *   - digest = HMAC-SHA256(apiKey, rawBody + <epoch_ms>) as hex  ← body THEN timestamp
+ *   - reject if the timestamp is more than 5 minutes from now (replay protection)
+ *
+ * NOTE: the earlier implementation hashed `timestamp + body` (wrong order), which never
+ * matched a real Retell request — that is why verification was previously bypassed.
  */
-function verifyRetellSignature(rawBody: string, rawBodyBuf: Buffer | undefined, signature: string, apiKey: string): boolean {
+export function verifyRetellSignature(rawBody: string, signature: string, apiKey: string): boolean {
   try {
-    // Retell sends: v=<epoch_ms>,d=<hmac_sha256_hex>
-    const match = signature.match(/^v=(\d+),d=(.+)$/);
+    const match = /^v=(\d+),d=(.+)$/.exec(signature);
     if (!match) return false;
 
     const [, tsStr, receivedD] = match;
-    const ts = parseInt(tsStr, 10);
+    const ts = Number(tsStr);
 
-    // Reject requests older than 5 minutes
-    if (Math.abs(Date.now() - ts) > 5 * 60 * 1000) return false;
+    // Replay protection: reject requests outside a 5-minute window.
+    if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > 5 * 60 * 1000) return false;
 
-    const sigBuf = Buffer.from(receivedD, 'utf8');
-    const bodyBuf = rawBodyBuf ?? Buffer.from(rawBody, 'utf8');
+    // Retell signs the raw body concatenated with the timestamp.
+    const expected = createHmac('sha256', apiKey).update(rawBody + tsStr, 'utf8').digest('hex');
 
-    // Try: HMAC(ts + rawBodyBuf) — correct approach for multi-byte UTF-8 bodies
-    const h1 = createHmac('sha256', apiKey).update(tsStr).update(bodyBuf).digest('hex');
-    const h1Buf = Buffer.from(h1, 'utf8');
-    if (h1Buf.length === sigBuf.length && timingSafeEqual(h1Buf, sigBuf)) return true;
-
-    // Try: HMAC(ts + rawBody string) — fallback
-    const h2 = createHmac('sha256', apiKey).update(tsStr + rawBody).digest('hex');
-    const h2Buf = Buffer.from(h2, 'utf8');
-    if (h2Buf.length === sigBuf.length && timingSafeEqual(h2Buf, sigBuf)) return true;
-
-    return false;
+    const expBuf = Buffer.from(expected, 'utf8');
+    const gotBuf = Buffer.from(receivedD, 'utf8');
+    return expBuf.length === gotBuf.length && timingSafeEqual(expBuf, gotBuf);
   } catch {
     return false;
   }
