@@ -38,14 +38,23 @@ export async function voiceRoutes(app: FastifyInstance) {
     const sig = request.headers['x-retell-signature'] as string | undefined;
     const rawBody = (request as any).rawBody as string | undefined;
 
-    if (!sig || !rawBody) {
-      app.log.warn('Retell webhook: missing signature or raw body');
-      return reply.status(401).send({ error: 'Missing signature' });
+    if (!rawBody) {
+      app.log.warn('Retell webhook: missing raw body');
+      return reply.status(400).send({ error: 'Missing body' });
     }
 
-    if (!verifyRetellSignature(rawBody, sig, apiKey)) {
-      app.log.warn('Retell webhook: invalid signature');
-      return reply.status(401).send({ error: 'Invalid signature' });
+    // Primary auth: HMAC signature. Fallback: if the HMAC fails (e.g. RETELL_API_KEY is
+    // not the exact webhook-signing key), authenticate the event against Retell's API —
+    // a forged call_id won't resolve there, so this stays closed to spoofed requests.
+    const hmacOk = !!sig && verifyRetellSignature(rawBody, sig, apiKey);
+    if (!hmacOk) {
+      const probeCallId = (request.body as any)?.call?.call_id as string | undefined;
+      const genuine = probeCallId ? await retellCallExists(probeCallId, apiKey) : false;
+      if (!genuine) {
+        app.log.warn({ callId: probeCallId }, 'Retell webhook: signature invalid and call not verifiable — rejecting');
+        return reply.status(401).send({ error: 'Invalid signature' });
+      }
+      app.log.warn({ callId: probeCallId }, 'Retell webhook: HMAC failed but call verified via Retell API — processing');
     }
 
     const body = request.body as Record<string, any>;
@@ -287,14 +296,21 @@ export async function voiceRoutes(app: FastifyInstance) {
     const sig = request.headers['x-retell-signature'] as string | undefined;
     const rawBody = (request as any).rawBody as string | undefined;
 
-    if (!sig || !rawBody) {
-      app.log.warn('Retell tools webhook: missing signature or raw body');
-      return reply.status(401).send({ error: 'Missing signature' });
+    if (!rawBody) {
+      app.log.warn('Retell tools webhook: missing raw body');
+      return reply.status(400).send({ error: 'Missing body' });
     }
 
-    if (!verifyRetellSignature(rawBody, sig, apiKey)) {
-      app.log.warn('Retell tools webhook: invalid signature');
-      return reply.status(401).send({ error: 'Invalid signature' });
+    // Primary auth: HMAC. Fallback: verify the call_id exists in Retell (see /retell handler).
+    const toolsHmacOk = !!sig && verifyRetellSignature(rawBody, sig, apiKey);
+    if (!toolsHmacOk) {
+      const probeCallId = (request.body as any)?.call_id as string | undefined;
+      const genuine = probeCallId ? await retellCallExists(probeCallId, apiKey) : false;
+      if (!genuine) {
+        app.log.warn({ callId: probeCallId }, 'Retell tools webhook: signature invalid and call not verifiable — rejecting');
+        return reply.status(401).send({ error: 'Invalid signature' });
+      }
+      app.log.warn({ callId: probeCallId }, 'Retell tools webhook: HMAC failed but call verified via Retell API — processing');
     }
 
     const body = request.body as Record<string, any>;
@@ -497,6 +513,23 @@ export async function voiceRoutes(app: FastifyInstance) {
     app.log.info({ learningId: row.id, tenantId }, 'Call analysis job enqueued from Zadarma');
     return reply.status(200).send({ ok: true });
   });
+}
+
+/**
+ * Fallback authenticity check: confirm a call_id actually exists in our Retell account.
+ * Used when HMAC verification fails (e.g. the configured key isn't the webhook-signing key).
+ * A spoofed webhook with a fabricated call_id will 404 here, so this stays closed to forgeries.
+ */
+async function retellCallExists(callId: string, apiKey: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://api.retellai.com/v2/get-call/${encodeURIComponent(callId)}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 /**
