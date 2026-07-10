@@ -165,26 +165,6 @@ export async function buildApp(): Promise<FastifyInstance> {
     await apiScope.register(integrationsModule, { prefix: '/api/v1/integrations' });
     await apiScope.register(callsModule, { prefix: '/api/v1/calls' });
     await apiScope.register(settingsModule, { prefix: '/api/v1/settings' });
-
-    // TEMP debug: inspect the dead-letter queue to diagnose silent flow-step failures.
-    apiScope.get('/api/v1/debug/dlq', async () => {
-      const jobs = await app.queues.deadLetter.getJobs(
-        ['waiting', 'active', 'completed', 'failed', 'delayed', 'paused'],
-        0,
-        30,
-      );
-      return {
-        count: jobs.length,
-        jobs: jobs.filter(Boolean).map((j: any) => ({
-          originalQueue: j.data?.originalQueue,
-          originalJobName: j.data?.originalJobName,
-          flow: j.data?.data ? `${j.data.data.flowName}[${j.data.data.stepIndex}]` : undefined,
-          leadEmail: j.data?.data?.leadEmail,
-          failedReason: j.data?.failedReason,
-          failedAt: j.data?.failedAt,
-        })),
-      };
-    });
   });
 
   // --- Dashboard static files (production) ---
