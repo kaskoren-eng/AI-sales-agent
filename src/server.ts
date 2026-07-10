@@ -165,6 +165,12 @@ export async function buildApp(): Promise<FastifyInstance> {
     await apiScope.register(integrationsModule, { prefix: '/api/v1/integrations' });
     await apiScope.register(callsModule, { prefix: '/api/v1/calls' });
     await apiScope.register(settingsModule, { prefix: '/api/v1/settings' });
+
+    // TEMP: one-shot dead-letter queue cleanup (removed after use).
+    apiScope.post('/api/v1/debug/dlq/clear', async () => {
+      await app.queues.deadLetter.obliterate({ force: true });
+      return { ok: true, cleared: true };
+    });
   });
 
   // --- Dashboard static files (production) ---
