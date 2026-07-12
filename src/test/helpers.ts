@@ -56,6 +56,10 @@ export async function buildTestApp(
     JWT_SECRET: 'test-jwt-secret-minimum-16-chars',
     CORS_ORIGINS: 'http://localhost:3001',
     AI_MODEL: 'gpt-5.4',
+    CARTESIA_MODEL: 'sonic-3',
+    OPENAI_REALTIME_MODEL: 'gpt-realtime-whisper',
+    VOICE_LANGUAGE: 'he',
+    VOICE_ENGINE_DEFAULT: 'retell' as const,
     ...opts.envOverrides,
   };
 

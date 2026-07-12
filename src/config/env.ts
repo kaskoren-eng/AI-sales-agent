@@ -50,7 +50,7 @@ const envSchema = z.object({
   TWILIO_WHATSAPP_NUMBER: z.string().min(1).optional(),
   TWILIO_WHATSAPP_TENANT_ID: z.string().uuid().optional(),
 
-  // Channels - Voice (Zadarma + Retell AI + Cartesia)
+  // Channels - Voice (Zadarma + Retell AI) — legacy engine, being replaced. See VOICE_MIGRATION_PLAN.md
   RETELL_API_KEY: z.string().min(1).optional(),
   RETELL_AGENT_ID: z.string().min(1).optional(),
   ZADARMA_API_KEY: z.string().min(1).optional(),
@@ -58,6 +58,24 @@ const envSchema = z.object({
   ZADARMA_PHONE_NUMBER: z.string().min(1).optional(),
   // UUID of the tenant that receives inbound voice calls (enables learning injection)
   VOICE_WEBHOOK_TENANT_ID: z.string().uuid().optional(),
+
+  // Channels - Voice (LiveKit self-built pipeline) — the replacement engine
+  LIVEKIT_URL: z.string().url().optional(),
+  LIVEKIT_API_KEY: z.string().min(1).optional(),
+  LIVEKIT_API_SECRET: z.string().min(1).optional(),
+  // Cartesia — Hebrew TTS. Valid models: sonic, sonic-2, sonic-3, sonic-lite, sonic-turbo (there is no sonic-4)
+  CARTESIA_API_KEY: z.string().min(1).optional(),
+  CARTESIA_MODEL: z.string().default('sonic-3'),
+  CARTESIA_VOICE_ID_PRIMARY: z.string().min(1).optional(),
+  // Backup voices — A/B candidates for the Phase 2 voice selection
+  CARTESIA_VOICE_ID_SECONDARY: z.string().min(1).optional(),
+  CARTESIA_VOICE_ID_TERTIARY: z.string().min(1).optional(),
+  // OpenAI streaming STT — reuses OPENAI_API_KEY below
+  OPENAI_REALTIME_MODEL: z.string().default('gpt-realtime-whisper'),
+  // Agent spoken language (ISO 639-1) — drives both STT and TTS
+  VOICE_LANGUAGE: z.string().default('he'),
+  // Default engine for tenants with no explicit tenants.settings.voice_engine override
+  VOICE_ENGINE_DEFAULT: z.enum(['retell', 'livekit']).default('retell'),
 
   // Scheduling (Google Calendar) — uses a service account; share the target calendar with the service account email
   GOOGLE_CALENDAR_ID: z.string().min(1).optional(),

@@ -42,6 +42,10 @@ async function buildAuthTestApp(db: ReturnType<typeof createMockDb>) {
     JWT_SECRET: 'test-jwt-secret-minimum-16-chars',
     CORS_ORIGINS: 'http://localhost:3001',
     AI_MODEL: 'gemini-2.5-flash',
+    CARTESIA_MODEL: 'sonic-3',
+    OPENAI_REALTIME_MODEL: 'gpt-realtime-whisper',
+    VOICE_LANGUAGE: 'he',
+    VOICE_ENGINE_DEFAULT: 'retell' as const,
   };
 
   const app = Fastify({ logger: false });

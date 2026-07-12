@@ -11,6 +11,10 @@
     "db:migrate": "tsx ./node_modules/drizzle-kit/bin.cjs migrate",
     "db:studio": "tsx ./node_modules/drizzle-kit/bin.cjs studio",
     "test": "vitest",
+    "voice:download": "livekit-agents download-files",
+    "voice:console": "tsx --env-file=.env src/modules/channels/voice-livekit/agent.ts console",
+    "voice:dev": "tsx --env-file=.env src/modules/channels/voice-livekit/agent.ts dev",
+    "voice:start": "node dist/modules/channels/voice-livekit/agent.js start",
     "screenshot": "node scripts/screenshot.mjs",
     "screenshot:dev": "cd dashboard && npm run dev &amp; sleep 4 &amp;&amp; node ../scripts/screenshot.mjs"
   },
@@ -25,6 +29,12 @@
     "@fastify/jwt": "^9.0.0",
     "@fastify/rate-limit": "^10.2.0",
     "@fastify/static": "^9.1.3",
+    "@livekit/agents": "^1.5.1",
+    "@livekit/agents-plugin-cartesia": "^1.5.1",
+    "@livekit/agents-plugin-livekit": "^1.5.1",
+    "@livekit/agents-plugin-openai": "^1.5.1",
+    "@livekit/agents-plugin-silero": "^1.5.1",
+    "@livekit/rtc-node": "^0.13.31",
     "@sentry/node": "^10.51.0",
     "bullmq": "^5.30.0",
     "dotenv": "^17.4.1",
@@ -37,7 +47,7 @@
     "papaparse": "^5.4.0",
     "pg": "^8.13.0",
     "resend": "^4.1.0",
-    "zod": "^3.24.0"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
