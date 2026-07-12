@@ -23,6 +23,12 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
       language: env.VOICE_LANGUAGE,
       useRealtime: true,
       vad,
+      // semantic_vad judges "has the caller finished?" from meaning rather than from silence,
+      // so it works in Hebrew — unlike LiveKit's turn detector, which has no Hebrew model.
+      // Silence-timer endpointing measured 1227-2506ms; this is the lever against that.
+      // `eagerness: 'high'` = answer sooner. If it starts cutting callers off mid-sentence,
+      // step down to 'medium' / 'low' — that is the speed-vs-patience dial.
+      turnDetection: { type: 'semantic_vad', eagerness: 'high' },
     }),
     llm: new openai.LLM({ model: env.AI_MODEL }),
     tts: new cartesia.TTS({
@@ -34,23 +40,23 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
       voice: env.CARTESIA_VOICE_ID_PRIMARY,
       language: env.VOICE_LANGUAGE,
     }),
-    // PHASE 2 — END-OF-TURN IS THE BOTTLENECK.
+    turnHandling: {
+      // Take end-of-turn from the STT's semantic_vad (above), NOT from a silence timer.
+      // This half is essential: left unset, the session auto-selects 'vad' and the
+      // semantic_vad signal is computed and then ignored.
+      turnDetection: 'stt',
+    },
+    // Silero VAD only hears speech *energy*, so it cannot tell "thinking mid-sentence" from
+    // "finished". It stays for barge-in detection, but no longer decides turns.
     //
-    // Measured on the first live Hebrew session: endOfUtteranceDelayMs was 1330-2506ms,
-    // against a 300ms budget. It is over half of total perceived latency and on its own
-    // breaks the "no dead air > 1.2s" criterion. Silero VAD only hears speech *energy*, so
-    // end-of-turn falls back to a silence timer.
+    // DO NOT reach for @livekit/agents-plugin-livekit's MultilingualModel as the Hebrew fix:
+    // its languages.json lists de/en/es/fr/hi/id/it/ja/ko/nl/pt/ru/tr/zh — THERE IS NO HEBREW.
+    // It stays in package.json as a valid option for a future English-speaking tenant only.
     //
-    // DO NOT reach for @livekit/agents-plugin-livekit's MultilingualModel: its languages.json
-    // lists de/en/es/fr/hi/id/it/ja/ko/nl/pt/ru/tr/zh — THERE IS NO HEBREW. It is installed
-    // and is fine for a future English-speaking tenant, but it cannot help our primary market.
-    //
-    // The Hebrew-capable options, in order of expected payoff:
-    //   1. OpenAI semantic_vad — predicts end-of-turn from meaning, not from a per-language
-    //      model, so Hebrew works. Pass to openai.STT above:
-    //        turnDetection: { type: 'semantic_vad', eagerness: 'high' }
-    //   2. Tighten the silence timer: turnHandling.endpointing minDelay/maxDelay
-    //      (defaults are 500/3000ms).
+    // Remaining Phase 2 levers, in expected order of payoff:
+    //   - LLM ttft ~740ms vs 300ms budget: prompt caching, a smaller model, or preemptive
+    //     generation (turnHandling.preemptiveGeneration).
+    //   - TTS ttfb ~390ms vs 100ms budget: A/B `sonic-turbo`, Cartesia's low-latency model.
     // Measure before and after — do not tune blind.
   };
 }
