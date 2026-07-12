@@ -40,28 +40,33 @@ export default defineAgent({
     const vad = ctx.proc.userData.vad as silero.VAD;
     const session = new voice.AgentSession(buildSessionComponents(env, vad));
 
+    // Per-turn latency baseline. LiveKit already measures each stage; we just surface it.
+    // Wall-clock timestamps are useless here — the gap between turns is the human thinking,
+    // not the pipeline working. These are the numbers the Phase 2 budget is written against:
+    //   endOfUtteranceDelayMs — how long we waited before deciding the caller had finished
+    //   ttftMs                — LLM time to first token
+    //   ttfbMs                — TTS time to first audio byte
+    session.on(voice.AgentSessionEventTypes.MetricsCollected, (ev) => {
+      const m = ev.metrics as Record<string, unknown>;
+      const stage = String(m.type ?? 'unknown');
+      const timings = (['endOfUtteranceDelayMs', 'ttftMs', 'ttfbMs', 'durationMs'] as const)
+        .filter((k) => typeof m[k] === 'number')
+        .map((k) => `${k}=${Math.round(m[k] as number)}`);
+      if (timings.length > 0) {
+        ctx.proc.userData.lastMetricsAt = Date.now();
+        console.log(`latency ${stage} ${timings.join(' ')}`);
+      }
+    });
+
     await session.start({
       agent: new voice.Agent({ instructions: SYSTEM_PROMPT_HE }),
       room: ctx.room,
     });
-    console.log('agent_ready', Date.now());
 
     // Speak the greeting verbatim rather than letting the LLM improvise one: deterministic
     // wording, and no LLM round-trip before the caller hears anything.
     // allowInterruptions:false so a cough or line noise doesn't swallow the greeting.
     await session.say(GREETING, { allowInterruptions: false }).waitForPlayout();
-
-    // Baseline timing only — Phase 2 replaces this with per-stage instrumentation
-    // (VAD / STT-first-token / LLM-first-token / TTS-first-audio).
-    // Attached AFTER the greeting on purpose: the greeting is a canned say(), not an LLM turn,
-    // so listening earlier would timestamp the wrong thing.
-    let firstReplyLogged = false;
-    session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) => {
-      if (!firstReplyLogged && ev.newState === 'speaking') {
-        firstReplyLogged = true;
-        console.log('first_reply', Date.now());
-      }
-    });
   },
 });
 

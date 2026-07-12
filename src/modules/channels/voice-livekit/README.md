@@ -35,15 +35,27 @@ One-time, after `npm install`:
 npm run voice:download     # fetches the Silero VAD + turn-detector model weights
 ```
 
-Then either:
+Then:
 
 ```bash
-npm run voice:console      # talk to it through your laptop mic, in the terminal. Fastest check.
-npm run voice:dev          # register with LiveKit Cloud, then test in the browser Agent Console
+npm run voice:dev          # registers with LiveKit Cloud and waits for a call
 ```
 
-For `voice:dev`, leave it running and open <https://cloud.livekit.io> → your project → **Agents** →
-**Launch Console** → **Start a session**.
+Leave it running and open <https://cloud.livekit.io> → your project → **Agents** → **Launch
+Console** → **Start a session**. You talk through the browser.
+
+> **There is no terminal-mic mode in the Node SDK.** The Python SDK's standalone `console`
+> command does not exist here — Node's `console` subcommand means "attach to a local TCP broker"
+> and requires `--connect-addr`. The browser Agent Console above is the local test path.
+
+Each turn prints its real latency, which is what the Phase 2 budget (P95 < 800ms) is measured
+against — `endOfUtteranceDelayMs` (how long before we judged the caller finished), `ttftMs`
+(LLM first token), `ttfbMs` (TTS first audio):
+
+```
+latency llm_metrics ttftMs=412 durationMs=1180
+latency tts_metrics ttfbMs=96 durationMs=740
+```
 
 ## Required env
 
