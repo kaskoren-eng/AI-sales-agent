@@ -34,10 +34,23 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
       voice: env.CARTESIA_VOICE_ID_PRIMARY,
       language: env.VOICE_LANGUAGE,
     }),
-    // PHASE 2: Silero VAD only detects speech energy, so end-of-turn is decided by a silence
-    // timer — which cuts Hebrew speakers off mid-clause. If that happens, add:
-    //   turnHandling: { turnDetection: new livekit.turnDetector.MultilingualModel() }
-    // from @livekit/agents-plugin-livekit, which reads the transcript to judge whether the
-    // sentence actually ended. The package is installed and its weights are already downloaded.
+    // PHASE 2 — END-OF-TURN IS THE BOTTLENECK.
+    //
+    // Measured on the first live Hebrew session: endOfUtteranceDelayMs was 1330-2506ms,
+    // against a 300ms budget. It is over half of total perceived latency and on its own
+    // breaks the "no dead air > 1.2s" criterion. Silero VAD only hears speech *energy*, so
+    // end-of-turn falls back to a silence timer.
+    //
+    // DO NOT reach for @livekit/agents-plugin-livekit's MultilingualModel: its languages.json
+    // lists de/en/es/fr/hi/id/it/ja/ko/nl/pt/ru/tr/zh — THERE IS NO HEBREW. It is installed
+    // and is fine for a future English-speaking tenant, but it cannot help our primary market.
+    //
+    // The Hebrew-capable options, in order of expected payoff:
+    //   1. OpenAI semantic_vad — predicts end-of-turn from meaning, not from a per-language
+    //      model, so Hebrew works. Pass to openai.STT above:
+    //        turnDetection: { type: 'semantic_vad', eagerness: 'high' }
+    //   2. Tighten the silence timer: turnHandling.endpointing minDelay/maxDelay
+    //      (defaults are 500/3000ms).
+    // Measure before and after — do not tune blind.
   };
 }

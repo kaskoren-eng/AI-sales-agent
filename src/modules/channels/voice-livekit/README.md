@@ -67,7 +67,7 @@ latency tts_metrics ttfbMs=96 durationMs=740
 | Symptom | Cause | Fix |
 |---|---|---|
 | Greeting sounds English-accented | `CARTESIA_VOICE_ID_PRIMARY` is not a Hebrew voice | Pick one at <https://play.cartesia.ai/voices> (filter: Hebrew), or try `CARTESIA_VOICE_ID_SECONDARY` |
-| Agent talks over you mid-sentence | Silence-timer end-of-turn is too eager for Hebrew | Enable the multilingual turn detector — see the PHASE 2 comment in `agent.config.ts` |
+| Long pause before the agent answers | Silence-timer end-of-turn (measured 1.3–2.5s). **The multilingual turn detector does NOT support Hebrew** — see the PHASE 2 comment in `agent.config.ts` for what does | Try OpenAI `semantic_vad` |
 | Agent replies to the wrong thing | Hebrew transcription is off | Set `OPENAI_REALTIME_MODEL=whisper-1` (slower, non-streaming, but proven) |
 | LLM errors on the first turn | `gpt-5.4` may need the Responses API | Swap `openai.LLM` → `openai.responses.LLM` in `agent.config.ts` |
 
