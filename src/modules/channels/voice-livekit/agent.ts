@@ -5,6 +5,7 @@ import {
   WorkerOptions,
   cli,
   defineAgent,
+  llm,
   voice,
 } from '@livekit/agents';
 import * as silero from '@livekit/agents-plugin-silero';
@@ -29,6 +30,28 @@ const env = loadEnv();
 
 // Lives with the prompt, not here: the greeting and the prompt must agree on the agent's gender,
 // and v1 had them disagree — a female voice opening with a masculine verb ("יכול", not "יכולה").
+
+/**
+ * The agent, with the conversation history trimmed before every LLM call.
+ *
+ * Without this, the ENTIRE call is re-sent to the LLM on every single turn: a 4-minute call ended
+ * at 10,249 input tokens, and it grows QUADRATICALLY with call length.
+ *
+ * MEASURED, and worth being honest about: this is a COST saving, not a latency one.
+ *   untrimmed: 3836 input tokens, LLM ttft 1094ms
+ *   16 items:  3055 input tokens, LLM ttft 1092ms
+ * gpt-5.4's ~1.1s to first token is fixed overhead, not a function of input size at this scale.
+ *
+ * `truncate()` mutates in place and always keeps the system prompt, so the agent never loses who
+ * she is — only the far end of the conversation. Trade-off: she forgets what was said more than
+ * ~8 exchanges ago. For a booking call that is a non-issue; if it ever bites (a caller
+ * back-referencing something from five minutes earlier), raise VOICE_MAX_HISTORY_ITEMS.
+ */
+class ClickScalesAgent extends voice.Agent {
+  async onUserTurnCompleted(chatCtx: llm.ChatContext, _newMessage: llm.ChatMessage): Promise<void> {
+    chatCtx.truncate(env.VOICE_MAX_HISTORY_ITEMS);
+  }
+}
 
 export default defineAgent({
   // Runs once when the worker boots, not per call — so the first caller doesn't pay for the
@@ -92,7 +115,7 @@ export default defineAgent({
     });
 
     await session.start({
-      agent: new voice.Agent({ instructions: SYSTEM_PROMPT_HE }),
+      agent: new ClickScalesAgent({ instructions: SYSTEM_PROMPT_HE }),
       room: ctx.room,
       inputOptions: {
         // Clean the caller's audio BEFORE the VAD sees it. This is the missing piece behind the

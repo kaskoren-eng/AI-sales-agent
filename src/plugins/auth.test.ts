@@ -54,6 +54,7 @@ async function buildAuthTestApp(db: ReturnType<typeof createMockDb>) {
     VOICE_VAD_ACTIVATION_THRESHOLD: 0.5,
     VOICE_TTS_SPEED: 1,
     VOICE_TTS_VOLUME: 1,
+    VOICE_MAX_HISTORY_ITEMS: 16,
   };
 
   const app = Fastify({ logger: false });

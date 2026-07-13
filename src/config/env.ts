@@ -116,6 +116,19 @@ const envSchema = z.object({
   // A rejected combination makes the agent go completely silent mid-call. If you change the
   // model, re-check the effort value.
   VOICE_LLM_MODEL: z.string().optional(),
+  // How many chat items (user + agent messages) to send the LLM. The system prompt is always kept.
+  //
+  // This is a COST lever, NOT a latency one — measured, and the latency premise was wrong:
+  //   untrimmed:  3836 input tokens, LLM ttft 1094ms
+  //   16 items:   3055 input tokens, LLM ttft 1092ms   (-20% tokens, 2ms faster = noise)
+  // gpt-5.4's ~1.1s to first token is fixed overhead (network + queueing), not a function of
+  // input size at these volumes. Do not expect trimming to make the agent feel faster.
+  //
+  // It still earns its keep: without it the whole call is re-sent every turn, so input tokens grow
+  // QUADRATICALLY with call length (a 4-minute call already hit 10,249). Trade-off: she forgets
+  // anything older than ~8 exchanges. Raise this if a caller back-references something and she has
+  // lost it.
+  VOICE_MAX_HISTORY_ITEMS: z.coerce.number().int().positive().default(16),
   // Cartesia speech rate. THE lever for phone intelligibility: a phone line is 8kHz, which
   // destroys the high frequencies that carry consonants, so a fast delivery turns to mush.
   // Slowing down gives the listener's ear time to reconstruct them.
