@@ -1,0 +1,42 @@
+{
+  "greeting-01": {
+    "text": "שלום, מדבר יובל",
+    "category": "greeting"
+  },
+  "greeting-02": {
+    "text": "היי, זה יובל מדבר",
+    "category": "greeting"
+  },
+  "greeting-03": {
+    "text": "אהלן, שמי יובל",
+    "category": "greeting"
+  },
+  "confirm-01": {
+    "text": "כן",
+    "category": "confirmation"
+  },
+  "confirm-02": {
+    "text": "בסדר",
+    "category": "confirmation"
+  },
+  "confirm-03": {
+    "text": "אוקיי מחר בשלוש",
+    "category": "confirmation"
+  },
+  "business-01": {
+    "text": "יש לי חנות אונליין שמוכרת מוצרי טיפוח",
+    "category": "business"
+  },
+  "business-02": {
+    "text": "אני מוציא בערך עשרים אלף בחודש על שיווק",
+    "category": "business"
+  },
+  "business-03": {
+    "text": "קוראים לי קורן ואני מנהל את קליקסקיילס",
+    "category": "business"
+  },
+  "business-04": {
+    "text": "המספר שלי הוא אפס חמש שתיים, שלוש ארבע חמש, שש שבע שמונה תשע",
+    "category": "business"
+  }
+}
