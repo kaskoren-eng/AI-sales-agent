@@ -192,6 +192,88 @@ woman. Say all three explicitly, and test against the live model, not just the p
 
 ---
 
+## 9. Cartesia's Hebrew TTS is NOT deterministic, and sometimes stutters
+
+**Found while building the STT corpus. This is a live-call risk, not a test-only curiosity.**
+
+The same sentence, synthesized four times through `sonic-3`, came back:
+
+```
+2.9s   4.1s   4.5s   7.1s
+```
+
+The long takes contain the phrase spoken **more than once**, separated by silence. One take of a
+3-second sentence came back at **15.3 seconds** — five separate speech bursts.
+
+**What this means on a live call:** the agent may occasionally stutter, repeat itself, or pause
+mid-sentence at a real caller. It is a plausible explanation for replies that "ran 3–5 seconds"
+when the prompt caps her at two sentences.
+
+**Mitigated in the corpus** (`scripts/generate-stt-test-corpus.ts` validates every take and rejects
+any with a >500ms internal silence gap). **NOT mitigated on the live path.** Worth measuring: log
+TTS output duration per turn against character count and see how often the ratio is absurd.
+
+---
+
+## 10. STT: Soniox beats gpt-realtime-whisper decisively on Hebrew
+
+Measured 2026-07-13, `npm run stt:ab`, 10 Hebrew utterances x 3 channel conditions x 2 engines.
+On the **noisy** condition (band-limited + line noise — the closest thing to a phone call):
+
+| | gpt-realtime-whisper | Soniox stt-rt-v4 |
+|---|---|---|
+| Semantic WER | 34.9% | **4.3%** |
+| Greetings | 72.2% | **0.0%** |
+| End-of-turn (clean/phone) | ~1270ms | **~780ms** |
+| Cost | $0.017/min | **$0.002/min** (8.5x cheaper) |
+
+**The one that matters for Phase 4** — a phone number spoken aloud in Hebrew:
+
+- OpenAI heard **"עסק"** (business) where the caller said **"אפס"** (zero). *The leading zero of the
+  mobile number is gone.* The number is unusable.
+- Soniox returned **`052-345-6789`**. Perfect.
+
+**Soniox also solves §1 and §6:** it accepts biasing terms (`context.terms`) on a STREAMING
+connection. The whole "hybrid STT" workaround — swap to REST `whisper-1` while capturing a
+name/phone/email and eat ~1s per turn — exists ONLY because `gpt-realtime-whisper` rejects `prompt`.
+With Soniox, **that workaround is deleted rather than built.**
+
+### Two traps that nearly produced a confident, completely wrong answer
+
+**(a) Raw WER said the OPPOSITE of the truth.** Soniox does inverse text normalisation — it writes
+spoken numbers as digits. Raw WER scored its *perfect* `052-345-6789` as **76.9% wrong** for not
+writing ten Hebrew words, and scored OpenAI's mangled version as 15.4%. Judging engines on
+*formatting* rather than *meaning* would have made us reject the better engine because of a feature
+we actively want. Score with `semanticErrorRates()`, which canonicalises numbers on both sides.
+
+**(b) Sliced audio silently zeroed the OpenAI arm.** `pcm.subarray()` returns a VIEW whose `.buffer`
+is the whole file; LiveKit's OpenAI plugin reads `item.data.buffer` **without honoring
+byteOffset/byteLength**, so it transmits the entire audio file on every 20ms frame. OpenAI receives
+nonsense, never detects speech, and returns **nothing** — no error, no log. That reads as 100% WER
+and hands Soniox a landslide that is purely a harness bug. **Always copy frames** (`new
+Int16Array(view)`) before handing audio to a LiveKit STT plugin. The Soniox plugin gets this right;
+the OpenAI one does not.
+
+**(c) `VADStream.endInput()` always throws** — it closes a writable while a writer holds the lock
+(`ERR_INVALID_STATE: WritableStream is locked`). A live call never hits it because the caller's
+audio never ends; every finite test buffer does. Measure end-of-turn by appending trailing silence
+**matched to the channel** and letting the engine decide, which is what happens on a real call.
+
+### Not yet settled
+
+- **End-of-turn under noise.** Soniox wins by ~500ms on clean and phone-band audio, but on the
+  *noisy* condition it measured 1218ms vs OpenAI's 1139ms — it got *worse* with noise. That may be
+  an artefact of synthetic white noise rather than real line noise. **Shadow mode on real callers
+  settles this**, and it is the one number that decides whether `turnDetection: 'stt'` is worth it.
+- **Soniox transliterates the brand.** It returned "ClickScale" (English) for "קליקסקיילס", because
+  `VOICE_STT_PROMPT` lists both spellings and `languageHintsStrict` is false. Drop the English
+  variants from the biasing terms.
+- **n is small** (10 utterances/condition) and both engines are non-deterministic; category cells
+  moved several points between two runs of identical config. Treat the direction as solid and the
+  decimals as noise.
+
+---
+
 ## Realistic latency budget for Hebrew
 
 | Stage | Measured | English guides assume |
