@@ -37,6 +37,7 @@
     "@livekit/agents-plugin-livekit": "^1.5.1",
     "@livekit/agents-plugin-openai": "^1.5.1",
     "@livekit/agents-plugin-silero": "^1.5.1",
+    "@livekit/noise-cancellation-node": "^0.1.10",
     "@livekit/rtc-node": "^0.13.31",
     "@sentry/node": "^10.51.0",
     "bullmq": "^5.30.0",

@@ -8,6 +8,7 @@ import {
   voice,
 } from '@livekit/agents';
 import * as silero from '@livekit/agents-plugin-silero';
+import { TelephonyBackgroundVoiceCancellation } from '@livekit/noise-cancellation-node';
 import { loadEnv } from '../../../config/env.js';
 import { buildSessionComponents } from './agent.config.js';
 import { GREETING_HE, SYSTEM_PROMPT_HE } from './prompts/system-prompt.he.js';
@@ -93,6 +94,22 @@ export default defineAgent({
     await session.start({
       agent: new voice.Agent({ instructions: SYSTEM_PROMPT_HE }),
       room: ctx.room,
+      inputOptions: {
+        // Clean the caller's audio BEFORE the VAD sees it. This is the missing piece behind the
+        // end-of-turn problem: Silero decides "still speaking" from audio ENERGY, and a phone line
+        // is never digitally silent — hiss and comfort noise sit above its threshold, so the
+        // silence timer never fires. Measured: end-of-turn 258ms against the synthetic caller
+        // (which sends TRUE digital silence) vs ~950ms on a real phone, with identical config.
+        //
+        // Krisp on the SIP trunk (krispEnabled) was already on and did NOT fix this — that is
+        // server-side. This is the agent-side filter, and the *Telephony* variant is tuned for
+        // exactly our case: narrowband 8kHz audio with line noise.
+        //
+        // If this works, the 250/200ms endpointing we already configured finally takes effect and
+        // ~700ms comes off every turn. If it doesn't, end-of-turn needs a Hebrew EOT model, which
+        // nobody sells.
+        noiseCancellation: TelephonyBackgroundVoiceCancellation(),
+      },
     });
 
     // Speak the greeting verbatim rather than letting the LLM improvise one: deterministic
