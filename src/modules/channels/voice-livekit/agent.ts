@@ -45,6 +45,11 @@ export default defineAgent({
     const vad = ctx.proc.userData.vad as silero.VAD;
     const session = new voice.AgentSession(buildSessionComponents(env, vad));
 
+    // Connect FIRST. waitForParticipant() throws "room is not connected" otherwise — you cannot
+    // ask who is on the call before picking up the phone. (session.start() below also connects,
+    // but it does so too late for this.)
+    await ctx.connect();
+
     // Who is calling? For a phone call, LiveKit puts the caller's number on the SIP
     // participant's attributes. For a browser session (the Agent Console, the synthetic
     // caller) these are simply absent — hence `?? null` rather than a throw.
