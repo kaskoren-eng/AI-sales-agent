@@ -45,6 +45,14 @@ export default defineAgent({
     const vad = ctx.proc.userData.vad as silero.VAD;
     const session = new voice.AgentSession(buildSessionComponents(env, vad));
 
+    // Who is calling? For a phone call, LiveKit puts the caller's number on the SIP
+    // participant's attributes. For a browser session (the Agent Console, the synthetic
+    // caller) these are simply absent — hence `?? null` rather than a throw.
+    // PHASE 4 will use callerPhone to look up the lead in the DB and load their history.
+    const participant = await ctx.waitForParticipant();
+    const caller = readSipCaller(participant.attributes);
+    console.log('call_started', JSON.stringify({ room: ctx.room.name, ...caller }));
+
     // Per-turn latency baseline. LiveKit already measures each stage; we just surface it.
     // Wall-clock timestamps are useless here — the gap between turns is the human thinking,
     // not the pipeline working. These are the numbers the Phase 2 budget is written against:
@@ -74,5 +82,27 @@ export default defineAgent({
     await session.say(GREETING, { allowInterruptions: false }).waitForPlayout();
   },
 });
+
+/**
+ * Pulls the caller's details off a SIP participant's attributes.
+ *
+ * LiveKit sets `sip.phoneNumber` (who called), `sip.trunkPhoneNumber` (the number they called —
+ * ours), and `sip.callID` on participants that arrive over the phone. A participant that joined
+ * from a browser has none of these, so every field is nullable — do not assume a phone call.
+ */
+function readSipCaller(attributes: Record<string, string>): {
+  callerPhone: string | null;
+  calledNumber: string | null;
+  sipCallId: string | null;
+  isPhoneCall: boolean;
+} {
+  const callerPhone = attributes['sip.phoneNumber'] ?? null;
+  return {
+    callerPhone,
+    calledNumber: attributes['sip.trunkPhoneNumber'] ?? null,
+    sipCallId: attributes['sip.callID'] ?? null,
+    isPhoneCall: callerPhone !== null,
+  };
+}
 
 cli.runApp(new WorkerOptions({ agent: fileURLToPath(import.meta.url) }));

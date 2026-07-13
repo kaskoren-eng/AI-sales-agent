@@ -1,0 +1,8 @@
+{
+  "trunk": {
+    "name": "zadarma-inbound",
+    "numbers": ["+972555070922"],
+    "allowedAddresses": ["185.45.152.0/22"],
+    "krispEnabled": true
+  }
+}

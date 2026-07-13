@@ -26,6 +26,7 @@ import { createCallAnalysisWorker } from './queues/workers/call-analysis.worker.
 import { WhatsAppService } from './modules/channels/whatsapp/whatsapp.service.js';
 import { EmailService } from './modules/channels/email/email.service.js';
 import { VoiceService } from './modules/channels/voice/voice.service.js';
+import { LiveKitVoiceService } from './modules/channels/voice-livekit/voice-livekit.service.js';
 
 // Modules
 import leadsModule from './modules/leads/index.js';
@@ -195,6 +196,16 @@ export async function buildApp(): Promise<FastifyInstance> {
   const emailService = new EmailService(app);
   const voiceService = new VoiceService(app);
 
+  // The LiveKit dialer, used only by tenants whose settings.voice_engine is 'livekit'.
+  // Constructing it throws when LiveKit isn't configured, so stay undefined in that case and let
+  // the flow executor fall back to Retell rather than taking the whole app down at boot.
+  let voiceLivekitService: LiveKitVoiceService | undefined;
+  try {
+    voiceLivekitService = new LiveKitVoiceService(env);
+  } catch {
+    app.log.info('LiveKit voice not configured — outbound calls will use Retell');
+  }
+
   const outboundSenderWorker = createOutboundSenderWorker({
     db: app.db,
     redis: app.redis,
@@ -212,6 +223,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     deadLetterQueue: app.queues.deadLetter,
     whatsapp: whatsappService,
     voice: voiceService,
+    voiceLivekit: voiceLivekitService,
     email: emailService,
     logger: app.log,
   });

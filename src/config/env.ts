@@ -83,6 +83,9 @@ const envSchema = z.object({
   VOICE_ENDPOINTING_MAX_DELAY_MS: z.coerce.number().int().positive().default(3000),
   // Default engine for tenants with no explicit tenants.settings.voice_engine override
   VOICE_ENGINE_DEFAULT: z.enum(['retell', 'livekit']).default('retell'),
+  // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
+  // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
+  LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),
 
   // Scheduling (Google Calendar) — uses a service account; share the target calendar with the service account email
   GOOGLE_CALENDAR_ID: z.string().min(1).optional(),
