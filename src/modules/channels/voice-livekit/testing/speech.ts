@@ -32,11 +32,24 @@ export function cartesiaOptions(env: Env): {
   model: string;
   voice: string | undefined;
   language?: string;
+  speed: number;
+  volume: number;
 } {
   const model = env.CARTESIA_MODEL;
-  const opts: { model: string; voice: string | undefined; language?: string } = {
+  const opts: {
+    model: string;
+    voice: string | undefined;
+    language?: string;
+    speed: number;
+    volume: number;
+  } = {
     model,
     voice: env.CARTESIA_VOICE_ID_PRIMARY,
+    // Intelligibility levers for the 8kHz phone line, not cosmetics. Narrowband strips the high
+    // frequencies that carry consonants; slowing down and speaking up are what make Hebrew
+    // legible down a phone. Judge them on the -phone samples from `npm run voice:ab`.
+    speed: env.VOICE_TTS_SPEED,
+    volume: env.VOICE_TTS_VOLUME,
   };
   if (MODELS_ACCEPTING_LANGUAGE.has(model)) {
     opts.language = env.VOICE_LANGUAGE;

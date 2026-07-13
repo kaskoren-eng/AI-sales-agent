@@ -30,7 +30,19 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
       // ignoring the provided turnDetection". Measured with the synthetic caller: identical
       // end-of-utterance delay with and without it. End-of-turn is tuned below instead.
     }),
-    llm: new openai.LLM({ model: env.AI_MODEL }),
+    // Voice gets its own model + reasoning budget. gpt-5.x are reasoning models: measured ~1030ms
+    // to first token on an 8-line prompt, which is a THIRD of the caller's perceived wait spent
+    // thinking about "hello". 'minimal' reasoning is the fix; VOICE_LLM_MODEL can additionally
+    // point at a faster model without touching AI_MODEL, which the rest of the app still uses.
+    llm: new openai.LLM({
+      model: env.VOICE_LLM_MODEL ?? env.AI_MODEL,
+      // Only send it if set. gpt-5.4 rejects unknown values with a 400 that kills the call
+      // mid-conversation and silences the agent — 'minimal' is NOT valid here (it is
+      // none|low|medium|high|xhigh). Unset = don't send the parameter at all.
+      ...(env.VOICE_LLM_REASONING_EFFORT
+        ? { reasoningEffort: env.VOICE_LLM_REASONING_EFFORT }
+        : {}),
+    }),
     // Options come from cartesiaOptions() so the agent and the test harness cannot drift apart.
     // It also handles the language trap: sonic-turbo REJECTS language:'he' ("Invalid language for
     // model") and returns an empty stream with only a DEBUG log — which looks identical to "this

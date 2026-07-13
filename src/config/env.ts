@@ -88,6 +88,43 @@ const envSchema = z.object({
   // Run TTS on the draft reply before the turn is confirmed, so Cartesia's ~390ms doesn't land
   // on top of the endpointing wait. Costs Cartesia characters on drafts we discard.
   VOICE_PREEMPTIVE_TTS: z.coerce.boolean().default(false),
+  // How loud a sound must be before Silero calls it speech. THE lever for phone lines: a phone
+  // is never digitally silent (hiss, comfort noise), so at the default 0.5 the VAD keeps hearing
+  // "speech" and the end-of-turn silence timer never fires — measured 1030ms on a real call even
+  // with a 250ms timer, vs 258ms in tests that fed it true digital silence. Raise to ignore the
+  // noise floor. Too high and it will miss a softly-spoken caller.
+  VOICE_VAD_ACTIVATION_THRESHOLD: z.coerce.number().min(0).max(1).default(0.5),
+  // LLM for the live voice turn only (everything else keeps AI_MODEL).
+  //
+  // MEASURED: there is no faster model. Same prompt, full completion:
+  //   gpt-5.4 + effort=none  1679ms
+  //   gpt-5-mini             1762ms
+  //   gpt-5-mini + low       1462ms
+  //   gpt-5-nano             2227ms   (SLOWER than 5.4)
+  // ~1s to first token is a floor across the family — it is not reasoning and not model size.
+  // Do not "optimise" the voice LLM again without re-measuring; this was a dead end.
+  //
+  // TRAP: `reasoning_effort: 'none'` is REJECTED by gpt-5-mini (400) but ACCEPTED by gpt-5.4.
+  // A rejected combination makes the agent go completely silent mid-call. If you change the
+  // model, re-check the effort value.
+  VOICE_LLM_MODEL: z.string().optional(),
+  // Cartesia speech rate. THE lever for phone intelligibility: a phone line is 8kHz, which
+  // destroys the high frequencies that carry consonants, so a fast delivery turns to mush.
+  // Slowing down gives the listener's ear time to reconstruct them.
+  // Cartesia's actual range is 0.6 (slowest) .. 1.5 (fastest); 1.0 is normal. Out-of-range values
+  // are rejected and Cartesia returns an EMPTY audio stream with only a DEBUG log — no error, no
+  // throw. The agent simply goes silent. Do not guess this range.
+  VOICE_TTS_SPEED: z.coerce.number().min(0.6).max(1.5).default(1),
+  // Cartesia output volume (sonic-3 accepts 0.5 .. 2.0). A phone line has a low dynamic range;
+  // a quiet voice sits too close to the line noise and gets lost. Louder = more intelligible,
+  // up to the point of clipping.
+  VOICE_TTS_VOLUME: z.coerce.number().min(0.5).max(2).default(1),
+  // Reasoning budget for the voice LLM. gpt-5.4 accepts: none | low | medium | high | xhigh.
+  // NOT 'minimal' — that is a different model family's value, and sending it kills the call with
+  // a 400 (the agent goes silent mid-conversation). 'none' is what we want: a voice reply is two
+  // sentences of small talk, and reasoning was costing ~1030ms to first token.
+  // ('xhigh' is valid at the API but absent from the plugin's ReasoningEffort type — omitted.)
+  VOICE_LLM_REASONING_EFFORT: z.enum(['none', 'low', 'medium', 'high']).optional(),
   // Default engine for tenants with no explicit tenants.settings.voice_engine override
   VOICE_ENGINE_DEFAULT: z.enum(['retell', 'livekit']).default('retell'),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound

@@ -33,10 +33,15 @@ export default defineAgent({
   // VAD model load.
   prewarm: async (proc: JobProcess) => {
     proc.userData.vad = await silero.VAD.load({
-      // How long Silero waits in silence before calling the turn over. Default 550ms; this and
-      // endpointing.minDelay stack into the ~1350ms end-of-turn delay that dominates our
-      // latency. Tunable so `npm run voice:test` can sweep it without a code change.
+      // How long Silero waits in silence before calling the turn over.
       minSilenceDuration: env.VOICE_VAD_MIN_SILENCE_MS,
+      // THE lever for telephony. Silero decides "still speaking" from audio ENERGY, and a phone
+      // line is never digitally silent — hiss and comfort noise sit above the default 0.5
+      // threshold, so the silence timer above never gets a chance to fire. Measured on a real
+      // call: end-of-turn stayed at ~1030ms despite a 250ms timer, while the synthetic caller
+      // (which sends TRUE digital silence) reported 258ms. The harness was measuring a condition
+      // that does not exist on a telephone. Raising this makes the VAD ignore the noise floor.
+      activationThreshold: env.VOICE_VAD_ACTIVATION_THRESHOLD,
     });
   },
 
@@ -74,6 +79,14 @@ export default defineAgent({
         ctx.proc.userData.lastMetricsAt = Date.now();
         console.log(`latency ${stage} ${timings.join(' ')}`);
       }
+    });
+
+    // Per-call usage, so cost is a measured number and not an estimate. LiveKit tallies LLM
+    // tokens, STT audio seconds and TTS characters for us; we just have to listen. Without this
+    // the only way to cost a call is to guess at token counts from the transcript.
+    // PHASE 4 will persist this alongside the transcript in call_learnings.
+    session.on(voice.AgentSessionEventTypes.SessionUsageUpdated, (ev) => {
+      console.log('call_usage', JSON.stringify(ev.usage ?? ev));
     });
 
     await session.start({
