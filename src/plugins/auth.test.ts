@@ -55,6 +55,10 @@ async function buildAuthTestApp(db: ReturnType<typeof createMockDb>) {
     VOICE_TTS_SPEED: 1,
     VOICE_TTS_VOLUME: 1,
     VOICE_MAX_HISTORY_ITEMS: 16,
+    STT_PROVIDER: 'openai' as const,
+    SONIOX_MODEL: 'stt-rt-v4',
+    SONIOX_MAX_ENDPOINT_DELAY_MS: 500,
+    VOICE_TURN_DETECTION: 'vad' as const,
   };
 
   const app = Fastify({ logger: false });
