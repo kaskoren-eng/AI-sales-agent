@@ -63,6 +63,7 @@ export async function buildTestApp(
     VOICE_VAD_MIN_SILENCE_MS: 550,
     VOICE_ENDPOINTING_MIN_DELAY_MS: 500,
     VOICE_ENDPOINTING_MAX_DELAY_MS: 3000,
+    VOICE_PREEMPTIVE_TTS: false,
     ...opts.envOverrides,
   };
 

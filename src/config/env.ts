@@ -63,7 +63,9 @@ const envSchema = z.object({
   LIVEKIT_URL: z.string().url().optional(),
   LIVEKIT_API_KEY: z.string().min(1).optional(),
   LIVEKIT_API_SECRET: z.string().min(1).optional(),
-  // Cartesia — Hebrew TTS. Valid models: sonic, sonic-2, sonic-3, sonic-lite, sonic-turbo (there is no sonic-4)
+  // Cartesia — Hebrew TTS. sonic-3 is the ONLY model that speaks Hebrew: sonic, sonic-2,
+  // sonic-lite and sonic-turbo all return zero audio for `he` (silently — no error).
+  // So the low-latency sonic-turbo is NOT an option for us. Verify: npm run voice:ab -- <model>
   CARTESIA_API_KEY: z.string().min(1).optional(),
   CARTESIA_MODEL: z.string().default('sonic-3'),
   CARTESIA_VOICE_ID_PRIMARY: z.string().min(1).optional(),
@@ -74,13 +76,18 @@ const envSchema = z.object({
   OPENAI_REALTIME_MODEL: z.string().default('gpt-realtime-whisper'),
   // Agent spoken language (ISO 639-1) — drives both STT and TTS
   VOICE_LANGUAGE: z.string().default('he'),
-  // End-of-turn tuning. These are THE latency levers for Hebrew — measured end-of-utterance
-  // delay is ~1350ms against a 300ms budget, and it is over half of total perceived latency.
-  // Silero silence (default 550ms) and endpointing minDelay (default 500ms) stack.
-  // Sweep them with `npm run voice:test`; lower = snappier but more likely to cut callers off.
-  VOICE_VAD_MIN_SILENCE_MS: z.coerce.number().int().positive().default(550),
-  VOICE_ENDPOINTING_MIN_DELAY_MS: z.coerce.number().int().positive().default(500),
-  VOICE_ENDPOINTING_MAX_DELAY_MS: z.coerce.number().int().positive().default(3000),
+  // End-of-turn tuning — THE latency lever for Hebrew, since no Hebrew EOT model exists.
+  // The two delays stack: end-of-turn ≈ max(Silero silence, minDelay).
+  // Was 550/500 (measured 1200-1443ms end-of-turn). Now 250/200, which measured 955-1569ms
+  // with ZERO cut-offs across baseline / short-answer / hesitation scenarios.
+  // Caveat: those were SYNTHETIC pauses, which are shorter than a real person's. If the agent
+  // starts talking over live callers, raise these first. Sweep with `npm run voice:test`.
+  VOICE_VAD_MIN_SILENCE_MS: z.coerce.number().int().positive().default(250),
+  VOICE_ENDPOINTING_MIN_DELAY_MS: z.coerce.number().int().positive().default(200),
+  VOICE_ENDPOINTING_MAX_DELAY_MS: z.coerce.number().int().positive().default(2000),
+  // Run TTS on the draft reply before the turn is confirmed, so Cartesia's ~390ms doesn't land
+  // on top of the endpointing wait. Costs Cartesia characters on drafts we discard.
+  VOICE_PREEMPTIVE_TTS: z.coerce.boolean().default(false),
   // Default engine for tenants with no explicit tenants.settings.voice_engine override
   VOICE_ENGINE_DEFAULT: z.enum(['retell', 'livekit']).default('retell'),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound

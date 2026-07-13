@@ -31,10 +31,12 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
     }),
     llm: new openai.LLM({ model: env.AI_MODEL }),
     tts: new cartesia.TTS({
-      // Valid models per the plugin's TTSModels type: sonic, sonic-2, sonic-2-2025-03-07,
-      // sonic-3, sonic-lite, sonic-preview, sonic-turbo. There is no sonic-4.
-      // PHASE 2: A/B `sonic-turbo` — it is the low-latency variant and the first lever
-      // to pull towards the P95 < 800ms target.
+      // sonic-3 IS THE ONLY CARTESIA MODEL THAT SPEAKS HEBREW. Verified by synthesizing the
+      // same Hebrew line on each: sonic, sonic-2, sonic-lite and sonic-turbo all return ZERO
+      // audio (a 44-byte WAV header, no samples) — they fail silently rather than erroring.
+      // So `sonic-turbo`, the low-latency variant, is NOT available to us and TTS ttfb (~390ms)
+      // is a floor, not a tuning target. Do not "optimise" this to a faster model.
+      // Re-check with: npm run voice:ab -- <model>
       model: env.CARTESIA_MODEL,
       voice: env.CARTESIA_VOICE_ID_PRIMARY,
       language: env.VOICE_LANGUAGE,
@@ -60,10 +62,21 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
         minDelay: env.VOICE_ENDPOINTING_MIN_DELAY_MS,
         maxDelay: env.VOICE_ENDPOINTING_MAX_DELAY_MS,
       },
+      preemptiveGeneration: {
+        // `enabled` already defaults to true, so the LLM was ALREADY overlapping the endpointing
+        // wait — that is why ~800ms of LLM ttft was not showing up as ~800ms of extra dead air.
+        enabled: true,
+        // Defaults to FALSE. In theory it should hide Cartesia's ~390ms behind the endpointing
+        // wait; in the first measured run it made things WORSE (TTS ttfb rose 390->550ms, and
+        // discarded drafts add load). Left off by default and made switchable so it can be
+        // re-measured rather than argued about.
+        preemptiveTts: env.VOICE_PREEMPTIVE_TTS,
+      },
     },
-    // Remaining Phase 2 levers, in expected order of payoff:
-    //   - LLM ttft ~740-1060ms vs 300ms budget: prompt caching, a smaller/faster model, or
-    //     turnHandling.preemptiveGeneration (start generating before the turn is confirmed).
-    //   - TTS ttfb ~390ms vs 100ms budget: A/B `sonic-turbo`, Cartesia's low-latency model.
+    // Start drafting the reply from the partial transcript, before end-of-turn is confirmed,
+    // so the ~1.2s endpointing wait and the ~800ms LLM first-token overlap instead of adding up.
+    // This is the one lever that attacks the end-of-turn wall without risking cutting callers
+    // off: if the caller turns out not to have finished, the draft is discarded.
+    // Costs some wasted LLM tokens on discarded drafts — worth it at ~1s saved per turn.
   };
 }

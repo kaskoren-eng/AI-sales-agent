@@ -7,3 +7,6 @@ dist/
 *.tsbuildinfo
 .claude/
 screenshots/
+
+# Voice A/B samples — regenerate with `npm run voice:ab`
+voice-samples/
