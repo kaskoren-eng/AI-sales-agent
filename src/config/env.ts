@@ -106,6 +106,16 @@ const envSchema = z.object({
   // so switching this on with the OpenAI STT would leave the agent waiting forever for a turn
   // that never ends. Guarded in agent.config.ts, not just documented here.
   VOICE_TURN_DETECTION: z.enum(['vad', 'stt']).default('vad'),
+  // Run the OTHER engine silently alongside the live one on real calls, and log what it heard.
+  //
+  // The corpus A/B is synthesized speech — perfectly articulated, no disfluencies, no accent. Real
+  // Hebrew callers mumble, trail off and run words together, so the corpus can RANK the engines but
+  // cannot tell us what either does to an actual lead on a mobile. This is how we find out, using
+  // real audio, without betting a real call on the answer.
+  //
+  // Costs a second STT stream per call (~$0.002/min for Soniox). Its output never reaches the
+  // caller and cannot affect the live path — see stt/shadow-stt.ts.
+  SHADOW_STT_ENABLED: z.coerce.boolean().default(false),
 
   // Agent spoken language (ISO 639-1) — drives both STT and TTS
   VOICE_LANGUAGE: z.string().default('he'),

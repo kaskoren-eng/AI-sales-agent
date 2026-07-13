@@ -10,9 +10,11 @@ import {
 } from '@livekit/agents';
 import * as silero from '@livekit/agents-plugin-silero';
 import { TelephonyBackgroundVoiceCancellation } from '@livekit/noise-cancellation-node';
+import { RoomEvent, type RemoteAudioTrack, TrackKind } from '@livekit/rtc-node';
 import { loadEnv } from '../../../config/env.js';
 import { buildSessionComponents } from './agent.config.js';
 import { GREETING_HE, SYSTEM_PROMPT_HE } from './prompts/system-prompt.he.js';
+import { ShadowSTT } from './stt/shadow-stt.js';
 
 /**
  * LiveKit voice agent — Phase 1 skeleton of the Retell -> LiveKit migration.
@@ -113,6 +115,33 @@ export default defineAgent({
     session.on(voice.AgentSessionEventTypes.SessionUsageUpdated, (ev) => {
       console.log('call_usage', JSON.stringify(ev.usage ?? ev));
     });
+
+    // SHADOW MODE — the candidate STT listens to the real caller and says nothing.
+    //
+    // Everything here is best-effort and cannot fail the call. If the shadow engine won't start,
+    // the call runs exactly as if the flag were off. See stt/shadow-stt.ts for the safety contract:
+    // separate audio stream, separate engine, every path try/caught, breaker on the candidate.
+    //
+    // NOTE: this logs what both engines HEARD, but persistence to call_learnings needs a
+    // call_learnings row to attach to — which is PHASE 4 work (nothing writes that row today for a
+    // LiveKit call). Until then the shadow transcript is logged to stdout, where the analysis script
+    // cannot read it. Wire `shadow.persist(db, id)` into the Phase 4 shutdown hook.
+    const shadow = env.SHADOW_STT_ENABLED ? new ShadowSTT(env) : null;
+    if (shadow) {
+      console.log('shadow_stt_enabled', JSON.stringify({ engine: shadow.shadowEngine }));
+      ctx.room.on(RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind === TrackKind.KIND_AUDIO) {
+          void shadow.start(track as RemoteAudioTrack);
+        }
+      });
+      // What the LIVE engine heard, so the two can be compared turn by turn.
+      session.on(voice.AgentSessionEventTypes.UserInputTranscribed, (ev) => {
+        if (ev.isFinal) shadow.recordAuthoritative(ev.transcript);
+      });
+      ctx.addShutdownCallback(async () => {
+        console.log('shadow_stt_result', JSON.stringify(shadow.snapshot()));
+      });
+    }
 
     await session.start({
       agent: new ClickScalesAgent({ instructions: SYSTEM_PROMPT_HE }),

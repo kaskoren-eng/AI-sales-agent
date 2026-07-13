@@ -1,0 +1,16 @@
+-- Shadow-mode STT: both engines' transcripts from one live call, side by side.
+-- Nullable, and null for every call not run in shadow mode (i.e. almost all of them).
+--
+-- HAND-WRITTEN ON PURPOSE — DO NOT REGENERATE.
+--
+-- `npm run db:generate` emitted a full `CREATE TABLE call_learnings` here, plus unrelated ALTERs
+-- adding `tenants.api_key_hash` and changing `scheduled_calls` — objects that ALREADY EXIST in
+-- production. Cause: migrations 0001 and 0002 were hand-written without drizzle snapshots, so
+-- drizzle-kit diffed the schema against the stale 0000 baseline and "rediscovered" everything added
+-- since. Running that output would have died on the first CREATE TABLE, and anything that survived
+-- would have been operating on tables it did not understand.
+--
+-- The generated 0003_snapshot.json IS kept: it records the true current schema, so the next
+-- `db:generate` finally diffs against reality instead of the 0000 baseline. This one column is the
+-- only change actually applied.
+ALTER TABLE "call_learnings" ADD COLUMN IF NOT EXISTS "shadow_stt_transcript" jsonb;

@@ -20,6 +20,29 @@ export interface SalesCallAnalysis {
   recommendations?: string[];
 }
 
+/**
+ * What shadow mode records on a live call: both engines' transcripts, side by side.
+ *
+ * NEITHER SIDE IS GROUND TRUTH, and the analysis must never pretend otherwise. Two STT engines
+ * disagreeing tells you they disagree — not which one is right. The only thing this data can
+ * measure without a human is the DIVERGENCE rate; deciding who was correct means a person reading
+ * the pairs. `scripts/analyze-shadow-stt.mjs` surfaces the worst disagreements for exactly that.
+ *
+ * The two engines also SEGMENT differently — one may hear a pause as end-of-turn where the other
+ * hears a hesitation — so their turns do not line up one-to-one. Both are stored as independent
+ * time-stamped sequences rather than forced into pairs, and aligned at analysis time.
+ */
+export interface ShadowSttTranscript {
+  authoritativeEngine: string;
+  shadowEngine: string;
+  shadowModel: string;
+  /** ms since call start, so the two sequences can be aligned without a shared clock. */
+  authoritative: Array<{ atMs: number; text: string }>;
+  shadow: Array<{ atMs: number; text: string; endpointMs: number | null }>;
+  /** Shadow-side failures. Recorded, never thrown — a shadow outage must not touch the caller. */
+  errors: string[];
+}
+
 export const callLearnings = pgTable('call_learnings', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull(),
@@ -30,6 +53,9 @@ export const callLearnings = pgTable('call_learnings', {
   recordingSid: varchar('recording_sid', { length: 64 }),
   recordingUrl: varchar('recording_url', { length: 512 }),
   transcript: jsonb('transcript').$type<TranscriptSegment[]>().default([]),
+  // Both STT engines' transcripts from a live call, when SHADOW_STT_ENABLED=true. Nullable: it is
+  // null for every call not run in shadow mode, which is almost all of them.
+  shadowSttTranscript: jsonb('shadow_stt_transcript').$type<ShadowSttTranscript>(),
   analysis: jsonb('analysis').$type<SalesCallAnalysis>().default({} as SalesCallAnalysis),
   // won | lost | neutral — set manually via API or inferred by AI
   outcome: varchar('outcome', { length: 20 }),
