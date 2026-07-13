@@ -23,12 +23,11 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
       language: env.VOICE_LANGUAGE,
       useRealtime: true,
       vad,
-      // semantic_vad judges "has the caller finished?" from meaning rather than from silence,
-      // so it works in Hebrew — unlike LiveKit's turn detector, which has no Hebrew model.
-      // Silence-timer endpointing measured 1227-2506ms; this is the lever against that.
-      // `eagerness: 'high'` = answer sooner. If it starts cutting callers off mid-sentence,
-      // step down to 'medium' / 'low' — that is the speed-vs-patience dial.
-      turnDetection: { type: 'semantic_vad', eagerness: 'high' },
+      // NOTE: do NOT pass `turnDetection: { type: 'semantic_vad' }` here. It typechecks, the
+      // worker boots clean, and it does NOTHING — gpt-realtime-whisper is a transcription-only
+      // model and the plugin logs "Turn detection is not supported for gpt-realtime-whisper;
+      // ignoring the provided turnDetection". Measured with the synthetic caller: identical
+      // end-of-utterance delay with and without it. End-of-turn is tuned below instead.
     }),
     llm: new openai.LLM({ model: env.AI_MODEL }),
     tts: new cartesia.TTS({
@@ -41,22 +40,30 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
       language: env.VOICE_LANGUAGE,
     }),
     turnHandling: {
-      // Take end-of-turn from the STT's semantic_vad (above), NOT from a silence timer.
-      // This half is essential: left unset, the session auto-selects 'vad' and the
-      // semantic_vad signal is computed and then ignored.
-      turnDetection: 'stt',
+      // NO OFF-THE-SHELF END-OF-TURN MODEL SUPPORTS HEBREW. All three were checked:
+      //   - @livekit/agents-plugin-livekit MultilingualModel — languages.json has no `he`
+      //   - LiveKit inference turn-detector-v1 — languages.js has no `he` (it has Arabic!)
+      //   - OpenAI semantic_vad — silently ignored by gpt-realtime-whisper (see STT above)
+      // So we are left with a plain silence timer, whose delay is max(Silero silence, minDelay).
+      //
+      // Measured with `npm run voice:test` (synthetic Hebrew caller):
+      //   silero 550 / minDelay 500 (defaults) → end-of-turn 1200-1443ms, 0 cut-offs
+      //   silero 250 / minDelay 200            → end-of-turn  955-1569ms, 0 cut-offs
+      // i.e. tuning buys ~200-300ms of the ~1100ms we need. It is NOT the fix; the fix is a
+      // Hebrew-capable EOT model, which does not exist off the shelf. See README.
+      //
+      // Defaults left conservative on purpose: being cut off mid-sentence is a far worse
+      // product failure than 300ms of latency, and the "hesitation" scenario only proves the
+      // tight config survives SYNTHETIC pauses, which are shorter than real human ones.
+      turnDetection: 'vad',
+      endpointing: {
+        minDelay: env.VOICE_ENDPOINTING_MIN_DELAY_MS,
+        maxDelay: env.VOICE_ENDPOINTING_MAX_DELAY_MS,
+      },
     },
-    // Silero VAD only hears speech *energy*, so it cannot tell "thinking mid-sentence" from
-    // "finished". It stays for barge-in detection, but no longer decides turns.
-    //
-    // DO NOT reach for @livekit/agents-plugin-livekit's MultilingualModel as the Hebrew fix:
-    // its languages.json lists de/en/es/fr/hi/id/it/ja/ko/nl/pt/ru/tr/zh — THERE IS NO HEBREW.
-    // It stays in package.json as a valid option for a future English-speaking tenant only.
-    //
     // Remaining Phase 2 levers, in expected order of payoff:
-    //   - LLM ttft ~740ms vs 300ms budget: prompt caching, a smaller model, or preemptive
-    //     generation (turnHandling.preemptiveGeneration).
+    //   - LLM ttft ~740-1060ms vs 300ms budget: prompt caching, a smaller/faster model, or
+    //     turnHandling.preemptiveGeneration (start generating before the turn is confirmed).
     //   - TTS ttfb ~390ms vs 100ms budget: A/B `sonic-turbo`, Cartesia's low-latency model.
-    // Measure before and after — do not tune blind.
   };
 }

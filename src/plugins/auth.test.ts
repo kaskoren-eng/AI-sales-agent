@@ -46,6 +46,9 @@ async function buildAuthTestApp(db: ReturnType<typeof createMockDb>) {
     OPENAI_REALTIME_MODEL: 'gpt-realtime-whisper',
     VOICE_LANGUAGE: 'he',
     VOICE_ENGINE_DEFAULT: 'retell' as const,
+    VOICE_VAD_MIN_SILENCE_MS: 550,
+    VOICE_ENDPOINTING_MIN_DELAY_MS: 500,
+    VOICE_ENDPOINTING_MAX_DELAY_MS: 3000,
   };
 
   const app = Fastify({ logger: false });

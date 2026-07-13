@@ -32,7 +32,12 @@ export default defineAgent({
   // Runs once when the worker boots, not per call — so the first caller doesn't pay for the
   // VAD model load.
   prewarm: async (proc: JobProcess) => {
-    proc.userData.vad = await silero.VAD.load();
+    proc.userData.vad = await silero.VAD.load({
+      // How long Silero waits in silence before calling the turn over. Default 550ms; this and
+      // endpointing.minDelay stack into the ~1350ms end-of-turn delay that dominates our
+      // latency. Tunable so `npm run voice:test` can sweep it without a code change.
+      minSilenceDuration: env.VOICE_VAD_MIN_SILENCE_MS,
+    });
   },
 
   // Runs once per call.

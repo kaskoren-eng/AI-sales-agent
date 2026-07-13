@@ -74,6 +74,13 @@ const envSchema = z.object({
   OPENAI_REALTIME_MODEL: z.string().default('gpt-realtime-whisper'),
   // Agent spoken language (ISO 639-1) — drives both STT and TTS
   VOICE_LANGUAGE: z.string().default('he'),
+  // End-of-turn tuning. These are THE latency levers for Hebrew — measured end-of-utterance
+  // delay is ~1350ms against a 300ms budget, and it is over half of total perceived latency.
+  // Silero silence (default 550ms) and endpointing minDelay (default 500ms) stack.
+  // Sweep them with `npm run voice:test`; lower = snappier but more likely to cut callers off.
+  VOICE_VAD_MIN_SILENCE_MS: z.coerce.number().int().positive().default(550),
+  VOICE_ENDPOINTING_MIN_DELAY_MS: z.coerce.number().int().positive().default(500),
+  VOICE_ENDPOINTING_MAX_DELAY_MS: z.coerce.number().int().positive().default(3000),
   // Default engine for tenants with no explicit tenants.settings.voice_engine override
   VOICE_ENGINE_DEFAULT: z.enum(['retell', 'livekit']).default('retell'),
 
