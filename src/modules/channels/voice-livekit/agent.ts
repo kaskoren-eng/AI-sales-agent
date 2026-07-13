@@ -10,7 +10,7 @@ import {
 import * as silero from '@livekit/agents-plugin-silero';
 import { loadEnv } from '../../../config/env.js';
 import { buildSessionComponents } from './agent.config.js';
-import { SYSTEM_PROMPT_HE } from './prompts/system-prompt.he.js';
+import { GREETING_HE, SYSTEM_PROMPT_HE } from './prompts/system-prompt.he.js';
 
 /**
  * LiveKit voice agent — Phase 1 skeleton of the Retell -> LiveKit migration.
@@ -26,7 +26,8 @@ import { SYSTEM_PROMPT_HE } from './prompts/system-prompt.he.js';
  */
 const env = loadEnv();
 
-const GREETING = 'שלום, איך אני יכול לעזור?';
+// Lives with the prompt, not here: the greeting and the prompt must agree on the agent's gender,
+// and v1 had them disagree — a female voice opening with a masculine verb ("יכול", not "יכולה").
 
 export default defineAgent({
   // Runs once when the worker boots, not per call — so the first caller doesn't pay for the
@@ -97,7 +98,7 @@ export default defineAgent({
     // Speak the greeting verbatim rather than letting the LLM improvise one: deterministic
     // wording, and no LLM round-trip before the caller hears anything.
     // allowInterruptions:false so a cough or line noise doesn't swallow the greeting.
-    await session.say(GREETING, { allowInterruptions: false }).waitForPlayout();
+    await session.say(GREETING_HE, { allowInterruptions: false }).waitForPlayout();
   },
 });
 
