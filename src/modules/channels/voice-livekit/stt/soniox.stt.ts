@@ -1,6 +1,6 @@
-import { type stt as sttBase } from '@livekit/agents';
 import * as soniox from '@livekit/agents-plugin-soniox';
 import { CircuitBreaker } from '../../../../shared/circuit-breaker.js';
+import { type MeasureOptions, type Measurement, measureStream } from './measure.js';
 import type { Env } from '../../../../config/env.js';
 
 /**
@@ -82,80 +82,21 @@ export function parseBiasTerms(prompt: string): string[] {
     .filter((term) => term.length > 0);
 }
 
-/** A single Soniox transcription of a fixed audio buffer, with the timings the A/B test needs. */
-export interface SonioxTranscription {
-  text: string;
-  /** ms from first audio byte sent to the first token of ANY kind coming back (interim included). */
-  timeToFirstTokenMs: number | null;
-  /** ms from first audio byte sent to the last FINAL transcript. */
-  timeToFinalMs: number | null;
-  /** ms from the end of the audio to Soniox declaring the endpoint — its end-of-turn signal. */
-  endpointDelayMs: number | null;
-  /** Seconds of audio Soniox billed us for, straight from its RECOGNITION_USAGE event. */
-  audioDurationSec: number;
-}
-
 /**
- * Transcribes a finite audio buffer through Soniox and measures it.
+ * Transcribes a finite audio buffer through Soniox, via the breaker.
  *
- * Used by the A/B harness and by shadow mode — every path where we hand Soniox a known chunk of
- * audio and wait for an answer. That IS a request/response call, so it goes through the breaker.
+ * This is the shape a circuit breaker actually fits: hand it a known chunk of audio, wait for an
+ * answer. Used by shadow mode, which runs on EVERY live call — a Soniox outage there must never
+ * bleed into the caller's audio path, and after 5 consecutive failures this stops trying entirely.
  *
- * The plugin has no `recognize()` — it throws "does not support single frame recognition" — so the
- * only way in is the streaming interface, driven to completion and closed. Ending the input makes
- * the plugin send Soniox an empty frame, which flushes the remaining tokens and emits `finished`.
+ * The measurement itself is `measureStream`, which is engine-agnostic and shared with the OpenAI
+ * arm of the A/B, so neither engine can be advantaged by how it was driven.
  */
 export async function transcribeBuffer(
   stt: soniox.STT,
-  frames: Array<{ data: Int16Array; sampleRate: number; samplesPerChannel: number }>,
-  sttModule: typeof sttBase,
-): Promise<SonioxTranscription> {
-  return sonioxCircuit.execute(async () => {
-    const stream = stt.stream();
-
-    let firstTokenAt: number | null = null;
-    let finalAt: number | null = null;
-    let audioDurationSec = 0;
-    const finals: string[] = [];
-
-    // Push the audio, then close the input so Soniox flushes. Kept as a background task: the
-    // consumer loop below must already be draining, or a long buffer would deadlock on backpressure.
-    const startedAt = Date.now();
-    let audioEndedAt = startedAt;
-    const pump = (async () => {
-      for (const frame of frames) {
-        stream.pushFrame(frame as never);
-      }
-      audioEndedAt = Date.now();
-      stream.endInput();
-    })();
-
-    for await (const ev of stream) {
-      if (ev.type === sttModule.SpeechEventType.INTERIM_TRANSCRIPT && firstTokenAt === null) {
-        firstTokenAt = Date.now();
-      }
-      if (ev.type === sttModule.SpeechEventType.FINAL_TRANSCRIPT) {
-        firstTokenAt ??= Date.now();
-        finalAt = Date.now();
-        const text = ev.alternatives?.[0]?.text ?? '';
-        if (text) finals.push(text);
-      }
-      if (ev.type === sttModule.SpeechEventType.RECOGNITION_USAGE) {
-        audioDurationSec += ev.recognitionUsage?.audioDuration ?? 0;
-      }
-    }
-
-    await pump;
-    stream.close();
-
-    return {
-      text: finals.join(' ').trim(),
-      timeToFirstTokenMs: firstTokenAt === null ? null : firstTokenAt - startedAt,
-      timeToFinalMs: finalAt === null ? null : finalAt - startedAt,
-      // The honest end-of-turn number: how long AFTER the audio stopped Soniox took to call it.
-      // This is the figure that competes with our ~1113ms Silero silence timer.
-      endpointDelayMs: finalAt === null ? null : Math.max(0, finalAt - audioEndedAt),
-      audioDurationSec,
-    };
-  });
+  pcm: Int16Array,
+  sampleRate: number,
+  opts: MeasureOptions = {},
+): Promise<Measurement> {
+  return sonioxCircuit.execute(() => measureStream(stt, pcm, sampleRate, opts));
 }
