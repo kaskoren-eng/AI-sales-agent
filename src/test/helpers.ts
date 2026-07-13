@@ -59,6 +59,7 @@ export async function buildTestApp(
     CARTESIA_MODEL: 'sonic-3',
     OPENAI_REALTIME_MODEL: 'gpt-realtime-whisper',
     VOICE_LANGUAGE: 'he',
+    VOICE_STT_PROMPT: '',
     VOICE_ENGINE_DEFAULT: 'retell' as const,
     VOICE_VAD_MIN_SILENCE_MS: 550,
     VOICE_ENDPOINTING_MIN_DELAY_MS: 500,

@@ -24,6 +24,29 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
       language: env.VOICE_LANGUAGE,
       useRealtime: true,
       vad,
+      // Bias transcription towards the words we actually expect. Hebrew STT invents plausible
+      // nonsense from what it half-hears — on a live call it turned "קורן" into "קורנטיטרי" and
+      // "השארתי פרטים" into "הייתי פרטימה". Phase 4 has to capture a NAME, PHONE and EMAIL, so
+      // this is not cosmetic: it is the difference between a booking and a wrong booking.
+      //
+      // BUT: gpt-realtime-whisper REJECTS `prompt` ("The 'prompt' parameter is not supported for
+      // this model") and the session dies with an stt_error. Biasing requires whisper-1.
+      //
+      // MEASURED A/B on the same scripted call ("קוראים לי קורן" / phone / email):
+      //   gpt-realtime-whisper  name OK, phone "05 0255 784",  email "המל … קליקס כ-.קום"  eou ~950ms
+      //   whisper-1 + biasing   name OK, phone "050-255-784",  email "המייל … קליקסקיילס"  eou ~2000ms
+      // i.e. accuracy on the fields Phase 4 depends on, at the cost of ~1s per turn.
+      //
+      // DECISION (Koren, Phase 2): HYBRID. Keep the fast streaming STT for conversation; switch to
+      // whisper-1 + biasing ONLY while capturing name/phone/email/date, where a mistake is fatal
+      // and a second of latency is not. Both mechanisms exist and are verified:
+      //   - stt.updateOptions({ model: 'whisper-1', prompt }) to swap in place, or
+      //   - a dedicated voice.Agent for the capture step, which takes its own `stt`.
+      // Wire it up in PHASE 4 alongside the booking tools, which are what know when we are
+      // capturing details.
+      ...(env.VOICE_STT_PROMPT && env.OPENAI_REALTIME_MODEL !== 'gpt-realtime-whisper'
+        ? { prompt: env.VOICE_STT_PROMPT }
+        : {}),
       // NOTE: do NOT pass `turnDetection: { type: 'semantic_vad' }` here. It typechecks, the
       // worker boots clean, and it does NOTHING — gpt-realtime-whisper is a transcription-only
       // model and the plugin logs "Turn detection is not supported for gpt-realtime-whisper;

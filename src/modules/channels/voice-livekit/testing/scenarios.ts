@@ -42,6 +42,17 @@ export const SCENARIOS: Scenario[] = [
     ],
   },
   {
+    name: 'booking_details',
+    description:
+      'Name, phone, email — the details Phase 4 lives or dies on. A real call turned "קורן" into "קורנטיטרי". Check the agent log transcripts, not just the latency.',
+    utterances: [
+      'קוראים לי קורן',
+      'הטלפון שלי הוא אפס חמש אפס, שתיים חמש חמש, שבע שמונה ארבע',
+      'המייל שלי הוא קורן שטרודל קליקסקיילס נקודה קום',
+      'כן, זה נכון',
+    ],
+  },
+  {
     name: 'anti_hallucination',
     description:
       'Probes the prompt rules: it must not quote a price, and must admit it is an automated assistant. Scored by reading the transcript, not automatically — for now.',

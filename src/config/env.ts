@@ -76,6 +76,14 @@ const envSchema = z.object({
   OPENAI_REALTIME_MODEL: z.string().default('gpt-realtime-whisper'),
   // Agent spoken language (ISO 639-1) — drives both STT and TTS
   VOICE_LANGUAGE: z.string().default('he'),
+  // Biasing prompt for the STT. Hebrew transcription invents words it half-hears — it turned
+  // "קורן" into "קורנטיטרי" and "השארתי פרטים" into "הייתי פרטימה" on a real call. Whisper-family
+  // models take a prompt of EXPECTED vocabulary and bias towards it. This is the cheapest fix for
+  // the thing that would otherwise break Phase 4, which has to capture a name, phone and email.
+  // Keep it to genuinely expected words; a long prompt biases towards nonsense.
+  VOICE_STT_PROMPT: z
+    .string()
+    .default('קורן, קליקסקיילס, ClickScales, פגישה, שיחת היכרות, אימייל, טלפון, שיווק, תקציב'),
   // End-of-turn tuning — THE latency lever for Hebrew, since no Hebrew EOT model exists.
   // The two delays stack: end-of-turn ≈ max(Silero silence, minDelay).
   // Was 550/500 (measured 1200-1443ms end-of-turn). Now 250/200, which measured 955-1569ms
