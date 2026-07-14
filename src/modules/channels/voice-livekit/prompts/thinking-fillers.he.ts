@@ -23,9 +23,26 @@ export const THINKING_FILLERS_HE = [
   'רגע...',
   'שנייה...',
   'אה...',
-  'בוא נראה...',
-  'תן לי רגע לחשוב...',
 ] as const;
+
+/**
+ * Never more than this many in one call, however slow the LLM gets.
+ *
+ * Koren, after the first call with fillers on: "she express too many times the thinking words and
+ * phrases." It fired TWENTY-ONE TIMES in a seven-minute call — roughly every other turn, because
+ * the v2 prompt is long and the LLM crosses the threshold constantly.
+ *
+ * A person hesitates once or twice in a conversation. Twenty-one times is not thinking, it is a
+ * nervous tic, and it makes her sound LESS human, not more — which is the precise opposite of what
+ * the feature is for. The threshold alone was not enough: the fix has to include a hard ceiling.
+ */
+export const MAX_FILLERS_PER_CALL = 3;
+
+/**
+ * And never two within this window, even on consecutive slow turns.
+ * Back-to-back hesitation reads as a stutter.
+ */
+export const FILLER_COOLDOWN_MS = 45_000;
 
 /**
  * Picks a filler, never the same one twice running.

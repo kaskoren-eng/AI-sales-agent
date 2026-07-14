@@ -188,7 +188,7 @@ const envSchema = z.object({
   //
   // Costs a little: once the filler starts, the real reply queues behind it. That is the trade —
   // it makes the wait feel HUMAN, not shorter. Set to 0 to switch it off entirely.
-  VOICE_THINKING_FILLER_MS: z.coerce.number().int().nonnegative().default(1200),
+  VOICE_THINKING_FILLER_MS: z.coerce.number().int().nonnegative().default(2500),
 
   // Agent spoken language (ISO 639-1) — drives both STT and TTS
   VOICE_LANGUAGE: z.string().default('he'),

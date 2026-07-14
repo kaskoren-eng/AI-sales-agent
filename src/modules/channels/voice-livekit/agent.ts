@@ -10,12 +10,17 @@ import {
 } from '@livekit/agents';
 import * as silero from '@livekit/agents-plugin-silero';
 import { TelephonyBackgroundVoiceCancellation } from '@livekit/noise-cancellation-node';
-import { RoomEvent, type RemoteAudioTrack, TrackKind } from '@livekit/rtc-node';
+import { type AudioFrame, RoomEvent, type RemoteAudioTrack, TrackKind } from '@livekit/rtc-node';
 import { loadEnv } from '../../../config/env.js';
 import { buildSessionComponents } from './agent.config.js';
 import { CallReport } from './call-report.js';
 import { GREETING_HE, SYSTEM_PROMPT_HE } from './prompts/system-prompt.he.js';
-import { pickThinkingFiller } from './prompts/thinking-fillers.he.js';
+import {
+  FILLER_COOLDOWN_MS,
+  MAX_FILLERS_PER_CALL,
+  pickThinkingFiller,
+} from './prompts/thinking-fillers.he.js';
+import { guardSpeech } from './speech-guard.js';
 import { ShadowSTT } from './stt/shadow-stt.js';
 
 /** Where every call's report lands. Repo-root relative, gitignored — these contain caller PII. */
@@ -59,7 +64,52 @@ const env = loadEnv();
  * in flight. The next turn's draft then snapshots an already-trimmed context and nothing changes
  * underneath it.
  */
-class ClickScalesAgent extends voice.Agent {}
+class ClickScalesAgent extends voice.Agent {
+  /**
+   * The last gate before text becomes sound.
+   *
+   * Two things escaped on Koren's first Keren-v2 call, and neither is fixable by prompting — the
+   * model was doing exactly what it was told:
+   *
+   *   - She spoke `NO_RESPONSE_NEEDED` ALOUD, in English, to a Hebrew caller who had asked her to
+   *     hold on. It is a RETELL convention (the platform intercepts it); LiveKit has no such
+   *     convention, so it went straight to Cartesia and Cartesia read it out.
+   *
+   *   - She said "קבעתי לך שיחת דמו למחר" — I HAVE BOOKED YOUR DEMO FOR TOMORROW. No calendar was
+   *     touched. This agent has no tools at all. The lead hangs up believing he has a meeting and a
+   *     confirmation coming, and nobody ever rings him. That is worse than a crash: it looks like
+   *     success to everyone.
+   *
+   * Buffering the whole reply before synthesis costs us the streamed-TTS overlap. That is a real
+   * latency cost and it is worth paying: a regex over a token stream would match half a word and
+   * mangle it, and we can afford to be slightly slower far more easily than we can afford to tell a
+   * lead his meeting is booked when it is not.
+   *
+   * Delete this ONLY when Phase 4 wires the calendar tools and the claim becomes true.
+   */
+  override async ttsNode(
+    text: Parameters<voice.Agent['ttsNode']>[0],
+    modelSettings: voice.ModelSettings,
+  ): ReturnType<voice.Agent['ttsNode']> {
+    let full = '';
+    for await (const chunk of text as AsyncIterable<string>) full += chunk;
+
+    const guarded = guardSpeech(full);
+    for (const note of guarded.interventions) {
+      console.log(`speech_guard ${JSON.stringify({ note, said: guarded.text.slice(0, 80) })}`);
+    }
+    // The whole utterance was a control token: she is MEANT to stay silent. Returning null means
+    // no audio at all, which is exactly right when the caller has just said "רגע".
+    if (guarded.silent) return null;
+
+    return voice.Agent.default.ttsNode(this, oneChunk(guarded.text), modelSettings);
+  }
+}
+
+/** Re-wraps the guarded text as the single-chunk stream ttsNode expects. */
+async function* oneChunk(text: string): AsyncIterable<string> {
+  yield text;
+}
 
 /**
  * Keeps the conversation history bounded, WITHOUT invalidating a preemptive draft.
@@ -278,6 +328,8 @@ export default defineAgent({
     // wait shorter — it makes it HUMAN. That was the ask.
     let fillerTimer: ReturnType<typeof setTimeout> | null = null;
     let lastFiller: string | null = null;
+    let fillerCount = 0;
+    let lastFillerAt = 0;
 
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) => {
       if (fillerTimer) {
@@ -286,6 +338,14 @@ export default defineAgent({
       }
       if (env.VOICE_THINKING_FILLER_MS === 0 || ev.newState !== 'thinking') return;
 
+      // A HARD CEILING, not just a threshold. The threshold alone fired 21 times in one seven-minute
+      // call — every other turn, because the v2 prompt is long and the LLM crosses it constantly.
+      // Koren: "she express too many times the thinking words and phrases." A person hesitates once
+      // or twice in a conversation. Twenty-one times is a nervous tic, and it makes her sound LESS
+      // human, which is the exact opposite of the point.
+      if (fillerCount >= MAX_FILLERS_PER_CALL) return;
+      if (Date.now() - lastFillerAt < FILLER_COOLDOWN_MS) return;
+
       fillerTimer = setTimeout(() => {
         fillerTimer = null;
         try {
@@ -293,8 +353,12 @@ export default defineAgent({
           lastFiller = filler;
           // allowInterruptions: the caller may start speaking over the hesitation, and she must
           // yield to him instantly — hesitating AND talking over him would be the worst of both.
+          fillerCount++;
+          lastFillerAt = Date.now();
           session.say(filler, { addToChatCtx: false, allowInterruptions: true });
-          console.log(`thinking_filler ${JSON.stringify({ filler, afterMs: env.VOICE_THINKING_FILLER_MS })}`);
+          console.log(
+            `thinking_filler ${JSON.stringify({ filler, n: fillerCount, max: MAX_FILLERS_PER_CALL })}`,
+          );
         } catch (err) {
           // A filler is a nicety. It must never be able to break a live call.
           console.error('filler_failed', err instanceof Error ? err.message : String(err));

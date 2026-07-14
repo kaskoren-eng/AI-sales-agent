@@ -151,3 +151,47 @@ describe('Keren v2 — guards the previous prompt had and this one does not', ()
   // gender to callers. v2 says nothing about the caller's gender at all.
   it.todo("should not apply her own gender to the caller");
 });
+
+/**
+ * Fixes from Koren's first Keren-v2 call. Every one of these is a thing she actually did wrong.
+ */
+describe('Keren v2.1 — fixes from the first live call', () => {
+  it('asks the caller his NAME before anything else', () => {
+    // She never asked. A sales call where you did not learn who you were speaking to is not a
+    // sales call — and his name is usually the only clue to his gender, which she also got wrong.
+    expect(SYSTEM_PROMPT_HE).toMatch(/עם מי אני מדברת/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/ASK HIS NAME FIRST/u);
+  });
+
+  it('addresses the LEAD in the masculine by default — not in her own gender', () => {
+    // Koren, on the call: "אני גבר, לא אישה." He had to correct her.
+    expect(SYSTEM_PROMPT_HE).toMatch(/address the lead in the MASCULINE/iu);
+  });
+
+  it('teaches the niqqud for the ambiguous 2nd-person suffixes', () => {
+    // THE ROOT CAUSE, and it is invisible in every transcript: שלך / לך / אותך are written
+    // IDENTICALLY for a man and a woman. Only the vowels differ, and Hebrew does not write vowels —
+    // so Cartesia guesses, and it guessed feminine. The LLM was choosing the right word all along.
+    expect(SYSTEM_PROMPT_HE).toMatch(/שֶׁלְּךָ/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/אוֹתְךָ/u);
+  });
+
+  it('MUST collect name, phone and email before the call ends', () => {
+    // She let him hang up without them. He had to prompt her: "רגע, את צריכה את הפרטים שלי?"
+    expect(SYSTEM_PROMPT_HE).toMatch(/COLLECT HIS DETAILS BEFORE THE CALL ENDS/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/מה מספר הטלפון/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/כתובת המייל/u);
+  });
+
+  it('FORBIDS claiming the meeting is booked — it is not, and she said it was', () => {
+    // Verbatim, on the call: "קבעתי לך שיחת דמו למחר". No calendar exists. He would have hung up
+    // expecting a demo at 10 that nobody had arranged.
+    expect(SYSTEM_PROMPT_HE).toMatch(/DO NOT SAY THE MEETING IS BOOKED/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/אעביר את הבקשה לצוות/u);
+  });
+
+  it('knows קורן is the founder and the one giving the demo', () => {
+    // Asked "עם מי אמורה להיות השיחה?", she answered "אין לי כרגע את המידע הזה."
+    expect(SYSTEM_PROMPT_HE).toMatch(/קורן הוא המייסד/u);
+  });
+});
