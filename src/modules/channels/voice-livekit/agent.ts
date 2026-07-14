@@ -34,26 +34,37 @@ const env = loadEnv();
 // and v1 had them disagree — a female voice opening with a masculine verb ("יכול", not "יכולה").
 
 /**
- * The agent, with the conversation history trimmed before every LLM call.
+ * The agent.
  *
- * Without this, the ENTIRE call is re-sent to the LLM on every single turn: a 4-minute call ended
- * at 10,249 input tokens, and it grows QUADRATICALLY with call length.
+ * DO NOT MUTATE THE CHAT CONTEXT IN `onUserTurnCompleted`. It silently disables preemptive
+ * generation, which is the biggest latency mechanism we have.
  *
- * MEASURED, and worth being honest about: this is a COST saving, not a latency one.
+ * This class used to call `chatCtx.truncate(VOICE_MAX_HISTORY_ITEMS)` here, to stop the whole call
+ * being re-sent to the LLM every turn. It cost more than it saved, and the logs said so on every
+ * single turn:
+ *
+ *   WARN  preemptive generation enabled but chat context or tools have changed after
+ *         `onUserTurnCompleted`
+ *
+ * — 15 times in one 4-minute call, i.e. essentially every turn. Preemptive generation drafts the
+ * reply DURING the end-of-turn wait, so the LLM's ~1.1s hides behind it instead of adding to it.
+ * The draft is built from the context as it was; truncating it afterwards invalidates the draft,
+ * so LiveKit threw every one away and regenerated from scratch. Preemptive generation has been
+ * dead since the truncate was added (217ff07), while we believed it was on.
+ *
+ * And trimming was measured to save NO latency in the first place — it is a pure cost lever:
  *   untrimmed: 3836 input tokens, LLM ttft 1094ms
- *   16 items:  3055 input tokens, LLM ttft 1092ms
- * gpt-5.4's ~1.1s to first token is fixed overhead, not a function of input size at this scale.
+ *   16 items:  3055 input tokens, LLM ttft 1092ms   (2ms = noise)
  *
- * `truncate()` mutates in place and always keeps the system prompt, so the agent never loses who
- * she is — only the far end of the conversation. Trade-off: she forgets what was said more than
- * ~8 exchanges ago. For a booking call that is a non-issue; if it ever bites (a caller
- * back-referencing something from five minutes earlier), raise VOICE_MAX_HISTORY_ITEMS.
+ * So it was buying nothing and costing everything. Removed.
+ *
+ * The cost problem it addressed is real but small: input tokens grow quadratically with call
+ * length (a 4-minute call ended at ~10k input tokens). At gpt-5.4 rates that is cents, and it is
+ * not worth a second of the caller's time. If a call ever runs long enough for this to matter,
+ * trim somewhere that does NOT invalidate the draft — summarise older turns into the system prompt
+ * between turns, rather than mutating the context inside this hook.
  */
-class ClickScalesAgent extends voice.Agent {
-  async onUserTurnCompleted(chatCtx: llm.ChatContext, _newMessage: llm.ChatMessage): Promise<void> {
-    chatCtx.truncate(env.VOICE_MAX_HISTORY_ITEMS);
-  }
-}
+class ClickScalesAgent extends voice.Agent {}
 
 export default defineAgent({
   // Runs once when the worker boots, not per call — so the first caller doesn't pay for the

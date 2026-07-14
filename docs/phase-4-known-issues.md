@@ -274,6 +274,76 @@ audio never ends; every finite test buffer does. Measure end-of-turn by appendin
 
 ---
 
+## 11. `turnDetection: 'stt'` with Soniox CUTS CALLERS OFF. Do not use it.
+
+**Tested on a real call, 2026-07-14. It failed, and it failed in the worst possible way.**
+
+Soniox emits an `<end>` token, which the LiveKit plugin turns into `END_OF_SPEECH`, which means
+`turnHandling.turnDetection: 'stt'` can replace the Silero silence timer. That looked like the first
+credible answer to the ~1.1s Hebrew end-of-turn wall (§4, §5). **It is not.**
+
+On a real call the log said, **ten times**:
+
+```
+WARN  stt end of speech received while vad is still in a speech segment, flushing vad
+```
+
+Soniox declared the caller finished **while he was still speaking**. The same call on
+`turnDetection: 'vad'`: **zero** such warnings.
+
+**What the caller experienced** (Koren, unprompted — he diagnosed it from the phone):
+
+- *"Three times it just disappeared and stopped talking."* The agent heard **16 turns and spoke only
+  12**. Four turns were chopped mid-sentence, committed as fragments, and abandoned.
+- *"When I talk more than five or six words the delay got very high; three or four words, not bad."*
+  Exactly right, and it is the tell. A short utterance has no internal pause, so nothing fires early.
+  A long one does — so it gets chopped, re-committed and re-generated.
+- *"It didn't get the phone number when I said it in one go."* A long digit string with micro-pauses
+  between groups. Cut in half.
+
+**Why.** Soniox's endpoint is a SILENCE detector with a 500ms floor (`maxEndpointDelayMs` is clamped
+to 500–3000 by the plugin), not a linguistic one. It cannot tell "he paused to think" from "he
+finished". Hebrew speakers pause mid-clause constantly. Being language-agnostic about *silence* is
+not the same as understanding *sentence completion*, and that second thing is what nobody sells for
+Hebrew.
+
+**The metrics LIE about this.** End-of-turn measured a median of ~259ms in this mode — the best
+number we have ever recorded — because a turn cut in half finalises fast. The instrument said we had
+won while the caller was being talked over. **Never accept an end-of-turn number without checking the
+turns-heard vs turns-answered count, and the `flushing vad` warnings.**
+
+**Keep `VOICE_TURN_DETECTION=vad`.** Soniox on the VAD timer measured ~690ms end-of-turn (down from
+1113ms with OpenAI) with zero cut-offs — it commits its final transcript faster, so the win arrives
+anyway, safely.
+
+---
+
+## 12. NEVER mutate the chat context in `onUserTurnCompleted` — it kills preemptive generation
+
+**This was live for days before anyone noticed, and it was costing latency the whole time.**
+
+`ClickScalesAgent.onUserTurnCompleted()` called `chatCtx.truncate()` to stop the whole call being
+re-sent to the LLM every turn. Every single turn, the log said:
+
+```
+WARN  preemptive generation enabled but chat context or tools have changed after
+      `onUserTurnCompleted`
+```
+
+**15 times in one 4-minute call.** Preemptive generation drafts the reply DURING the end-of-turn
+wait, so the LLM's ~1.1s hides behind it instead of adding to it. The draft is built from the
+context as it was; mutating the context afterwards invalidates it, so **LiveKit discarded every
+draft and regenerated from scratch.** Preemptive generation was dead from the moment the truncate
+landed (217ff07), while the config said `enabled: true` and we believed it was working.
+
+And trimming had already been measured to save **zero** latency (3836 → 3055 input tokens moved ttft
+by 2ms). So it was buying nothing and costing the single biggest latency mechanism in the pipeline.
+
+**If you need to trim a long call**, summarise older turns into the system prompt BETWEEN turns.
+Do not touch the context inside that hook.
+
+---
+
 ## Realistic latency budget for Hebrew
 
 | Stage | Measured | English guides assume |
