@@ -15,6 +15,7 @@ import { loadEnv } from '../../../config/env.js';
 import { buildSessionComponents } from './agent.config.js';
 import { CallReport } from './call-report.js';
 import { GREETING_HE, SYSTEM_PROMPT_HE } from './prompts/system-prompt.he.js';
+import { pickThinkingFiller } from './prompts/thinking-fillers.he.js';
 import { ShadowSTT } from './stt/shadow-stt.js';
 
 /** Where every call's report lands. Repo-root relative, gitignored — these contain caller PII. */
@@ -235,6 +236,48 @@ export default defineAgent({
       //
       //    Rewriting a few KB of JSON per turn is free. Losing a caller's data is not.
       void report.write(CALL_REPORTS_DIR);
+    });
+
+    // SHE HUMS WHEN SHE IS THINKING, but only when she is thinking for a LONG time.
+    //
+    // Koren, mid-call: "סיימת? אני פשוט לא מדבר, אני מחכה שתסיימי." He could not tell whether she
+    // was thinking or had stopped, so he sat in silence waiting for a machine that was also silent.
+    // A person facing a hard question takes just as long — but they fill the gap, and nobody minds.
+    //
+    // THE THRESHOLD IS THE DESIGN. Median LLM first-token is ~767ms; a threshold below ~1000ms would
+    // make her hum on EVERY turn, which is much worse than silence — it becomes a tic, and a tic is
+    // the fastest way to sound like a machine again. At 1200ms she only hesitates on the genuinely
+    // slow turns, which is exactly when a person would.
+    //
+    // The filler NEVER enters the chat context (`addToChatCtx: false`). If it did, the LLM would see
+    // "אממ..." as one of her own turns and start replying to it.
+    //
+    // Honest cost: once the filler starts, the real answer queues behind it. This does not make the
+    // wait shorter — it makes it HUMAN. That was the ask.
+    let fillerTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastFiller: string | null = null;
+
+    session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) => {
+      if (fillerTimer) {
+        clearTimeout(fillerTimer);
+        fillerTimer = null;
+      }
+      if (env.VOICE_THINKING_FILLER_MS === 0 || ev.newState !== 'thinking') return;
+
+      fillerTimer = setTimeout(() => {
+        fillerTimer = null;
+        try {
+          const filler = pickThinkingFiller(lastFiller);
+          lastFiller = filler;
+          // allowInterruptions: the caller may start speaking over the hesitation, and she must
+          // yield to him instantly — hesitating AND talking over him would be the worst of both.
+          session.say(filler, { addToChatCtx: false, allowInterruptions: true });
+          console.log(`thinking_filler ${JSON.stringify({ filler, afterMs: env.VOICE_THINKING_FILLER_MS })}`);
+        } catch (err) {
+          // A filler is a nicety. It must never be able to break a live call.
+          console.error('filler_failed', err instanceof Error ? err.message : String(err));
+        }
+      }, env.VOICE_THINKING_FILLER_MS);
     });
 
     await session.start({

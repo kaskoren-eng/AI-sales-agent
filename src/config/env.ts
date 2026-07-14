@@ -175,6 +175,21 @@ const envSchema = z.object({
   // revert. If it does not actually win on a real call, go back to 'cartesia'.
   VOICE_TTS_ROUTE: z.enum(['cartesia', 'inference']).default('cartesia'),
 
+  // How long she may think in SILENCE before making the noise a person makes while thinking.
+  //
+  // Koren, on a real call: "סיימת? אני פשוט לא מדבר, אני מחכה שתסיימי." He could not tell whether
+  // she was thinking or had simply stopped. Dead air is the problem, not the delay itself — a human
+  // fills it with "אממ..." and nobody minds the pause at all.
+  //
+  // THE THRESHOLD IS THE ENTIRE DESIGN. Median LLM first-token is ~767ms, so anything below ~1000ms
+  // would make her hum on EVERY turn, which is far worse than silence — it would sound like a tic.
+  // 1200ms fires only on the genuinely slow turns (the ~1600-1800ms outliers), which is exactly when
+  // a person would actually hesitate.
+  //
+  // Costs a little: once the filler starts, the real reply queues behind it. That is the trade —
+  // it makes the wait feel HUMAN, not shorter. Set to 0 to switch it off entirely.
+  VOICE_THINKING_FILLER_MS: z.coerce.number().int().nonnegative().default(1200),
+
   // Agent spoken language (ISO 639-1) — drives both STT and TTS
   VOICE_LANGUAGE: z.string().default('he'),
   // Biasing prompt for the STT. Hebrew transcription invents words it half-hears — it turned

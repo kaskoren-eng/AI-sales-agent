@@ -75,6 +75,7 @@ export async function buildTestApp(
     VOICE_TURN_DETECTION: 'vad' as const,
     SHADOW_STT_ENABLED: false,
     VOICE_TTS_ROUTE: 'cartesia' as const,
+    VOICE_THINKING_FILLER_MS: 1200,
     ...opts.envOverrides,
   };
 

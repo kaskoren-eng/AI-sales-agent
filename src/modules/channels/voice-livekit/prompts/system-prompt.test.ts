@@ -137,3 +137,24 @@ describe('Hebrew system prompt — voice rules that must not regress', () => {
     expect(SYSTEM_PROMPT_HE).toMatch(/עוזרת אוטומטית/u);
   });
 });
+
+describe('Hebrew system prompt — she must hand the turn back clearly', () => {
+  /**
+   * Koren, mid-call, to the agent: "אוקיי. סיימת? אני פשוט לא מדבר, אני מחכה שתסיימי."
+   * On a phone you cannot see her. If a sentence ends in the air, the caller does not know whether
+   * she has finished or is still thinking — so he sits in silence, and so does she. The fix is not
+   * latency; it is that every turn must END somewhere obvious.
+   */
+  it('tells her to end every turn so the caller knows it is his turn', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/סיימי כל תור/u);
+  });
+
+  it('forbids leaving a sentence hanging', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/אל תשאירי משפט פתוח/u);
+  });
+
+  it('gives her the two ways out: a question, or a closed sentence', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/בשאלה/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/משפט סגור/u);
+  });
+});
