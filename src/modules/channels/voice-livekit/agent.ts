@@ -200,7 +200,7 @@ export default defineAgent({
 
     const agent = new ClickScalesAgent({ instructions: SYSTEM_PROMPT_HE });
 
-    // One event, two jobs — both of which have to happen AFTER a turn is committed.
+    // One event, three jobs — all of which have to happen AFTER a turn is committed.
     session.on(voice.AgentSessionEventTypes.ConversationItemAdded, (ev) => {
       // 1. The transcript: BOTH sides of the conversation.
       //    We used to record only what she HEARD, never what she SAID — so the call record was
@@ -213,6 +213,18 @@ export default defineAgent({
       // 2. Trim the history — HERE, between turns, and never inside onUserTurnCompleted, where it
       //    invalidated LiveKit's preemptive draft on every single turn. See trimHistory().
       void trimHistory(agent, env.VOICE_MAX_HISTORY_ITEMS);
+
+      // 3. FLUSH THE REPORT AFTER EVERY TURN, not just at shutdown.
+      //
+      //    The report used to be written only from addShutdownCallback. A worker that is killed —
+      //    which is exactly what happens every time we restart it to change a setting — never runs
+      //    that hook, and the ENTIRE call is lost. It happened: a real call was made, the agent was
+      //    restarted, and the transcript went with it. We could no longer answer the only question
+      //    that mattered ("did she chop his sentences?"), and there is no way to get it back short
+      //    of asking him to call again.
+      //
+      //    Rewriting a few KB of JSON per turn is free. Losing a caller's data is not.
+      void report.write(CALL_REPORTS_DIR);
     });
 
     await session.start({
