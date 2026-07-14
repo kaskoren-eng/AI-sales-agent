@@ -1,0 +1,28 @@
+# Secrets — these must NEVER be copied into an image that gets pushed to a registry.
+# Secrets reach the agent via `lk agent create --secrets-file`, injected as environment variables
+# at RUNTIME. Anything baked into a layer here is permanent and extractable by anyone with the image.
+.env
+.env.*
+!.env.example
+
+# Caller data — phone numbers and transcripts.
+call-reports/
+.playwright-cli/
+
+node_modules
+dist
+.git
+.github
+
+# Everything the AGENT does not need. The agent is not the API and not the dashboard.
+dashboard/
+screenshots/
+voice-samples/
+brand_assets/
+design_inspirations/
+docs/
+tests/
+scripts/
+*.md
+Dockerfile
+docker-compose.yml

@@ -13,3 +13,7 @@ voice-samples/
 
 # Call reports — contain caller phone numbers and transcripts (PII). Never commit.
 call-reports/
+
+# Agent deploy secrets — never commit
+.env.agent
+.agent-build/

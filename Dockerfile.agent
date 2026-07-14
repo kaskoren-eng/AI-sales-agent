@@ -1,0 +1,43 @@
+# The LiveKit voice agent — deployed to LiveKit Cloud, NOT the Fastify API.
+#
+# WHY A SECOND DOCKERFILE. The agent is a separate process from the API: `cli.runApp()` takes over
+# the process, forks a child per call, and owns its own shutdown. It has no HTTP surface. It also has
+# an incompatible base image (see below), so it cannot share the API's Dockerfile.
+#
+# WHY NOT ALPINE — THIS IS THE WHOLE REASON THIS FILE EXISTS.
+# The API image is `node:20-alpine`. Alpine uses musl libc, and LiveKit's native audio library
+# (`@livekit/rtc-node`) ships **no musl build** — only glibc. An Alpine agent installs cleanly, boots
+# cleanly, and then dies the moment a call arrives. `-slim` is Debian: glibc, and it works.
+#
+# WHY DEPLOY IT AT ALL. Measured from Koren's laptop, the round-trip to every provider we hit on
+# EVERY TURN:
+#     OpenAI    146ms      Cartesia  198ms
+#     LiveKit   177ms      Soniox    342ms
+# and the tails were far worse (406ms, 463ms) — home-internet jitter, which is what produced a
+# 2258ms first-token spike on a real call. Today the audio leaves the datacenter, crosses to a laptop
+# in Israel, goes back out to the US, and returns. No model swap can fix that; only moving the agent
+# can.
+FROM node:22-slim
+
+WORKDIR /app
+
+# Native deps for @livekit/rtc-node and the Silero VAD model download.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY package*.json ./
+# NOT --omit=dev: the build needs typescript + tsx, and this is a single-stage image.
+RUN npm ci
+
+COPY tsconfig.json ./
+COPY src ./src
+
+RUN npx tsc
+
+# Fetch the Silero VAD weights at BUILD time. Otherwise the first caller of a cold worker waits for
+# a model download — which is precisely the latency this deploy exists to remove.
+RUN npx livekit-agents download-files || node dist/modules/channels/voice-livekit/agent.js download-files
+
+# `start` is the production mode (`dev` watches files and is for a laptop).
+CMD ["node", "dist/modules/channels/voice-livekit/agent.js", "start"]
