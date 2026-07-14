@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { forceMasculineAddress, guardSpeech, guardStream } from './speech-guard.js';
+import { forceMasculineAddress, guardSpeech, guardStream, withFiller } from './speech-guard.js';
 
 /**
  * These are the ACTUAL sentences the agent said to Koren on a real call. Not hypotheticals.
@@ -144,5 +144,24 @@ describe('forceMasculineAddress — fixing pronunciation, not vocabulary', () =>
 
   it('runs inside the live guard, so what Cartesia SAYS is masculine', () => {
     expect(guardSpeech('מה השם שלך? אשלח לך אישור.').text).toBe('מה השם שלכה? אשלח לכה אישור.');
+  });
+});
+
+describe('withFiller — the hesitation goes FIRST, never last', () => {
+  const chunks = async function* (...c: string[]) { for (const x of c) yield x; };
+  const drain = async (it: AsyncIterable<string>) => { const o: string[] = []; for await (const x of it) o.push(x); return o.join(''); };
+
+  it('puts the hesitation at the START of her reply', async () => {
+    // The bug: session.say() QUEUED the filler, so it played AFTER she finished speaking.
+    //   היא מדברת (1152ms)
+    //   >>> FILLER: אה...        <- fired the instant she stopped
+    // Prepending makes correct placement structural instead of a matter of timing.
+    const out = await drain(withFiller('אממ...', chunks('כן, ', 'אנחנו בונים סוכני AI.')));
+    expect(out.startsWith('אממ...')).toBe(true);
+    expect(out).toContain('אנחנו בונים סוכני AI');
+  });
+
+  it('adds nothing at all when she did not need to think', async () => {
+    expect(await drain(withFiller(null, chunks('כן, בשמחה.')))).toBe('כן, בשמחה.');
   });
 });

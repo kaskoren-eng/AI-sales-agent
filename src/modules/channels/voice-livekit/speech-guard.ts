@@ -222,3 +222,22 @@ export function guardSpeech(text: string): GuardResult {
 
   return { text: out.replace(/\s{2,}/gu, ' ').trim(), silent: false, interventions };
 }
+
+/**
+ * Puts the hesitation at the very FRONT of the reply, then gets out of the way.
+ *
+ * This exists because the first version SPOKE the filler with session.say(), and say() QUEUES —
+ * so it played after whatever she was already saying, landing at the END of her turn. Koren:
+ * "היא עושה קולות של חשיבה אחרי שהיא מסיימת לדבר, זה לא תקין." A person who hesitates after
+ * finishing their sentence is not thinking; it is a twitch.
+ *
+ * Prepending makes correct placement structural rather than a matter of timing luck: the hesitation
+ * is the first sound of her next breath, and it cannot be anywhere else.
+ */
+export async function* withFiller(
+  filler: string | null,
+  text: AsyncIterable<string>,
+): AsyncIterable<string> {
+  if (filler) yield `${filler} `;
+  yield* text;
+}

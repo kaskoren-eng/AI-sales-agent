@@ -20,7 +20,7 @@ import {
   MAX_FILLERS_PER_CALL,
   pickThinkingFiller,
 } from './prompts/thinking-fillers.he.js';
-import { guardStream } from './speech-guard.js';
+import { guardStream, withFiller } from './speech-guard.js';
 import { ShadowSTT } from './stt/shadow-stt.js';
 
 /** Where every call's report lands. Repo-root relative, gitignored — these contain caller PII. */
@@ -66,6 +66,28 @@ const env = loadEnv();
  */
 class ClickScalesAgent extends voice.Agent {
   /**
+   * A hesitation to put at the FRONT of her next reply — never as an utterance of its own.
+   *
+   * THE FIRST VERSION SAID IT WITH session.say(), AND IT LANDED IN THE WRONG PLACE ENTIRELY.
+   * `say()` QUEUES speech, so the filler played whenever the queue got to it — which was AFTER
+   * whatever she was already saying. Koren heard it exactly that way: "היא עושה קולות של חשיבה
+   * אחרי שהיא מסיימת לדבר." The log agrees:
+   *
+   *     היא מדברת (1152ms)
+   *     >>> FILLER: אה...      <- fired the instant she stopped talking
+   *     GPT חושב
+   *     היא מדברת (3876ms)
+   *
+   * A person hesitating AFTER they have finished their sentence is not thinking. It is a twitch.
+   *
+   * He said where it belongs: "בהתחלה של הדיבור שלה אם היא צריכה לעבד משהו ארוך, או באמצע שהיא
+   * אומרת משהו וצריכה לעצור לחשוב." So it is no longer spoken at all — it is PREPENDED to the reply
+   * in ttsNode, which makes it the first sound of her next breath by construction. It cannot land
+   * anywhere else.
+   */
+  pendingFiller: string | null = null;
+
+  /**
    * The last gate before text becomes sound.
    *
    * Two things escaped on Koren's first Keren-v2 call, and neither is fixable by prompting — the
@@ -97,9 +119,14 @@ class ClickScalesAgent extends voice.Agent {
     text: Parameters<voice.Agent['ttsNode']>[0],
     modelSettings: voice.ModelSettings,
   ): ReturnType<voice.Agent['ttsNode']> {
+    // The hesitation goes HERE — glued to the front of what she is about to say, so it is the first
+    // sound out of her mouth and physically cannot arrive after she has finished. Consumed once.
+    const filler = this.pendingFiller;
+    this.pendingFiller = null;
+
     return voice.Agent.default.ttsNode(
       this,
-      guardStream(text as AsyncIterable<string>),
+      guardStream(withFiller(filler, text as AsyncIterable<string>)),
       modelSettings,
     );
   }
@@ -275,8 +302,6 @@ export default defineAgent({
       if (path) console.log('call_report_written', path);
     });
 
-    const agent = new ClickScalesAgent({ instructions: SYSTEM_PROMPT_HE });
-
     // One event, three jobs — all of which have to happen AFTER a turn is committed.
     session.on(voice.AgentSessionEventTypes.ConversationItemAdded, (ev) => {
       // 1. The transcript: BOTH sides of the conversation.
@@ -304,22 +329,19 @@ export default defineAgent({
       void report.write(CALL_REPORTS_DIR);
     });
 
-    // SHE HUMS WHEN SHE IS THINKING, but only when she is thinking for a LONG time.
+    const agent = new ClickScalesAgent({ instructions: SYSTEM_PROMPT_HE });
+
+    // SHE HESITATES WHEN SHE IS THINKING — AT THE START OF HER REPLY, NEVER AFTER IT.
     //
-    // Koren, mid-call: "סיימת? אני פשוט לא מדבר, אני מחכה שתסיימי." He could not tell whether she
-    // was thinking or had stopped, so he sat in silence waiting for a machine that was also silent.
-    // A person facing a hard question takes just as long — but they fill the gap, and nobody minds.
+    // This does NOT speak. It ARMS a hesitation, which ttsNode then glues to the front of her next
+    // reply. The first version used session.say(), which QUEUES speech — so the filler played after
+    // whatever she was already saying, i.e. at the END of her turn. Koren: "היא עושה קולות של חשיבה
+    // אחרי שהיא מסיימת לדבר, זה לא תקין." He was right; a person who hesitates after finishing their
+    // sentence is not thinking, they are twitching.
     //
-    // THE THRESHOLD IS THE DESIGN. Median LLM first-token is ~767ms; a threshold below ~1000ms would
-    // make her hum on EVERY turn, which is much worse than silence — it becomes a tic, and a tic is
-    // the fastest way to sound like a machine again. At 1200ms she only hesitates on the genuinely
-    // slow turns, which is exactly when a person would.
-    //
-    // The filler NEVER enters the chat context (`addToChatCtx: false`). If it did, the LLM would see
-    // "אממ..." as one of her own turns and start replying to it.
-    //
-    // Honest cost: once the filler starts, the real answer queues behind it. This does not make the
-    // wait shorter — it makes it HUMAN. That was the ask.
+    // THE THRESHOLD IS STILL THE DESIGN. Below ~2s she would hesitate on nearly every turn, which is
+    // a tic and worse than silence. The ceiling (3 per call) and the cooldown exist because the
+    // threshold alone was not enough: it fired 21 times in one call.
     let fillerTimer: ReturnType<typeof setTimeout> | null = null;
     let lastFiller: string | null = null;
     let fillerCount = 0;
@@ -330,33 +352,27 @@ export default defineAgent({
         clearTimeout(fillerTimer);
         fillerTimer = null;
       }
-      if (env.VOICE_THINKING_FILLER_MS === 0 || ev.newState !== 'thinking') return;
-
-      // A HARD CEILING, not just a threshold. The threshold alone fired 21 times in one seven-minute
-      // call — every other turn, because the v2 prompt is long and the LLM crosses it constantly.
-      // Koren: "she express too many times the thinking words and phrases." A person hesitates once
-      // or twice in a conversation. Twenty-one times is a nervous tic, and it makes her sound LESS
-      // human, which is the exact opposite of the point.
+      // She stopped thinking without needing to hesitate — throw the armed filler away, or it would
+      // surface on some LATER reply that arrived instantly and needed no hesitation at all.
+      if (ev.newState !== 'thinking') {
+        agent.pendingFiller = null;
+        return;
+      }
+      if (env.VOICE_THINKING_FILLER_MS === 0) return;
       if (fillerCount >= MAX_FILLERS_PER_CALL) return;
       if (Date.now() - lastFillerAt < FILLER_COOLDOWN_MS) return;
 
       fillerTimer = setTimeout(() => {
         fillerTimer = null;
-        try {
-          const filler = pickThinkingFiller(lastFiller);
-          lastFiller = filler;
-          // allowInterruptions: the caller may start speaking over the hesitation, and she must
-          // yield to him instantly — hesitating AND talking over him would be the worst of both.
-          fillerCount++;
-          lastFillerAt = Date.now();
-          session.say(filler, { addToChatCtx: false, allowInterruptions: true });
-          console.log(
-            `thinking_filler ${JSON.stringify({ filler, n: fillerCount, max: MAX_FILLERS_PER_CALL })}`,
-          );
-        } catch (err) {
-          // A filler is a nicety. It must never be able to break a live call.
-          console.error('filler_failed', err instanceof Error ? err.message : String(err));
-        }
+        const filler = pickThinkingFiller(lastFiller);
+        lastFiller = filler;
+        fillerCount++;
+        lastFillerAt = Date.now();
+        // ARMED, not spoken. ttsNode puts it at the front of the reply that is still being written.
+        agent.pendingFiller = filler;
+        console.log(
+          `thinking_filler ${JSON.stringify({ filler, n: fillerCount, max: MAX_FILLERS_PER_CALL, armed: true })}`,
+        );
       }, env.VOICE_THINKING_FILLER_MS);
     });
 
