@@ -194,6 +194,16 @@ export default defineAgent({
     // that column exactly so the move is a one-liner.
     ctx.addShutdownCallback(async () => {
       if (shadow) report.attachShadow(shadow.snapshot());
+
+      // STDOUT, not just a file. In LiveKit Cloud the container's filesystem is ephemeral and
+      // unreachable — `call-reports/*.json` is written into a box nobody can open. The first cloud
+      // call proved it: the agent dutifully logged "call_report_written call-reports/...json" for a
+      // file that could never be read. Stdout is the ONLY channel out of a cloud worker, and
+      // `lk agent logs` is how it gets here. `npm run call:report -- --cloud` pulls these back down.
+      //
+      // The file is still written too, for the local dev path where it is genuinely readable.
+      console.log(`call_report_json ${JSON.stringify(report.toJson())}`);
+
       const path = await report.write(CALL_REPORTS_DIR);
       if (path) console.log('call_report_written', path);
     });

@@ -25,7 +25,10 @@
     "stt:shadow": "node --env-file=.env scripts/analyze-shadow-stt.mjs",
     "call:report": "node scripts/show-call-report.mjs",
     "bench:tts": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/latency-bench.ts tts",
-    "bench:llm": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/latency-bench.ts llm"
+    "bench:llm": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/latency-bench.ts llm",
+    "call:fetch": "node scripts/fetch-cloud-calls.mjs",
+    "agent:deploy": "node scripts/deploy-agent.mjs deploy",
+    "agent:logs": "lk agent logs"
   },
   "engines": {
     "node": ">=20"
