@@ -75,36 +75,53 @@ const envSchema = z.object({
   // OpenAI streaming STT — reuses OPENAI_API_KEY below
   OPENAI_REALTIME_MODEL: z.string().default('gpt-realtime-whisper'),
 
-  // --- Which STT engine speaks for us. Default stays 'openai' until the A/B says otherwise. ---
+  // --- Which STT engine transcribes the caller. SONIOX. This is settled, on real Hebrew calls. ---
   //
-  // 'soniox' is under evaluation because it fixes, on paper, the two things that hurt most:
+  // MEASURED, not assumed. `npm run stt:ab` on 10 Hebrew utterances x 3 channel conditions, then
+  // three real phone calls with the loser running in shadow on the same audio:
   //
-  //   1. BIASING WHILE STREAMING. gpt-realtime-whisper hard-rejects `prompt`, which is the ONLY
-  //      reason the Phase 4 plan contains a "hybrid STT" hack (swap to the slow whisper-1 while
-  //      capturing a name/phone/email, eat ~1s). Soniox takes `context.terms` on a STREAMING
-  //      connection. If it works, that hack is deleted, not implemented.
+  //                          gpt-realtime-whisper      Soniox stt-rt-v5
+  //   semantic WER (noisy)            34.9%                    4.3%
+  //   greetings                       72.2%                    0.0%
+  //   end-of-turn (real call)        ~1113ms                  ~572ms
+  //   cost                        $0.017/min              $0.002/min      (8.5x cheaper)
   //
-  //   2. SEMANTIC END-OF-TURN. Soniox's server emits an `<end>` token, which the plugin turns into
-  //      an END_OF_SPEECH event — so `turnHandling.turnDetection: 'stt'` can replace the Silero
-  //      silence timer. That timer is the ~1.1s wall in docs/phase-4-known-issues.md §5, and it is
-  //      the one we wrote off as unfixable because no vendor ships a Hebrew end-of-turn model.
-  //      Soniox's endpoint is language-agnostic, so it may not need one.
+  // On a real call, OpenAI heard the caller's name קורן as כהן (Cohen — a different person), the
+  // "@" of his email as סטודנט ("student"), and turned the last three digits of his mobile into the
+  // Hebrew word for "sun". Soniox got all three exactly right and returned the phone number as
+  // digits. For an agent whose ONE JOB is to capture a name, a phone number and an email and book a
+  // meeting, that is not a close call.
   //
-  // Neither claim is believed until measured on Hebrew: `npm run stt:ab`.
-  STT_PROVIDER: z.enum(['openai', 'soniox']).default('openai'),
+  // It also DELETES the Phase 4 "hybrid STT" workaround: that plan existed only because
+  // gpt-realtime-whisper hard-rejects the `prompt` parameter, forcing a swap to REST whisper-1
+  // (~1s slower) whenever we needed accurate capture. Soniox takes biasing terms (`context.terms`)
+  // on a STREAMING connection. No workaround needed.
+  //
+  // 'openai' is kept as a switchable fallback, and is what shadow mode runs when Soniox is live.
+  STT_PROVIDER: z.enum(['openai', 'soniox']).default('soniox'),
   SONIOX_API_KEY: z.string().min(1).optional(),
-  // 'stt-rt-v4' is what the plugin defaults to, and Soniox now ALIASES it to stt-rt-v5. Pinning
-  // the alias means a silent upstream swap can change our transcription quality overnight, so
-  // name the real model. Both are measured in the A/B.
-  SONIOX_MODEL: z.string().default('stt-rt-v4'),
-  // How long Soniox waits after speech stops before declaring the endpoint. The plugin CLAMPS this
-  // to 500-3000 and THROWS outside it — a lower number is not available, so Soniox cannot beat
-  // 500ms of end-of-turn no matter what. Still less than half our current ~1113ms.
+  // Name the real model. The plugin defaults to 'stt-rt-v4', which Soniox now ALIASES to
+  // stt-rt-v5 — so pinning the alias lets a silent upstream swap change our transcription overnight.
+  SONIOX_MODEL: z.string().default('stt-rt-v5'),
+  // How long Soniox waits after speech stops before declaring an endpoint. Only used when
+  // VOICE_TURN_DETECTION=stt, which you should not turn on — see below.
   SONIOX_MAX_ENDPOINT_DELAY_MS: z.coerce.number().int().min(500).max(3000).default(500),
-  // Drive end-of-turn from the STT's semantic endpoint instead of the VAD silence timer.
-  // Only meaningful when STT_PROVIDER=soniox; gpt-realtime-whisper never emits END_OF_SPEECH,
-  // so switching this on with the OpenAI STT would leave the agent waiting forever for a turn
-  // that never ends. Guarded in agent.config.ts, not just documented here.
+  // How the turn ends. LEAVE THIS ON 'vad'.
+  //
+  // 'stt' drives end-of-turn from Soniox's own endpoint instead of the Silero silence timer. It
+  // looked like the answer to the ~1.1s Hebrew end-of-turn wall (nobody ships a Hebrew end-of-turn
+  // model — LiveKit's has Arabic and not Hebrew). IT IS NOT. Tested on a real call: it declared the
+  // caller finished WHILE HE WAS STILL TALKING ten times, and the agent went silent on him three
+  // times mid-conversation. Soniox's endpoint is a SILENCE detector with a 500ms floor, not a
+  // linguistic one — it cannot tell "paused to think" from "finished", and Hebrew speakers pause
+  // mid-clause constantly.
+  //
+  // The trap: that call recorded our BEST-EVER end-of-turn median (259ms), because a turn chopped
+  // in half finalises fast. The metrics reported a triumph while the caller was being talked over.
+  // See docs/phase-4-known-issues.md §11.
+  //
+  // Soniox on the plain VAD timer gets the win anyway — ~572ms, down from ~1113ms — because it
+  // commits its final transcript faster. Safely.
   VOICE_TURN_DETECTION: z.enum(['vad', 'stt']).default('vad'),
   // Run the OTHER engine silently alongside the live one on real calls, and log what it heard.
   //

@@ -40,35 +40,56 @@ const env = loadEnv();
 /**
  * The agent.
  *
- * DO NOT MUTATE THE CHAT CONTEXT IN `onUserTurnCompleted`. It silently disables preemptive
- * generation, which is the biggest latency mechanism we have.
+ * NOTE THE ABSENCE OF `onUserTurnCompleted`. Mutating the chat context in that hook SILENTLY
+ * DISABLES PREEMPTIVE GENERATION, which is the biggest latency mechanism in the pipeline.
  *
- * This class used to call `chatCtx.truncate(VOICE_MAX_HISTORY_ITEMS)` here, to stop the whole call
- * being re-sent to the LLM every turn. It cost more than it saved, and the logs said so on every
- * single turn:
+ * This class used to call `chatCtx.truncate()` there. LiveKit snapshots the context to build its
+ * preemptive draft, then checks `preemptive.chatCtx.isEquivalent(chatCtx)` once the hook returns
+ * (agent_activity.ts:2394). Truncating inside the hook makes that check fail, so the draft is
+ * cancelled and the reply is regenerated from scratch. The log said so on EVERY turn — 15 times in
+ * one 4-minute call:
  *
  *   WARN  preemptive generation enabled but chat context or tools have changed after
  *         `onUserTurnCompleted`
  *
- * — 15 times in one 4-minute call, i.e. essentially every turn. Preemptive generation drafts the
- * reply DURING the end-of-turn wait, so the LLM's ~1.1s hides behind it instead of adding to it.
- * The draft is built from the context as it was; truncating it afterwards invalidates the draft,
- * so LiveKit threw every one away and regenerated from scratch. Preemptive generation has been
- * dead since the truncate was added (217ff07), while we believed it was on.
+ * It was dead from the moment the truncate landed (217ff07) while the config said `enabled: true`.
  *
- * And trimming was measured to save NO latency in the first place — it is a pure cost lever:
- *   untrimmed: 3836 input tokens, LLM ttft 1094ms
- *   16 items:  3055 input tokens, LLM ttft 1092ms   (2ms = noise)
- *
- * So it was buying nothing and costing everything. Removed.
- *
- * The cost problem it addressed is real but small: input tokens grow quadratically with call
- * length (a 4-minute call ended at ~10k input tokens). At gpt-5.4 rates that is cents, and it is
- * not worth a second of the caller's time. If a call ever runs long enough for this to matter,
- * trim somewhere that does NOT invalidate the draft — summarise older turns into the system prompt
- * between turns, rather than mutating the context inside this hook.
+ * Trimming is done in `trimHistory()` below instead — AFTER the agent has replied, when no draft is
+ * in flight. The next turn's draft then snapshots an already-trimmed context and nothing changes
+ * underneath it.
  */
 class ClickScalesAgent extends voice.Agent {}
+
+/**
+ * Keeps the conversation history bounded, WITHOUT invalidating a preemptive draft.
+ *
+ * Why bother: the entire call is re-sent to the LLM on every turn, so input tokens grow
+ * QUADRATICALLY with call length. Measured on a real 3.5-minute call with no trimming at all:
+ * 29,136 input tokens. A fifteen-minute call would be far worse than 4x that.
+ *
+ * Why HERE and not in `onUserTurnCompleted`: this runs after a conversation item is committed —
+ * i.e. between turns, when there is no preemptive draft in flight to invalidate. By the time the
+ * next draft is snapshotted the context is already short, and the hook that used to shrink it no
+ * longer exists, so `isEquivalent()` holds and the draft survives.
+ *
+ * Trimming was separately measured NOT to reduce latency (3836 -> 3055 input tokens moved LLM ttft
+ * by 2ms). It is a COST lever only. That is exactly why it must not cost us a single millisecond of
+ * the caller's time to collect — which is what the old placement did.
+ *
+ * `truncate()` always keeps the system prompt, so she never forgets who she is; she only forgets
+ * the far end of a long conversation.
+ */
+async function trimHistory(agent: voice.Agent, maxItems: number): Promise<void> {
+  try {
+    if (agent.chatCtx.items.length <= maxItems) return;
+    const trimmed = agent.chatCtx.copy();
+    trimmed.truncate(maxItems);
+    await agent.updateChatCtx(trimmed);
+  } catch (err) {
+    // Never fail a live call over a cost optimisation.
+    console.error('trim_history_failed', err instanceof Error ? err.message : String(err));
+  }
+}
 
 export default defineAgent({
   // Runs once when the worker boots, not per call — so the first caller doesn't pay for the
@@ -172,8 +193,16 @@ export default defineAgent({
       if (path) console.log('call_report_written', path);
     });
 
+    const agent = new ClickScalesAgent({ instructions: SYSTEM_PROMPT_HE });
+
+    // Trim the history BETWEEN turns, never inside onUserTurnCompleted — see trimHistory().
+    // Fires after each conversation item is committed, when no preemptive draft is in flight.
+    session.on(voice.AgentSessionEventTypes.ConversationItemAdded, () => {
+      void trimHistory(agent, env.VOICE_MAX_HISTORY_ITEMS);
+    });
+
     await session.start({
-      agent: new ClickScalesAgent({ instructions: SYSTEM_PROMPT_HE }),
+      agent,
       room: ctx.room,
       inputOptions: {
         // Clean the caller's audio BEFORE the VAD sees it. This is the missing piece behind the
