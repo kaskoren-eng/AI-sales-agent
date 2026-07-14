@@ -10,3 +10,6 @@ screenshots/
 
 # Voice A/B samples — regenerate with `npm run voice:ab`
 voice-samples/
+
+# Call reports — contain caller phone numbers and transcripts (PII). Never commit.
+call-reports/

@@ -22,7 +22,8 @@
     "stt:ab": "tsx --env-file=.env tests/stt-ab-test.ts",
     "voice:ab": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/voice-ab.ts",
     "voice:clarity": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/clarity-ab.ts",
-    "stt:shadow": "node --env-file=.env scripts/analyze-shadow-stt.mjs"
+    "stt:shadow": "node --env-file=.env scripts/analyze-shadow-stt.mjs",
+    "call:report": "node scripts/show-call-report.mjs"
   },
   "engines": {
     "node": ">=20"

@@ -13,8 +13,12 @@ import { TelephonyBackgroundVoiceCancellation } from '@livekit/noise-cancellatio
 import { RoomEvent, type RemoteAudioTrack, TrackKind } from '@livekit/rtc-node';
 import { loadEnv } from '../../../config/env.js';
 import { buildSessionComponents } from './agent.config.js';
+import { CallReport } from './call-report.js';
 import { GREETING_HE, SYSTEM_PROMPT_HE } from './prompts/system-prompt.he.js';
 import { ShadowSTT } from './stt/shadow-stt.js';
+
+/** Where every call's report lands. Repo-root relative, gitignored — these contain caller PII. */
+const CALL_REPORTS_DIR = 'call-reports';
 
 /**
  * LiveKit voice agent — Phase 1 skeleton of the Retell -> LiveKit migration.
@@ -101,6 +105,17 @@ export default defineAgent({
     const caller = readSipCaller(participant.attributes);
     console.log('call_started', JSON.stringify({ room: ctx.room.name, ...caller }));
 
+    // Everything we learn about this call, written to call-reports/ when it ends.
+    // Read it with `npm run call:report`. Until this existed, the only record of a call was the
+    // agent's stdout — which meant the person whose calls these are could not look at his own data.
+    const report = new CallReport(ctx.room.name ?? 'unknown', caller.callerPhone, {
+      sttProvider: env.STT_PROVIDER,
+      sttModel: env.STT_PROVIDER === 'soniox' ? env.SONIOX_MODEL : env.OPENAI_REALTIME_MODEL,
+      turnDetection: env.VOICE_TURN_DETECTION,
+      llmModel: env.VOICE_LLM_MODEL ?? env.AI_MODEL,
+      ttsModel: env.CARTESIA_MODEL,
+    });
+
     // Per-turn latency baseline. LiveKit already measures each stage; we just surface it.
     // Wall-clock timestamps are useless here — the gap between turns is the human thinking,
     // not the pipeline working. These are the numbers the Phase 2 budget is written against:
@@ -115,6 +130,7 @@ export default defineAgent({
         .map((k) => `${k}=${Math.round(m[k] as number)}`);
       if (timings.length > 0) {
         ctx.proc.userData.lastMetricsAt = Date.now();
+        report.recordMetric(stage, m);
         console.log(`latency ${stage} ${timings.join(' ')}`);
       }
     });
@@ -124,6 +140,7 @@ export default defineAgent({
     // the only way to cost a call is to guess at token counts from the transcript.
     // PHASE 4 will persist this alongside the transcript in call_learnings.
     session.on(voice.AgentSessionEventTypes.SessionUsageUpdated, (ev) => {
+      report.recordUsage(ev.usage ?? ev);
       console.log('call_usage', JSON.stringify(ev.usage ?? ev));
     });
 
@@ -132,11 +149,6 @@ export default defineAgent({
     // Everything here is best-effort and cannot fail the call. If the shadow engine won't start,
     // the call runs exactly as if the flag were off. See stt/shadow-stt.ts for the safety contract:
     // separate audio stream, separate engine, every path try/caught, breaker on the candidate.
-    //
-    // NOTE: this logs what both engines HEARD, but persistence to call_learnings needs a
-    // call_learnings row to attach to — which is PHASE 4 work (nothing writes that row today for a
-    // LiveKit call). Until then the shadow transcript is logged to stdout, where the analysis script
-    // cannot read it. Wire `shadow.persist(db, id)` into the Phase 4 shutdown hook.
     const shadow = env.SHADOW_STT_ENABLED ? new ShadowSTT(env) : null;
     if (shadow) {
       console.log('shadow_stt_enabled', JSON.stringify({ engine: shadow.shadowEngine }));
@@ -149,10 +161,16 @@ export default defineAgent({
       session.on(voice.AgentSessionEventTypes.UserInputTranscribed, (ev) => {
         if (ev.isFinal) shadow.recordAuthoritative(ev.transcript);
       });
-      ctx.addShutdownCallback(async () => {
-        console.log('shadow_stt_result', JSON.stringify(shadow.snapshot()));
-      });
     }
+
+    // Write the call report when the call ends. This is the ONLY durable record of a call today —
+    // the call_learnings row it really belongs in is Phase 4, and the payload shape here matches
+    // that column exactly so the move is a one-liner.
+    ctx.addShutdownCallback(async () => {
+      if (shadow) report.attachShadow(shadow.snapshot());
+      const path = await report.write(CALL_REPORTS_DIR);
+      if (path) console.log('call_report_written', path);
+    });
 
     await session.start({
       agent: new ClickScalesAgent({ instructions: SYSTEM_PROMPT_HE }),

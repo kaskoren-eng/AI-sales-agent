@@ -1,0 +1,216 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import type { ShadowSttTranscript } from '../../../db/schema/call-learnings.js';
+
+/**
+ * A durable record of one call: what was heard, what was said, and how slow it was.
+ *
+ * WHY THIS EXISTS. Everything the agent knew about a call used to go to stdout and nowhere else —
+ * so the only way anyone saw it was if a developer happened to be tailing the process and
+ * hand-summarised it afterwards. Koren, whose calls these are, could not look at his own data.
+ * That is not a logging gap, it is a product gap: the agent is an experiment right now, and an
+ * experiment you cannot read the results of is not an experiment.
+ *
+ * Writes one JSON file per call to `call-reports/`. Read it with `npm run call:report`.
+ *
+ * This is the STOPGAP, and deliberately so. The real home for this is the `call_learnings` table
+ * (that is what `shadow_stt_transcript` is for, and what `scripts/analyze-shadow-stt.mjs` reads),
+ * but nothing writes a call_learnings row for a LiveKit call yet — that is Phase 4. The payload
+ * shape here matches the DB column exactly, so when Phase 4 lands, persistence is a one-line change
+ * and nothing downstream has to be rewritten.
+ */
+export interface TurnMetric {
+  /** ms since call start. */
+  atMs: number;
+  /** eou | llm | tts — which stage of the pipeline reported this. */
+  stage: string;
+  endOfUtteranceDelayMs?: number;
+  ttftMs?: number;
+  ttfbMs?: number;
+  durationMs?: number;
+}
+
+export interface CallReportJson {
+  room: string;
+  callerPhone: string | null;
+  startedAt: string;
+  durationSec: number;
+  config: {
+    sttProvider: string;
+    sttModel: string;
+    turnDetection: string;
+    llmModel: string;
+    ttsModel: string;
+  };
+  summary: {
+    /** Turns where the agent decided the caller had finished speaking. */
+    turnsHeard: number;
+    /** Speech segments the agent synthesized. */
+    ttsSegments: number;
+    /**
+     * Times the STT declared the caller finished WHILE THE VAD STILL HEARD SPEECH — i.e. she cut
+     * him off mid-sentence.
+     *
+     * THE NUMBER THAT CATCHES A BROKEN CALL, and the only trustworthy one. Latency cannot see this:
+     * a turn chopped in half FINALISES FASTER, so a cut-off call reports a BETTER end-of-turn
+     * median. We measured our best-ever 259ms in precisely the call where the agent went silent on
+     * the caller three times. The instrument said we had won while he was being talked over.
+     *
+     * (An earlier version of this file tried to infer cut-offs from turnsHeard - ttsSegments. That
+     * is NOT a valid subtraction — TTS segments include the greeting and preemptive drafts, so it
+     * goes NEGATIVE on a healthy call. Do not resurrect it.)
+     */
+    cutOffs: number;
+    endOfTurnMedianMs: number | null;
+    llmTtftMedianMs: number | null;
+    ttsTtfbMedianMs: number | null;
+    /** Sum of the three medians: the worst case, if no stage overlapped any other. */
+    worstCaseMs: number | null;
+  };
+  metrics: TurnMetric[];
+  /** Provider usage as LiveKit tallied it — so cost is measured, not guessed. */
+  usage: unknown;
+  /** Both engines' transcripts, when SHADOW_STT_ENABLED. Same shape as the DB column. */
+  shadow: ShadowSttTranscript | null;
+}
+
+/**
+ * The exact LiveKit warning that means "she started replying while he was still talking".
+ * Emitted by the agent framework when the STT's end-of-speech lands inside a VAD speech segment.
+ */
+const CUT_OFF_WARNING = 'stt end of speech received while vad is still in a speech segment';
+
+export class CallReport {
+  #startedAt = Date.now();
+  #room: string;
+  #callerPhone: string | null;
+  #config: CallReportJson['config'];
+  #metrics: TurnMetric[] = [];
+  #usage: unknown = null;
+  #shadow: ShadowSttTranscript | null = null;
+  #cutOffs = 0;
+  #restoreStderr: (() => void) | null = null;
+
+  constructor(room: string, callerPhone: string | null, config: CallReportJson['config']) {
+    this.#room = room;
+    this.#callerPhone = callerPhone;
+    this.#config = config;
+    this.#watchForCutOffs();
+  }
+
+  /**
+   * Counts cut-offs by watching what LiveKit logs.
+   *
+   * Yes, this reads the framework's log output, which is not how one would normally detect
+   * something. It is the honest option available: LiveKit emits no EVENT for this, and it is the
+   * single most important health signal we have — the difference between "fast" and "she talked
+   * over the customer" is invisible in every metric the framework does expose. The alternative was
+   * to infer it by subtracting event counts, which produced NEGATIVE cut-offs on a healthy call.
+   *
+   * Wrapped in a try so a change in LiveKit's logging can never do worse than lose the counter.
+   */
+  #watchForCutOffs(): void {
+    try {
+      const original = process.stderr.write.bind(process.stderr);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      process.stderr.write = ((chunk: any, ...rest: any[]) => {
+        try {
+          if (typeof chunk === 'string' && chunk.includes(CUT_OFF_WARNING)) this.#cutOffs++;
+        } catch {
+          // Counting must never break the log line itself.
+        }
+        return original(chunk, ...rest);
+      }) as typeof process.stderr.write;
+      this.#restoreStderr = () => {
+        process.stderr.write = original;
+      };
+    } catch {
+      this.#restoreStderr = null;
+    }
+  }
+
+  recordMetric(stage: string, m: Record<string, unknown>): void {
+    const pick = (k: string): number | undefined =>
+      typeof m[k] === 'number' ? Math.round(m[k] as number) : undefined;
+
+    this.#metrics.push({
+      atMs: Date.now() - this.#startedAt,
+      stage,
+      endOfUtteranceDelayMs: pick('endOfUtteranceDelayMs'),
+      ttftMs: pick('ttftMs'),
+      ttfbMs: pick('ttfbMs'),
+      durationMs: pick('durationMs'),
+    });
+  }
+
+  recordUsage(usage: unknown): void {
+    this.#usage = usage;
+  }
+
+  attachShadow(shadow: ShadowSttTranscript): void {
+    this.#shadow = shadow;
+  }
+
+  toJson(): CallReportJson {
+    // Zeroes are barge-in artefacts, not turns — the caller cut her off, so there was no wait to
+    // measure. Averaging them in would silently halve the end-of-turn figure.
+    const eou = this.#metrics
+      .map((m) => m.endOfUtteranceDelayMs)
+      .filter((v): v is number => typeof v === 'number' && v > 0);
+    const ttft = this.#metrics
+      .map((m) => m.ttftMs)
+      .filter((v): v is number => typeof v === 'number');
+    const ttfb = this.#metrics
+      .map((m) => m.ttfbMs)
+      .filter((v): v is number => typeof v === 'number');
+
+    const eouMed = median(eou);
+    const ttftMed = median(ttft);
+    const ttfbMed = median(ttfb);
+
+    return {
+      room: this.#room,
+      callerPhone: this.#callerPhone,
+      startedAt: new Date(this.#startedAt).toISOString(),
+      durationSec: Math.round((Date.now() - this.#startedAt) / 1000),
+      config: this.#config,
+      summary: {
+        turnsHeard: eou.length,
+        ttsSegments: this.#metrics.filter((m) => m.stage === 'tts_metrics').length,
+        cutOffs: this.#cutOffs,
+        endOfTurnMedianMs: eouMed,
+        llmTtftMedianMs: ttftMed,
+        ttsTtfbMedianMs: ttfbMed,
+        worstCaseMs:
+          eouMed === null || ttftMed === null || ttfbMed === null
+            ? null
+            : Math.round(eouMed + ttftMed + ttfbMed),
+      },
+      metrics: this.#metrics,
+      usage: this.#usage,
+      shadow: this.#shadow,
+    };
+  }
+
+  /** Writes the report and returns its path. Never throws — losing a report must not fail a call. */
+  async write(dir: string): Promise<string | null> {
+    this.#restoreStderr?.();
+    try {
+      await mkdir(dir, { recursive: true });
+      const stamp = new Date(this.#startedAt).toISOString().replace(/[:.]/gu, '-');
+      const path = join(dir, `${stamp}.json`);
+      await writeFile(path, `${JSON.stringify(this.toJson(), null, 2)}\n`);
+      return path;
+    } catch (err) {
+      console.error('call_report_write_failed', err instanceof Error ? err.message : String(err));
+      return null;
+    }
+  }
+}
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const s = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return Math.round(s.length % 2 === 0 ? (s[mid - 1]! + s[mid]!) / 2 : s[mid]!);
+}
