@@ -23,7 +23,9 @@
     "voice:ab": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/voice-ab.ts",
     "voice:clarity": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/clarity-ab.ts",
     "stt:shadow": "node --env-file=.env scripts/analyze-shadow-stt.mjs",
-    "call:report": "node scripts/show-call-report.mjs"
+    "call:report": "node scripts/show-call-report.mjs",
+    "bench:tts": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/latency-bench.ts tts",
+    "bench:llm": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/latency-bench.ts llm"
   },
   "engines": {
     "node": ">=20"

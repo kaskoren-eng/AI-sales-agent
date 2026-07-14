@@ -162,6 +162,19 @@ const envSchema = z.object({
   // caller and cannot affect the live path — see stt/shadow-stt.ts.
   SHADOW_STT_ENABLED: envBool(false),
 
+  // How we reach Cartesia: straight to them with our own key, or through LiveKit's inference gateway.
+  //
+  // SAME MODEL, SAME VOICE, SAME QUALITY — only the route differs. The gateway holds a warm pooled
+  // websocket, which is the whole point: our direct plugin appears to pay connection setup more
+  // often, and Cartesia's time-to-first-audio is ~455ms on live calls against ~300ms through the
+  // gateway on the bench (`npm run bench:tts`).
+  //
+  // The cost of 'inference' is that LiveKit becomes the middleman and bills for it — the exact
+  // vendor lock-in this whole migration was meant to escape. It is here because ~150ms of the
+  // caller's silence is worth more than architectural purity, and because it is one env var to
+  // revert. If it does not actually win on a real call, go back to 'cartesia'.
+  VOICE_TTS_ROUTE: z.enum(['cartesia', 'inference']).default('cartesia'),
+
   // Agent spoken language (ISO 639-1) — drives both STT and TTS
   VOICE_LANGUAGE: z.string().default('he'),
   // Biasing prompt for the STT. Hebrew transcription invents words it half-hears — it turned

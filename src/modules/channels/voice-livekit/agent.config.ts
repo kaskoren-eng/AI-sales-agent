@@ -1,4 +1,4 @@
-import type { stt as sttBase, voice } from '@livekit/agents';
+import { inference, type stt as sttBase, type tts as ttsBase, type voice } from '@livekit/agents';
 import * as cartesia from '@livekit/agents-plugin-cartesia';
 import * as openai from '@livekit/agents-plugin-openai';
 import type * as silero from '@livekit/agents-plugin-silero';
@@ -59,22 +59,34 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
   return {
     vad,
     stt: buildSTT(env, vad),
-    // Voice gets its own model + reasoning budget. gpt-5.x are reasoning models: measured ~1030ms
-    // to first token on an 8-line prompt, which is a THIRD of the caller's perceived wait spent
-    // thinking about "hello". VOICE_LLM_MODEL can point at a different model without touching
-    // AI_MODEL, which the rest of the app still uses.
+    // The voice LLM. gpt-5.4-MINI, and the reasoning effort UNSET.
+    //
+    // MEASURED on the real system prompt and a real Hebrew turn, direct to OpenAI with our own key
+    // (median of 3, connection pre-warmed):
+    //
+    //   gpt-5.4       effort=none      761ms   <- what we were running
+    //   gpt-5.4-mini  effort=none      654ms
+    //   gpt-5.4-mini  effort=(unset)   642ms   <- now
+    //   gpt-5.4-mini  effort=low      1559ms   <- a TRAP: "low" is 2.4x slower than none
+    //   gpt-4.1-mini  effort=(unset)   623ms   (fastest, but an older model)
+    //
+    // The Hebrew got no worse — arguably better. gpt-5.4-mini kept the feminine self-reference,
+    // refused to invent a price, and stayed inside two sentences.
+    //
+    // This overturns known-issues §3 ("there is no faster LLM"). That sweep was right about what it
+    // tested and wrong in its conclusion: it measured full COMPLETION time, not time to FIRST TOKEN,
+    // and first-token is the only part the caller waits through — TTS starts speaking on the first
+    // sentence, not the last.
+    //
+    // THE SILENT-AGENT TRAP still applies: an unsupported reasoning_effort makes the LLM return
+    // ZERO tokens mid-call, and the caller just hears nothing ("אף אחד לא מדבר איתי"). gpt-5.4-mini
+    // was explicitly verified to accept none / low / unset before this shipped. If you change the
+    // model, re-run that check.
     llm: new openai.LLM({
       model: env.VOICE_LLM_MODEL ?? env.AI_MODEL,
-      // Only send it if set. gpt-5.4 rejects unknown values with a 400 that kills the call
-      // mid-conversation and silences the agent — 'minimal' is NOT valid here (it is
-      // none|low|medium|high|xhigh). Unset = don't send the parameter at all.
       ...(env.VOICE_LLM_REASONING_EFFORT ? { reasoningEffort: env.VOICE_LLM_REASONING_EFFORT } : {}),
     }),
-    // Options come from cartesiaOptions() so the agent and the test harness cannot drift apart.
-    // It also handles the language trap: sonic-turbo REJECTS language:'he' ("Invalid language for
-    // model") and returns an empty stream with only a DEBUG log — which looks identical to "this
-    // model has no Hebrew", but isn't. Compare models with: npm run voice:ab -- <model>
-    tts: new cartesia.TTS(cartesiaOptions(env)),
+    tts: buildTTS(env),
     turnHandling: {
       // 'vad' = wait out a silence timer. For Hebrew that costs ~1113ms, because NO off-the-shelf
       // end-of-turn model supports it (docs/phase-4-known-issues.md §4 — LiveKit's has Arabic and
@@ -118,7 +130,43 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
 }
 
 /**
- * OpenAI streaming STT — the incumbent, and the baseline the Soniox A/B is measured against.
+ * The voice. CARTESIA sonic-3, and it is not a free choice — it is the ONLY model that speaks
+ * Hebrew intelligibly down a phone line.
+ *
+ * MEASURED, by synthesizing Hebrew, squeezing it through an 8kHz phone band, and transcribing it
+ * back with Soniox (`npm run bench:tts`, then the intelligibility check):
+ *
+ *   cartesia/sonic-3      ~455ms ttfb   intelligible
+ *   cartesia/sonic-3.5    ~388ms ttfb   intelligible, no faster in practice
+ *   elevenlabs/flash_v2_5 ~274ms ttfb   95% WER — IT DOES NOT SPEAK HEBREW. It returned "DSMH, אין."
+ *
+ * ElevenLabs Flash is the fastest TTS on the market and it is USELESS to us. A voice that is 180ms
+ * quicker and unintelligible on a narrowband line does not make the call faster — it makes the
+ * caller say "מה?" and you pay for the entire turn again. This is the third time a "fast" model has
+ * turned out not to speak Hebrew (see sonic-turbo, known-issues §2). Never judge a TTS on latency
+ * without transcribing it back.
+ *
+ * The ROUTE is the only thing left to tune: same model and voice either way.
+ */
+function buildTTS(env: Env): ttsBase.TTS {
+  if (env.VOICE_TTS_ROUTE === 'inference') {
+    const opts = cartesiaOptions(env);
+    return new inference.TTS({
+      model: 'cartesia/sonic-3',
+      voice: env.CARTESIA_VOICE_ID_PRIMARY,
+      language: env.VOICE_LANGUAGE,
+      // speed/volume are the intelligibility levers for the 8kHz line, and they must survive the
+      // route change — a "faster" TTS that drops them is a different voice, not the same one.
+      modelOptions: { speed: opts.speed, volume: opts.volume },
+    });
+  }
+  // Direct, with our own key. Options come from cartesiaOptions() so the agent and the test
+  // harness cannot drift apart.
+  return new cartesia.TTS(cartesiaOptions(env));
+}
+
+/**
+ * OpenAI streaming STT — the fallback. Soniox is the default; see env.ts for why.
  *
  * `gpt-realtime-whisper` streams partial transcripts over a WebSocket as the caller speaks.
  */

@@ -74,6 +74,7 @@ export async function buildTestApp(
     SONIOX_MAX_ENDPOINT_DELAY_MS: 500,
     VOICE_TURN_DETECTION: 'vad' as const,
     SHADOW_STT_ENABLED: false,
+    VOICE_TTS_ROUTE: 'cartesia' as const,
     ...opts.envOverrides,
   };
 
