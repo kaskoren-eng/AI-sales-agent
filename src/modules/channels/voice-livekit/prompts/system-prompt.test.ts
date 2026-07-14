@@ -64,6 +64,42 @@ describe('Hebrew system prompt — gender', () => {
   });
 });
 
+/**
+ * SHE IS קרן. THE FOUNDER IS קורן. One vav apart.
+ *
+ * Koren named her Keren knowing the collision. It is a genuine hazard and not a stylistic one: she
+ * introduces herself and then offers to book a meeting with a man whose name differs by a single
+ * letter — down an 8kHz phone line that strips precisely the vowel sounds separating them, with
+ * BOTH names sitting in the STT's biasing list. If the two ever start collapsing into each other,
+ * these tests are the tripwire.
+ */
+describe('Hebrew system prompt — she is Keren, the founder is Koren', () => {
+  it('gives her the name קרן', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/קוראים לך קרן/u);
+  });
+
+  it('introduces herself by name in the greeting', () => {
+    expect(GREETING_HE).toMatch(/קרן/u);
+  });
+
+  it('anchors her name to the company, so the caller can tell the two apart', () => {
+    // "קרן מ-ClickScales" — without the company there is nothing in the sentence distinguishing
+    // her from the founder except one letter, and the phone line eats that letter.
+    expect(GREETING_HE).toMatch(/ClickScales|קליקסקיילס/u);
+  });
+
+  it('EXPLICITLY teaches the difference between קרן (her) and קורן (the founder)', () => {
+    // Without this the model has two near-identical proper nouns and no rule, and will eventually
+    // tell a caller that Koren IS the assistant, or offer to book a meeting with herself.
+    expect(SYSTEM_PROMPT_HE).toMatch(/קרן.*בלי.*ו/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/קורן.*עם.*ו/u);
+  });
+
+  it('still knows the founder is a separate, human person she books meetings WITH', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/המייסד/u);
+  });
+});
+
 describe('Hebrew system prompt — the business is stated, not guessed', () => {
   /**
    * The bug: the prompt said "עוזרת קולית של ClickScales" and nothing else, so the model inferred

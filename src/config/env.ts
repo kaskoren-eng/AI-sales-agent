@@ -184,7 +184,7 @@ const envSchema = z.object({
   // Keep it to genuinely expected words; a long prompt biases towards nonsense.
   VOICE_STT_PROMPT: z
     .string()
-    .default('קורן, קליקסקיילס, ClickScales, פגישה, שיחת היכרות, אימייל, טלפון, שיווק, תקציב'),
+    .default('קורן, קרן, קליקסקיילס, ClickScales, פגישה, שיחת היכרות, אימייל, טלפון, שיווק, תקציב'),
   // End-of-turn tuning — THE latency lever for Hebrew, since no Hebrew EOT model exists.
   // The two delays stack: end-of-turn ≈ max(Silero silence, minDelay).
   // Was 550/500 (measured 1200-1443ms end-of-turn). Now 250/200, which measured 955-1569ms
