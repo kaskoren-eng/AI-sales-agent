@@ -81,10 +81,15 @@ class ClickScalesAgent extends voice.Agent {}
  */
 async function trimHistory(agent: voice.Agent, maxItems: number): Promise<void> {
   try {
-    if (agent.chatCtx.items.length <= maxItems) return;
+    const before = agent.chatCtx.items.length;
+    if (before <= maxItems) return;
     const trimmed = agent.chatCtx.copy();
     trimmed.truncate(maxItems);
     await agent.updateChatCtx(trimmed);
+    // Logged because the FIRST version of this silently did nothing: the invalidation warnings
+    // stopped, so it looked fixed, while input tokens still climbed 712 -> 17,147 across a call.
+    // A trim you cannot see is a trim you cannot trust.
+    console.log(`trim_history before=${before} after=${agent.chatCtx.items.length} max=${maxItems}`);
   } catch (err) {
     // Never fail a live call over a cost optimisation.
     console.error('trim_history_failed', err instanceof Error ? err.message : String(err));
@@ -195,9 +200,18 @@ export default defineAgent({
 
     const agent = new ClickScalesAgent({ instructions: SYSTEM_PROMPT_HE });
 
-    // Trim the history BETWEEN turns, never inside onUserTurnCompleted — see trimHistory().
-    // Fires after each conversation item is committed, when no preemptive draft is in flight.
-    session.on(voice.AgentSessionEventTypes.ConversationItemAdded, () => {
+    // One event, two jobs — both of which have to happen AFTER a turn is committed.
+    session.on(voice.AgentSessionEventTypes.ConversationItemAdded, (ev) => {
+      // 1. The transcript: BOTH sides of the conversation.
+      //    We used to record only what she HEARD, never what she SAID — so the call record was
+      //    half a conversation, and useless for judging whether she actually answered the question.
+      const item = ev.item as { role?: string; textContent?: string };
+      if (item?.role && item?.textContent) {
+        report.recordTranscript(item.role, item.textContent);
+      }
+
+      // 2. Trim the history — HERE, between turns, and never inside onUserTurnCompleted, where it
+      //    invalidated LiveKit's preemptive draft on every single turn. See trimHistory().
       void trimHistory(agent, env.VOICE_MAX_HISTORY_ITEMS);
     });
 

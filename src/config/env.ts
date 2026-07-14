@@ -4,6 +4,34 @@ import { config } from 'dotenv';
 // Always load .env with override=true so .env values win over inherited shell env vars
 config({ override: true });
 
+/**
+ * A boolean from an env var. NEVER use `z.coerce.boolean()` for this.
+ *
+ * `z.coerce.boolean()` is `Boolean(value)`, and in JavaScript every non-empty string is truthy. So:
+ *
+ *   FEATURE=false  ->  true
+ *   FEATURE=0      ->  true
+ *   FEATURE=no     ->  true
+ *
+ * A flag you can only turn ON. It is impossible to switch anything off, and nothing warns you —
+ * the config reads exactly as intended and does the opposite.
+ *
+ * This bit us for real, twice over. VOICE_PREEMPTIVE_TTS=false ran as TRUE for weeks: a Phase 2
+ * "measurement" concluded the feature was slow and "turned it off", and it was never off, so the
+ * measurement described something else entirely and the fix did nothing. SHADOW_STT_ENABLED=false
+ * likewise kept a second STT engine running on every live call, quietly billing for it.
+ *
+ * Explicit truthy strings only. Anything else is false.
+ */
+function envBool(defaultValue: boolean) {
+  return z
+    .union([z.boolean(), z.string()])
+    .default(defaultValue)
+    .transform((v) =>
+      typeof v === 'boolean' ? v : ['true', '1', 'yes', 'on'].includes(v.trim().toLowerCase()),
+    );
+}
+
 const envSchema = z.object({
   // Server
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -132,7 +160,7 @@ const envSchema = z.object({
   //
   // Costs a second STT stream per call (~$0.002/min for Soniox). Its output never reaches the
   // caller and cannot affect the live path — see stt/shadow-stt.ts.
-  SHADOW_STT_ENABLED: z.coerce.boolean().default(false),
+  SHADOW_STT_ENABLED: envBool(false),
 
   // Agent spoken language (ISO 639-1) — drives both STT and TTS
   VOICE_LANGUAGE: z.string().default('he'),
@@ -155,7 +183,7 @@ const envSchema = z.object({
   VOICE_ENDPOINTING_MAX_DELAY_MS: z.coerce.number().int().positive().default(2000),
   // Run TTS on the draft reply before the turn is confirmed, so Cartesia's ~390ms doesn't land
   // on top of the endpointing wait. Costs Cartesia characters on drafts we discard.
-  VOICE_PREEMPTIVE_TTS: z.coerce.boolean().default(false),
+  VOICE_PREEMPTIVE_TTS: envBool(false),
   // How loud a sound must be before Silero calls it speech. THE lever for phone lines: a phone
   // is never digitally silent (hiss, comfort noise), so at the default 0.5 the VAD keeps hearing
   // "speech" and the end-of-turn silence timer never fires — measured 1030ms on a real call even

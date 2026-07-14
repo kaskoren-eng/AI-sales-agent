@@ -90,12 +90,27 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
         maxDelay: env.VOICE_ENDPOINTING_MAX_DELAY_MS,
       },
       preemptiveGeneration: {
-        // Already defaults to true, so the LLM was ALREADY overlapping the endpointing wait — that
-        // is why ~800ms of LLM ttft never showed up as ~800ms of extra dead air.
+        // Drafts the reply DURING the end-of-turn wait, so the LLM's ~860ms hides behind it instead
+        // of stacking on top.
+        //
+        // This was DEAD for weeks while reading as enabled. `onUserTurnCompleted` used to truncate
+        // the chat context, and LiveKit invalidates a draft whose context changed underneath it
+        // (agent_activity.ts: `preemptive.chatCtx.isEquivalent(chatCtx)`), so every single draft was
+        // discarded and regenerated — 15 times in one call. Trimming now happens between turns
+        // instead (agent.ts `trimHistory`), and invalidations dropped 15 -> 1.
         enabled: true,
-        // Defaults to FALSE. In theory it hides Cartesia's ~390ms behind the endpointing wait; in
-        // the first measured run it made things WORSE (TTS ttfb 390->550ms). Switchable so it can
-        // be re-measured rather than argued about.
+        // Same idea for TTS: start synthesising the draft before the turn is confirmed, so
+        // Cartesia's ~466ms hides behind the endpointing wait rather than landing on top of it.
+        // That 466ms is now the single largest block of dead air the caller still hears.
+        //
+        // IT WAS SWITCHED OFF FOR A BAD REASON. Phase 2 measured it as WORSE (TTS ttfb 390->550ms)
+        // — but that was measured while preemptive generation was broken, so every preemptive TTS
+        // was synthesising a draft that was then thrown away: pure wasted load, which is exactly
+        // what a slowdown looks like. The measurement described a bug, not the feature. Now that
+        // drafts survive, it is worth a real test.
+        //
+        // Cost: Cartesia characters on discarded drafts (a caller who resumes mid-pause). At
+        // ~$0.02/min of TTS that is noise next to half a second of the caller's time.
         preemptiveTts: env.VOICE_PREEMPTIVE_TTS,
       },
     },

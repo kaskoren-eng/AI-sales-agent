@@ -30,6 +30,14 @@ export interface TurnMetric {
   durationMs?: number;
 }
 
+/** One line of the conversation, either side of it. */
+export interface TranscriptLine {
+  atMs: number;
+  /** 'user' = the caller, 'assistant' = the agent. */
+  role: string;
+  text: string;
+}
+
 export interface CallReportJson {
   room: string;
   callerPhone: string | null;
@@ -67,6 +75,14 @@ export interface CallReportJson {
     /** Sum of the three medians: the worst case, if no stage overlapped any other. */
     worstCaseMs: number | null;
   };
+  /**
+   * THE ACTUAL CONVERSATION — both sides of it.
+   *
+   * This was missing until someone asked for "the full transcription of the call" and it turned out
+   * we had never recorded the agent's own replies, only what she heard. A record of a conversation
+   * with half the conversation missing is not a record of a conversation.
+   */
+  transcript: TranscriptLine[];
   metrics: TurnMetric[];
   /** Provider usage as LiveKit tallied it — so cost is measured, not guessed. */
   usage: unknown;
@@ -86,6 +102,7 @@ export class CallReport {
   #callerPhone: string | null;
   #config: CallReportJson['config'];
   #metrics: TurnMetric[] = [];
+  #transcript: TranscriptLine[] = [];
   #usage: unknown = null;
   #shadow: ShadowSttTranscript | null = null;
   #cutOffs = 0;
@@ -143,6 +160,12 @@ export class CallReport {
     });
   }
 
+  /** One line of the conversation — the caller's or the agent's. */
+  recordTranscript(role: string, text: string): void {
+    if (!text?.trim()) return;
+    this.#transcript.push({ atMs: Date.now() - this.#startedAt, role, text: text.trim() });
+  }
+
   recordUsage(usage: unknown): void {
     this.#usage = usage;
   }
@@ -186,6 +209,7 @@ export class CallReport {
             ? null
             : Math.round(eouMed + ttftMed + ttfbMed),
       },
+      transcript: this.#transcript,
       metrics: this.#metrics,
       usage: this.#usage,
       shadow: this.#shadow,

@@ -95,6 +95,14 @@ if (r.usage?.modelUsage) {
   }
 }
 
+if (r.transcript?.length) {
+  console.log('\nTHE CONVERSATION\n');
+  for (const t of r.transcript) {
+    const who = t.role === 'user' ? 'CALLER' : 'AGENT ';
+    console.log(`  [${String(Math.round(t.atMs / 1000)).padStart(3)}s] ${who}  ${t.text}`);
+  }
+}
+
 if (r.shadow) {
   const live = r.shadow.authoritativeEngine;
   const shad = r.shadow.shadowEngine;
