@@ -70,6 +70,16 @@ console.log('  end-of-turn wait, so those two overlap instead of stacking.');
 console.log('\nHEALTH\n');
 console.log(`  turns she heard     ${s.turnsHeard}`);
 console.log(`  speech segments     ${s.ttsSegments ?? '?'}`);
+const dup = s.duplicateReplies;
+if (dup > 0) {
+  console.log(`  SHE REPEATED HERSELF  ${dup}   <-- SHE SPOKE THE SAME ANSWER TWICE, VERBATIM`);
+  console.log('');
+  console.log('      This is what makes her sound broken — not latency, not the voice. She talks');
+  console.log('      over herself and buries the caller in duplicated speech. Cause: preemptive');
+  console.log('      TTS speaking the DRAFT reply and then the real one. Set VOICE_PREEMPTIVE_TTS=false.');
+} else if (dup === 0) {
+  console.log('  SHE REPEATED HERSELF  0   she said each thing once');
+}
 const frag = s.fragmentedTurns;
 if (frag > 0) {
   console.log(`  SENTENCES SHE CHOPPED ${frag}   <-- SHE DECIDED YOU WERE DONE WHILE YOU WERE MID-SENTENCE`);

@@ -88,6 +88,24 @@ export interface CallReportJson {
      * broken one.
      */
     fragmentedTurns: number;
+    /**
+     * Times the agent SAID THE SAME THING TWICE — the identical reply, spoken again, verbatim.
+     *
+     * It sounds absurd and it was happening on every single turn. Caught only when a caller's full
+     * transcript was finally captured and read: four paragraph-length answers, each delivered twice,
+     * plus stray fragments ("היי,", "מעולה,") trailing into nothing. THAT is why the agent sounded
+     * broken — not latency, not the voice. She was talking over herself and burying the caller in
+     * duplicated speech.
+     *
+     * The cause was preemptive TTS: she synthesizes a DRAFT reply before the turn is confirmed, and
+     * both the draft and the real reply reach the caller. It went unnoticed for weeks because
+     * VOICE_PREEMPTIVE_TTS=false PARSED AS TRUE (z.coerce.boolean — see env.ts), so every attempt to
+     * switch it off silently did nothing.
+     *
+     * A metric now exists because "does she repeat herself?" is not a question anyone should have to
+     * answer by reading a transcript by eye.
+     */
+    duplicateReplies: number;
     endOfTurnMedianMs: number | null;
     llmTtftMedianMs: number | null;
     ttsTtfbMedianMs: number | null;
@@ -214,11 +232,20 @@ export class CallReport {
     // turn detector cut in half. See `fragmentedTurns` above for why this, and not `cutOffs`, is the
     // signal that matters on a vad-mode call.
     let fragmentedTurns = 0;
+    let duplicateReplies = 0;
     for (let i = 1; i < this.#transcript.length; i++) {
       const prev = this.#transcript[i - 1]!;
       const curr = this.#transcript[i]!;
       if (prev.role === 'user' && curr.role === 'user' && curr.atMs - prev.atMs < 3_000) {
         fragmentedTurns++;
+      }
+      // The same answer, twice. Compared against the last few agent turns rather than only the
+      // previous line, because a caller interjection often lands between the draft and the repeat.
+      if (curr.role === 'assistant' && curr.text.length > 15) {
+        const recent = this.#transcript
+          .slice(Math.max(0, i - 4), i)
+          .filter((x) => x.role === 'assistant');
+        if (recent.some((x) => x.text.trim() === curr.text.trim())) duplicateReplies++;
       }
     }
 
@@ -233,6 +260,7 @@ export class CallReport {
         ttsSegments: this.#metrics.filter((m) => m.stage === 'tts_metrics').length,
         cutOffs: this.#cutOffs,
         fragmentedTurns,
+        duplicateReplies,
         endOfTurnMedianMs: eouMed,
         llmTtftMedianMs: ttftMed,
         ttsTtfbMedianMs: ttfbMed,
