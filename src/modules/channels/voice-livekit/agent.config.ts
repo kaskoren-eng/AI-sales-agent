@@ -59,29 +59,30 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
   return {
     vad,
     stt: buildSTT(env, vad),
-    // The voice LLM. gpt-5.4-MINI, and the reasoning effort UNSET.
+    // The voice LLM. gpt-5.4. WE TRIED gpt-5.4-mini AND IT LOST ON BOTH AXES — read this before
+    // trying it again.
     //
-    // MEASURED on the real system prompt and a real Hebrew turn, direct to OpenAI with our own key
-    // (median of 3, connection pre-warmed):
+    // The bench said mini was a clear win. On the REAL call it was slower AND worse:
     //
-    //   gpt-5.4       effort=none      761ms   <- what we were running
-    //   gpt-5.4-mini  effort=none      654ms
-    //   gpt-5.4-mini  effort=(unset)   642ms   <- now
-    //   gpt-5.4-mini  effort=low      1559ms   <- a TRAP: "low" is 2.4x slower than none
-    //   gpt-4.1-mini  effort=(unset)   623ms   (fastest, but an older model)
+    //                          bench (2-msg ctx)    LIVE CALL (real history)   Hebrew gender
+    //   gpt-5.4  effort=none        761ms                  848ms               correct
+    //   gpt-5.4-mini (unset)        642ms                  966ms  <- SLOWER    BROKEN
     //
-    // The Hebrew got no worse — arguably better. gpt-5.4-mini kept the feminine self-reference,
-    // refused to invent a price, and stayed inside two sentences.
+    // TWO LESSONS, both expensive:
     //
-    // This overturns known-issues §3 ("there is no faster LLM"). That sweep was right about what it
-    // tested and wrong in its conclusion: it measured full COMPLETION time, not time to FIRST TOKEN,
-    // and first-token is the only part the caller waits through — TTS starts speaking on the first
-    // sentence, not the last.
+    // 1. THE BENCH LIED because its context was not the production context. It sent a system prompt
+    //    plus one user turn. A live call carries up to VOICE_MAX_HISTORY_ITEMS of conversation, and
+    //    mini's time-to-first-token degrades with input far more steeply than gpt-5.4's does. A
+    //    latency bench whose context does not match production measures a call that never happens.
     //
-    // THE SILENT-AGENT TRAP still applies: an unsupported reasoning_effort makes the LLM return
-    // ZERO tokens mid-call, and the caller just hears nothing ("אף אחד לא מדבר איתי"). gpt-5.4-mini
-    // was explicitly verified to accept none / low / unset before this shipped. If you change the
-    // model, re-run that check.
+    // 2. mini BROKE THE HEBREW GENDER RULES — the caller noticed within one call. Hebrew inflects
+    //    by gender across three different persons (herself feminine, the company masculine plural,
+    //    the caller by HIS gender; see the system prompt and known-issues §8). gpt-5.4 holds all
+    //    three. mini does not. A cheaper model that mangles the grammar is not an optimisation; it
+    //    is a worse product that also happened to be slower.
+    //
+    // Speed is never worth sounding wrong. Do not swap this model without checking BOTH: ttft on a
+    // real call with real history, and the gender rules.
     llm: new openai.LLM({
       model: env.VOICE_LLM_MODEL ?? env.AI_MODEL,
       ...(env.VOICE_LLM_REASONING_EFFORT ? { reasoningEffort: env.VOICE_LLM_REASONING_EFFORT } : {}),
@@ -155,8 +156,20 @@ function buildTTS(env: Env): ttsBase.TTS {
       model: 'cartesia/sonic-3',
       voice: env.CARTESIA_VOICE_ID_PRIMARY,
       language: env.VOICE_LANGUAGE,
-      // speed/volume are the intelligibility levers for the 8kHz line, and they must survive the
-      // route change — a "faster" TTS that drops them is a different voice, not the same one.
+      // 24kHz, EXPLICITLY. This line is the whole reason the first attempt at this route shipped a
+      // worse-sounding agent to a real caller.
+      //
+      // The two routes have DIFFERENT DEFAULTS: the direct Cartesia plugin asks for 24000
+      // (agents-plugin-cartesia/src/tts.ts:87), LiveKit's gateway defaults to 16000
+      // (agents/src/inference/tts.ts DEFAULT_SAMPLE_RATE). Switching route therefore quietly
+      // downgraded the audio, which was then squeezed to 8kHz for the phone — degrading twice.
+      // Koren heard it immediately: "the voice was a bit hard to understand".
+      //
+      // Same model, same voice, same speed — and a silently different sample rate. When you change
+      // the ROUTE to a provider, diff every default, not just the options you meant to pass.
+      sampleRate: 24_000,
+      // The intelligibility levers for the 8kHz line (slower, louder). Tuned in Phase 2 by ear on a
+      // real call; they are not cosmetic and must survive any route change.
       modelOptions: { speed: opts.speed, volume: opts.volume },
     });
   }
