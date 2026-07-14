@@ -28,6 +28,10 @@ export interface TurnMetric {
   ttftMs?: number;
   ttfbMs?: number;
   durationMs?: number;
+  /** LLM only: total input tokens for this turn. */
+  promptTokens?: number;
+  /** LLM only: how many of those came from OpenAI's prompt cache (a fraction of the price). */
+  promptCachedTokens?: number;
 }
 
 /** One line of the conversation, either side of it. */
@@ -106,6 +110,19 @@ export interface CallReportJson {
      * A log line is not evidence of a sound.
      */
     duplicateReplies: number;
+    /**
+     * Share of LLM input tokens served from OpenAI's prompt cache, across the call.
+     *
+     * There is no switch for this — OpenAI caches automatically, on the longest common PREFIX of the
+     * prompt, minimum 1024 tokens. (`cache_control` is Anthropic's parameter, not OpenAI's.) The only
+     * thing we control is whether we BREAK it, and we were: a sliding history window moves the prefix
+     * every turn, so the hit rate collapsed to zero on any call past ~8 exchanges — which is every
+     * real sales call. Measured: 92% cached with the history intact, 0% with a 16-item window.
+     *
+     * A low number here on a long call means something is churning the prefix. Both the bill and the
+     * prefill latency are paying for it.
+     */
+    promptCacheHitPct: number | null;
     endOfTurnMedianMs: number | null;
     llmTtftMedianMs: number | null;
     ttsTtfbMedianMs: number | null;
@@ -194,6 +211,8 @@ export class CallReport {
       ttftMs: pick('ttftMs'),
       ttfbMs: pick('ttfbMs'),
       durationMs: pick('durationMs'),
+      promptTokens: pick('promptTokens'),
+      promptCachedTokens: pick('promptCachedTokens'),
     });
   }
 
@@ -255,6 +274,12 @@ export class CallReport {
     const ttftMed = median(ttft);
     const ttfbMed = median(ttfb);
 
+    // Cache hit rate across the whole call, weighted by tokens (not a mean of per-turn ratios —
+    // the early turns are small and would drag a naive average around).
+    const totalIn = this.#metrics.reduce((n, m) => n + (m.promptTokens ?? 0), 0);
+    const totalCached = this.#metrics.reduce((n, m) => n + (m.promptCachedTokens ?? 0), 0);
+    const promptCacheHitPct = totalIn > 0 ? Math.round((totalCached / totalIn) * 100) : null;
+
     // Two caller turns in a row, within 3s, with no agent reply between them: one sentence that the
     // turn detector cut in half. See `fragmentedTurns` above for why this, and not `cutOffs`, is the
     // signal that matters on a vad-mode call.
@@ -288,6 +313,7 @@ export class CallReport {
         cutOffs: this.#cutOffs,
         fragmentedTurns,
         duplicateReplies,
+        promptCacheHitPct,
         endOfTurnMedianMs: eouMed,
         llmTtftMedianMs: ttftMed,
         ttsTtfbMedianMs: ttfbMed,

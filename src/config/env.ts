@@ -247,7 +247,27 @@ const envSchema = z.object({
   // QUADRATICALLY with call length (a 4-minute call already hit 10,249). Trade-off: she forgets
   // anything older than ~8 exchanges. Raise this if a caller back-references something and she has
   // lost it.
-  VOICE_MAX_HISTORY_ITEMS: z.coerce.number().int().positive().default(16),
+  // How many chat items to send the LLM. 0 = NO TRIMMING, and 0 is now the default.
+  //
+  // TRIMMING DESTROYS OPENAI'S PROMPT CACHE, which is worth far more than the trimming ever saved.
+  //
+  // OpenAI caches the longest common PREFIX of a prompt, minimum 1024 tokens, at a large discount
+  // and with faster prefill. A sliding window is the one thing guaranteed to defeat it: truncate()
+  // keeps the system prompt and the LAST N items, so as the call grows the messages immediately
+  // after the system prompt CHANGE ON EVERY TURN. The prefix never stabilises, and our system prompt
+  // alone (~882 tokens) sits BELOW the 1024 threshold — so there is nothing left to cache at all.
+  //
+  // MEASURED on a simulated call:
+  //   after 5 exchanges   1397 input tokens   1280 CACHED (92%)   <- with the history intact
+  //   with a 16-item window                      0 cached (0%)    <- the prefix moves every turn
+  //
+  // So the trimmer I wrote to save money was throwing away a 90% discount on almost the entire
+  // prompt. Cached input is cheap enough that keeping the FULL history is cheaper than trimming it.
+  // Trimming was also separately measured to save NO latency (3836 -> 3055 tokens moved ttft by 2ms).
+  //
+  // It bought nothing and cost the cache. Off by default. Set a positive number to re-enable it if a
+  // call ever runs long enough to threaten the context window — but know what you are giving up.
+  VOICE_MAX_HISTORY_ITEMS: z.coerce.number().int().nonnegative().default(0),
   // Cartesia speech rate. THE lever for phone intelligibility: a phone line is 8kHz, which
   // destroys the high frequencies that carry consonants, so a fast delivery turns to mush.
   // Slowing down gives the listener's ear time to reconstruct them.

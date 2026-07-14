@@ -81,6 +81,12 @@ class ClickScalesAgent extends voice.Agent {}
  * the far end of a long conversation.
  */
 async function trimHistory(agent: voice.Agent, maxItems: number): Promise<void> {
+  // 0 = don't trim. THE DEFAULT, and deliberately so: a sliding window destroys OpenAI's prompt
+  // cache (it caches the longest common PREFIX, and trimming makes the prefix move every turn).
+  // Measured: 92% of the prompt cached with the history intact, 0% with a 16-item window.
+  // See VOICE_MAX_HISTORY_ITEMS in env.ts.
+  if (maxItems === 0) return;
+
   try {
     const before = agent.chatCtx.items.length;
     if (before <= maxItems) return;
@@ -155,6 +161,22 @@ export default defineAgent({
       const timings = (['endOfUtteranceDelayMs', 'ttftMs', 'ttfbMs', 'durationMs'] as const)
         .filter((k) => typeof m[k] === 'number')
         .map((k) => `${k}=${Math.round(m[k] as number)}`);
+
+      // PROMPT CACHE HITS, per turn. OpenAI caches the longest common PREFIX of a prompt (1024
+      // tokens minimum) and charges a fraction for the cached part. There is NO parameter to switch
+      // this on — it is automatic, and `cache_control` is Anthropic's API, not OpenAI's. The only
+      // thing you can do is avoid BREAKING it, which we were doing: a sliding history window moves
+      // the prefix every turn and the hit rate collapses to zero.
+      //
+      // So this is the number that tells you whether the cache is alive. If cached=0 on a
+      // mid-conversation turn, something is churning the prefix and both cost and prefill latency
+      // are paying for it.
+      if (typeof m.promptTokens === 'number') {
+        const cached = typeof m.promptCachedTokens === 'number' ? m.promptCachedTokens : 0;
+        const pct = m.promptTokens > 0 ? Math.round((cached / (m.promptTokens as number)) * 100) : 0;
+        timings.push(`in=${m.promptTokens}`, `cached=${cached}`, `cacheHit=${pct}%`);
+      }
+
       if (timings.length > 0) {
         ctx.proc.userData.lastMetricsAt = Date.now();
         report.recordMetric(stage, m);
