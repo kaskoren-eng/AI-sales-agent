@@ -153,8 +153,14 @@ describe('Hebrew system prompt — she must hand the turn back clearly', () => {
     expect(SYSTEM_PROMPT_HE).toMatch(/אל תשאירי משפט פתוח/u);
   });
 
-  it('gives her the two ways out: a question, or a closed sentence', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/בשאלה/u);
-    expect(SYSTEM_PROMPT_HE).toMatch(/משפט סגור/u);
+  it('PREFERS ending with a question — the strongest possible hand-back', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/סיימי בשאלה קצרה/u);
+  });
+
+  it('forbids ending on a list of services', () => {
+    // This is the case that actually left him hanging. A recitation of what we sell is a COMPLETE
+    // sentence — grammatically finished, and yet it invites nobody to speak. Probed against the
+    // live model, two of three answers used to end exactly that way.
+    expect(SYSTEM_PROMPT_HE).toMatch(/אל תסיימי ברשימה/u);
   });
 });
