@@ -89,21 +89,21 @@ export interface CallReportJson {
      */
     fragmentedTurns: number;
     /**
-     * Times the agent SAID THE SAME THING TWICE — the identical reply, spoken again, verbatim.
+     * Times the agent spoke the same reply twice. SHOULD ALWAYS BE ZERO — and if it is not, verify
+     * against the AUDIO before believing it.
      *
-     * It sounds absurd and it was happening on every single turn. Caught only when a caller's full
-     * transcript was finally captured and read: four paragraph-length answers, each delivered twice,
-     * plus stray fragments ("היי,", "מעולה,") trailing into nothing. THAT is why the agent sounded
-     * broken — not latency, not the voice. She was talking over herself and burying the caller in
-     * duplicated speech.
+     * This metric exists because of a mistake, and the mistake is the point. `ConversationItemAdded`
+     * fires TWICE for one reply when preemptive generation is on: once for the draft, once for the
+     * confirmed message, same text. The transcript therefore showed four paragraph-length answers
+     * "delivered twice". I concluded the agent was repeating itself to callers, told Koren that was
+     * the root cause of everything he disliked about it, and disabled preemptive TTS.
      *
-     * The cause was preemptive TTS: she synthesizes a DRAFT reply before the turn is confirmed, and
-     * both the draft and the real reply reach the caller. It went unnoticed for weeks because
-     * VOICE_PREEMPTIVE_TTS=false PARSED AS TRUE (z.coerce.boolean — see env.ts), so every attempt to
-     * switch it off silently did nothing.
+     * She had never repeated herself. He had been on the call and said so. The audio agreed: 20 TTS
+     * segments against 19 transcript lines — a real double would be ~30.
      *
-     * A metric now exists because "does she repeat herself?" is not a question anyone should have to
-     * answer by reading a transcript by eye.
+     * recordTranscript() now drops the draft echo, so this counts SPOKEN repeats only. If it ever
+     * goes above zero, check `ttsSegments` against the number of unique replies before acting.
+     * A log line is not evidence of a sound.
      */
     duplicateReplies: number;
     endOfTurnMedianMs: number | null;
@@ -197,10 +197,37 @@ export class CallReport {
     });
   }
 
-  /** One line of the conversation — the caller's or the agent's. */
+  /**
+   * One line of the conversation — the caller's or the agent's.
+   *
+   * DEDUPES THE AGENT'S OWN LINES, because `ConversationItemAdded` fires TWICE for one reply when
+   * preemptive generation is on: once for the DRAFT message and again for the confirmed one, same
+   * text. She says it once; the log recorded it twice.
+   *
+   * That artefact cost real credibility. I read the doubled lines, concluded the agent was speaking
+   * every answer twice to the caller, told Koren it was the root cause of everything he disliked,
+   * and switched off preemptive TTS on the strength of it. He had been ON the call — she never
+   * repeated herself. The audio said so too (20 TTS segments for 19 transcript lines; a genuine
+   * double would be ~30).
+   *
+   * The lesson is not "add a dedupe". It is that a log line is not evidence of a sound. When the
+   * transcript and the person who was actually on the phone disagree, the person wins.
+   */
   recordTranscript(role: string, text: string): void {
-    if (!text?.trim()) return;
-    this.#transcript.push({ atMs: Date.now() - this.#startedAt, role, text: text.trim() });
+    const trimmed = text?.trim();
+    if (!trimmed) return;
+
+    if (role === 'assistant') {
+      const isDraftEcho = this.#transcript.some(
+        (x) =>
+          x.role === 'assistant' &&
+          x.text === trimmed &&
+          Date.now() - this.#startedAt - x.atMs < 20_000,
+      );
+      if (isDraftEcho) return;
+    }
+
+    this.#transcript.push({ atMs: Date.now() - this.#startedAt, role, text: trimmed });
   }
 
   recordUsage(usage: unknown): void {
