@@ -70,6 +70,16 @@ console.log('  end-of-turn wait, so those two overlap instead of stacking.');
 console.log('\nHEALTH\n');
 console.log(`  turns she heard     ${s.turnsHeard}`);
 console.log(`  speech segments     ${s.ttsSegments ?? '?'}`);
+const frag = s.fragmentedTurns;
+if (frag > 0) {
+  console.log(`  SENTENCES SHE CHOPPED ${frag}   <-- SHE DECIDED YOU WERE DONE WHILE YOU WERE MID-SENTENCE`);
+  console.log('');
+  console.log('      Two of your turns in a row with no reply between them = one sentence cut in half.');
+  console.log('      This is what breaks phone numbers: "050." / "888-45." arrive as fragments and');
+  console.log('      she never receives a whole number. Raise VOICE_VAD_MIN_SILENCE_MS.');
+} else if (s.fragmentedTurns === 0) {
+  console.log('  SENTENCES SHE CHOPPED 0   she let you finish every time');
+}
 const cut = s.cutOffs;
 if (cut > 0) {
   console.log(`  CUT YOU OFF         ${cut}   <-- SHE STARTED REPLYING WHILE YOU WERE STILL TALKING`);

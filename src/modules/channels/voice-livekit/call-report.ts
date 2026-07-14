@@ -69,6 +69,25 @@ export interface CallReportJson {
      * goes NEGATIVE on a healthy call. Do not resurrect it.)
      */
     cutOffs: number;
+    /**
+     * Times the agent CHOPPED ONE SENTENCE INTO SEVERAL TURNS — she decided the caller had finished
+     * while he was mid-thought, and he had to keep going.
+     *
+     * THIS IS THE REAL CUT-OFF DETECTOR, and `cutOffs` above is nearly useless without it. That
+     * counter watches for a LiveKit warning that ONLY EXISTS IN `stt` TURN-DETECTION MODE. In `vad`
+     * mode — which is what we actually run — it can never fire, so it reports a serene 0 on a call
+     * where the agent talked over the caller from start to finish. I reported "cut-offs: 0" on
+     * exactly such a call.
+     *
+     * Detected instead from the transcript itself: two CALLER turns in a row, close together, with
+     * no agent reply between them, means one utterance was split in half. On the call that broke
+     * phone-number capture this fired repeatedly — "050." / "888-45." / "רשמת?" are one sentence
+     * that the turn detector shredded.
+     *
+     * A booking agent that cannot receive a phone number in one breath is not a slow agent. It is a
+     * broken one.
+     */
+    fragmentedTurns: number;
     endOfTurnMedianMs: number | null;
     llmTtftMedianMs: number | null;
     ttsTtfbMedianMs: number | null;
@@ -191,6 +210,18 @@ export class CallReport {
     const ttftMed = median(ttft);
     const ttfbMed = median(ttfb);
 
+    // Two caller turns in a row, within 3s, with no agent reply between them: one sentence that the
+    // turn detector cut in half. See `fragmentedTurns` above for why this, and not `cutOffs`, is the
+    // signal that matters on a vad-mode call.
+    let fragmentedTurns = 0;
+    for (let i = 1; i < this.#transcript.length; i++) {
+      const prev = this.#transcript[i - 1]!;
+      const curr = this.#transcript[i]!;
+      if (prev.role === 'user' && curr.role === 'user' && curr.atMs - prev.atMs < 3_000) {
+        fragmentedTurns++;
+      }
+    }
+
     return {
       room: this.#room,
       callerPhone: this.#callerPhone,
@@ -201,6 +232,7 @@ export class CallReport {
         turnsHeard: eou.length,
         ttsSegments: this.#metrics.filter((m) => m.stage === 'tts_metrics').length,
         cutOffs: this.#cutOffs,
+        fragmentedTurns,
         endOfTurnMedianMs: eouMed,
         llmTtftMedianMs: ttftMed,
         ttsTtfbMedianMs: ttfbMed,

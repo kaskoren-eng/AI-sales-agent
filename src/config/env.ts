@@ -191,8 +191,11 @@ const envSchema = z.object({
   // with ZERO cut-offs across baseline / short-answer / hesitation scenarios.
   // Caveat: those were SYNTHETIC pauses, which are shorter than a real person's. If the agent
   // starts talking over live callers, raise these first. Sweep with `npm run voice:test`.
-  VOICE_VAD_MIN_SILENCE_MS: z.coerce.number().int().positive().default(250),
-  VOICE_ENDPOINTING_MIN_DELAY_MS: z.coerce.number().int().positive().default(200),
+  // Silero's OWN default is 550ms. Ours is deliberately lower — deleting these settings does not
+  // remove a delay, it restores a bigger one. Floor is 0: a hard zero is legal and means "the
+  // instant the VAD stops hearing speech, the turn is over".
+  VOICE_VAD_MIN_SILENCE_MS: z.coerce.number().int().nonnegative().default(250),
+  VOICE_ENDPOINTING_MIN_DELAY_MS: z.coerce.number().int().nonnegative().default(200),
   VOICE_ENDPOINTING_MAX_DELAY_MS: z.coerce.number().int().positive().default(2000),
   // Run TTS on the draft reply before the turn is confirmed, so Cartesia's ~390ms doesn't land
   // on top of the endpointing wait. Costs Cartesia characters on drafts we discard.
