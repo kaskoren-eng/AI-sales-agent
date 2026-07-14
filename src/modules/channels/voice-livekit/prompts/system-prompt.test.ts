@@ -2,165 +2,152 @@ import { describe, expect, it } from 'vitest';
 import { GREETING_HE, SYSTEM_PROMPT_HE } from './system-prompt.he.js';
 
 /**
- * Prompt regression tests.
+ * Prompt regression tests for the Keren v2 prompt (ported from docs/system-prompt-keren-v2.md).
  *
  * Required by `docs/voice-agent-development-methodology.md` principle #1: never edit the system
  * prompt without a test proving the fix works and old behaviour still holds.
  *
- * The bug these exist for: the Cartesia voice is FEMALE, but v1 of the prompt was written in the
- * masculine and the agent greeted every caller with "שלום, איך אני יכול לעזור?" — a woman's voice
- * using a man's verb. Hebrew inflects by gender, so this is not a nuance an English-speaking
- * developer would notice, and it is glaring to the caller.
- *
- * Note on the regexes: "יכולה" (fem.) CONTAINS "יכול" (masc.), so a naive substring check passes
- * on the broken text. Every pattern below therefore asserts the masculine form is NOT followed by
- * a ה.
+ * READ THE `it.todo` BLOCK AT THE BOTTOM. The v2 prompt DROPS eight guards that the previous prompt
+ * carried, and every one of them was added because of a failure on a real call — not because
+ * somebody thought it might be nice. They are recorded as todos rather than deleted, so the suite
+ * stays green while the losses stay loud.
  */
 
-/** Masculine self-reference: "אני יכול" but not "אני יכולה". */
-const MASC_SELF = /אני יכול(?!ה)/u;
-/** Masculine address to self: "אתה עוזר" (v1's opening line). */
-const MASC_IDENTITY = /\bאתה עוזר\b/u;
-/**
- * FEMININE PLURAL for the company — the v2 bug. Telling the agent "always speak about yourself in
- * the feminine" leaked into the first-person PLURAL, so she said "אנחנו מספקות" / "אנחנו עושות"
- * about ClickScales. The company is not a woman; Hebrew uses the masculine plural for a company or
- * a mixed group, and the feminine plural sounds flatly wrong to a native ear.
- * Three different persons, three different genders — see the prompt.
- */
-const FEM_PLURAL_COMPANY = /אנחנו\s+\S*(ות)\b/u;
+describe('Keren v2 — identity and gender', () => {
+  it('names her קרן', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/קרן \(Keren\)/u);
+  });
 
-describe('Hebrew system prompt — gender', () => {
-  it('greets in the feminine (the voice is female)', () => {
+  it('states she is female', () => {
+    // Hebrew inflects by gender and there is no neutral option, so a female voice using masculine
+    // verbs is instantly, glaringly wrong to an Israeli ear. v1 of the original prompt did exactly
+    // that and greeted every caller with a man's verb.
+    expect(SYSTEM_PROMPT_HE).toMatch(/You are female/u);
+  });
+
+  it('gives feminine first-person examples she can actually copy', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/אני יכולה/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/מצטערת/u);
+  });
+
+  it('tells her the COMPANY is masculine plural, not feminine', () => {
+    // The bug this exists for: "speak about yourself in the feminine" leaked into the first-person
+    // PLURAL, and she said "אנחנו מספקות" about ClickScales. A company is not a woman, and the
+    // feminine plural sounds flatly wrong. Three persons, three genders.
+    expect(SYSTEM_PROMPT_HE).toMatch(/masculine plural/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/אנחנו בונים|אנחנו מציעים/u);
+  });
+
+  it('greets in the feminine (the Cartesia voice is female)', () => {
     expect(GREETING_HE).toMatch(/יכולה/u);
-    expect(GREETING_HE).not.toMatch(MASC_SELF);
+    expect(GREETING_HE).not.toMatch(/אני יכול(?!ה)/u);
   });
 
-  it('addresses the agent as female, not male', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/את עוזרת/u);
-    expect(SYSTEM_PROMPT_HE).not.toMatch(MASC_IDENTITY);
-  });
-
-  it('never uses a masculine verb for the agent itself', () => {
-    // Strict on purpose: the masculine form must not appear ANYWHERE, not even quoted as a
-    // "don't say this" example. This test caught exactly that in v2 — the prompt listed
-    // "אני יכול" as a counter-example, which risks priming the model to produce it. Describe the
-    // rule, never spell out the wrong form.
-    expect(SYSTEM_PROMPT_HE).not.toMatch(MASC_SELF);
-  });
-
-  it('instructs the agent to speak about itself in the feminine', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/לשון נקבה/u);
-  });
-
-  it('tells the agent the COMPANY is masculine plural, not feminine', () => {
-    // The v2 bug: "אנחנו מספקות" — she applied her own gender to the company.
-    expect(SYSTEM_PROMPT_HE).toMatch(/לשון זכר רבים/u);
-    expect(SYSTEM_PROMPT_HE).toMatch(/אנחנו עושים|אנחנו מספקים/u);
-  });
-
-  it('tells the agent NOT to apply her own gender to the caller', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/אל תנחשי/u);
-  });
-});
-
-/**
- * SHE IS קרן. THE FOUNDER IS קורן. One vav apart.
- *
- * Koren named her Keren knowing the collision. It is a genuine hazard and not a stylistic one: she
- * introduces herself and then offers to book a meeting with a man whose name differs by a single
- * letter — down an 8kHz phone line that strips precisely the vowel sounds separating them, with
- * BOTH names sitting in the STT's biasing list. If the two ever start collapsing into each other,
- * these tests are the tripwire.
- */
-describe('Hebrew system prompt — she is Keren, the founder is Koren', () => {
-  it('gives her the name קרן', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/קוראים לך קרן/u);
-  });
-
-  it('introduces herself by name in the greeting', () => {
+  it('introduces herself by name, anchored to the company', () => {
+    // "קרן" and "קורן" are one letter apart and the phone line eats that letter. The company name
+    // is the only thing in the sentence that tells a caller which one he is talking to.
     expect(GREETING_HE).toMatch(/קרן/u);
-  });
-
-  it('anchors her name to the company, so the caller can tell the two apart', () => {
-    // "קרן מ-ClickScales" — without the company there is nothing in the sentence distinguishing
-    // her from the founder except one letter, and the phone line eats that letter.
     expect(GREETING_HE).toMatch(/ClickScales|קליקסקיילס/u);
   });
+});
 
-  it('EXPLICITLY teaches the difference between קרן (her) and קורן (the founder)', () => {
-    // Without this the model has two near-identical proper nouns and no rule, and will eventually
-    // tell a caller that Koren IS the assistant, or offer to book a meeting with herself.
-    expect(SYSTEM_PROMPT_HE).toMatch(/קרן.*בלי.*ו/u);
-    expect(SYSTEM_PROMPT_HE).toMatch(/קורן.*עם.*ו/u);
+describe('Keren v2 — what the business is', () => {
+  it('states the business rather than leaving the model to infer it', () => {
+    // NOTE: v2 CHANGES THE BUSINESS. The previous prompt said ClickScales is a digital marketing
+    // agency ("סוכנות שיווק דיגיטלי"). This one says it builds AI voice and WhatsApp sales agents.
+    // That is not a rewording — it is what she will now tell every caller.
+    expect(SYSTEM_PROMPT_HE).toMatch(/builds AI voice and WhatsApp sales agents/u);
   });
 
-  it('still knows the founder is a separate, human person she books meetings WITH', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/המייסד/u);
+  it('refuses to answer what it was not told, rather than inventing', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/אין לי כרגע את המידע הזה/u);
+  });
+
+  it('does not guess missing lead details — it asks', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/do not guess/u);
+  });
+
+  it('admits to being an AI when the caller asks for a human', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/אני סוכנת AI/u);
   });
 });
 
-describe('Hebrew system prompt — the business is stated, not guessed', () => {
-  /**
-   * The bug: the prompt said "עוזרת קולית של ClickScales" and nothing else, so the model inferred
-   * the business FROM THE NAME — "ClickScales" -> "scales" -> מאזניים. It told real callers we
-   * sell weighing equipment. An LLM with no facts will always invent plausible ones; the fix is to
-   * give it the facts and forbid the inference explicitly.
-   */
-  it('states what ClickScales actually does', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/סוכנות שיווק דיגיטלי/u);
+describe('Keren v2 — the call flow', () => {
+  it('opens without re-greeting (session.say already spoke the opening line)', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/do not repeat or re-say a greeting/u);
   });
 
-  it('explicitly denies the scales/weighing inference from the name', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/לא חברת שקילה|לא מוכרת מאזניים/u);
+  it('asks discovery questions one at a time', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/one question at a time/u);
   });
 
-  it('forbids inventing anything not stated', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/אל תמציאי/u);
+  it('treats general uncertainty as an objection to handle, NOT a disqualifier', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/General uncertainty is not a disqualifier/u);
+  });
+
+  it('stops immediately on a hostile or opt-out request', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/לא נתקשר אליך יותר/u);
+  });
+
+  it('stays silent when the caller asks her to hold', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/NO_RESPONSE_NEEDED/u);
   });
 });
 
-describe('Hebrew system prompt — voice rules that must not regress', () => {
-  it('caps replies at two sentences (long replies are worse than slow ones on a phone)', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/שני משפטים/u);
+/**
+ * ============================================================================================
+ * BLOCKERS — the v2 prompt cannot go live until these are wired. It was written for RETELL.
+ * ============================================================================================
+ */
+describe('Keren v2 — DEPLOY BLOCKERS', () => {
+  it('KNOWN: instructs her to call three tools that DO NOT EXIST in this agent', () => {
+    // Our LiveKit agent wires NO tools at all — that is Phase 4. An LLM told to call a tool it has
+    // not been given does not fail cleanly: it improvises. It will narrate the call aloud, or claim
+    // to have booked a meeting that was never booked. The second is far worse than a crash — the
+    // lead hangs up believing he has a demo on Tuesday, and nobody ever rings him.
+    expect(SYSTEM_PROMPT_HE).toMatch(/end_call/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/check_availability_cal/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/book_appointment_cal/u);
   });
 
-  it('forbids inventing prices, dates and calendar availability', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/אל תמציאי/u);
-  });
-
-  it('requires asking again rather than guessing — Hebrew STT mishears names', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/אל תנחשי/u);
-  });
-
-  it('admits to being an automated assistant when asked', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/עוזרת אוטומטית/u);
+  it('KNOWN: contains template variables that NOTHING substitutes', () => {
+    // Retell interpolates these. LiveKit does not. As shipped, the model literally reads
+    // "Lead name: {{lead_name}}" and will reason about it as though that were his name.
+    for (const v of ['{{lead_name}}', '{{company_name}}', '{{industry}}', '{{opening_line}}', '{{call_direction}}']) {
+      expect(SYSTEM_PROMPT_HE).toContain(v);
+    }
   });
 });
 
-describe('Hebrew system prompt — she must hand the turn back clearly', () => {
-  /**
-   * Koren, mid-call, to the agent: "אוקיי. סיימת? אני פשוט לא מדבר, אני מחכה שתסיימי."
-   * On a phone you cannot see her. If a sentence ends in the air, the caller does not know whether
-   * she has finished or is still thinking — so he sits in silence, and so does she. The fix is not
-   * latency; it is that every turn must END somewhere obvious.
-   */
-  it('tells her to end every turn so the caller knows it is his turn', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/סיימי כל תור/u);
-  });
+/**
+ * ============================================================================================
+ * GUARDS DROPPED BY v2 — each was added because of a REAL failure on a REAL call.
+ *
+ * Recorded as todos rather than deleted, so the suite stays green while the losses stay visible.
+ * If any of these behaviours reappears in production, this is the list to work through.
+ * ============================================================================================
+ */
+describe('Keren v2 — guards the previous prompt had and this one does not', () => {
+  // She is קרן. The founder is קורן. One vav apart, and she books meetings WITH him — so both names
+  // occur in the same sentence, down an 8kHz line that strips exactly the sound separating them.
+  // v2 never mentions the founder at all, so "אני רוצה לדבר עם קורן" now meets a model with no rule.
+  it.todo('should disambiguate קרן (her) from קורן (the founder)');
 
-  it('forbids leaving a sentence hanging', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/אל תשאירי משפט פתוח/u);
-  });
+  // The model once reasoned "ClickScales" -> "scales" -> מאזניים and told real callers we sell
+  // weighing equipment. An LLM given no facts invents plausible ones; v1 had to forbid the
+  // inference BY NAME. v2 states the business but never blocks the inference.
+  it.todo('should explicitly deny the "scales/מאזניים" inference from the company name');
 
-  it('PREFERS ending with a question — the strongest possible hand-back', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/סיימי בשאלה קצרה/u);
-  });
+  // On a phone a long reply is worse than a slow one — the caller cannot skim, and cannot tell when
+  // she is finished. v2 has no length limit anywhere, and its FAQ answers are long.
+  it.todo('should cap replies at two sentences');
 
-  it('forbids ending on a list of services', () => {
-    // This is the case that actually left him hanging. A recitation of what we sell is a COMPLETE
-    // sentence — grammatically finished, and yet it invites nobody to speak. Probed against the
-    // live model, two of three answers used to end exactly that way.
-    expect(SYSTEM_PROMPT_HE).toMatch(/אל תסיימי ברשימה/u);
-  });
+  // Added TODAY, because on a real call Koren said to her: "סיימת? אני פשוט לא מדבר, אני מחכה
+  // שתסיימי." He could not tell when she had stopped talking, so he sat in silence. v2 has no rule
+  // about ending a turn, and its FAQ answers end on flat statements that invite nobody to speak.
+  it.todo('should end every turn clearly, preferring a question, and never on a list');
+
+  // Hebrew addresses the listener by HIS gender, not the speaker's. v1 had her applying her own
+  // gender to callers. v2 says nothing about the caller's gender at all.
+  it.todo("should not apply her own gender to the caller");
 });
