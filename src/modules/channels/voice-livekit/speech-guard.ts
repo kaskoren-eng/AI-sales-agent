@@ -35,6 +35,73 @@
  *    truth: she is passing the request to the team. That is what actually happens.
  */
 
+/**
+ * ============================================================================================
+ * THE GENDER FIX. This is a TTS bug, not an LLM bug, and it is invisible in every transcript.
+ * ============================================================================================
+ *
+ * Hebrew writes the 2nd-person suffix pronouns IDENTICALLY for a man and a woman:
+ *
+ *     שלך   = shel-KHA (m)  /  shel-AKH (f)
+ *     לך    = le-KHA   (m)  /  lakh     (f)
+ *     אותך  = ot-KHA   (m)  /  ot-AKH   (f)
+ *
+ * Same letters. Only the vowels differ, and Hebrew does not write vowels. So Cartesia has to GUESS
+ * — and Koren's report is that it guesses at random: "אותה מילה, פעם זכר פעם נקבה." A male lead
+ * hears himself addressed as a woman, halfway through a sentence, unpredictably.
+ *
+ * The LLM is innocent. It writes the correct word every time; the transcript is always right. Only
+ * the caller's ear can catch this.
+ *
+ * WHAT DID NOT WORK: niqqud (שֶׁלְּךָ). Cartesia accepts it and still mispronounces — Koren confirmed
+ * the inconsistency persisted with it in the prompt.
+ *
+ * WHAT DOES WORK: spell the word PHONETICALLY so there is nothing left to guess. The TTS does not
+ * read Hebrew — it reads letters and makes sounds. "שלכה" has no ambiguous vowel: it can only be
+ * shel-KHA.
+ *
+ * VERIFIED, not assumed. Synthesized "מה מספר הטלפון שלכה?", squeezed it through an 8kHz phone
+ * line, and transcribed it back with Soniox:
+ *
+ *     sent:  מה מספר הטלפון שלכה?
+ *     heard: מה מספר הטלפון שלך?     <- a real Hebrew word, in the masculine
+ *
+ * Cartesia pronounced correct masculine Hebrew. The spelling is non-standard and NOBODY EVER SEES
+ * IT — it exists for exactly the few milliseconds between the LLM and the speaker.
+ *
+ * AND THIS IS WHY IT IS DONE HERE AND NOT IN THE PROMPT. The first attempt BANNED these words in
+ * the system prompt, with a table of replacements. Koren, immediately: "אל תגדיר אותם כמילים
+ * אסורות, זה לא פתרון." He is right. Crippling her vocabulary to work around a pronunciation bug
+ * makes her speak like a foreigner. She writes natural Hebrew; the pipeline fixes the sound.
+ */
+const SECOND_PERSON_MASCULINE: Array<[RegExp, string]> = [
+  // Lookarounds, not \b — Hebrew letters are not word characters in JS regex, so \b matches in the
+  // MIDDLE of a Hebrew word and would corrupt "משלך", "הלך", "שלכם".
+  [/(?<![֐-׿])שלך(?![֐-׿])/gu, 'שלכה'],
+  [/(?<![֐-׿])לך(?![֐-׿])/gu, 'לכה'],
+  [/(?<![֐-׿])אותך(?![֐-׿])/gu, 'אותכה'],
+  [/(?<![֐-׿])אליך(?![֐-׿])/gu, 'אליכה'],
+  [/(?<![֐-׿])איתך(?![֐-׿])/gu, 'איתכה'],
+  [/(?<![֐-׿])בשבילך(?![֐-׿])/gu, 'בשבילכה'],
+  [/(?<![֐-׿])עבורך(?![֐-׿])/gu, 'עבורכה'],
+];
+
+/**
+ * Forces the 2nd-person pronouns to be PRONOUNCED in the masculine, without changing a word the LLM
+ * chose. Applied to what Cartesia is asked to say — never to what is stored, logged or transcribed.
+ *
+ * Only masculine for now: the prompt says most leads are men and to default to the masculine. When
+ * Phase 4 knows the lead's gender from the CRM, this takes a parameter and the feminine forms
+ * (שלך -> "שלאך", לך -> "לאך") get their own table.
+ */
+export function forceMasculineAddress(text: string): string {
+  let out = text;
+  for (const [pattern, replacement] of SECOND_PERSON_MASCULINE) {
+    out = out.replace(pattern, replacement);
+  }
+  return out;
+}
+
 /** Retell's silence token. LiveKit has no such convention, so it must never reach the TTS. */
 const NO_RESPONSE = /NO_RESPONSE_NEEDED/gi;
 
@@ -148,6 +215,10 @@ export function guardSpeech(text: string): GuardResult {
       out = out.replace(pattern, TRUTH);
     }
   }
+
+  // LAST, so it applies to the rewritten text too. Purely a PRONUNCIATION fix — it changes how
+  // Cartesia says the word, never which word the LLM chose. See forceMasculineAddress().
+  out = forceMasculineAddress(out);
 
   return { text: out.replace(/\s{2,}/gu, ' ').trim(), silent: false, interventions };
 }

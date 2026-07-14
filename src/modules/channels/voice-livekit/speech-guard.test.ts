@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { guardSpeech, guardStream } from './speech-guard.js';
+import { forceMasculineAddress, guardSpeech, guardStream } from './speech-guard.js';
 
 /**
  * These are the ACTUAL sentences the agent said to Koren on a real call. Not hypotheticals.
@@ -101,5 +101,48 @@ describe('guardStream — she speaks before the reply is finished', () => {
     const out = (await drain(guardStream(chunks('אנחנו בונים סוכני AI. ', 'מה השם המלא?')))).join('');
     expect(out).toContain('אנחנו בונים סוכני AI');
     expect(out).toContain('מה השם המלא');
+  });
+});
+
+/**
+ * THE GENDER FIX — a TTS bug, fixed in the pipeline, not by crippling her vocabulary.
+ *
+ * Koren: "אותה מילה, פעם זכר פעם נקבה" — Cartesia guesses the vowels at random, because Hebrew does
+ * not write them. And: "אל תגדיר אותם כמילים אסורות, זה לא פתרון" — so the LLM keeps its natural
+ * Hebrew and the pipeline fixes the SOUND.
+ */
+describe('forceMasculineAddress — fixing pronunciation, not vocabulary', () => {
+  it('forces שלך to be pronounced shel-KHA (masculine)', () => {
+    // Verified against the real TTS: "שלכה" synthesized and transcribed back by Soniox as "שלך" —
+    // a correct masculine Hebrew word. The spelling is non-standard and nobody ever sees it.
+    expect(forceMasculineAddress('מה מספר הטלפון שלך?')).toBe('מה מספר הטלפון שלכה?');
+  });
+
+  it('fixes every ambiguous suffix', () => {
+    expect(forceMasculineAddress('אשלח לך')).toBe('אשלח לכה');
+    expect(forceMasculineAddress('אחזור אליך')).toBe('אחזור אליכה');
+    expect(forceMasculineAddress('לשמוע אותך')).toBe('לשמוע אותכה');
+    expect(forceMasculineAddress('לדבר איתך')).toBe('לדבר איתכה');
+    expect(forceMasculineAddress('בשבילך')).toBe('בשבילכה');
+  });
+
+  it('NEVER corrupts a word that merely CONTAINS the letters', () => {
+    // The trap: JS \b does not work on Hebrew (Hebrew letters are not word characters), so a naive
+    // boundary would match inside "משלך" / "הלך" / "שלכם" and mangle them.
+    expect(forceMasculineAddress('הוא הלך הביתה')).toBe('הוא הלך הביתה');
+    expect(forceMasculineAddress('הצוות שלכם')).toBe('הצוות שלכם');
+    expect(forceMasculineAddress('משלך')).toBe('משלך');
+    expect(forceMasculineAddress('לכל הלקוחות')).toBe('לכל הלקוחות');
+  });
+
+  it('leaves her OWN feminine speech untouched — only the ADDRESS changes', () => {
+    // Three genders, three persons: she is feminine, the company is masculine plural, the lead is
+    // his own gender. Only the last one is being fixed here.
+    const t = 'אני יכולה לבדוק. אנחנו בונים סוכני AI.';
+    expect(forceMasculineAddress(t)).toBe(t);
+  });
+
+  it('runs inside the live guard, so what Cartesia SAYS is masculine', () => {
+    expect(guardSpeech('מה השם שלך? אשלח לך אישור.').text).toBe('מה השם שלכה? אשלח לכה אישור.');
   });
 });
