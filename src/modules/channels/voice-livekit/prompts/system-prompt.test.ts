@@ -168,12 +168,24 @@ describe('Keren v2.1 — fixes from the first live call', () => {
     expect(SYSTEM_PROMPT_HE).toMatch(/address the lead in the MASCULINE/iu);
   });
 
-  it('teaches the niqqud for the ambiguous 2nd-person suffixes', () => {
-    // THE ROOT CAUSE, and it is invisible in every transcript: שלך / לך / אותך are written
-    // IDENTICALLY for a man and a woman. Only the vowels differ, and Hebrew does not write vowels —
-    // so Cartesia guesses, and it guessed feminine. The LLM was choosing the right word all along.
-    expect(SYSTEM_PROMPT_HE).toMatch(/שֶׁלְּךָ/u);
-    expect(SYSTEM_PROMPT_HE).toMatch(/אוֹתְךָ/u);
+  it('does NOT try to fix the pronunciation bug in the prompt — that belongs in the pipeline', () => {
+    // TWO DEAD ENDS, both tried and both rejected by Koren on real calls:
+    //
+    //   1. NIQQUD (שֶׁלְּךָ). Cartesia accepts it and still mispronounces.
+    //      "אותה מילה, פעם זכר פעם נקבה, אין משהו אחיד."
+    //
+    //   2. BANNING the words with a table of replacements.
+    //      "אל תגדיר אותם כמילים אסורות, זה לא פתרון." He is right — crippling her vocabulary to
+    //      work around a TTS bug makes her speak like a foreigner.
+    //
+    // The fix lives in speech-guard.ts (forceMasculineAddress), which rewrites the SOUND in the few
+    // milliseconds between the LLM and the speaker. She writes natural Hebrew and never knows.
+    // This test exists so nobody puts it back in the prompt.
+    expect(SYSTEM_PROMPT_HE).not.toMatch(/שֶׁלְּךָ/u);
+    expect(SYSTEM_PROMPT_HE).not.toMatch(/FORBIDDEN WORDS/u);
+    // What the prompt SHOULD say: address him in the masculine, and write normal Hebrew.
+    expect(SYSTEM_PROMPT_HE).toMatch(/address the lead in the MASCULINE/iu);
+    expect(SYSTEM_PROMPT_HE).toMatch(/do not avoid any word/iu);
   });
 
   it('MUST collect name, phone and email before the call ends', () => {
