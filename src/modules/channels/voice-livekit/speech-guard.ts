@@ -56,6 +56,64 @@ const FALSE_BOOKING = [
 /** What she says instead — the truth about what actually happens right now. */
 const TRUTH = 'אעביר את הבקשה לצוות ונחזור אליך לאישור מדויק';
 
+/**
+ * Guards a STREAM, sentence by sentence, so she starts speaking without waiting for the whole reply.
+ *
+ * THE FIRST VERSION OF THIS BUFFERED THE ENTIRE REPLY, AND IT COST 718ms PER TURN.
+ *
+ *   LLM first token   1020ms   <- when she COULD start speaking
+ *   LLM full reply    1738ms   <- when she actually started, with the naive guard
+ *
+ * Koren, immediately: "היא הייתה קצת איטית מהרגיל, תנסה למצוא פתרון אחר." He was right. Making the
+ * agent measurably slower on EVERY turn to defend against a claim she makes on ONE turn is a bad
+ * trade, and I made it without measuring the cost first.
+ *
+ * Sentence granularity is the fix, and it is exactly the right granularity — not a compromise.
+ * Every pattern we guard lives INSIDE one sentence: `NO_RESPONSE_NEEDED` is an entire utterance, and
+ * "קבעתי לך שיחת דמו למחר" cannot straddle a full stop. So there is nothing to be gained by holding
+ * more text than that, and ~700ms per turn to be lost by doing so.
+ *
+ * She now starts speaking as soon as her FIRST sentence is complete — which is what the streaming
+ * TTS was always designed for.
+ */
+export async function* guardStream(input: AsyncIterable<string>): AsyncIterable<string> {
+  let buffer = '';
+
+  const flush = function* (chunk: string): Generator<string> {
+    const guarded = guardSpeech(chunk);
+    for (const note of guarded.interventions) {
+      console.log(`speech_guard ${JSON.stringify({ note, said: guarded.text.slice(0, 80) })}`);
+    }
+    // `silent` means the sentence was nothing but a control token — emit nothing at all.
+    if (!guarded.silent && guarded.text) yield `${guarded.text} `;
+  };
+
+  for await (const chunk of input) {
+    buffer += chunk;
+
+    let end = sentenceEnd(buffer);
+    while (end !== -1) {
+      yield* flush(buffer.slice(0, end + 1));
+      buffer = buffer.slice(end + 1);
+      end = sentenceEnd(buffer);
+    }
+  }
+
+  // The tail: a final sentence with no terminator, or a bare control token (which has none).
+  if (buffer.trim()) yield* flush(buffer);
+}
+
+/**
+ * Index of the first sentence terminator, or -1.
+ *
+ * Requires whitespace/end after the mark so a decimal or a time ("10:30", "ב-10.") does not split
+ * the sentence in half and hand the TTS a fragment.
+ */
+function sentenceEnd(text: string): number {
+  const m = /[.!?…׃](\s|$)/u.exec(text);
+  return m ? m.index : -1;
+}
+
 export interface GuardResult {
   text: string;
   /** True when the entire utterance was a control token and she should say NOTHING. */

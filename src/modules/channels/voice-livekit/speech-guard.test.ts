@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { guardSpeech } from './speech-guard.js';
+import { guardSpeech, guardStream } from './speech-guard.js';
 
 /**
  * These are the ACTUAL sentences the agent said to Koren on a real call. Not hypotheticals.
@@ -52,5 +52,54 @@ describe('speech guard — she must not claim a booking that does not exist', ()
     const t = 'אנחנו בונים סוכני AI לשיחות קוליות ולוואטסאפ. מה השם המלא?';
     expect(guardSpeech(t).text).toBe(t);
     expect(guardSpeech(t).interventions).toHaveLength(0);
+  });
+});
+
+/**
+ * The streaming guard. THIS IS THE ONE THAT MATTERS FOR LATENCY.
+ *
+ * The first version buffered the whole reply and cost 718ms per turn. She must start speaking after
+ * her FIRST SENTENCE, not after her last.
+ */
+describe('guardStream — she speaks before the reply is finished', () => {
+  const chunks = async function* (...c: string[]) {
+    for (const x of c) yield x;
+  };
+  const drain = async (it: AsyncIterable<string>) => {
+    const out: string[] = [];
+    for await (const x of it) out.push(x);
+    return out;
+  };
+
+  it('emits the FIRST sentence before the rest of the reply has even arrived', async () => {
+    // This is the whole point. If this test ever asserts a single joined string, the latency
+    // regression is back.
+    const out = await drain(guardStream(chunks('מעולה. ', 'איזה עסק ', 'יש לך?')));
+    expect(out.length).toBeGreaterThan(1);
+    expect(out[0]).toContain('מעולה');
+  });
+
+  it('still catches a false booking claim mid-stream', async () => {
+    const out = (await drain(guardStream(chunks('מעולה. ', 'קבעתי לך שיחת דמו למחר. ', 'תודה!')))).join('');
+    expect(out).not.toMatch(/קבעתי לך/u);
+    expect(out).toMatch(/אעביר את הבקשה לצוות/u);
+    expect(out).toMatch(/מעולה/u); // the innocent sentence survives
+  });
+
+  it('still swallows NO_RESPONSE_NEEDED entirely', async () => {
+    const out = (await drain(guardStream(chunks('NO_RESPONSE', '_NEEDED')))).join('').trim();
+    expect(out).toBe('');
+  });
+
+  it('does not split a sentence on a number or a time', async () => {
+    // "ב-10." and "10:30" must not be cut in half and handed to the TTS as fragments.
+    const out = (await drain(guardStream(chunks('הדמו נקבע ל-10:30 מחר בבוקר.')))).join('');
+    expect(out).toContain('10:30');
+  });
+
+  it('leaves a normal reply completely intact', async () => {
+    const out = (await drain(guardStream(chunks('אנחנו בונים סוכני AI. ', 'מה השם המלא?')))).join('');
+    expect(out).toContain('אנחנו בונים סוכני AI');
+    expect(out).toContain('מה השם המלא');
   });
 });

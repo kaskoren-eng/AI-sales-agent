@@ -20,7 +20,7 @@ import {
   MAX_FILLERS_PER_CALL,
   pickThinkingFiller,
 } from './prompts/thinking-fillers.he.js';
-import { guardSpeech } from './speech-guard.js';
+import { guardStream } from './speech-guard.js';
 import { ShadowSTT } from './stt/shadow-stt.js';
 
 /** Where every call's report lands. Repo-root relative, gitignored — these contain caller PII. */
@@ -80,10 +80,16 @@ class ClickScalesAgent extends voice.Agent {
    *     confirmation coming, and nobody ever rings him. That is worse than a crash: it looks like
    *     success to everyone.
    *
-   * Buffering the whole reply before synthesis costs us the streamed-TTS overlap. That is a real
-   * latency cost and it is worth paying: a regex over a token stream would match half a word and
-   * mangle it, and we can afford to be slightly slower far more easily than we can afford to tell a
-   * lead his meeting is booked when it is not.
+   * GUARDED SENTENCE BY SENTENCE, NOT REPLY BY REPLY.
+   *
+   * The first version buffered the ENTIRE reply before synthesis and cost 718ms on every single turn
+   * (LLM first token 1020ms; full reply 1738ms). Koren heard it immediately. Making her slower on
+   * every turn to defend against something she says on one turn is a bad trade, and I made it
+   * without measuring the cost first.
+   *
+   * Sentence granularity is not a compromise — it is the correct granularity. Every pattern we guard
+   * lives inside a single sentence: NO_RESPONSE_NEEDED is a whole utterance, and "קבעתי לך שיחת דמו"
+   * cannot straddle a full stop. Holding more text than one sentence buys nothing and costs ~700ms.
    *
    * Delete this ONLY when Phase 4 wires the calendar tools and the claim becomes true.
    */
@@ -91,24 +97,12 @@ class ClickScalesAgent extends voice.Agent {
     text: Parameters<voice.Agent['ttsNode']>[0],
     modelSettings: voice.ModelSettings,
   ): ReturnType<voice.Agent['ttsNode']> {
-    let full = '';
-    for await (const chunk of text as AsyncIterable<string>) full += chunk;
-
-    const guarded = guardSpeech(full);
-    for (const note of guarded.interventions) {
-      console.log(`speech_guard ${JSON.stringify({ note, said: guarded.text.slice(0, 80) })}`);
-    }
-    // The whole utterance was a control token: she is MEANT to stay silent. Returning null means
-    // no audio at all, which is exactly right when the caller has just said "רגע".
-    if (guarded.silent) return null;
-
-    return voice.Agent.default.ttsNode(this, oneChunk(guarded.text), modelSettings);
+    return voice.Agent.default.ttsNode(
+      this,
+      guardStream(text as AsyncIterable<string>),
+      modelSettings,
+    );
   }
-}
-
-/** Re-wraps the guarded text as the single-chunk stream ttsNode expects. */
-async function* oneChunk(text: string): AsyncIterable<string> {
-  yield text;
 }
 
 /**
