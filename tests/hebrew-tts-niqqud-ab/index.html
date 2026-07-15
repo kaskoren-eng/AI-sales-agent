@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cartesia sonic-3 · A/B/C ניקוד</title>
+<style>
+  :root { --bg:#0e1116; --card:#171b22; --line:#252b36; --txt:#e6e9ef; --dim:#9aa4b2;
+          --a:#3b82f6; --b:#ef4444; --c:#22c55e; --warn:#f59e0b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:"Segoe UI",Arial,sans-serif; }
+  header { padding:26px 20px 12px; max-width:1180px; margin:0 auto; }
+  h1 { margin:0 0 6px; font-size:22px; }
+  .sub { color:var(--dim); font-size:14px; max-width:80ch; }
+  .sub code { background:#0b0e13; padding:1px 5px; border-radius:4px; }
+  .sub .rp { color:#ef4444; } .sub .gp { color:#22c55e; }
+  main { max-width:1180px; margin:0 auto; padding:0 20px 90px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin:16px 0; }
+  .chead { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .cid { font-weight:700; background:#0b0e13; border:1px solid var(--line); border-radius:6px; padding:2px 8px; font-size:13px; }
+  .ctag { color:var(--dim); font-size:13px; font-family:monospace; direction:ltr; }
+  .listen { font-size:14px; color:#cdd5e0; background:#0b0e13; border:1px dashed var(--line); border-radius:8px; padding:8px 12px; margin-bottom:12px; }
+  .listen b { color:#fff; }
+  .grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+  @media (max-width:840px) { .grid { grid-template-columns:1fr; } }
+  .col { border:1px solid var(--line); border-radius:10px; padding:12px; background:#0f131a; }
+  .col.a { border-top:3px solid var(--a); }
+  .col.b { border-top:3px solid var(--b); }
+  .col.c { border-top:3px solid var(--c); }
+  .lbl { font-size:13px; color:var(--dim); margin-bottom:8px; display:flex; justify-content:space-between; gap:8px; }
+  .dur { font-family:monospace; color:var(--dim); }
+  .dur.slow { color:var(--warn); font-weight:700; }
+  .dur.fast { color:var(--a); font-weight:700; }
+  .he { font-size:20px; margin-bottom:10px; min-height:60px; }
+  audio { width:100%; height:34px; }
+  .verdict { display:flex; align-items:center; gap:16px; margin-top:12px; padding-top:12px; border-top:1px solid var(--line); font-size:14px; flex-wrap:wrap; }
+  .verdict > span { color:var(--dim); }
+  .verdict label { cursor:pointer; }
+  .summary { position:sticky; bottom:0; background:#0b0e13ee; backdrop-filter:blur(6px); border-top:1px solid var(--line); padding:12px 20px; }
+  .summary .row { max-width:1180px; margin:0 auto; display:flex; gap:18px; align-items:center; flex-wrap:wrap; font-size:14px; }
+  .tally b { font-size:16px; }
+  button { background:#2b6; color:#04210f; border:0; border-radius:8px; padding:8px 14px; font-weight:700; cursor:pointer; }
+  #out { width:100%; margin-top:8px; background:#0f131a; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:8px; font-family:monospace; font-size:12px; direction:ltr; display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ניסוי ניקוד — Cartesia sonic-3 · שלוש גרסאות</h1>
+  <p class="sub"><b>A</b> = הטקסט הרגיל שהסוכן שולח היום.
+  <b class="rp">B</b> = פלט Phonikud מלא (כולל סימני הטעמה OLE + METEG — כנראה מה שהשמיע רע).
+  <b class="gp">C</b> = ניקוד תקני נקי בלבד (הסרנו OLE/METEG/<code>|</code>, נשארו רק תנועות ודגש).
+  סמן לכל משפט מה הכי טוב. ×N = כמה ארוך יותר מ-A.</p>
+</header>
+<main>
+
+    <div class="card">
+      <div class="chead"><span class="cid">01</span><span class="ctag">greeting/name+en</span></div>
+      <div class="listen">🎧 השם <b>קרן</b> ברור? <b>ClickScales</b> טבעי?</div>
+      <div class="grid"><div class="col a">
+          <div class="lbl">A · רגיל (היום) <span class="dur">3.90s</span></div>
+          <div class="he" dir="rtl">שלום, מדברת קרן מ-ClickScales. איך אני יכולה לעזור?</div>
+          <audio controls preload="none" src="01_A.wav"></audio>
+        </div><div class="col b">
+          <div class="lbl">B · Phonikud מלא <span class="dur">5.11s ×1.31</span></div>
+          <div class="he" dir="rtl">שָׁלוֹם, מְֽדַבֶּ֫רֶת קֶ֫רֶן מִ-ClickScales. אֵיךְ אֲנִי יְֽכוֹלָה לַעֲזֹור?</div>
+          <audio controls preload="none" src="01_B.wav"></audio>
+        </div><div class="col c">
+          <div class="lbl">C · ניקוד תקני נקי <span class="dur">4.13s ×1.06</span></div>
+          <div class="he" dir="rtl">שָׁלוֹם, מְדַבֶּרֶת קֶרֶן מִ-ClickScales. אֵיךְ אֲנִי יְכוֹלָה לַעֲזֹור?</div>
+          <audio controls preload="none" src="01_C.wav"></audio>
+        </div></div>
+      <div class="verdict">
+        <span>הכי טוב?</span>
+        <label><input type="radio" name="v01" value="A"> A</label>
+        <label><input type="radio" name="v01" value="B"> B</label>
+        <label><input type="radio" name="v01" value="C"> C</label>
+        <label><input type="radio" name="v01" value="same"> שווה</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span class="cid">02</span><span class="ctag">founder-disambig/name+en</span></div>
+      <div class="listen">🎧 <b>קורן</b> (המייסד) נשמע שונה מ‏קרן? <b>ClickScales</b>?</div>
+      <div class="grid"><div class="col a">
+          <div class="lbl">A · רגיל (היום) <span class="dur">3.44s</span></div>
+          <div class="he" dir="rtl">קורן הוא המייסד של ClickScales, והוא זה שיעביר את הדמו.</div>
+          <audio controls preload="none" src="02_A.wav"></audio>
+        </div><div class="col b">
+          <div class="lbl">B · Phonikud מלא <span class="dur slow">6.69s ×1.94</span></div>
+          <div class="he" dir="rtl">קוֹרֶן הוּא הַמְּיַיסֵּד שֶׁל ClickScales, וְֽהוּא זֶה שֶׁיַּעֲבִיר אֶת הַדְּמוֹ.</div>
+          <audio controls preload="none" src="02_B.wav"></audio>
+        </div><div class="col c">
+          <div class="lbl">C · ניקוד תקני נקי <span class="dur">5.20s ×1.51</span></div>
+          <div class="he" dir="rtl">קוֹרֶן הוּא הַמְּיַיסֵּד שֶׁל ClickScales, וְהוּא זֶה שֶׁיַּעֲבִיר אֶת הַדְּמוֹ.</div>
+          <audio controls preload="none" src="02_C.wav"></audio>
+        </div></div>
+      <div class="verdict">
+        <span>הכי טוב?</span>
+        <label><input type="radio" name="v02" value="A"> A</label>
+        <label><input type="radio" name="v02" value="B"> B</label>
+        <label><input type="radio" name="v02" value="C"> C</label>
+        <label><input type="radio" name="v02" value="same"> שווה</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span class="cid">03</span><span class="ctag">phone-readback/numbers</span></div>
+      <div class="listen">🎧 הספרות <b>אפס חמש אפס...</b> ברורות?</div>
+      <div class="grid"><div class="col a">
+          <div class="lbl">A · רגיל (היום) <span class="dur">5.57s</span></div>
+          <div class="he" dir="rtl">רק לוודא — אפס חמש אפס, תשע שבע, שמונה שמונה, ארבע חמש?</div>
+          <audio controls preload="none" src="03_A.wav"></audio>
+        </div><div class="col b">
+          <div class="lbl">B · Phonikud מלא <span class="dur">6.46s ×1.16</span></div>
+          <div class="he" dir="rtl">רַק לְֽוַודֵּא — אֶ֫פֶס חָמֵשׁ אֶ֫פֶס, תֵּ֫שַׁע שֶׁ֫בַע, שְׁמ֫וֹנֶה שְׁמ֫וֹנֶה, אַ֫רְבַּע חָמֵשׁ?</div>
+          <audio controls preload="none" src="03_B.wav"></audio>
+        </div><div class="col c">
+          <div class="lbl">C · ניקוד תקני נקי <span class="dur">6.04s ×1.08</span></div>
+          <div class="he" dir="rtl">רַק לְוַודֵּא — אֶפֶס חָמֵשׁ אֶפֶס, תֵּשַׁע שֶׁבַע, שְׁמוֹנֶה שְׁמוֹנֶה, אַרְבַּע חָמֵשׁ?</div>
+          <audio controls preload="none" src="03_C.wav"></audio>
+        </div></div>
+      <div class="verdict">
+        <span>הכי טוב?</span>
+        <label><input type="radio" name="v03" value="A"> A</label>
+        <label><input type="radio" name="v03" value="B"> B</label>
+        <label><input type="radio" name="v03" value="C"> C</label>
+        <label><input type="radio" name="v03" value="same"> שווה</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span class="cid">04</span><span class="ctag">gender-suffix+number</span></div>
+      <div class="listen">🎧 ‏<b>שלך</b> / <b>לך</b> בזכר (shel-KHA / le-KHA)? — באג המגדר</div>
+      <div class="grid"><div class="col a">
+          <div class="lbl">A · רגיל (היום) <span class="dur">1.90s</span></div>
+          <div class="he" dir="rtl">מה מספר הטלפון שלך? אשלח לך אישור.</div>
+          <audio controls preload="none" src="04_A.wav"></audio>
+        </div><div class="col b">
+          <div class="lbl">B · Phonikud מלא <span class="dur slow">4.55s ×2.39</span></div>
+          <div class="he" dir="rtl">מָה מְֽסַפֵּר הַטֵּ֫לֵפוֹן שֶׁלְּךָ? אֶשְׁלַח לְֽךָ אִישּׁוּר.</div>
+          <audio controls preload="none" src="04_B.wav"></audio>
+        </div><div class="col c">
+          <div class="lbl">C · ניקוד תקני נקי <span class="dur slow">4.27s ×2.25</span></div>
+          <div class="he" dir="rtl">מָה מְסַפֵּר הַטֵּלֵפוֹן שֶׁלְּךָ? אֶשְׁלַח לְךָ אִישּׁוּר.</div>
+          <audio controls preload="none" src="04_C.wav"></audio>
+        </div></div>
+      <div class="verdict">
+        <span>הכי טוב?</span>
+        <label><input type="radio" name="v04" value="A"> A</label>
+        <label><input type="radio" name="v04" value="B"> B</label>
+        <label><input type="radio" name="v04" value="C"> C</label>
+        <label><input type="radio" name="v04" value="same"> שווה</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span class="cid">05</span><span class="ctag">setup/mixed-en</span></div>
+      <div class="listen">🎧 ‏<b>onboarding</b> טבעי בתוך המשפט?</div>
+      <div class="grid"><div class="col a">
+          <div class="lbl">A · רגיל (היום) <span class="dur">3.90s</span></div>
+          <div class="he" dir="rtl">ההקמה לוקחת שבוע עד שבועיים, וכוללת onboarding מותאם אישית.</div>
+          <audio controls preload="none" src="05_A.wav"></audio>
+        </div><div class="col b">
+          <div class="lbl">B · Phonikud מלא <span class="dur">5.48s ×1.41</span></div>
+          <div class="he" dir="rtl">הַהֲקָמָה לוֹקַ֫חַת שָׁב֫וּעַ עַד שְׁבוּעַ֫יִים, וְֽכוֹלֶ֫לֶת onboarding מֻותְאָם אִישִׁית.</div>
+          <audio controls preload="none" src="05_B.wav"></audio>
+        </div><div class="col c">
+          <div class="lbl">C · ניקוד תקני נקי <span class="dur">4.78s ×1.23</span></div>
+          <div class="he" dir="rtl">הַהֲקָמָה לוֹקַחַת שָׁבוּעַ עַד שְׁבוּעַיִים, וְכוֹלֶלֶת onboarding מֻותְאָם אִישִׁית.</div>
+          <audio controls preload="none" src="05_C.wav"></audio>
+        </div></div>
+      <div class="verdict">
+        <span>הכי טוב?</span>
+        <label><input type="radio" name="v05" value="A"> A</label>
+        <label><input type="radio" name="v05" value="B"> B</label>
+        <label><input type="radio" name="v05" value="C"> C</label>
+        <label><input type="radio" name="v05" value="same"> שווה</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span class="cid">06</span><span class="ctag">crm/translit-en</span></div>
+      <div class="listen">🎧 ‏<b>CRM</b> / <b>דשבורד</b> / <b>לידים</b> ברורים?</div>
+      <div class="grid"><div class="col a">
+          <div class="lbl">A · רגיל (היום) <span class="dur">2.88s</span></div>
+          <div class="he" dir="rtl">כן, הסוכן מתחבר ל-CRM שלך ומגיע עם דשבורד מלא לצפייה בכל השיחות והלידים.</div>
+          <audio controls preload="none" src="06_A.wav"></audio>
+        </div><div class="col b">
+          <div class="lbl">B · Phonikud מלא <span class="dur">4.55s ×1.58</span></div>
+          <div class="he" dir="rtl">כֵּן, הַסּוֹכֵן מִתְחַבֵּר לַ-CRM שֶׁלְּךָ וּמַגִּ֫יעַ עִם דֶּשְׁבּוּרְד מָלֵא לִצְפִיָּיה בְּֽכׇל הַשִּׂיחוֹת וְֽהַלֵּ֫ידִים.</div>
+          <audio controls preload="none" src="06_B.wav"></audio>
+        </div><div class="col c">
+          <div class="lbl">C · ניקוד תקני נקי <span class="dur slow">5.94s ×2.06</span></div>
+          <div class="he" dir="rtl">כֵּן, הַסּוֹכֵן מִתְחַבֵּר לַ-CRM שֶׁלְּךָ וּמַגִּיעַ עִם דֶּשְׁבּוּרְד מָלֵא לִצְפִיָּיה בְּכל הַשִּׂיחוֹת וְהַלֵּידִים.</div>
+          <audio controls preload="none" src="06_C.wav"></audio>
+        </div></div>
+      <div class="verdict">
+        <span>הכי טוב?</span>
+        <label><input type="radio" name="v06" value="A"> A</label>
+        <label><input type="radio" name="v06" value="B"> B</label>
+        <label><input type="radio" name="v06" value="C"> C</label>
+        <label><input type="radio" name="v06" value="same"> שווה</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span class="cid">07</span><span class="ctag">demo-offer/number+gender</span></div>
+      <div class="listen">🎧 ‏<b>שלושים דקות</b> ברור? (A היה ארוך/מגומגם)</div>
+      <div class="grid"><div class="col a">
+          <div class="lbl">A · רגיל (היום) <span class="dur">7.24s</span></div>
+          <div class="he" dir="rtl">בוא נקבע שיחת דמו קצרה של שלושים דקות שבה תראה איך זה עובד בפועל.</div>
+          <audio controls preload="none" src="07_A.wav"></audio>
+        </div><div class="col b">
+          <div class="lbl">B · Phonikud מלא <span class="dur fast">4.60s ×0.64</span></div>
+          <div class="he" dir="rtl">בּוֹא נִקְבַּע שִׂיחַת דָּמוֹ קְצָרָה שֶׁל שְׁלוֹשִׁים דַּקּוֹת שֶׁבָּהּ תִּרְאֶה אֵיךְ זֶה עוֹבֵד בְּֽפֹ֫ועַל.</div>
+          <audio controls preload="none" src="07_B.wav"></audio>
+        </div><div class="col c">
+          <div class="lbl">C · ניקוד תקני נקי <span class="dur fast">5.76s ×0.80</span></div>
+          <div class="he" dir="rtl">בּוֹא נִקְבַּע שִׂיחַת דָּמוֹ קְצָרָה שֶׁל שְׁלוֹשִׁים דַּקּוֹת שֶׁבָּהּ תִּרְאֶה אֵיךְ זֶה עוֹבֵד בְּפֹועַל.</div>
+          <audio controls preload="none" src="07_C.wav"></audio>
+        </div></div>
+      <div class="verdict">
+        <span>הכי טוב?</span>
+        <label><input type="radio" name="v07" value="A"> A</label>
+        <label><input type="radio" name="v07" value="B"> B</label>
+        <label><input type="radio" name="v07" value="C"> C</label>
+        <label><input type="radio" name="v07" value="same"> שווה</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span class="cid">08</span><span class="ctag">fullname-confirm</span></div>
+      <div class="listen">🎧 ‏<b>קורן שטרית</b> — השם המלא ברור?</div>
+      <div class="grid"><div class="col a">
+          <div class="lbl">A · רגיל (היום) <span class="dur">3.16s</span></div>
+          <div class="he" dir="rtl">רק לוודא — קורן שטרית, נכון?</div>
+          <audio controls preload="none" src="08_A.wav"></audio>
+        </div><div class="col b">
+          <div class="lbl">B · Phonikud מלא <span class="dur">4.27s ×1.35</span></div>
+          <div class="he" dir="rtl">רַק לְֽוַודֵּא — ק֫וֹרֶן שִׁטְרִית, נָכוֹן?</div>
+          <audio controls preload="none" src="08_B.wav"></audio>
+        </div><div class="col c">
+          <div class="lbl">C · ניקוד תקני נקי <span class="dur">3.11s ×0.98</span></div>
+          <div class="he" dir="rtl">רַק לְוַודֵּא — קוֹרֶן שִׁטְרִית, נָכוֹן?</div>
+          <audio controls preload="none" src="08_C.wav"></audio>
+        </div></div>
+      <div class="verdict">
+        <span>הכי טוב?</span>
+        <label><input type="radio" name="v08" value="A"> A</label>
+        <label><input type="radio" name="v08" value="B"> B</label>
+        <label><input type="radio" name="v08" value="C"> C</label>
+        <label><input type="radio" name="v08" value="same"> שווה</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span class="cid">09</span><span class="ctag">discovery/gender-suffix</span></div>
+      <div class="listen">🎧 ‏<b>אליך</b> בזכר (e-le-KHA)? — באג המגדר</div>
+      <div class="grid"><div class="col a">
+          <div class="lbl">A · רגיל (היום) <span class="dur">2.69s</span></div>
+          <div class="he" dir="rtl">כמה פניות נכנסות אליך ביום, פחות או יותר?</div>
+          <audio controls preload="none" src="09_A.wav"></audio>
+        </div><div class="col b">
+          <div class="lbl">B · Phonikud מלא <span class="dur">3.85s ×1.43</span></div>
+          <div class="he" dir="rtl">כַּ֫מָּה פְּנִיּוֹת נִכְנָסוֹת אֵלֶ֫יךָ בַּֽיּוֹם, פָּחוֹת אוֹ יוֹתֵר?</div>
+          <audio controls preload="none" src="09_B.wav"></audio>
+        </div><div class="col c">
+          <div class="lbl">C · ניקוד תקני נקי <span class="dur">2.97s ×1.10</span></div>
+          <div class="he" dir="rtl">כַּמָּה פְּנִיּוֹת נִכְנָסוֹת אֵלֶיךָ בַּיּוֹם, פָּחוֹת אוֹ יוֹתֵר?</div>
+          <audio controls preload="none" src="09_C.wav"></audio>
+        </div></div>
+      <div class="verdict">
+        <span>הכי טוב?</span>
+        <label><input type="radio" name="v09" value="A"> A</label>
+        <label><input type="radio" name="v09" value="B"> B</label>
+        <label><input type="radio" name="v09" value="C"> C</label>
+        <label><input type="radio" name="v09" value="same"> שווה</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span class="cid">10</span><span class="ctag">ai-admission/en</span></div>
+      <div class="listen">🎧 ‏<b>AI</b> טבעי? <b>אליך</b> בזכר?</div>
+      <div class="grid"><div class="col a">
+          <div class="lbl">A · רגיל (היום) <span class="dur">4.37s</span></div>
+          <div class="he" dir="rtl">אני סוכנת AI, אבל אני יכולה להעביר הודעה לצוות שלנו שיחזרו אליך.</div>
+          <audio controls preload="none" src="10_A.wav"></audio>
+        </div><div class="col b">
+          <div class="lbl">B · Phonikud מלא <span class="dur">6.13s ×1.40</span></div>
+          <div class="he" dir="rtl">אֲנִי סוֹכֶ֫נֶת AI, אֲבָל אֲנִי יְֽכוֹלָה לְֽהַעֲבִיר הוֹדָעָה לַצֶּ֫וֶות שֶׁלָּ֫נוּ שֶׁיַּחְזְֽרוּ אֵלֶ֫יךָ.</div>
+          <audio controls preload="none" src="10_B.wav"></audio>
+        </div><div class="col c">
+          <div class="lbl">C · ניקוד תקני נקי <span class="dur">5.20s ×1.19</span></div>
+          <div class="he" dir="rtl">אֲנִי סוֹכֶנֶת AI, אֲבָל אֲנִי יְכוֹלָה לְהַעֲבִיר הוֹדָעָה לַצֶּוֶות שֶׁלָּנוּ שֶׁיַּחְזְרוּ אֵלֶיךָ.</div>
+          <audio controls preload="none" src="10_C.wav"></audio>
+        </div></div>
+      <div class="verdict">
+        <span>הכי טוב?</span>
+        <label><input type="radio" name="v10" value="A"> A</label>
+        <label><input type="radio" name="v10" value="B"> B</label>
+        <label><input type="radio" name="v10" value="C"> C</label>
+        <label><input type="radio" name="v10" value="same"> שווה</label>
+      </div>
+    </div>
+</main>
+<div class="summary">
+  <div class="row">
+    <span class="tally">A: <b id="tA">0</b></span>
+    <span class="tally" style="color:var(--b)">B: <b id="tB">0</b></span>
+    <span class="tally" style="color:var(--c)">C: <b id="tC">0</b></span>
+    <span class="tally">שווה: <b id="tS">0</b></span>
+    <span class="tally" style="color:var(--dim)">נשאר: <b id="tN">10</b></span>
+    <button onclick="dump()">הצג סיכום להעתקה</button>
+  </div>
+  <textarea id="out" rows="5" readonly></textarea>
+</div>
+<script>
+  const data = [{"id": "01", "tag": "greeting/name+en"}, {"id": "02", "tag": "founder-disambig/name+en"}, {"id": "03", "tag": "phone-readback/numbers"}, {"id": "04", "tag": "gender-suffix+number"}, {"id": "05", "tag": "setup/mixed-en"}, {"id": "06", "tag": "crm/translit-en"}, {"id": "07", "tag": "demo-offer/number+gender"}, {"id": "08", "tag": "fullname-confirm"}, {"id": "09", "tag": "discovery/gender-suffix"}, {"id": "10", "tag": "ai-admission/en"}];
+  const KEY = 'niqqud-abc-verdicts';
+  const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
+  for (const [id,v] of Object.entries(saved)) {
+    const el = document.querySelector(`input[name="v${id}"][value="${v}"]`);
+    if (el) el.checked = true;
+  }
+  function tally() {
+    let a=0,b=0,c=0,s=0,n=0;
+    for (const r of data) {
+      const v = (document.querySelector(`input[name="v${r.id}"]:checked`)||{}).value;
+      if (v==='A') a++; else if (v==='B') b++; else if (v==='C') c++; else if (v==='same') s++; else n++;
+    }
+    tA.textContent=a; tB.textContent=b; tC.textContent=c; tS.textContent=s; tN.textContent=n;
+  }
+  document.addEventListener('change', e => {
+    if (e.target.name && e.target.name.startsWith('v')) {
+      saved[e.target.name.slice(1)] = e.target.value;
+      localStorage.setItem(KEY, JSON.stringify(saved));
+      tally();
+    }
+  });
+  function dump() {
+    const lines = data.map(r => {
+      const v = (document.querySelector(`input[name="v${r.id}"]:checked`)||{}).value || '-';
+      return `${r.id} ${r.tag}: ${v}`;
+    });
+    let a=0,b=0,c=0,s=0;
+    for (const r of data) { const v=(document.querySelector(`input[name="v${r.id}"]:checked`)||{}).value; if(v==='A')a++;else if(v==='B')b++;else if(v==='C')c++;else if(v==='same')s++; }
+    const o = document.getElementById('out'); o.style.display='block';
+    o.value = lines.join('\n') + `\n---\nA=${a}  B=${b}  C=${c}  same=${s}`;
+    o.select();
+  }
+  tally();
+</script>
+</body>
+</html>

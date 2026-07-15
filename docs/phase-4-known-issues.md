@@ -344,6 +344,42 @@ Do not touch the context inside that hook.
 
 ---
 
+## 13. Niqqud (Hebrew diacritics) makes Cartesia sonic-3 WORSE, not better. Do not send it.
+
+The idea keeps coming back because it sounds obviously right: Hebrew doesn't write vowels, so the
+gender bug (שלך = shel-KHA vs shel-AKH) is a missing-vowel problem — so *add the vowels* with niqqud
+and the TTS can't guess wrong. We tested it properly instead of guessing.
+
+**The experiment** (`tests/hebrew-tts-niqqud-ab/`): 10 sentences from the Keren prompt (names,
+spoken-digit phone numbers, embedded English), each synthesized by sonic-3 three ways —
+
+- **A** plain text (what we send today)
+- **B** full **Phonikud** output (`add_diacritics()` — niqqud + its TTS stress marks)
+- **C** standard niqqud only (B with the OLE `U+05AB` and METEG `U+05BD` accents stripped)
+
+Phonikud itself is excellent: it produced correct masculine forms (שֶׁלְּךָ, אֵלֶיךָ) and even
+disambiguated the names by vowel (קֶרֶן KEren vs קוֹרֶן KOren). The diacritization was not the problem.
+
+**The result: both B and C sound BAD.** Koren, listening: "נשמע רע מאוד עם הניקוד"… then on the
+clean C variant: "נשמע רע עדין." Distorted, and measurably **longer** — B/C clips ran 1.3–2.4× the
+plain duration. sonic-3 was trained on **un-diacritized** Hebrew; every niqqud character it sees is
+noise it tries to pronounce. (The METEG accent literally means "lengthen the vowel", which is part of
+why the audio dragged — but stripping it in variant C did not save the approach.)
+
+This is the SECOND time niqqud has been rejected on real audio — the first was manual niqqud in the
+system prompt ("אין משהו אחיד"). Two independent attempts, same verdict.
+
+**What to do instead — and it already ships.** `speech-guard.ts::forceMasculineAddress` does NOT add
+niqqud. It **respells the few ambiguous words with ordinary letters** (שלך → שלכה), so the rest of the
+sentence stays plain, un-diacritized text — exactly what sonic-3 handles well. The surgical
+letter-swap beats the blanket diacritization precisely because it does not poison the whole utterance.
+Verified round-trip (TTS → 8kHz line → Soniox) as correct masculine. That is the answer; niqqud is not.
+
+The A/B/C harness and audio are kept under `tests/hebrew-tts-niqqud-ab/` as the evidence, so this does
+not get re-litigated. The 293MB ONNX model is gitignored (re-fetch instructions in that folder's README).
+
+---
+
 ## Realistic latency budget for Hebrew
 
 | Stage | Measured | English guides assume |

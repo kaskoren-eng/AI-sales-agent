@@ -1,0 +1,5 @@
+# The Phonikud ONNX model is 293MB — do not commit. Re-fetch with:
+#   curl -L --ssl-no-revoke -o phonikud-1.0.int8.onnx \
+#     https://huggingface.co/Phonikud/phonikud-onnx/resolve/main/phonikud-1.0.int8.onnx
+phonikud-1.0.int8.onnx
+__pycache__/
