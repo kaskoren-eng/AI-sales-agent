@@ -175,6 +175,28 @@ const envSchema = z.object({
   // revert. If it does not actually win on a real call, go back to 'cartesia'.
   VOICE_TTS_ROUTE: z.enum(['cartesia', 'inference']).default('cartesia'),
 
+  // Which TTS engine speaks. 'cartesia' is the shipped default and does not move without a decision.
+  // 'deepdub' selects the self-built DeepDub adapter (tts/deepdub.tts.ts) — added because DeepDub
+  // won a blind A/B on Hebrew quality and native gender at cost parity, with a realtime model that
+  // the dashboard reports at ~125ms TTFB (faster than Cartesia's ~250ms). Strangler-fig: both live
+  // side by side behind this flag, exactly like STT_PROVIDER, so a bad call is one env var to revert.
+  VOICE_TTS_PROVIDER: z.enum(['cartesia', 'deepdub']).default('cartesia'),
+  // DeepDub (only read when VOICE_TTS_PROVIDER=deepdub). All optional so the app boots without it.
+  DEEPDUB_API_KEY: z.string().min(1).optional(),
+  DEEPDUB_VOICE_PROMPT_ID: z.string().min(1).optional(),
+  // The REALTIME model is the point — it is the ~125ms path. Keep realtime on; the streaming socket
+  // (asyncStreamText -> asyncStreamRecvAudio) is what delivers first audio fast.
+  DEEPDUB_MODEL: z.string().default('dd-etts-3.2'),
+  DEEPDUB_REALTIME: envBool(true),
+  DEEPDUB_LOCALE: z.string().default('he-IL'),
+  // EU endpoint: the agent deploys to eu-central, so the EU region is both correct and lower-latency.
+  DEEPDUB_EU: envBool(true),
+  // Raw PCM out of DeepDub (s16le) feeds LiveKit's AudioByteStream directly — no per-chunk WAV header
+  // to strip. 24kHz to match the Cartesia path before the 8kHz phone downsample (see buildTTS notes).
+  DEEPDUB_SAMPLE_RATE: z.coerce.number().int().positive().default(24_000),
+  // Accent control: 0..1 how strongly to pull toward the target locale accent. 0.75 per the sample.
+  DEEPDUB_ACCENT_RATIO: z.coerce.number().min(0).max(1).default(0.75),
+
   // How long she may think in SILENCE before making the noise a person makes while thinking.
   //
   // Koren, on a real call: "סיימת? אני פשוט לא מדבר, אני מחכה שתסיימי." He could not tell whether

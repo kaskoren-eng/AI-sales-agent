@@ -61,6 +61,13 @@ async function buildAuthTestApp(db: ReturnType<typeof createMockDb>) {
     VOICE_TURN_DETECTION: 'vad' as const,
     SHADOW_STT_ENABLED: false,
     VOICE_TTS_ROUTE: 'cartesia' as const,
+    VOICE_TTS_PROVIDER: 'cartesia' as const,
+    DEEPDUB_MODEL: 'dd-etts-3.2',
+    DEEPDUB_REALTIME: true,
+    DEEPDUB_LOCALE: 'he-IL',
+    DEEPDUB_EU: true,
+    DEEPDUB_SAMPLE_RATE: 24_000,
+    DEEPDUB_ACCENT_RATIO: 0.75,
     VOICE_THINKING_FILLER_MS: 1200,
     VOICE_MAX_HISTORY_ITEMS: 0,
   };

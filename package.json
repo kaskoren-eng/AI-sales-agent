@@ -15,6 +15,7 @@
     "voice:dev": "tsx --env-file=.env src/modules/channels/voice-livekit/agent.ts dev",
     "voice:connect": "tsx --env-file=.env src/modules/channels/voice-livekit/agent.ts connect --room",
     "voice:test": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/run-scenarios.ts",
+    "voice:tts:smoke": "tsx --env-file=.env scripts/deepdub-tts-smoke.ts",
     "voice:start": "node dist/modules/channels/voice-livekit/agent.js start",
     "screenshot": "node scripts/screenshot.mjs",
     "screenshot:dev": "cd dashboard && npm run dev &amp; sleep 4 &amp;&amp; node ../scripts/screenshot.mjs",
@@ -34,6 +35,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@deepdub/node": "^3.0.2",
     "@fastify/cookie": "^11.0.0",
     "@fastify/cors": "^10.0.0",
     "@fastify/formbody": "^8.0.2",

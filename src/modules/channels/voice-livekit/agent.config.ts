@@ -4,6 +4,7 @@ import * as openai from '@livekit/agents-plugin-openai';
 import type * as silero from '@livekit/agents-plugin-silero';
 import { cartesiaOptions } from './testing/speech.js';
 import { createSonioxSTT } from './stt/soniox.stt.js';
+import { DeepdubTTS, deepdubOptions } from './tts/deepdub.tts.js';
 import type { Env } from '../../../config/env.js';
 
 /**
@@ -150,6 +151,12 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
  * The ROUTE is the only thing left to tune: same model and voice either way.
  */
 function buildTTS(env: Env): ttsBase.TTS {
+  // DeepDub, behind the flag. Won a blind Hebrew A/B (6:1) on quality + native gender at cost parity,
+  // realtime model ~125ms. NOT default — this branch only fires on VOICE_TTS_PROVIDER=deepdub, so
+  // Cartesia keeps serving until a decision is made. One env var to revert. See tts/deepdub.tts.ts.
+  if (env.VOICE_TTS_PROVIDER === 'deepdub') {
+    return new DeepdubTTS(deepdubOptions(env));
+  }
   if (env.VOICE_TTS_ROUTE === 'inference') {
     const opts = cartesiaOptions(env);
     return new inference.TTS({
