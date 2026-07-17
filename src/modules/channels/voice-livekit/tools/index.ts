@@ -1,6 +1,7 @@
 import type { llm } from '@livekit/agents';
 import { bookMeetingTool } from './book-meeting.tool.js';
 import { checkCalendarAvailabilityTool } from './check-calendar-availability.tool.js';
+import { endCallTool } from './end-call.tool.js';
 import type { ToolRuntimeContext } from './tool-context.js';
 
 /**
@@ -32,7 +33,9 @@ export const TOOL_NAMES = [
 export type ToolName = (typeof TOOL_NAMES)[number];
 
 export function buildAgentTools(rt: ToolRuntimeContext): llm.FunctionTool[] {
-  // Populated tool by tool across Phase 4 commits: check_calendar_availability → book_meeting →
-  // end_call.
-  return [checkCalendarAvailabilityTool(rt), bookMeetingTool(rt)] as llm.FunctionTool[];
+  return [
+    checkCalendarAvailabilityTool(rt),
+    bookMeetingTool(rt),
+    endCallTool(rt),
+  ] as llm.FunctionTool[];
 }

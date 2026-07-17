@@ -259,6 +259,46 @@ describe('flow-executor worker', () => {
     expect(result).toMatchObject({ action: 'make_call' });
   });
 
+  it('make_call step — NEVER dials an opted_out lead (Retell engine)', async () => {
+    const tenant = makeTenantWithFlow('onboarding', [CALL_STEP]);
+    const deps = makeDeps();
+    deps.db.select
+      .mockReturnValueOnce(makeSelectChain([tenant])) // flow lookup
+      .mockReturnValueOnce(makeSelectChain([{ status: 'opted_out' }])); // DNC check
+
+    const voice = { initiateOutboundCall: vi.fn() };
+    deps.voice = voice;
+
+    createFlowExecutorWorker(deps);
+    const processor = capturedProcessors[0];
+
+    const result = await processor(makeJob({ stepIndex: 0 }));
+
+    expect(voice.initiateOutboundCall).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ action: 'make_call' });
+  });
+
+  it('make_call step — NEVER dials an opted_out lead (LiveKit engine)', async () => {
+    const tenant = makeTenantWithFlow('onboarding', [CALL_STEP]);
+    (tenant.settings as any).voice_engine = 'livekit';
+    const deps = makeDeps();
+    deps.db.select
+      .mockReturnValueOnce(makeSelectChain([tenant]))
+      .mockReturnValueOnce(makeSelectChain([{ status: 'opted_out' }]));
+
+    const voiceLivekit = { initiateOutboundCall: vi.fn() };
+    deps.voiceLivekit = voiceLivekit;
+    deps.voice = { initiateOutboundCall: vi.fn() };
+
+    createFlowExecutorWorker(deps);
+    const processor = capturedProcessors[0];
+
+    await processor(makeJob({ stepIndex: 0 }));
+
+    expect(voiceLivekit.initiateOutboundCall).not.toHaveBeenCalled();
+    expect(deps.voice.initiateOutboundCall).not.toHaveBeenCalled();
+  });
+
   it('make_call step — skips when voice service not configured', async () => {
     const tenant = makeTenantWithFlow('onboarding', [CALL_STEP]);
     const deps = makeDeps();

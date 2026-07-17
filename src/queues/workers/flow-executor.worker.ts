@@ -180,6 +180,23 @@ export function createFlowExecutorWorker(deps: WorkerDeps) {
       }
 
       case 'make_call': {
+        // DO-NOT-CALL, checked FIRST — before engine selection, so it covers Retell and LiveKit
+        // alike. A lead whose status is 'opted_out' (set by the voice agent's end_call tool when
+        // the caller asks not to be contacted) must never be dialed again: Israeli spam law, not
+        // a preference. This is the single choke point every outbound flow call passes through.
+        const [dncRow] = await db
+          .select({ status: leads.status })
+          .from(leads)
+          .where(and(eq(leads.id, ctx.leadId), eq(leads.tenantId, ctx.tenantId)))
+          .limit(1);
+        if (dncRow?.status === 'opted_out') {
+          logger?.info(
+            { event: 'call_skipped_dnc', tenantId: ctx.tenantId, leadId: ctx.leadId },
+            'Flow executor: lead opted out of contact — call not placed',
+          );
+          return {};
+        }
+
         // Which engine dials this lead? Per-tenant `settings.voice_engine`, default from env.
         // This is the strangler-fig switch — see voice-livekit/voice-livekit.service.ts.
         const [engineRow] = await db
