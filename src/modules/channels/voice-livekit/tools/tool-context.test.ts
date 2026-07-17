@@ -1,0 +1,216 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { Env } from '../../../../config/env.js';
+import type { Database } from '../../../../db/client.js';
+import { GoogleCalendarProvider } from '../../../scheduling/providers/google-calendar.provider.js';
+import type { CallReport } from '../call-report.js';
+import {
+  FLAG_READ_TIMEOUT_MS,
+  buildToolRuntime,
+  evaluateToolGate,
+  parseOutboundMetadata,
+  redactArgs,
+  timedTool,
+  type ToolRuntimeContext,
+} from './tool-context.js';
+
+const baseEnv = {
+  VOICE_ENGINE_DEFAULT: 'retell',
+  VOICE_WEBHOOK_TENANT_ID: undefined,
+  GOOGLE_CALENDAR_ID: 'cal@group.calendar.google.com',
+  GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: 'svc@proj.iam.gserviceaccount.com',
+  GOOGLE_CALENDAR_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----',
+  DATABASE_URL: 'postgres://user:pass@localhost:5432/db',
+} as unknown as Env;
+
+const OUTBOUND_META = JSON.stringify({
+  tenantId: 'tenant-1',
+  leadId: 'lead-1',
+  leadPhone: '+972501234567',
+  direction: 'outbound',
+});
+
+const ENABLED_SETTINGS = { voice_engine: 'livekit', functions_enabled: true };
+
+function fakeReport(): CallReport {
+  return { recordToolCall: vi.fn() } as unknown as CallReport;
+}
+
+function deps(settings: unknown, close = vi.fn(async () => undefined)) {
+  return {
+    close,
+    deps: {
+      connectDb: () => ({ db: {} as Database, close }),
+      loadSettings: async () => settings,
+    },
+  };
+}
+
+function callOpts() {
+  return {
+    callId: 'call-out-abc',
+    callerPhone: '+972501234567',
+    participantMetadata: OUTBOUND_META,
+    report: fakeReport(),
+  };
+}
+
+describe('parseOutboundMetadata', () => {
+  it('reads tenantId + leadId from the outbound dialer payload', () => {
+    expect(parseOutboundMetadata(OUTBOUND_META)).toEqual({ tenantId: 'tenant-1', leadId: 'lead-1' });
+  });
+
+  it('returns null for absent, garbage, and tenant-less metadata — inbound calls, not errors', () => {
+    expect(parseOutboundMetadata(undefined)).toBeNull();
+    expect(parseOutboundMetadata('not json')).toBeNull();
+    expect(parseOutboundMetadata(JSON.stringify({ leadId: 'l-1' }))).toBeNull();
+  });
+});
+
+describe('evaluateToolGate — the fail-closed core', () => {
+  it('denies when the tenant runs on retell', () => {
+    expect(evaluateToolGate({ voice_engine: 'retell', functions_enabled: true }, baseEnv)).toEqual({
+      enabled: false,
+      reason: 'engine_not_livekit',
+    });
+  });
+
+  it('denies livekit tenants without the functions flag — absence means NO', () => {
+    expect(evaluateToolGate({ voice_engine: 'livekit' }, baseEnv)).toEqual({
+      enabled: false,
+      reason: 'functions_disabled',
+    });
+  });
+
+  it('denies on a truthy-but-not-true flag — strict === true, "true" strings do not count', () => {
+    expect(
+      evaluateToolGate({ voice_engine: 'livekit', functions_enabled: 'true' }, baseEnv).enabled,
+    ).toBe(false);
+  });
+
+  it('allows only livekit + functions_enabled === true', () => {
+    expect(evaluateToolGate(ENABLED_SETTINGS, baseEnv)).toEqual({ enabled: true, reason: null });
+  });
+});
+
+describe('buildToolRuntime — fail-closed matrix', () => {
+  it('no metadata and no VOICE_WEBHOOK_TENANT_ID → no_tenant', async () => {
+    const result = await buildToolRuntime(
+      baseEnv,
+      { ...callOpts(), participantMetadata: undefined },
+      deps(ENABLED_SETTINGS).deps,
+    );
+    expect(result).toEqual({ runtime: null, disabledReason: 'no_tenant' });
+  });
+
+  it('inbound call falls back to VOICE_WEBHOOK_TENANT_ID with no lead', async () => {
+    const env = { ...baseEnv, VOICE_WEBHOOK_TENANT_ID: 'tenant-env' } as Env;
+    const result = await buildToolRuntime(
+      env,
+      { ...callOpts(), participantMetadata: undefined },
+      deps(ENABLED_SETTINGS).deps,
+    );
+    expect(result.runtime?.tenantId).toBe('tenant-env');
+    expect(result.runtime?.leadId).toBeNull();
+  });
+
+  it('missing calendar creds → calendar_not_configured (tools that cannot book must not exist)', async () => {
+    const env = { ...baseEnv, GOOGLE_CALENDAR_PRIVATE_KEY: undefined } as unknown as Env;
+    const result = await buildToolRuntime(env, callOpts(), deps(ENABLED_SETTINGS).deps);
+    expect(result.disabledReason).toBe('calendar_not_configured');
+  });
+
+  it('settings read throws → settings_read_failed, pool closed', async () => {
+    const close = vi.fn(async () => undefined);
+    const result = await buildToolRuntime(baseEnv, callOpts(), {
+      connectDb: () => ({ db: {} as Database, close }),
+      loadSettings: async () => {
+        throw new Error('connection refused');
+      },
+    });
+    expect(result.disabledReason).toBe('settings_read_failed');
+    expect(close).toHaveBeenCalled();
+  });
+
+  it('settings read hangs past the timebox → settings_read_timeout, pool closed', async () => {
+    vi.useFakeTimers();
+    try {
+      const close = vi.fn(async () => undefined);
+      const pending = buildToolRuntime(baseEnv, callOpts(), {
+        connectDb: () => ({ db: {} as Database, close }),
+        loadSettings: () => new Promise(() => undefined), // never resolves
+      });
+      await vi.advanceTimersByTimeAsync(FLAG_READ_TIMEOUT_MS + 1);
+      const result = await pending;
+      expect(result.disabledReason).toBe('settings_read_timeout');
+      expect(close).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('flag off → functions_disabled, pool closed', async () => {
+    const { deps: d, close } = deps({ voice_engine: 'livekit', functions_enabled: false });
+    const result = await buildToolRuntime(baseEnv, callOpts(), d);
+    expect(result.disabledReason).toBe('functions_disabled');
+    expect(close).toHaveBeenCalled();
+  });
+
+  it('engine retell → engine_not_livekit even with the functions flag on', async () => {
+    const { deps: d } = deps({ voice_engine: 'retell', functions_enabled: true });
+    const result = await buildToolRuntime(baseEnv, callOpts(), d);
+    expect(result.disabledReason).toBe('engine_not_livekit');
+  });
+
+  it('both flags on → a live runtime carrying tenant, lead, and a provider factory', async () => {
+    const result = await buildToolRuntime(baseEnv, callOpts(), deps(ENABLED_SETTINGS).deps);
+    expect(result.disabledReason).toBeNull();
+    const rt = result.runtime!;
+    expect(rt.tenantId).toBe('tenant-1');
+    expect(rt.leadId).toBe('lead-1');
+    expect(rt.bookingCompleted).toBe(false);
+    expect(rt.makeProvider(15)).toBeInstanceOf(GoogleCalendarProvider);
+  });
+});
+
+describe('timedTool', () => {
+  function rtWithReport() {
+    const recordToolCall = vi.fn();
+    const rt = { report: { recordToolCall } } as unknown as ToolRuntimeContext;
+    return { rt, recordToolCall };
+  }
+
+  it('records a successful call with its duration and returns the result', async () => {
+    const { rt, recordToolCall } = rtWithReport();
+    const result = await timedTool(rt, 'check_calendar_availability', { from_date: '2026-07-19' }, async () => 'ok');
+    expect(result).toBe('ok');
+    expect(recordToolCall).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'check_calendar_availability', ok: true, durationMs: expect.any(Number) }),
+    );
+  });
+
+  it('records a failure and RETHROWS — a silent tool error is how false bookings happen', async () => {
+    const { rt, recordToolCall } = rtWithReport();
+    await expect(
+      timedTool(rt, 'book_meeting', {}, async () => {
+        throw new Error('calendar down');
+      }),
+    ).rejects.toThrow('calendar down');
+    expect(recordToolCall).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'book_meeting', ok: false, error: 'calendar down' }),
+    );
+  });
+});
+
+describe('redactArgs — PII never reaches a log line', () => {
+  it('cuts phones to last-4, emails to domain, names to an initial', () => {
+    expect(
+      redactArgs({ phone: '+972501234567', email: 'dana@example.com', name: 'דנה לוי', notes: 'עסק קטן' }),
+    ).toEqual({ phone: '…4567', email: '…@example.com', name: 'ד…', notes: 'עסק קטן' });
+  });
+
+  it('passes non-strings through and truncates long strings', () => {
+    const out = redactArgs({ duration_minutes: 15, notes: 'x'.repeat(200) });
+    expect(out.duration_minutes).toBe(15);
+    expect((out.notes as string).length).toBeLessThan(130);
+  });
+});

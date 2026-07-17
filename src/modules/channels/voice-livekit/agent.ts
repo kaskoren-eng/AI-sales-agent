@@ -22,6 +22,8 @@ import {
 } from './prompts/thinking-fillers.he.js';
 import { guardStream, withFiller } from './speech-guard.js';
 import { ShadowSTT } from './stt/shadow-stt.js';
+import { buildAgentTools } from './tools/index.js';
+import { buildToolRuntime } from './tools/tool-context.js';
 
 /** Where every call's report lands. Repo-root relative, gitignored — these contain caller PII. */
 const CALL_REPORTS_DIR = 'call-reports';
@@ -220,6 +222,22 @@ export default defineAgent({
       ttsModel: env.CARTESIA_MODEL,
     });
 
+    // PHASE 4 — may this call use tools? One tenant-settings read, timeboxed at 2s, FAIL-CLOSED:
+    // if the tenant can't be identified (outbound metadata → VOICE_WEBHOOK_TENANT_ID fallback) or
+    // `voice_engine`/`functions_enabled` don't both say yes, `runtime` is null and the call runs
+    // exactly as it did before Phase 4 — no tools, speech-guard fully armed. See tool-context.ts.
+    const { runtime, disabledReason } = await buildToolRuntime(env, {
+      callId: ctx.room.name ?? 'unknown',
+      callerPhone: caller.callerPhone,
+      participantMetadata: participant.metadata,
+      report,
+    });
+    console.log(
+      runtime
+        ? `tools_enabled ${JSON.stringify({ tenantId: runtime.tenantId, leadId: runtime.leadId })}`
+        : `tools_disabled reason=${disabledReason}`,
+    );
+
     // Per-turn latency baseline. LiveKit already measures each stage; we just surface it.
     // Wall-clock timestamps are useless here — the gap between turns is the human thinking,
     // not the pipeline working. These are the numbers the Phase 2 budget is written against:
@@ -300,6 +318,15 @@ export default defineAgent({
 
       const path = await report.write(CALL_REPORTS_DIR);
       if (path) console.log('call_report_written', path);
+
+      // The tool runtime's pg pool. Closed LAST — the call_learnings persistence (Phase 4,
+      // commit 5) writes through it just before this line. Best-effort: a close failure must
+      // not mask the report that was already written.
+      if (runtime) {
+        await runtime.closeDb().catch((err: unknown) => {
+          console.error('tool_runtime_db_close_failed', err instanceof Error ? err.message : String(err));
+        });
+      }
     });
 
     // One event, three jobs — all of which have to happen AFTER a turn is committed.
@@ -329,7 +356,12 @@ export default defineAgent({
       void report.write(CALL_REPORTS_DIR);
     });
 
-    const agent = new ClickScalesAgent({ instructions: SYSTEM_PROMPT_HE });
+    // Tools only exist when the per-tenant gate said yes. The tool set is FIXED for the whole
+    // call — never mutate it (or chatCtx) mid-call, that invalidates preemptive generation.
+    const agent = new ClickScalesAgent({
+      instructions: SYSTEM_PROMPT_HE,
+      ...(runtime ? { tools: buildAgentTools(runtime) } : {}),
+    });
 
     // SHE HESITATES WHEN SHE IS THINKING — AT THE START OF HER REPLY, NEVER AFTER IT.
     //

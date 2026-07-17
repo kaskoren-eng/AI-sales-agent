@@ -101,3 +101,21 @@ export function resolveVoiceEngine(
       : undefined;
   return engine === 'livekit' || engine === 'retell' ? engine : env.VOICE_ENGINE_DEFAULT;
 }
+
+/**
+ * May the agent use its Phase 4 tools (calendar check, booking, hang-up) on this tenant's calls?
+ *
+ * `tenants.settings.functions_enabled` — a plain jsonb key, set via the settings API or SQL:
+ *   UPDATE tenants SET settings = jsonb_set(settings, '{functions_enabled}', 'true') WHERE id = ...;
+ *
+ * STRICT `=== true`, no env fallback, and unlike voice_engine there is deliberately no default-on:
+ * tools write to the tenant's calendar and tables, so absence of the flag means NO. This is the
+ * per-tenant kill switch the migration plan requires before any tool goes near production.
+ */
+export function resolveFunctionsEnabled(settings: unknown): boolean {
+  return (
+    settings !== null &&
+    typeof settings === 'object' &&
+    (settings as Record<string, unknown>)['functions_enabled'] === true
+  );
+}

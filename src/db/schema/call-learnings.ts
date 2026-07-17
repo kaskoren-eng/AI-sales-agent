@@ -18,6 +18,16 @@ export interface SalesCallAnalysis {
   what_didnt_work?: string[];
   overall_effectiveness_score?: number;
   recommendations?: string[];
+  // ---- Phase 4 (voice-livekit) — written by the agent itself, not the GPT analysis ----
+  /** Every LLM tool invocation on the call: name, ms-since-start, duration, outcome. */
+  tool_calls?: Array<{ atMs: number; name: string; durationMs: number; ok: boolean; error?: string }>;
+  /** What end_call was told: meeting_booked | not_qualified | opt_out | ... */
+  end_reason?: string;
+  /** Compliance: the recorded-call notice pre-roll actually played (provable per call). */
+  recording_notice_played?: boolean;
+  recording_notice_at?: string;
+  /** Compliance: when the caller learned they were talking to an AI. 'missed' should never happen. */
+  ai_disclosure?: 'during_call' | 'at_end' | 'missed';
 }
 
 /**

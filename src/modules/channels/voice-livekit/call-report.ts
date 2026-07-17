@@ -42,6 +42,21 @@ export interface TranscriptLine {
   text: string;
 }
 
+/**
+ * One tool invocation (Phase 4): what the LLM called, how long it took, whether it worked.
+ * Args are pre-redacted by `redactArgs()` — a phone number must never reach a report file.
+ * The <500ms-per-tool budget from phase-4-agent-functions.md is judged against `durationMs`.
+ */
+export interface ToolCallLog {
+  /** ms since call start. */
+  atMs: number;
+  name: string;
+  durationMs: number;
+  ok: boolean;
+  error?: string;
+  args?: Record<string, unknown>;
+}
+
 export interface CallReportJson {
   room: string;
   callerPhone: string | null;
@@ -138,6 +153,8 @@ export interface CallReportJson {
    */
   transcript: TranscriptLine[];
   metrics: TurnMetric[];
+  /** Every tool the LLM invoked, in order, with duration and outcome. Empty pre-Phase-4. */
+  toolCalls: ToolCallLog[];
   /** Provider usage as LiveKit tallied it — so cost is measured, not guessed. */
   usage: unknown;
   /** Both engines' transcripts, when SHADOW_STT_ENABLED. Same shape as the DB column. */
@@ -157,6 +174,7 @@ export class CallReport {
   #config: CallReportJson['config'];
   #metrics: TurnMetric[] = [];
   #transcript: TranscriptLine[] = [];
+  #toolCalls: ToolCallLog[] = [];
   #usage: unknown = null;
   #shadow: ShadowSttTranscript | null = null;
   #cutOffs = 0;
@@ -253,6 +271,11 @@ export class CallReport {
     this.#usage = usage;
   }
 
+  /** One tool invocation. `atMs` is stamped here so callers can't get the clock wrong. */
+  recordToolCall(entry: ToolCallLog): void {
+    this.#toolCalls.push({ ...entry, atMs: Date.now() - this.#startedAt });
+  }
+
   attachShadow(shadow: ShadowSttTranscript): void {
     this.#shadow = shadow;
   }
@@ -324,6 +347,7 @@ export class CallReport {
       },
       transcript: this.#transcript,
       metrics: this.#metrics,
+      toolCalls: this.#toolCalls,
       usage: this.#usage,
       shadow: this.#shadow,
     };
