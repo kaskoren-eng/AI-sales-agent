@@ -15,6 +15,8 @@ import { loadEnv } from '../../../config/env.js';
 import { callLearnings } from '../../../db/schema/index.js';
 import { buildSessionComponents } from './agent.config.js';
 import { CallReport } from './call-report.js';
+import { hasAiDisclosure } from './compliance/ai-disclosure.js';
+import { playRecordingNotice } from './compliance/recording-notice.js';
 import { GREETING_HE, buildSystemPrompt } from './prompts/system-prompt.he.js';
 import {
   FILLER_COOLDOWN_MS,
@@ -240,6 +242,12 @@ export default defineAgent({
       ttsModel: env.CARTESIA_MODEL,
     });
 
+    // LEGAL PRE-ROLL, started FIRST and awaited just before the greeting: the recorded-call
+    // notice (Wiretapping Law 1979 §2) plays from a static asset in a flat broadcast voice —
+    // deliberately not Keren's — while everything below (the tenant flag read, provider
+    // construction, session start) warms up in parallel. The notice costs the caller nothing.
+    const noticePromise = playRecordingNotice(ctx.room);
+
     // PHASE 4 — may this call use tools? One tenant-settings read, timeboxed at 2s, FAIL-CLOSED:
     // if the tenant can't be identified (outbound metadata → VOICE_WEBHOOK_TENANT_ID fallback) or
     // `voice_engine`/`functions_enabled` don't both say yes, `runtime` is null and the call runs
@@ -325,6 +333,11 @@ export default defineAgent({
     ctx.addShutdownCallback(async () => {
       if (shadow) report.attachShadow(shadow.snapshot());
 
+      // Settle the AI-disclosure verdict from what was actually SAID (deterministic transcript
+      // scan): 'during_call' | 'at_end' | 'missed'. A 'missed' means the goodbye instruction was
+      // ignored — that's an audit finding, not a formality.
+      report.resolveAiDisclosure(hasAiDisclosure);
+
       // STDOUT, not just a file. In LiveKit Cloud the container's filesystem is ephemeral and
       // unreachable — `call-reports/*.json` is written into a box nobody can open. The first cloud
       // call proved it: the agent dutifully logged "call_report_written call-reports/...json" for a
@@ -365,6 +378,8 @@ export default defineAgent({
                 ...(error ? { error } : {}),
               })),
               ...(runtime.endReason ? { end_reason: runtime.endReason } : {}),
+              // Provable compliance, per call: recording notice + AI disclosure verdicts.
+              ...json.compliance,
             },
             durationSecs: json.durationSec,
             status: 'pending',
@@ -486,6 +501,16 @@ export default defineAgent({
         noiseCancellation: TelephonyBackgroundVoiceCancellation(),
       },
     });
+
+    // The legal notice must FINISH before Keren opens her mouth — two voices at once is chaos,
+    // and a notice she talked over is a notice that wasn't given. Its outcome is recorded either
+    // way: `recording_notice_played` in call_learnings.analysis is the provable-compliance bit.
+    const noticeAt = await noticePromise;
+    report.recordCompliance({
+      recording_notice_played: noticeAt !== null,
+      ...(noticeAt ? { recording_notice_at: noticeAt } : {}),
+    });
+    console.log('recording_notice', JSON.stringify({ played: noticeAt !== null, at: noticeAt }));
 
     // Speak the greeting verbatim rather than letting the LLM improvise one: deterministic
     // wording, and no LLM round-trip before the caller hears anything.

@@ -3,6 +3,7 @@ import { getJobContext, llm, voice } from '@livekit/agents';
 import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { leads } from '../../../../db/schema/index.js';
+import { END_DISCLOSURE_INSTRUCTION, hasAiDisclosure } from '../compliance/ai-disclosure.js';
 import { phoneSuffix } from './book-meeting.tool.js';
 import { timedTool, type ToolRuntimeContext } from './tool-context.js';
 
@@ -118,11 +119,16 @@ function onceEvent<T>(
   );
 }
 
-/** What the LLM is told after the hang-up is armed. Commit 6 adds the conditional AI disclosure. */
-export function goodbyeInstruction(reason: EndCallReason): string {
+/**
+ * What the LLM is told after the hang-up is armed. When the transcript shows no AI disclosure
+ * happened during the call, the goodbye must carry it — end-of-call disclosure is the documented
+ * product decision for the Israeli market (see compliance/ai-disclosure.ts, incl. the EU caveat).
+ */
+export function goodbyeInstruction(reason: EndCallReason, needsAiDisclosure = false): string {
   return (
     `The call is ending (reason: ${reason}). Say ONE short, warm goodbye sentence in Hebrew. ` +
-    'Nothing else — no new questions, no new information.'
+    'Nothing else — no new questions, no new information.' +
+    (needsAiDisclosure ? ` ${END_DISCLOSURE_INSTRUCTION}` : '')
   );
 }
 
@@ -173,7 +179,17 @@ export function endCallTool(rt: ToolRuntimeContext) {
         // built-in's RealtimeModel wait-for-reply branch is dead code for us.
         ctx.speechHandle.addDoneCallback(() => session.shutdown());
 
-        return goodbyeInstruction(reason);
+        // AI disclosure — decided from the TRANSCRIPT, never from the model's memory of itself.
+        const disclosedDuringCall = rt.report.someAgentLine(hasAiDisclosure);
+        if (disclosedDuringCall) {
+          rt.report.recordCompliance({ ai_disclosure: 'during_call' });
+        } else {
+          // The goodbye must carry it; shutdown re-scans the transcript to confirm it actually did
+          // (report.resolveAiDisclosure → 'at_end' or, if the model ignored us, 'missed').
+          rt.report.markEndDisclosureRequested();
+        }
+
+        return goodbyeInstruction(reason, !disclosedDuringCall);
       }),
   });
 }

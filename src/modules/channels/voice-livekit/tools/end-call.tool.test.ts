@@ -46,9 +46,14 @@ function fakeRt(opts: {
   callerPhone?: string | null;
   phoneMatch?: string | null;
   failWrites?: boolean;
+  /** Agent transcript lines already spoken — what the disclosure scan reads. */
+  agentLines?: string[];
 } = {}) {
   const { db, updates, inserts } = fakeDb(opts);
   const recordToolCall = vi.fn();
+  const recordCompliance = vi.fn();
+  const markEndDisclosureRequested = vi.fn();
+  const agentLines = opts.agentLines ?? [];
   const rt = {
     tenantId: 'tenant-1',
     leadId: opts.leadId ?? null,
@@ -56,13 +61,18 @@ function fakeRt(opts: {
     callId: 'call-1',
     callerPhone: opts.callerPhone ?? null,
     db,
-    report: { recordToolCall },
+    report: {
+      recordToolCall,
+      recordCompliance,
+      markEndDisclosureRequested,
+      someAgentLine: (pred: (t: string) => boolean) => agentLines.some(pred),
+    },
     env: {},
     lastCheckedDurationMinutes: null,
     bookingCompleted: false,
     endReason: null,
   } as unknown as ToolRuntimeContext;
-  return { rt, updates, inserts, recordToolCall };
+  return { rt, updates, inserts, recordToolCall, recordCompliance, markEndDisclosureRequested };
 }
 
 function fakeCtx() {
@@ -170,5 +180,39 @@ describe('markLeadOptedOut — the DNC mark, tenant-scoped on every path', () =>
     await runTool(rt, 'not_interested', ctx);
     expect(updates).toHaveLength(0);
     expect(inserts).toHaveLength(0);
+  });
+});
+
+/**
+ * AI disclosure at end of call — documented product decision for the Israeli market (see
+ * compliance/ai-disclosure.ts, including the EU AI Act caveat). Decided from the TRANSCRIPT,
+ * never from the model's memory of itself.
+ */
+describe('endCallTool — conditional AI disclosure in the goodbye', () => {
+  it('caller was told during the call ("אני סוכנת AI") → normal goodbye, disclosure logged as during_call', async () => {
+    const { rt, recordCompliance, markEndDisclosureRequested } = fakeRt({
+      leadId: 'lead-1',
+      agentLines: ['שלום, מה שלומך?', 'אני סוכנת AI, אבל אני יכולה להעביר הודעה לצוות.'],
+    });
+    const { ctx } = fakeCtx();
+    const out = await runTool(rt, 'meeting_booked', ctx);
+    expect(out).not.toContain('digital assistant');
+    expect(recordCompliance).toHaveBeenCalledWith({ ai_disclosure: 'during_call' });
+    expect(markEndDisclosureRequested).not.toHaveBeenCalled();
+  });
+
+  it('never disclosed → the goodbye instruction DEMANDS the disclosure sentence', async () => {
+    const { rt, recordCompliance, markEndDisclosureRequested } = fakeRt({
+      leadId: 'lead-1',
+      agentLines: ['שלום, מה שלומך?', 'קבעתי לך פגישה ליום ראשון.'],
+    });
+    const { ctx } = fakeCtx();
+    const out = await runTool(rt, 'meeting_booked', ctx);
+    expect(out).toContain('העוזרת הדיגיטלית של קורן');
+    expect(out).toContain('you have not yet told the caller you are an AI');
+    // The verdict (at_end vs missed) is settled at shutdown by re-scanning the transcript —
+    // here we only flag that the request was made.
+    expect(markEndDisclosureRequested).toHaveBeenCalledOnce();
+    expect(recordCompliance).not.toHaveBeenCalledWith(expect.objectContaining({ ai_disclosure: expect.anything() }));
   });
 });

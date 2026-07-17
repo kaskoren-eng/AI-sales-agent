@@ -57,6 +57,19 @@ export interface ToolCallLog {
   args?: Record<string, unknown>;
 }
 
+/**
+ * Legal-compliance facts about the call — provable, per call, from the record itself.
+ * Mirrors the optional fields on `SalesCallAnalysis`; agent.ts copies this into the
+ * call_learnings row at shutdown.
+ */
+export interface ComplianceLog {
+  /** The recorded-call notice pre-roll actually played (Wiretapping Law 1979 §2). */
+  recording_notice_played?: boolean;
+  recording_notice_at?: string;
+  /** When the caller learned they were talking to an AI. 'missed' should never happen. */
+  ai_disclosure?: 'during_call' | 'at_end' | 'missed';
+}
+
 export interface CallReportJson {
   room: string;
   callerPhone: string | null;
@@ -155,6 +168,8 @@ export interface CallReportJson {
   metrics: TurnMetric[];
   /** Every tool the LLM invoked, in order, with duration and outcome. Empty pre-Phase-4. */
   toolCalls: ToolCallLog[];
+  /** Provable per-call compliance facts (recording notice, AI disclosure). */
+  compliance: ComplianceLog;
   /** Provider usage as LiveKit tallied it — so cost is measured, not guessed. */
   usage: unknown;
   /** Both engines' transcripts, when SHADOW_STT_ENABLED. Same shape as the DB column. */
@@ -175,6 +190,8 @@ export class CallReport {
   #metrics: TurnMetric[] = [];
   #transcript: TranscriptLine[] = [];
   #toolCalls: ToolCallLog[] = [];
+  #compliance: ComplianceLog = {};
+  #endDisclosureRequested = false;
   #usage: unknown = null;
   #shadow: ShadowSttTranscript | null = null;
   #cutOffs = 0;
@@ -276,6 +293,38 @@ export class CallReport {
     this.#toolCalls.push({ ...entry, atMs: Date.now() - this.#startedAt });
   }
 
+  /** A compliance fact, as it happens (e.g. the recording notice finished playing). */
+  recordCompliance(patch: ComplianceLog): void {
+    Object.assign(this.#compliance, patch);
+  }
+
+  /** end_call found no disclosure yet and instructed one into the goodbye. */
+  markEndDisclosureRequested(): void {
+    this.#endDisclosureRequested = true;
+  }
+
+  /** Did ANY agent line satisfy the predicate? Deterministic — reads the transcript, not the LLM. */
+  someAgentLine(pred: (text: string) => boolean): boolean {
+    return this.#transcript.some((line) => line.role === 'assistant' && pred(line.text));
+  }
+
+  /**
+   * Settles `ai_disclosure` at shutdown from what was actually SAID:
+   *   found + end_call had to ask for it  → 'at_end'
+   *   found without being asked for       → 'during_call'
+   *   not found anywhere                  → 'missed'   (the goodbye instruction was ignored — audit it)
+   * Idempotent: an explicit earlier record (end_call saw a mid-call disclosure) wins.
+   */
+  resolveAiDisclosure(pred: (text: string) => boolean): void {
+    if (this.#compliance.ai_disclosure) return;
+    const disclosed = this.someAgentLine(pred);
+    this.#compliance.ai_disclosure = disclosed
+      ? this.#endDisclosureRequested
+        ? 'at_end'
+        : 'during_call'
+      : 'missed';
+  }
+
   attachShadow(shadow: ShadowSttTranscript): void {
     this.#shadow = shadow;
   }
@@ -348,6 +397,7 @@ export class CallReport {
       transcript: this.#transcript,
       metrics: this.#metrics,
       toolCalls: this.#toolCalls,
+      compliance: this.#compliance,
       usage: this.#usage,
       shadow: this.#shadow,
     };
