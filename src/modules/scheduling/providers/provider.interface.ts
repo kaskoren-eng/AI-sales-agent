@@ -9,6 +9,13 @@ export interface BookingResult {
   end: string;
   status: string;
   meetLink?: string;
+  /**
+   * False when the event was created WITHOUT the attendee on it (so no email invite went out) —
+   * Google service accounts cannot invite attendees without Domain-Wide Delegation (403,
+   * verified 2026-07-17). Absent/true = the attendee is on the event and Google emailed them.
+   * Callers that tell a human "an invite was sent" MUST check this.
+   */
+  inviteSent?: boolean;
 }
 
 export interface SchedulingProvider {

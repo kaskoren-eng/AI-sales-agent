@@ -4,7 +4,24 @@ import { CircuitBreaker } from '../../../shared/circuit-breaker.js';
 
 const gcalCircuit = new CircuitBreaker({ name: 'google-calendar', failureThreshold: 5, cooldownMs: 30_000 });
 
+/** Matches Google's 403 "Service accounts cannot invite attendees without Domain-Wide Delegation". */
+function isForbiddenForServiceAccounts(err: unknown): boolean {
+  const e = err as { code?: number; errors?: Array<{ reason?: string }>; message?: string };
+  return (
+    e?.code === 403 &&
+    ((e.errors ?? []).some((x) => x?.reason === 'forbiddenForServiceAccounts') ||
+      (e.message ?? '').includes('Service accounts cannot invite attendees'))
+  );
+}
+
 export class GoogleCalendarProvider implements SchedulingProvider {
+  /**
+   * Process-wide: the 403 above is a property of the deployment (no Domain-Wide Delegation),
+   * not of one request. Once seen, every subsequent booking skips attendees immediately instead
+   * of burning a failed API call (and a circuit-breaker strike) per booking.
+   */
+  static attendeeInvitesBlocked = false;
+
   private calendar: ReturnType<typeof google.calendar>;
 
   constructor(
@@ -92,21 +109,55 @@ export class GoogleCalendarProvider implements SchedulingProvider {
     const startDt = new Date(params.start);
     const endDt = new Date(startDt.getTime() + this.config.slotMinutes * 60_000);
 
-    const eventRes = await gcalCircuit.execute(() =>
-      this.calendar.events.insert({
-        calendarId,
-        sendUpdates: 'all',
-        conferenceDataVersion: 1,
-        requestBody: {
-          summary: `Sales Call — ${params.attendee.name}`,
-          description: params.notes,
-          start: { dateTime: startDt.toISOString(), timeZone: params.attendee.timezone },
-          end: { dateTime: endDt.toISOString(), timeZone: params.attendee.timezone },
-          attendees: [{ email: params.attendee.email, displayName: params.attendee.name }],
-          conferenceData: { createRequest: { requestId: crypto.randomUUID() } },
-        },
-      }),
-    );
+    const insert = (withAttendees: boolean) =>
+      gcalCircuit.execute(() =>
+        this.calendar.events.insert({
+          calendarId,
+          sendUpdates: 'all',
+          conferenceDataVersion: 1,
+          requestBody: {
+            summary: `Sales Call — ${params.attendee.name}`,
+            // When the attendee can't go ON the event (see below), their contact details go into
+            // the description so the meeting owner can forward the invite by hand.
+            description: withAttendees
+              ? params.notes
+              : [params.notes, '', `Attendee (invite NOT auto-sent): ${params.attendee.name} <${params.attendee.email}>${params.attendee.phone ? ` ${params.attendee.phone}` : ''}`]
+                  .filter((s) => s !== undefined)
+                  .join('\n'),
+            start: { dateTime: startDt.toISOString(), timeZone: params.attendee.timezone },
+            end: { dateTime: endDt.toISOString(), timeZone: params.attendee.timezone },
+            ...(withAttendees
+              ? { attendees: [{ email: params.attendee.email, displayName: params.attendee.name }] }
+              : {}),
+            conferenceData: { createRequest: { requestId: crypto.randomUUID() } },
+          },
+        }),
+      );
+
+    // Service accounts CANNOT put attendees on an event without Domain-Wide Delegation — Google
+    // answers 403 forbiddenForServiceAccounts (verified live 2026-07-17). The error is
+    // deterministic per deployment, so after the first sighting we stop asking. The event is
+    // still created (fallback below) — a booking without an emailed invite beats no booking —
+    // and BookingResult.inviteSent tells the caller not to claim an email was sent.
+    // THE REAL FIX is granting the service account Domain-Wide Delegation (or moving to OAuth
+    // on Koren's account) — pending decision, see Phase 4 notes.
+    const tryAttendees = !GoogleCalendarProvider.attendeeInvitesBlocked;
+    let eventRes;
+    let inviteSent = tryAttendees;
+    try {
+      eventRes = await insert(tryAttendees);
+    } catch (err) {
+      if (tryAttendees && isForbiddenForServiceAccounts(err)) {
+        GoogleCalendarProvider.attendeeInvitesBlocked = true;
+        inviteSent = false;
+        console.error(
+          'gcal_attendee_invites_blocked — falling back to attendee-less events. Grant the service account Domain-Wide Delegation to fix.',
+        );
+        eventRes = await insert(false);
+      } else {
+        throw err;
+      }
+    }
 
     const event = eventRes.data;
     const meetLink = (event.conferenceData?.entryPoints ?? []).find(
@@ -118,6 +169,7 @@ export class GoogleCalendarProvider implements SchedulingProvider {
       end: event.end?.dateTime ?? endDt.toISOString(),
       status: event.status ?? 'confirmed',
       meetLink,
+      inviteSent,
     };
   }
 
