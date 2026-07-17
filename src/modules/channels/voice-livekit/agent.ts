@@ -12,9 +12,10 @@ import * as silero from '@livekit/agents-plugin-silero';
 import { TelephonyBackgroundVoiceCancellation } from '@livekit/noise-cancellation-node';
 import { type AudioFrame, RoomEvent, type RemoteAudioTrack, TrackKind } from '@livekit/rtc-node';
 import { loadEnv } from '../../../config/env.js';
+import { callLearnings } from '../../../db/schema/index.js';
 import { buildSessionComponents } from './agent.config.js';
 import { CallReport } from './call-report.js';
-import { GREETING_HE, SYSTEM_PROMPT_HE } from './prompts/system-prompt.he.js';
+import { GREETING_HE, buildSystemPrompt } from './prompts/system-prompt.he.js';
 import {
   FILLER_COOLDOWN_MS,
   MAX_FILLERS_PER_CALL,
@@ -23,7 +24,7 @@ import {
 import { guardStream, withFiller } from './speech-guard.js';
 import { ShadowSTT } from './stt/shadow-stt.js';
 import { buildAgentTools } from './tools/index.js';
-import { buildToolRuntime } from './tools/tool-context.js';
+import { buildToolRuntime, type ToolRuntimeContext } from './tools/tool-context.js';
 
 /** Where every call's report lands. Repo-root relative, gitignored — these contain caller PII. */
 const CALL_REPORTS_DIR = 'call-reports';
@@ -89,6 +90,14 @@ class ClickScalesAgent extends voice.Agent {
    */
   pendingFiller: string | null = null;
 
+  /** Null when the per-tenant tool gate is closed — the guard then behaves exactly as pre-Phase-4. */
+  readonly toolRuntime: ToolRuntimeContext | null;
+
+  constructor(opts: ConstructorParameters<typeof voice.Agent>[0], toolRuntime: ToolRuntimeContext | null = null) {
+    super(opts);
+    this.toolRuntime = toolRuntime;
+  }
+
   /**
    * The last gate before text becomes sound.
    *
@@ -115,7 +124,11 @@ class ClickScalesAgent extends voice.Agent {
    * lives inside a single sentence: NO_RESPONSE_NEEDED is a whole utterance, and "קבעתי לך שיחת דמו"
    * cannot straddle a full stop. Holding more text than one sentence buys nothing and costs ~700ms.
    *
-   * Delete this ONLY when Phase 4 wires the calendar tools and the claim becomes true.
+   * PHASE 4 UPDATE: the booking-claim rewrite is now CONDITIONAL, not deleted. The predicate is
+   * `toolRuntime.bookingCompleted` — flipped by book_meeting the moment a REAL calendar event
+   * exists. Until that moment (including on tools-enabled calls where nothing was booked yet),
+   * "קבעתי לך" is still a lie and is still rewritten. After it, rewriting the truth would itself
+   * be the lie. The control-token removal and the pronunciation fix stay unconditional forever.
    */
   override async ttsNode(
     text: Parameters<voice.Agent['ttsNode']>[0],
@@ -128,7 +141,12 @@ class ClickScalesAgent extends voice.Agent {
 
     return voice.Agent.default.ttsNode(
       this,
-      guardStream(withFiller(filler, text as AsyncIterable<string>)),
+      guardStream(
+        withFiller(filler, text as AsyncIterable<string>),
+        // Read PER SENTENCE: book_meeting can succeed mid-reply, and the very next sentence
+        // ("קבעתי לך ליום ראשון") must already be allowed through.
+        () => this.toolRuntime?.bookingCompleted === true,
+      ),
       modelSettings,
     );
   }
@@ -319,10 +337,45 @@ export default defineAgent({
       const path = await report.write(CALL_REPORTS_DIR);
       if (path) console.log('call_report_written', path);
 
-      // The tool runtime's pg pool. Closed LAST — the call_learnings persistence (Phase 4,
-      // commit 5) writes through it just before this line. Best-effort: a close failure must
-      // not mask the report that was already written.
+      // PHASE 4: the durable record the CallReport header always promised — a call_learnings row,
+      // written through the tool runtime's DB connection. This is what the weekly review, the
+      // dashboard and call-analysis read; the JSON file above is the local-dev convenience copy.
+      // Best-effort by design: losing the row must not crash teardown (the stdout JSON line above
+      // still carries everything, and `lk agent logs` can recover it).
       if (runtime) {
+        try {
+          const json = report.toJson();
+          await runtime.db.insert(callLearnings).values({
+            tenantId: runtime.tenantId,
+            conferenceName: (ctx.room.name ?? 'unknown').slice(0, 64),
+            transcript: json.transcript.map((t) => ({
+              speaker: t.role,
+              text: t.text,
+              start: t.atMs / 1000,
+            })),
+            shadowSttTranscript: json.shadow ?? undefined,
+            analysis: {
+              // Instrumentation rule: every tool call, with duration, lands here — the <500ms
+              // budget and the end reason are read from this column, not from grep.
+              tool_calls: json.toolCalls.map(({ atMs, name, durationMs, ok, error }) => ({
+                atMs,
+                name,
+                durationMs,
+                ok,
+                ...(error ? { error } : {}),
+              })),
+              ...(runtime.endReason ? { end_reason: runtime.endReason } : {}),
+            },
+            durationSecs: json.durationSec,
+            status: 'pending',
+            label: 'livekit',
+          });
+          console.log('call_learnings_written', JSON.stringify({ tenantId: runtime.tenantId }));
+        } catch (err) {
+          console.error('call_learnings_write_failed', err instanceof Error ? err.message : String(err));
+        }
+
+        // The pool closes LAST, after the row it exists to write.
         await runtime.closeDb().catch((err: unknown) => {
           console.error('tool_runtime_db_close_failed', err instanceof Error ? err.message : String(err));
         });
@@ -356,12 +409,17 @@ export default defineAgent({
       void report.write(CALL_REPORTS_DIR);
     });
 
-    // Tools only exist when the per-tenant gate said yes. The tool set is FIXED for the whole
-    // call — never mutate it (or chatCtx) mid-call, that invalidates preemptive generation.
-    const agent = new ClickScalesAgent({
-      instructions: SYSTEM_PROMPT_HE,
-      ...(runtime ? { tools: buildAgentTools(runtime) } : {}),
-    });
+    // Tools only exist when the per-tenant gate said yes — and the PROMPT always agrees with the
+    // tool set (a prompt naming tools the model doesn't have makes it improvise; tools the prompt
+    // never mentions never get used). The tool set is FIXED for the whole call — never mutate it
+    // (or chatCtx) mid-call, that invalidates preemptive generation.
+    const agent = new ClickScalesAgent(
+      {
+        instructions: buildSystemPrompt({ toolsEnabled: runtime !== null }),
+        ...(runtime ? { tools: buildAgentTools(runtime) } : {}),
+      },
+      runtime,
+    );
 
     // SHE HESITATES WHEN SHE IS THINKING — AT THE START OF HER REPLY, NEVER AFTER IT.
     //

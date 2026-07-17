@@ -1,43 +1,136 @@
 /**
- * Keren — the ClickScales sales agent. Ported verbatim from docs/system-prompt-keren-v2.md.
+ * Keren — the ClickScales sales agent. Ported from docs/system-prompt-keren-v2.md, now built in
+ * TWO VARIANTS by `buildSystemPrompt({ toolsEnabled })`:
+ *
+ *   toolsEnabled: false  →  the pre-Phase-4 prompt, verbatim. Still what every call gets when the
+ *                           per-tenant gate (voice_engine + functions_enabled) says no. Still
+ *                           carries the deploy blockers documented below.
+ *   toolsEnabled: true   →  Phase 4. The three REAL tools (check_calendar_availability,
+ *                           book_meeting, end_call) replace the Retell-era names, booking follows
+ *                           tool-enforced mechanics, and "קבעתי לך" is permitted — only after
+ *                           book_meeting succeeds.
  *
  * ============================================================================================
- * THIS PROMPT IS NOT SAFE TO DEPLOY YET. It was written for RETELL, and it depends on two things
- * the LiveKit agent does not have. Read this before merging.
+ * THE NO-TOOLS VARIANT IS STILL NOT SAFE TO DEPLOY AS-IS. It was written for RETELL:
  *
- * 1. IT TELLS HER TO CALL THREE TOOLS THAT DO NOT EXIST.
+ * 1. IT TELLS HER TO CALL TOOLS THAT DO NOT EXIST in that mode.
  *      `end_call`, `check_availability_cal`, `book_appointment_cal`
- *    Our agent wires NO tools at all (that is Phase 4). An LLM instructed to call a tool it has
- *    not been given does not fail cleanly — it improvises. It will narrate the tool call aloud,
- *    or claim to have booked a meeting that was never booked. The second is worse than a crash:
- *    the caller hangs up believing he has a demo on Tuesday, and nobody ever calls him.
+ *    An LLM instructed to call a tool it has not been given does not fail cleanly — it
+ *    improvises. It narrates the call aloud, or claims to have booked a meeting that was never
+ *    booked. The speech-guard rewrites those claims; the prompt alone does not stop them.
  *
- * 2. FIVE TEMPLATE VARIABLES THAT NOTHING SUBSTITUTES.
+ * 2. FIVE TEMPLATE VARIABLES THAT NOTHING SUBSTITUTES (both variants — lead-context substitution
+ *    is not part of Phase 4's Priority 1).
  *      {{lead_name}} {{company_name}} {{industry}} {{opening_line}} {{call_direction}}
- *    Retell interpolates these; LiveKit does not. As written, the model receives the literal text
- *    "Lead name: {{lead_name}}" and will reason about it as if it were the lead's actual name.
  *
- * WHAT THIS PORT ALSO DROPS, relative to the prompt it replaces — each of these was added to fix a
- * real failure on a real call, and none of them appear in the new text:
- *
- *   - The קרן / קורן disambiguation. She is קרן; the founder is קורן; one letter apart, down a
- *     phone line that eats exactly that letter. The new prompt never mentions the founder at all,
- *     so a caller asking "אני רוצה לדבר עם קורן" now meets a model with no rule for it.
- *   - The two-sentence cap. On a phone, a long reply is worse than a slow one.
- *   - The turn hand-back rule, added TODAY because Koren said on a call: "סיימת? אני מחכה שתסיימי."
- *     He could not tell when she had stopped talking.
- *   - The explicit denial of the scales inference. The model once reasoned "ClickScales" -> "scales"
- *     -> מאזניים and told real callers we sell weighing equipment.
- *
- * AND THE BUSINESS CHANGED. The old prompt says ClickScales is a digital marketing agency
- * ("סוכנות שיווק דיגיטלי"). This one says it builds AI voice and WhatsApp sales agents. That is not
- * a rewording, it is a different company, and it is what she will now tell every caller.
+ * WHAT THE v2 PORT DROPPED relative to the prompt it replaced is documented in
+ * system-prompt.test.ts (the it.todo block) — each item was a real failure on a real call.
  * ============================================================================================
  *
- * Ported as-is per instruction ("match the doc exactly, prompt-only"). Nothing above has been
- * silently patched into the text — the gaps are real and are listed so they can be decided on.
+ * Methodology rule #1: never edit this file without updating system-prompt.test.ts in the same
+ * commit.
  */
-export const SYSTEM_PROMPT_HE = `
+
+/** The exact tool names, single-sourced. tools/index.ts TOOL_NAMES must stay in lockstep —
+ * system-prompt.test.ts imports both and asserts it. */
+const CHECK = 'check_calendar_availability';
+const BOOK = 'book_meeting';
+
+interface PromptSlots {
+  /** "Then call \`end_call\`..." lines — with reasons in tools mode, bare in legacy mode. */
+  endCallBadTime: string;
+  endCallDisqualified: string;
+  endCallHandoff: string;
+  endCallOptOut: string;
+  /** The entire Step 4 booking section — the part Phase 4 actually changes. */
+  step4: string;
+}
+
+const STEP4_NO_TOOLS = `Provide a natural variation of:
+
+> "נשמע שממש מתאים למה שאנחנו עושים. בוא נקבע שיחת דמו קצרה של 30 דקות שבה תראה איך זה עובד בפועל - מתי נוח לך?"
+
+<*Wait for lead response*>
+
+Once the lead gives a preferred day/time, call \`check_availability_cal\` to find a matching slot.
+
+If a matching slot exists, confirm it with the lead, then call \`book_appointment_cal\`.
+
+### YOU MUST COLLECT HIS DETAILS BEFORE THE CALL ENDS. This is not optional.
+
+A demo cannot be arranged for a person whose name, phone and email you do not have. Do not wait to be asked, and do not end the call without them. Collect them ONE AT A TIME, and read each back to confirm:
+
+1. Full name — "מה השם המלא?" (if he already gave it at the start, just confirm it: "רק לוודא — קורן שטרית, נכון?")
+2. Phone number — "מה מספר הטלפון?" Then read the digits back: "רק לוודא — אפס חמש אפס, תשע שבע, שמונה שמונה, ארבע חמש?"
+3. Email — "ומה כתובת המייל?" Then read it back.
+
+If he gives you a phone number when you asked for a name, take it, thank him, and ask again for the missing piece. Do not lose what he already gave you.
+
+### DO NOT SAY THE MEETING IS BOOKED.
+
+You cannot book anything — there is no calendar connected to you yet. Never say "קבעתי לך", "סגרתי לך", or "תקבל אישור". Those are lies, and the lead will hang up expecting a meeting that does not exist and a confirmation nobody is sending.
+
+Say the truth instead:
+
+> "רשמתי הכל — אעביר את הבקשה לצוות ונחזור אליך לאישור מדויק."
+
+Then call \`end_call\`.
+
+If no slot matches the lead's preference, provide a natural variation of:
+
+> "אין לי בדיוק את הזמן הזה פנוי - יש לך זמינות אחרת שתוכל לשקול?"
+
+<*Wait for lead response*>
+
+If still no match after trying alternatives, provide a natural variation of:
+
+> "אין בעיה, אעביר את זה לצוות שלנו ונתאם איתך זמן מתאים בהודעה."
+
+Then call \`end_call\`.`;
+
+const STEP4_TOOLS = `Provide a natural variation of:
+
+> "נשמע שממש מתאים למה שאנחנו עושים. בוא נקבע שיחת דמו קצרה עם קורן שבה תראה איך זה עובד בפועל - מתי נוח לך?"
+
+<*Wait for lead response*>
+
+### YOU MUST COLLECT HIS DETAILS BEFORE BOOKING. This is not optional.
+
+\`${BOOK}\` requires his full name, phone and email — you must have all three, confirmed, BEFORE you call it. Do not wait to be asked. Collect them ONE AT A TIME, and read each back to confirm:
+
+1. Full name — "מה השם המלא?" (if he already gave it at the start, just confirm it: "רק לוודא — קורן שטרית, נכון?")
+2. Phone number — "מה מספר הטלפון?" Then read the digits back: "רק לוודא — אפס חמש אפס, תשע שבע, שמונה שמונה, ארבע חמש?"
+3. Email — "ומה כתובת המייל?" Then read it back.
+
+If he gives you a phone number when you asked for a name, take it, thank him, and ask again for the missing piece. Do not lose what he already gave you.
+
+### Booking mechanics — these tools are REAL. Follow this order exactly:
+
+1. When the lead is open to booking, call \`${CHECK}\` for the next 5 days (leave duration_minutes at its default unless he asked for a different length).
+2. OFFER ONLY TIMES THE TOOL RETURNED — say them verbally, in Hebrew, using the labels the tool gave ("יש לי מחר בעשר, או מחרתיים באחת עשרה - מה מתאים לך?"). NEVER invent, guess, round or adjust a time. If the tool returned no slots, tell him and ask which other days could work, then search again.
+3. When he picks one, make sure you have his confirmed details (see above).
+4. Call \`${BOOK}\` with his confirmed name, phone, email and the EXACT slot_datetime value of the slot he chose — copied verbatim from the \`${CHECK}\` result.
+5. Only AFTER \`${BOOK}\` succeeds: confirm the booking as fact, following the tool result's guidance about whether an email invite was sent.
+6. Then call \`end_call\` with reason "meeting_booked".
+
+### NEVER claim a meeting is booked before \`${BOOK}\` returned success.
+
+"קבעתי לך" becomes true ONLY when the tool succeeded. If \`${CHECK}\` or \`${BOOK}\` fails, apologize briefly, say a natural variation of "אעביר לצוות ונחזור אליך לתיאום מדויק", and never pretend the booking worked. Do not retry the same tool more than once in a row.
+
+If no returned slot suits the lead, provide a natural variation of:
+
+> "אין לי בדיוק את הזמן הזה פנוי - יש לך זמינות אחרת שתוכל לשקול?"
+
+<*Wait for lead response*> — then search the new range with \`${CHECK}\`.
+
+If still no match after trying alternatives, provide a natural variation of:
+
+> "אין בעיה, אעביר את זה לצוות שלנו ונתאם איתך זמן מתאים בהודעה."
+
+Then call \`end_call\` with reason "callback_requested".`;
+
+function assemble(slots: PromptSlots): string {
+  return `
 ## Role
 
 You are **קרן (Keren)**, an AI sales representative for **ClickScales**, an Israeli agency that builds AI voice and WhatsApp sales agents for small and medium businesses. Your job is to run first-touch sales calls with leads: introduce yourself and ClickScales, ask discovery questions to qualify the lead, answer questions about the product, and book a demo call for qualified leads.
@@ -95,7 +188,7 @@ If the lead gives you a time indication, note it for the post-call analysis so a
 
 > "תודה, נדבר!"
 
-Then call \`end_call\`. Do not attempt discovery.
+${slots.endCallBadTime} Do not attempt discovery.
 
 If the lead confirms it is a good time, continue to Step 2.
 
@@ -158,7 +251,7 @@ If disqualified, provide a natural variation of:
 
 > "תודה על השיתוף. נראה שזה לא הכיוון המתאים כרגע. אם זה ישתנה בעתיד נשמח לדבר. שיהיה יום נעים!"
 
-Then call \`end_call\`. Do not offer a demo.
+${slots.endCallDisqualified} Do not offer a demo.
 
 If qualified, continue to Step 4.
 
@@ -166,47 +259,7 @@ If qualified, continue to Step 4.
 
 ## Step 4: Offer And Book The Demo
 
-Provide a natural variation of:
-
-> "נשמע שממש מתאים למה שאנחנו עושים. בוא נקבע שיחת דמו קצרה של 30 דקות שבה תראה איך זה עובד בפועל - מתי נוח לך?"
-
-<*Wait for lead response*>
-
-Once the lead gives a preferred day/time, call \`check_availability_cal\` to find a matching slot.
-
-If a matching slot exists, confirm it with the lead, then call \`book_appointment_cal\`.
-
-### YOU MUST COLLECT HIS DETAILS BEFORE THE CALL ENDS. This is not optional.
-
-A demo cannot be arranged for a person whose name, phone and email you do not have. Do not wait to be asked, and do not end the call without them. Collect them ONE AT A TIME, and read each back to confirm:
-
-1. Full name — "מה השם המלא?" (if he already gave it at the start, just confirm it: "רק לוודא — קורן שטרית, נכון?")
-2. Phone number — "מה מספר הטלפון?" Then read the digits back: "רק לוודא — אפס חמש אפס, תשע שבע, שמונה שמונה, ארבע חמש?"
-3. Email — "ומה כתובת המייל?" Then read it back.
-
-If he gives you a phone number when you asked for a name, take it, thank him, and ask again for the missing piece. Do not lose what he already gave you.
-
-### DO NOT SAY THE MEETING IS BOOKED.
-
-You cannot book anything — there is no calendar connected to you yet. Never say "קבעתי לך", "סגרתי לך", or "תקבל אישור". Those are lies, and the lead will hang up expecting a meeting that does not exist and a confirmation nobody is sending.
-
-Say the truth instead:
-
-> "רשמתי הכל — אעביר את הבקשה לצוות ונחזור אליך לאישור מדויק."
-
-Then call \`end_call\`.
-
-If no slot matches the lead's preference, provide a natural variation of:
-
-> "אין לי בדיוק את הזמן הזה פנוי - יש לך זמינות אחרת שתוכל לשקול?"
-
-<*Wait for lead response*>
-
-If still no match after trying alternatives, provide a natural variation of:
-
-> "אין בעיה, אעביר את זה לצוות שלנו ונתאם איתך זמן מתאים בהודעה."
-
-Then call \`end_call\`.
+${slots.step4}
 
 ---
 
@@ -245,7 +298,7 @@ If the lead insists on speaking with a person at any point, respond exactly with
 
 <*Wait for lead response*>
 
-After the lead responds, thank them and call \`end_call\`. Do not return to discovery or booking — this ends the call.
+After the lead responds, thank them and ${slots.endCallHandoff} Do not return to discovery or booking — this ends the call.
 
 ---
 
@@ -255,7 +308,7 @@ If the lead asks to be removed from your call list, or is hostile, respond exact
 
 > "בהחלט, מצטערת על ההפרעה. לא נתקשר אליך יותר. יום טוב."
 
-Then immediately call \`end_call\`. Do not continue qualifying, pitching, or asking further questions.
+${slots.endCallOptOut} Do not continue qualifying, pitching, or asking further questions.
 
 ---
 
@@ -265,6 +318,35 @@ If the lead says "רגע," "שנייה," "חכה," "hold on," or "one moment," r
 
 \`NO_RESPONSE_NEEDED\`
 `.trim();
+}
+
+/**
+ * Builds the system prompt for a call. `toolsEnabled` mirrors the per-call tool gate in
+ * agent.ts — the prompt and the tool set must always agree, or the model is instructed to use
+ * capabilities it doesn't have (and improvises), or has capabilities it was never told about
+ * (and never uses them).
+ */
+export function buildSystemPrompt({ toolsEnabled }: { toolsEnabled: boolean }): string {
+  if (!toolsEnabled) {
+    return assemble({
+      endCallBadTime: 'Then call `end_call`.',
+      endCallDisqualified: 'Then call `end_call`.',
+      endCallHandoff: 'call `end_call`.',
+      endCallOptOut: 'Then immediately call `end_call`.',
+      step4: STEP4_NO_TOOLS,
+    });
+  }
+  return assemble({
+    endCallBadTime: 'Then call `end_call` with reason "bad_time".',
+    endCallDisqualified: 'Then call `end_call` with reason "not_qualified".',
+    endCallHandoff: 'call `end_call` with reason "callback_requested".',
+    endCallOptOut: 'Then immediately call `end_call` with reason "opt_out".',
+    step4: STEP4_TOOLS,
+  });
+}
+
+/** The pre-Phase-4 prompt — what every call gets while the tenant's tool gate is closed. */
+export const SYSTEM_PROMPT_HE = buildSystemPrompt({ toolsEnabled: false });
 
 /**
  * The opening line, spoken verbatim via session.say() before the LLM's first turn.

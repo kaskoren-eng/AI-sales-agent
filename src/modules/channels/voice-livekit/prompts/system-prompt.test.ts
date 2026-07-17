@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { GREETING_HE, SYSTEM_PROMPT_HE } from './system-prompt.he.js';
+import { TOOL_NAMES } from '../tools/index.js';
+import { GREETING_HE, SYSTEM_PROMPT_HE, buildSystemPrompt } from './system-prompt.he.js';
+
+const TOOLS_PROMPT = buildSystemPrompt({ toolsEnabled: true });
 
 /**
  * Prompt regression tests for the Keren v2 prompt (ported from docs/system-prompt-keren-v2.md).
@@ -100,21 +103,85 @@ describe('Keren v2 — the call flow', () => {
  * ============================================================================================
  */
 describe('Keren v2 — DEPLOY BLOCKERS', () => {
-  it('KNOWN: instructs her to call three tools that DO NOT EXIST in this agent', () => {
-    // Our LiveKit agent wires NO tools at all — that is Phase 4. An LLM told to call a tool it has
-    // not been given does not fail cleanly: it improvises. It will narrate the call aloud, or claim
-    // to have booked a meeting that was never booked. The second is far worse than a crash — the
-    // lead hangs up believing he has a demo on Tuesday, and nobody ever rings him.
+  it('KNOWN (no-tools variant only): still instructs her to call tools that DO NOT EXIST in that mode', () => {
+    // The gate-closed prompt is the pre-Phase-4 one, Retell names and all. An LLM told to call a
+    // tool it has not been given does not fail cleanly: it improvises. The speech-guard is what
+    // stands between that improvisation and the caller's ear in no-tools mode.
     expect(SYSTEM_PROMPT_HE).toMatch(/end_call/u);
     expect(SYSTEM_PROMPT_HE).toMatch(/check_availability_cal/u);
     expect(SYSTEM_PROMPT_HE).toMatch(/book_appointment_cal/u);
   });
 
-  it('KNOWN: contains template variables that NOTHING substitutes', () => {
+  it('KNOWN: contains template variables that NOTHING substitutes (both variants)', () => {
     // Retell interpolates these. LiveKit does not. As shipped, the model literally reads
     // "Lead name: {{lead_name}}" and will reason about it as though that were his name.
     for (const v of ['{{lead_name}}', '{{company_name}}', '{{industry}}', '{{opening_line}}', '{{call_direction}}']) {
       expect(SYSTEM_PROMPT_HE).toContain(v);
+      expect(TOOLS_PROMPT).toContain(v);
+    }
+  });
+});
+
+/**
+ * ============================================================================================
+ * PHASE 4 — the tools-mode prompt. Built ONLY when the per-tenant gate (voice_engine='livekit'
+ * AND functions_enabled=true) opened and buildAgentTools() actually attached the tools.
+ * The prompt and the tool set must agree — these tests are the lockstep check.
+ * ============================================================================================
+ */
+describe('Keren Phase 4 — tools-mode prompt', () => {
+  it('references EXACTLY the tools the agent actually has (imported from tools/index.ts)', () => {
+    for (const name of TOOL_NAMES) {
+      expect(TOOLS_PROMPT).toContain(`\`${name}\``);
+    }
+  });
+
+  it('contains NO stale Retell-era tool names', () => {
+    expect(TOOLS_PROMPT).not.toMatch(/check_availability_cal/u);
+    expect(TOOLS_PROMPT).not.toMatch(/book_appointment_cal/u);
+  });
+
+  it('collects and confirms details BEFORE calling book_meeting — they are its arguments', () => {
+    const details = TOOLS_PROMPT.indexOf('YOU MUST COLLECT HIS DETAILS BEFORE BOOKING');
+    const book = TOOLS_PROMPT.indexOf('Call `book_meeting` with his confirmed name');
+    expect(details).toBeGreaterThan(-1);
+    expect(book).toBeGreaterThan(-1);
+    expect(details).toBeLessThan(book);
+  });
+
+  it('anti-hallucination: only offers times the tool returned, slot_datetime passed verbatim', () => {
+    expect(TOOLS_PROMPT).toMatch(/OFFER ONLY TIMES THE TOOL RETURNED/u);
+    expect(TOOLS_PROMPT).toMatch(/NEVER invent, guess, round or adjust a time/u);
+    expect(TOOLS_PROMPT).toMatch(/EXACT slot_datetime value/u);
+  });
+
+  it('קבעתי לך is allowed ONLY after book_meeting succeeded — and failure is never papered over', () => {
+    // The old blanket ban is gone from THIS variant (the tool makes the claim true)...
+    expect(TOOLS_PROMPT).not.toMatch(/DO NOT SAY THE MEETING IS BOOKED/u);
+    // ...replaced by the success-conditioned rule.
+    expect(TOOLS_PROMPT).toMatch(/NEVER claim a meeting is booked before `book_meeting` returned success/u);
+    expect(TOOLS_PROMPT).toMatch(/never pretend the booking worked/u);
+    // And the no-tools variant KEEPS the blanket ban — she still cannot book there.
+    expect(SYSTEM_PROMPT_HE).toMatch(/DO NOT SAY THE MEETING IS BOOKED/u);
+  });
+
+  it('every end_call carries a reason the analytics can read', () => {
+    expect(TOOLS_PROMPT).toMatch(/end_call` with reason "meeting_booked"/u);
+    expect(TOOLS_PROMPT).toMatch(/end_call` with reason "not_qualified"/u);
+    expect(TOOLS_PROMPT).toMatch(/end_call` with reason "opt_out"/u);
+    expect(TOOLS_PROMPT).toMatch(/end_call` with reason "callback_requested"/u);
+    expect(TOOLS_PROMPT).toMatch(/end_call` with reason "bad_time"/u);
+  });
+
+  it('shared guarantees hold in BOTH variants', () => {
+    for (const prompt of [SYSTEM_PROMPT_HE, TOOLS_PROMPT]) {
+      expect(prompt).toMatch(/קרן \(Keren\)/u);
+      expect(prompt).toMatch(/ASK HIS NAME FIRST/u);
+      expect(prompt).toMatch(/address the lead in the MASCULINE/iu);
+      expect(prompt).toMatch(/קורן הוא המייסד/u);
+      expect(prompt).toMatch(/אני סוכנת AI/u);
+      expect(prompt).toMatch(/לא נתקשר אליך יותר/u);
+      expect(prompt).toMatch(/NO_RESPONSE_NEEDED/u);
     }
   });
 });

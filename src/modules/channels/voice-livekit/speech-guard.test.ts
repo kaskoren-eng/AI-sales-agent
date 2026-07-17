@@ -105,6 +105,66 @@ describe('guardStream — she speaks before the reply is finished', () => {
 });
 
 /**
+ * PHASE 4: after book_meeting SUCCEEDS on a call, "קבעתי לך" stops being a lie — and rewriting the
+ * truth would itself be the lie. The predicate is ToolRuntimeContext.bookingCompleted.
+ */
+describe('guardStream — the booking-claim rewrite is conditional on a REAL booking', () => {
+  const chunks = async function* (...c: string[]) {
+    for (const x of c) yield x;
+  };
+  const drain = async (it: AsyncIterable<string>) => {
+    const out: string[] = [];
+    for await (const x of it) out.push(x);
+    return out;
+  };
+
+  it('booking completed → the claim passes through, because it is now TRUE', async () => {
+    const out = (
+      await drain(guardStream(chunks('קבעתי לך שיחת דמו ליום ראשון בעשר. ', 'נשלח לך את הפרטים!'), () => true))
+    ).join('');
+    // The claim SURVIVES (as "קבעתי לכה" — the pronunciation fix still applies, see below)...
+    expect(out).toMatch(/קבעתי לכה/u);
+    // ...and is NOT rewritten into the pass-to-the-team line.
+    expect(out).not.toMatch(/אעביר את הבקשה לצוות/u);
+  });
+
+  it('tools enabled but nothing booked YET → the claim is still a lie, still rewritten', async () => {
+    const out = (
+      await drain(guardStream(chunks('קבעתי לך שיחת דמו למחר.'), () => false))
+    ).join('');
+    expect(out).not.toMatch(/קבעתי לך/u);
+    expect(out).toMatch(/אעביר את הבקשה לצוות/u);
+  });
+
+  it('the predicate is read PER SENTENCE — a booking mid-reply frees the very next sentence', async () => {
+    let booked = false;
+    const source = async function* () {
+      yield 'קבעתי לך פגישה. '; // sentence 1 — before the booking: must be rewritten
+      booked = true; // book_meeting succeeded between sentences
+      yield 'קבעתי לך פגישה ליום ראשון.'; // sentence 2 — now true: must survive
+    };
+    const out = await drain(guardStream(source(), () => booked));
+    expect(out[0]).not.toMatch(/קבעתי/u); // rewritten to the pass-to-the-team truth
+    expect(out[1]).toMatch(/קבעתי לכה/u); // survives (pronunciation-fixed, not censored)
+  });
+
+  it('NO_RESPONSE_NEEDED and the pronunciation fix stay armed even after a booking', async () => {
+    const out = (
+      await drain(guardStream(chunks('NO_RESPONSE_NEEDED שלחתי לך אישור למייל שלך.'), () => true))
+    ).join('');
+    expect(out).not.toMatch(/NO_RESPONSE_NEEDED/u);
+    expect(out).toMatch(/שלכה/u); // forceMasculineAddress is unconditional
+  });
+
+  it('guardSpeech honours the flag directly', () => {
+    const claim = 'קבעתי לך שיחת דמו למחר.';
+    expect(guardSpeech(claim, { allowBookingClaims: true }).text).toMatch(/קבעתי לכה/u);
+    expect(guardSpeech(claim, { allowBookingClaims: false }).text).not.toMatch(/קבעתי/u);
+    expect(guardSpeech(claim).text).not.toMatch(/קבעתי/u); // default stays fail-closed
+  });
+});
+
+/**
  * THE GENDER FIX — a TTS bug, fixed in the pipeline, not by crippling her vocabulary.
  *
  * Koren: "אותה מילה, פעם זכר פעם נקבה" — Cartesia guesses the vowels at random, because Hebrew does

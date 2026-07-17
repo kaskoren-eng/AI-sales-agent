@@ -106,7 +106,13 @@ export function forceMasculineAddress(text: string): string {
 const NO_RESPONSE = /NO_RESPONSE_NEEDED/gi;
 
 /**
- * Claims that a booking is DONE. Every one of these is a lie until Phase 4 wires the calendar.
+ * Claims that a booking is DONE. Every one of these is a lie — UNTIL a booking actually happened.
+ *
+ * Phase 4 made the claim conditionally true: when the tenant's tool gate is open and book_meeting
+ * SUCCEEDED on this call, `allowBookingClaims` flips (via ToolRuntimeContext.bookingCompleted) and
+ * these sentences pass through untouched, because they are now the truth. Before that moment —
+ * including on every tools-enabled call where the booking hasn't happened YET — the rewrite stays
+ * armed. She cannot claim a booking she hasn't made, tools or no tools.
  *
  * Deliberately narrow. "אני בודקת זמינות" ("I'm checking availability") is NOT here: it is only a
  * promise to look, which is annoying but not false. What is caught here is the completed act —
@@ -143,11 +149,18 @@ const TRUTH = 'אעביר את הבקשה לצוות ונחזור אליך לא�
  * She now starts speaking as soon as her FIRST sentence is complete — which is what the streaming
  * TTS was always designed for.
  */
-export async function* guardStream(input: AsyncIterable<string>): AsyncIterable<string> {
+export async function* guardStream(
+  input: AsyncIterable<string>,
+  /**
+   * Evaluated PER SENTENCE, not captured once: book_meeting succeeds mid-reply, and the very next
+   * sentence ("קבעתי לך ליום ראשון...") must already be allowed through.
+   */
+  allowBookingClaims: () => boolean = () => false,
+): AsyncIterable<string> {
   let buffer = '';
 
   const flush = function* (chunk: string): Generator<string> {
-    const guarded = guardSpeech(chunk);
+    const guarded = guardSpeech(chunk, { allowBookingClaims: allowBookingClaims() });
     for (const note of guarded.interventions) {
       console.log(`speech_guard ${JSON.stringify({ note, said: guarded.text.slice(0, 80) })}`);
     }
@@ -197,7 +210,10 @@ export interface GuardResult {
  * we can afford far more easily than we can afford telling a lead his meeting is booked when it is
  * not.
  */
-export function guardSpeech(text: string): GuardResult {
+export function guardSpeech(
+  text: string,
+  opts: { allowBookingClaims?: boolean } = {},
+): GuardResult {
   const interventions: string[] = [];
   let out = text;
 
@@ -209,10 +225,14 @@ export function guardSpeech(text: string): GuardResult {
     if (out === '') return { text: '', silent: true, interventions };
   }
 
-  for (const pattern of FALSE_BOOKING) {
-    if (pattern.test(out)) {
-      interventions.push(`rewrote a false booking claim: "${out.match(pattern)?.[0]?.slice(0, 50)}"`);
-      out = out.replace(pattern, TRUTH);
+  // Skipped ONLY when a real booking succeeded on this call (ToolRuntimeContext.bookingCompleted)
+  // — at that point "קבעתי לך" is the truth and rewriting it would be the lie.
+  if (!opts.allowBookingClaims) {
+    for (const pattern of FALSE_BOOKING) {
+      if (pattern.test(out)) {
+        interventions.push(`rewrote a false booking claim: "${out.match(pattern)?.[0]?.slice(0, 50)}"`);
+        out = out.replace(pattern, TRUTH);
+      }
     }
   }
 

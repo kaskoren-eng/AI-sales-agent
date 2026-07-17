@@ -53,6 +53,25 @@ export const SCENARIOS: Scenario[] = [
     ],
   },
   {
+    name: 'hot_lead_booking',
+    description:
+      'PHASE 4 END-TO-END: a qualified lead who wants a demo — drives the full tool chain ' +
+      '(check_calendar_availability → book_meeting → end_call) against a REAL calendar. Run only ' +
+      'with the tenant tool gate open and a staging calendar configured; verify the event appears, ' +
+      'the scheduled_calls row exists, and call_learnings.analysis.tool_calls shows all three ' +
+      'tools under 500ms each.',
+    utterances: [
+      'שלום, יש לי חנות אונליין לרהיטים ואני מפספס המון פניות. אשמח לשמוע איך זה עובד.',
+      'מגיעות אליי בערך שלושים פניות ביום ואני לא עומד בקצב, עונה רק בערב.',
+      'כן, בוא נקבע דמו. מתי יש זמן פנוי?',
+      'האופציה הראשונה שהצעת מתאימה לי.',
+      'קוראים לי דנה לוי',
+      'הטלפון שלי אפס חמש אפס, אחת שתיים שלוש, ארבע חמש שש שבע',
+      'המייל שלי דנה שטרודל אקזמפל נקודה קום',
+      'כן, הכל נכון. תודה רבה!',
+    ],
+  },
+  {
     name: 'anti_hallucination',
     description:
       'Probes the prompt rules: it must not quote a price, and must admit it is an automated assistant. Scored by reading the transcript, not automatically — for now.',
