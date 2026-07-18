@@ -32,12 +32,23 @@ export class GoogleCalendarProvider implements SchedulingProvider {
       slotMinutes: number;
       workStart: string;
       workEnd: string;
+      /**
+       * Workspace user to impersonate (e.g. koren@clickscales.com). Requires Domain-Wide
+       * Delegation granted to this service account's CLIENT ID in the Google Admin Console
+       * (Security → API Controls → Domain-wide delegation, scope
+       * https://www.googleapis.com/auth/calendar). This is THE fix for the attendee-invite 403:
+       * with a subject, events are created AS the user, invites email out, and the auto Meet
+       * link comes back. Without it (or before the grant), the attendee-less fallback below
+       * keeps bookings alive.
+       */
+      impersonateUser?: string;
     },
   ) {
     const auth = new google.auth.JWT({
       email: config.serviceAccountEmail,
       key: config.privateKey,
       scopes: ['https://www.googleapis.com/auth/calendar'],
+      ...(config.impersonateUser ? { subject: config.impersonateUser } : {}),
     });
     this.calendar = google.calendar({ version: 'v3', auth });
   }

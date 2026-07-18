@@ -318,6 +318,11 @@ const envSchema = z.object({
   GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: z.string().email().optional(),
   // PEM private key — store with literal \n, the provider will unescape them
   GOOGLE_CALENDAR_PRIVATE_KEY: z.string().min(1).optional(),
+  // Workspace user the service account impersonates (Domain-Wide Delegation must be granted to
+  // the SA's client ID in admin.google.com with scope https://www.googleapis.com/auth/calendar).
+  // With this set, calendar invites actually email out and events carry a Meet link; without it,
+  // bookings fall back to attendee-less events (BookingResult.inviteSent=false).
+  GOOGLE_CALENDAR_IMPERSONATE_USER: z.string().email().optional(),
   GOOGLE_CALENDAR_SLOT_MINUTES: z.coerce.number().int().positive().optional(),
   GOOGLE_CALENDAR_WORK_START: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   GOOGLE_CALENDAR_WORK_END: z.string().regex(/^\d{2}:\d{2}$/).optional(),

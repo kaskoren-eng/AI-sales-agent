@@ -178,6 +178,7 @@ export async function buildToolRuntime(
           slotMinutes,
           workStart: PROVIDER_UTC_WORK_START,
           workEnd: PROVIDER_UTC_WORK_END,
+          impersonateUser: env.GOOGLE_CALENDAR_IMPERSONATE_USER,
         }),
       report: opts.report,
       env,

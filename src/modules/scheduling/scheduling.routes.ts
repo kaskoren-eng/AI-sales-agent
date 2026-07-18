@@ -14,6 +14,7 @@ function getCalendarProvider(app: FastifyInstance): GoogleCalendarProvider | nul
     slotMinutes: app.env.GOOGLE_CALENDAR_SLOT_MINUTES ?? 30,
     workStart: app.env.GOOGLE_CALENDAR_WORK_START ?? '09:00',
     workEnd: app.env.GOOGLE_CALENDAR_WORK_END ?? '18:00',
+    impersonateUser: app.env.GOOGLE_CALENDAR_IMPERSONATE_USER,
   });
 }
 
