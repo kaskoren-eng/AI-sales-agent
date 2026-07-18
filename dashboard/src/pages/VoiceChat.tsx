@@ -44,7 +44,10 @@ export function VoiceChat() {
   const [elapsed, setElapsed] = useState(0)
 
   const roomRef = useRef<Room | null>(null)
-  const audioElRef = useRef<HTMLAudioElement | null>(null)
+  /** One <audio> element PER remote track — the recording notice and Keren are separate tracks,
+   * and attaching both to a single element makes the last one win (heard: total silence). */
+  const audioContainerRef = useRef<HTMLDivElement | null>(null)
+  const [needsAudioStart, setNeedsAudioStart] = useState(false)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const rafRef = useRef<number>(0)
   const barRefs = useRef<Array<HTMLDivElement | null>>([])
@@ -112,11 +115,15 @@ export function VoiceChat() {
       const room = new Room()
       roomRef.current = room
 
-      room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub: RemoteTrackPublication) => {
+      room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, pub: RemoteTrackPublication) => {
         if (track.kind !== Track.Kind.Audio) return
-        // Keren (or the recording notice) is on the line.
-        if (audioElRef.current) track.attach(audioElRef.current)
-        watchAgentAudio(track)
+        // Each track gets its OWN element — the notice pre-roll and Keren's voice arrive as
+        // separate tracks, and sharing one element means whichever attached last silences the
+        // other. The notice track unpublishes itself after ~2s; TrackUnsubscribed cleans it up.
+        const el = track.attach()
+        audioContainerRef.current?.appendChild(el)
+        // The ring's bars follow KEREN, not the pre-roll announcement.
+        if (pub.trackName !== 'recording-notice') watchAgentAudio(track)
         setState('live')
         if (!timerRef.current) {
           startedAtRef.current = Date.now()
@@ -125,6 +132,16 @@ export function VoiceChat() {
             1000,
           )
         }
+      })
+
+      room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
+        if (track.kind === Track.Kind.Audio) track.detach().forEach((el) => el.remove())
+      })
+
+      // Browser autoplay policy can silently refuse to play incoming audio. LiveKit tells us —
+      // and the fix must come from a click, so we surface a button instead of praying.
+      room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+        setNeedsAudioStart(!room.canPlaybackAudio)
       })
 
       room.on(RoomEvent.ConnectionStateChanged, (s: ConnectionState) => {
@@ -267,6 +284,27 @@ export function VoiceChat() {
           {status}
         </div>
 
+        {needsAudioStart && inCall && (
+          <button
+            onClick={() => {
+              void roomRef.current?.startAudio().then(() => setNeedsAudioStart(false))
+            }}
+            style={{
+              marginTop: 12,
+              padding: '10px 20px',
+              borderRadius: 8,
+              border: '1px solid var(--warning)',
+              background: 'transparent',
+              color: 'var(--warning)',
+              cursor: 'pointer',
+              fontSize: 14,
+              fontWeight: 600,
+            }}
+          >
+            🔊 The browser muted the call — click to hear Keren
+          </button>
+        )}
+
         {inCall && (
           <div style={{ marginTop: 6, fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)', fontSize: 13 }}>
             {mm}:{ss}
@@ -355,7 +393,7 @@ export function VoiceChat() {
           test email. Requires the agent worker to be running.
         </div>
 
-        <audio ref={audioElRef} autoPlay />
+        <div ref={audioContainerRef} style={{ display: 'none' }} />
       </div>
     </div>
   )
