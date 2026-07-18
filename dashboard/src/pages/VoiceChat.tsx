@@ -97,6 +97,17 @@ export function VoiceChat() {
     setErrorMsg('')
     setState('connecting')
     try {
+      // Ask for the mic FIRST, inside the click gesture — the browser prompt appears
+      // immediately, and a denial produces an actionable message instead of a dead call.
+      try {
+        const probe = await navigator.mediaDevices.getUserMedia({ audio: true })
+        probe.getTracks().forEach((t) => t.stop())
+      } catch {
+        throw new Error(
+          'Microphone is blocked. Click the lock icon in the address bar, allow the microphone, then try again.',
+        )
+      }
+
       const session = await createWebCall()
       const room = new Room()
       roomRef.current = room
@@ -130,7 +141,13 @@ export function VoiceChat() {
       setState('waiting')
     } catch (err) {
       teardown()
-      setErrorMsg(err instanceof Error ? err.message : 'Could not start the call')
+      const message =
+        err instanceof Error && /HTTP 401|Invalid credentials|Unauthorized/i.test(err.message)
+          ? 'This dashboard is not authorized against the backend it is pointed at. Check the API key (localStorage auth_token / VITE_API_KEY).'
+          : err instanceof Error
+            ? err.message
+            : 'Could not start the call'
+      setErrorMsg(message)
       setState('error')
     }
   }, [teardown, watchAgentAudio])
