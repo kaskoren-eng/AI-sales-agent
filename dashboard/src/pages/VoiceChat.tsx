@@ -1,0 +1,345 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Mic, MicOff, Phone, PhoneOff } from 'lucide-react'
+import {
+  ConnectionState,
+  Room,
+  RoomEvent,
+  Track,
+  type RemoteTrack,
+  type RemoteTrackPublication,
+} from 'livekit-client'
+import { createWebCall } from '../lib/api.js'
+
+/**
+ * Voice Simulator — a live rehearsal call with Keren from the browser.
+ *
+ * This exercises the ENTIRE agent pipeline over a real LiveKit room — the recording-notice
+ * pre-roll, Hebrew STT, the LLM with its calendar tools against the real calendar, TTS, the
+ * speech guard — everything a phone call does except the SIP leg. Built so the Phase 4 flow can
+ * be rehearsed from anywhere (Koren is abroad; the merge gate needs a conversation, not a SIM).
+ *
+ * The signature element is the call ring: one control that IS the state. Its audio bars are
+ * driven by the agent's real audio level via WebAudio — when the bars move, sound is actually
+ * arriving; nothing here animates on faith.
+ */
+
+type CallState = 'idle' | 'connecting' | 'waiting' | 'live' | 'ended' | 'error'
+
+const STATUS_LINE: Record<CallState, string> = {
+  idle: 'Start a call and speak Hebrew — Keren answers like it’s a real phone call.',
+  connecting: 'Connecting to the room…',
+  waiting: 'Waiting for Keren to pick up…',
+  live: '', // composed live from speaking/listening below
+  ended: 'Call ended. The full report lands in call-reports/ and call_learnings.',
+  error: '',
+}
+
+const BAR_COUNT = 5
+
+export function VoiceChat() {
+  const [state, setState] = useState<CallState>('idle')
+  const [errorMsg, setErrorMsg] = useState('')
+  const [muted, setMuted] = useState(false)
+  const [agentSpeaking, setAgentSpeaking] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+
+  const roomRef = useRef<Room | null>(null)
+  const audioElRef = useRef<HTMLAudioElement | null>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const rafRef = useRef<number>(0)
+  const barRefs = useRef<Array<HTMLDivElement | null>>([])
+  const startedAtRef = useRef<number>(0)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const teardown = useCallback(() => {
+    cancelAnimationFrame(rafRef.current)
+    if (timerRef.current) clearInterval(timerRef.current)
+    timerRef.current = null
+    void audioCtxRef.current?.close().catch(() => undefined)
+    audioCtxRef.current = null
+    const room = roomRef.current
+    roomRef.current = null
+    void room?.disconnect()
+  }, [])
+
+  useEffect(() => () => teardown(), [teardown])
+
+  /** Real audio level → the ring's bars. Truthful motion: bars move only when sound arrives. */
+  const watchAgentAudio = useCallback((track: RemoteTrack) => {
+    const stream = new MediaStream([track.mediaStreamTrack])
+    const ctx = new AudioContext()
+    audioCtxRef.current = ctx
+    const source = ctx.createMediaStreamSource(stream)
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 256
+    source.connect(analyser)
+    const data = new Uint8Array(analyser.frequencyBinCount)
+
+    const tick = () => {
+      analyser.getByteFrequencyData(data)
+      let sum = 0
+      for (let i = 0; i < data.length; i++) sum += data[i]
+      const level = sum / data.length / 255 // 0..1
+      setAgentSpeaking(level > 0.02)
+      barRefs.current.forEach((bar, i) => {
+        if (!bar) return
+        // Center bars taller — a voice, not a spectrum. Each bar keys off a different band.
+        const band = data[Math.floor(((i + 1) / (BAR_COUNT + 1)) * data.length * 0.5)] / 255
+        const centerBias = 1 - Math.abs(i - (BAR_COUNT - 1) / 2) / BAR_COUNT
+        bar.style.height = `${8 + Math.round(band * 40 * (0.6 + centerBias))}px`
+      })
+      rafRef.current = requestAnimationFrame(tick)
+    }
+    rafRef.current = requestAnimationFrame(tick)
+  }, [])
+
+  const startCall = useCallback(async () => {
+    setErrorMsg('')
+    setState('connecting')
+    try {
+      const session = await createWebCall()
+      const room = new Room()
+      roomRef.current = room
+
+      room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub: RemoteTrackPublication) => {
+        if (track.kind !== Track.Kind.Audio) return
+        // Keren (or the recording notice) is on the line.
+        if (audioElRef.current) track.attach(audioElRef.current)
+        watchAgentAudio(track)
+        setState('live')
+        if (!timerRef.current) {
+          startedAtRef.current = Date.now()
+          timerRef.current = setInterval(
+            () => setElapsed(Math.floor((Date.now() - startedAtRef.current) / 1000)),
+            1000,
+          )
+        }
+      })
+
+      room.on(RoomEvent.ConnectionStateChanged, (s: ConnectionState) => {
+        if (s === ConnectionState.Disconnected) {
+          setState((prev) => (prev === 'live' || prev === 'waiting' ? 'ended' : prev))
+          teardown()
+        }
+      })
+
+      await room.connect(session.url, session.token)
+      await room.localParticipant.setMicrophoneEnabled(true)
+      setMuted(false)
+      setElapsed(0)
+      setState('waiting')
+    } catch (err) {
+      teardown()
+      setErrorMsg(err instanceof Error ? err.message : 'Could not start the call')
+      setState('error')
+    }
+  }, [teardown, watchAgentAudio])
+
+  const hangUp = useCallback(() => {
+    setState('ended')
+    teardown()
+  }, [teardown])
+
+  const toggleMute = useCallback(async () => {
+    const room = roomRef.current
+    if (!room) return
+    const next = !muted
+    await room.localParticipant.setMicrophoneEnabled(!next)
+    setMuted(next)
+  }, [muted])
+
+  const inCall = state === 'connecting' || state === 'waiting' || state === 'live'
+  const mm = String(Math.floor(elapsed / 60)).padStart(2, '0')
+  const ss = String(elapsed % 60).padStart(2, '0')
+
+  const liveStatus = agentSpeaking ? 'Keren is speaking' : 'Listening — go ahead'
+  const status = state === 'live' ? liveStatus : state === 'error' ? errorMsg : STATUS_LINE[state]
+
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', padding: '48px 24px' }}>
+      <style>{`
+        @keyframes vc-pulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(0, 245, 255, 0.25); }
+          50% { box-shadow: 0 0 0 18px rgba(0, 245, 255, 0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .vc-ring { animation: none !important; }
+        }
+      `}</style>
+
+      <div style={{ width: '100%', maxWidth: 520, textAlign: 'center' }}>
+        <div
+          style={{
+            fontSize: 11,
+            letterSpacing: '0.18em',
+            textTransform: 'uppercase',
+            color: 'var(--accent-cyan-dim)',
+            marginBottom: 8,
+          }}
+        >
+          Voice simulator
+        </div>
+        <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+          Call Keren from here
+        </h1>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 14, margin: '10px 0 36px' }}>
+          The full agent pipeline over a real room — recording notice, calendar booking, everything
+          except the phone line.
+        </p>
+
+        {/* The call ring — one control that IS the call state. */}
+        <button
+          onClick={inCall ? hangUp : startCall}
+          aria-label={inCall ? 'Hang up' : 'Start call'}
+          className={state === 'connecting' || state === 'waiting' ? 'vc-ring' : undefined}
+          style={{
+            width: 160,
+            height: 160,
+            borderRadius: '50%',
+            border: `2px solid ${inCall ? (agentSpeaking ? 'var(--accent-cyan)' : 'var(--border-strong)') : 'var(--accent-cyan-dim)'}`,
+            background:
+              state === 'live'
+                ? 'radial-gradient(circle at 50% 45%, rgba(0,245,255,0.10), var(--bg-surface) 70%)'
+                : 'var(--bg-surface)',
+            color: 'var(--text-primary)',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'border-color var(--duration-base) var(--ease-standard)',
+            animation:
+              state === 'connecting' || state === 'waiting'
+                ? 'vc-pulse 1.8s var(--ease-standard) infinite'
+                : undefined,
+          }}
+        >
+          {state === 'live' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, height: 56 }} aria-hidden>
+              {Array.from({ length: BAR_COUNT }, (_, i) => (
+                <div
+                  key={i}
+                  ref={(el) => {
+                    barRefs.current[i] = el
+                  }}
+                  style={{
+                    width: 6,
+                    height: 8,
+                    borderRadius: 3,
+                    background: 'var(--accent-cyan)',
+                    transition: 'height 90ms linear',
+                  }}
+                />
+              ))}
+            </div>
+          ) : inCall ? (
+            <PhoneOff size={44} strokeWidth={1.5} />
+          ) : (
+            <Phone size={44} strokeWidth={1.5} color="var(--accent-cyan)" />
+          )}
+        </button>
+
+        <div
+          role="status"
+          style={{
+            marginTop: 24,
+            minHeight: 22,
+            fontSize: 14,
+            color: state === 'error' ? 'var(--error)' : 'var(--text-secondary)',
+          }}
+        >
+          {status}
+        </div>
+
+        {inCall && (
+          <div style={{ marginTop: 6, fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)', fontSize: 13 }}>
+            {mm}:{ss}
+          </div>
+        )}
+
+        {inCall && (
+          <div style={{ marginTop: 24, display: 'flex', justifyContent: 'center', gap: 12 }}>
+            <button
+              onClick={toggleMute}
+              aria-pressed={muted}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 16px',
+                borderRadius: 8,
+                border: '1px solid var(--border-default)',
+                background: muted ? 'var(--bg-elevated)' : 'transparent',
+                color: muted ? 'var(--warning)' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontSize: 13,
+              }}
+            >
+              {muted ? <MicOff size={16} strokeWidth={1.5} /> : <Mic size={16} strokeWidth={1.5} />}
+              {muted ? 'Unmute' : 'Mute'}
+            </button>
+            <button
+              onClick={hangUp}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 16px',
+                borderRadius: 8,
+                border: '1px solid transparent',
+                background: 'var(--error)',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: 13,
+              }}
+            >
+              <PhoneOff size={16} strokeWidth={1.5} />
+              Hang up
+            </button>
+          </div>
+        )}
+
+        {state === 'ended' && (
+          <button
+            onClick={startCall}
+            style={{
+              marginTop: 20,
+              padding: '8px 18px',
+              borderRadius: 8,
+              border: '1px solid var(--accent-cyan-dim)',
+              background: 'transparent',
+              color: 'var(--accent-cyan)',
+              cursor: 'pointer',
+              fontSize: 13,
+            }}
+          >
+            Call again
+          </button>
+        )}
+
+        {/* What this rehearsal actually exercises — informative, not decorative. */}
+        <div
+          style={{
+            marginTop: 48,
+            textAlign: 'left',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 12,
+            padding: '16px 20px',
+            fontSize: 13,
+            color: 'var(--text-secondary)',
+            lineHeight: 1.7,
+          }}
+        >
+          <div style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: 6 }}>
+            This is a real session
+          </div>
+          The recording notice plays first, then Keren greets you in Hebrew. If booking tools are
+          enabled for your tenant, she checks the real calendar and books real meetings — use a
+          test email. Requires the agent worker to be running.
+        </div>
+
+        <audio ref={audioElRef} autoPlay />
+      </div>
+    </div>
+  )
+}

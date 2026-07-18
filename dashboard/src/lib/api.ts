@@ -103,3 +103,17 @@ export function saveTwilioSettings(data: { accountSid: string; authToken: string
 export function deleteTwilioSettings(): Promise<{ ok: boolean }> {
   return apiFetch('/settings/twilio', { method: 'DELETE' })
 }
+
+// --- Voice simulator (browser mic session with the LiveKit agent) ---
+
+export interface WebCallSession {
+  url: string
+  token: string
+  roomName: string
+}
+
+export function createWebCall(): Promise<WebCallSession> {
+  // Explicit empty body: apiFetch always sends Content-Type: application/json, and Fastify
+  // rejects a JSON content-type with a zero-length body.
+  return apiFetch<WebCallSession>('/voice/web-call', { method: 'POST', body: '{}' })
+}

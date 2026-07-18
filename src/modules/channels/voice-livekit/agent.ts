@@ -541,4 +541,13 @@ function readSipCaller(attributes: Record<string, string>): {
   };
 }
 
-cli.runApp(new WorkerOptions({ agent: fileURLToPath(import.meta.url) }));
+cli.runApp(
+  new WorkerOptions({
+    agent: fileURLToPath(import.meta.url),
+    // Phase 4 made the child runner's import graph heavy (googleapis + drizzle for the calendar
+    // tools). Under tsx watch on Windows, cold-compiling that graph blows the default 10s
+    // initialization budget and every dispatch dies with "runner initialization timed out"
+    // before the agent ever joins the room. The cost is per-worker-boot, not per-call.
+    initializeProcessTimeout: 60_000,
+  }),
+);

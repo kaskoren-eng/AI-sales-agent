@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import {
+  AudioLines,
   LayoutDashboard,
   Users,
   Phone,
@@ -20,6 +21,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Overview', icon: <LayoutDashboard size={18} strokeWidth={1.5} />, end: true },
   { to: '/leads', label: 'Leads', icon: <Users size={18} strokeWidth={1.5} /> },
   { to: '/calls', label: 'Calls', icon: <Phone size={18} strokeWidth={1.5} /> },
+  { to: '/voice', label: 'Voice Simulator', icon: <AudioLines size={18} strokeWidth={1.5} /> },
   { to: '/bookings', label: 'Bookings', icon: <CalendarDays size={18} strokeWidth={1.5} /> },
   { to: '/integrations', label: 'Integrations', icon: <Plug size={18} strokeWidth={1.5} /> },
   { to: '/settings', label: 'Settings', icon: <Settings size={18} strokeWidth={1.5} /> },

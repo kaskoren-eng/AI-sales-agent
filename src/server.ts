@@ -27,6 +27,7 @@ import { WhatsAppService } from './modules/channels/whatsapp/whatsapp.service.js
 import { EmailService } from './modules/channels/email/email.service.js';
 import { VoiceService } from './modules/channels/voice/voice.service.js';
 import { LiveKitVoiceService } from './modules/channels/voice-livekit/voice-livekit.service.js';
+import webCallRoutes from './modules/channels/voice-livekit/web-call.routes.js';
 
 // Modules
 import leadsModule from './modules/leads/index.js';
@@ -166,6 +167,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     await apiScope.register(integrationsModule, { prefix: '/api/v1/integrations' });
     await apiScope.register(callsModule, { prefix: '/api/v1/calls' });
     await apiScope.register(settingsModule, { prefix: '/api/v1/settings' });
+    // Browser voice simulation with the LiveKit agent — see web-call.routes.ts.
+    await apiScope.register(webCallRoutes, { prefix: '/api/v1/voice' });
   });
 
   // --- Dashboard static files (production) ---
