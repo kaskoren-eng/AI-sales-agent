@@ -1,11 +1,13 @@
 # AI Sales Agent — Project Status
 
-> Last updated: 2026-04-30
+> Last updated: 2026-07-19
 > Stack: TypeScript · Fastify 5 · Drizzle ORM · PostgreSQL · Redis · BullMQ · OpenAI gpt-5.4
 
 ---
 
-## Current Phase: Phase 5 — Hardening, Observability & Tests
+## Current Phase: Phase 7 — Voice Engine Migration (Retell → self-built LiveKit)
+
+Voice engine history: **ElevenLabs (POC, retired) → Retell (current, live) → self-built LiveKit + Cartesia + OpenAI Realtime (in progress)**. Strangler-fig pattern. See `VOICE_MIGRATION_PLAN.md` for the full 7-phase plan.
 
 ---
 
@@ -16,9 +18,10 @@
 | 1 | Foundation & Scaffold | ✅ Complete |
 | 2 | Core Channels & AI Engine | ✅ Complete |
 | 3 | Lead Intake & Automation Flows | ✅ Complete |
-| 4 | Integrations (CSV, Sheets, CRM) | 🔄 Partial (Monday ✅) |
-| 5 | Hardening, Observability & Tests | 🔄 In Progress |
-| 6 | SaaS Multi-tenancy & Dashboard | 🔜 Planned |
+| 4 | Integrations (CSV, Sheets, CRM) | 🔄 Partial (Monday ✅, Airtable ✅, Sheets ⏳) |
+| 5 | Hardening, Observability & Tests | ✅ Complete (Sentry live, 142+ tests) |
+| 6 | SaaS Multi-tenancy & Dashboard | 🔄 Partial (dashboard live, self-serve pending) |
+| 7 | Voice Engine Migration (Retell → LiveKit) | 🔄 In Progress (Phase 1 of 7 sub-phases) |
 
 ---
 
@@ -47,7 +50,7 @@ Everything needed to start building on top of.
 ## Phase 2 — Core Channels & AI Engine ✅ Complete
 
 - [x] WhatsApp / UChat — inbound & outbound, subscriber lifecycle, 24h window fallback to template, signature verification
-- [x] Voice / Twilio + ElevenLabs — inbound call handling, AI agent registration, outbound call initiation, TwiML generation
+- [x] Voice / Twilio + ElevenLabs — inbound call handling, AI agent registration, outbound call initiation, TwiML generation *(historical — subsequently replaced by Retell + Zadarma + Cartesia; now being replaced again in Phase 7)*
 - [x] Scheduling / Google Calendar — slots query (freebusy), create booking (event + invite), cancel booking, pluggable provider interface. Replaced Trafft.
 - [x] AI Engine — OpenAI gpt-5.4, `generateResponse()` + `qualifyLead()` with JSON mode
 - [x] Flow executor — multi-step automation with delays, variable interpolation (`{{name}}`), WhatsApp + Voice + Email steps
@@ -93,11 +96,11 @@ Everything needed to start building on top of.
 ## Phase 5 — Hardening, Observability & Tests 🔄 In Progress
 
 ### Done
-- [x] Fetch timeouts on all external APIs — UChat (10s), ElevenLabs / Google Calendar / Monday (15s) via `AbortSignal.timeout()`
-- [x] Dead Letter Queue (DLQ) — `src/queues/dead-letter.ts`; all 3 workers move exhausted jobs to `dead-letter` queue
+- [x] Fetch timeouts on all external APIs — UChat (10s), Retell / Google Calendar / Monday (15s) via `AbortSignal.timeout()`
+- [x] Dead Letter Queue (DLQ) — `src/queues/dead-letter.ts`; all main workers (message-processor, outbound-sender, flow-executor) move exhausted jobs to `dead-letter` queue
 - [x] Replay attack protection — `src/shared/webhook-timestamp.ts`; `isTimestampFresh()` on WhatsApp + lead-intake webhooks (5-min window)
 - [x] Per-tenant rate limiting — 200 req/min per tenant in API scope via `keyGenerator`
-- [x] Circuit breaker — `src/shared/circuit-breaker.ts`; UChat, ElevenLabs, Monday, Google Calendar each have their own breaker (5 failures → 30s cooldown → HALF_OPEN test)
+- [x] Circuit breaker — `src/shared/circuit-breaker.ts`; UChat, Retell, Monday, Google Calendar, Trafft, Airtable each have their own breaker (5 failures → 30s cooldown → HALF_OPEN test). LiveKit + Cartesia breakers to be added in Phase 7.
 - [x] Auth failure audit logging — every rejected auth logs `event: auth_failure` with `reason`, `ip`, `method`, `url` (never the credential)
 - [x] Tenant seed script — `scripts/seed-tenant.mjs` creates a tenant + prints a ready-to-use API key
 
@@ -114,14 +117,44 @@ Everything needed to start building on top of.
 
 ---
 
-## Phase 6 — SaaS Multi-tenancy & Dashboard ⏳ Planned
+## Phase 6 — SaaS Multi-tenancy & Dashboard 🔄 Partial
 
-- [ ] Dashboard UI (separate repo / frontend)
+- [x] Dashboard UI — `dashboard/` folder, live routes (overview, leads, calls, flows, call-detail); screenshot script `npm run screenshot`
 - [ ] Tenant self-serve onboarding
 - [ ] Billing / quota system
 - [ ] Analytics & reporting endpoints (conversion funnel, channel performance, lead scoring)
 - [ ] Per-tenant API key rotation
 - [ ] Tenant settings UI (flow builder, channel config)
+
+---
+
+## Phase 7 — Voice Engine Migration (Retell → self-built LiveKit) 🔄 In Progress
+
+Replace Retell with LiveKit + Cartesia + OpenAI Realtime pipeline. Full plan in `VOICE_MIGRATION_PLAN.md`. Reference docs in `docs/`.
+
+**Why:** Retell doesn't expose human-sounding features in Hebrew (primary target language); direct-to-provider stack cuts per-minute cost ~65% and removes vendor lock-in.
+
+**Sub-phases:**
+
+| # | Sub-phase | Status |
+|---|---|---|
+| 7.1 | Skeleton — add `@livekit/agents` to project, create `src/modules/channels/voice-livekit/` module | ✅ Done (2026-07-13) — live Hebrew multi-turn agent, own process, `npm run voice:dev` |
+| 7.2 | Hebrew tuning — voice A/B, prompt v2, latency instrumentation | 🔄 Partial — Soniox STT swap, speech-guard (pronunciation + honesty), thinking fillers, CallReport; **open:** no Hebrew end-of-turn model exists → ~0.9–1.4s EOU; DeepDub TTS built behind `VOICE_TTS_PROVIDER` flag (user prefers it 6:1, not switched yet) |
+| 7.3 | Zadarma → LiveKit SIP inbound trunk | ✅ Trunk configured; real inbound calls placed during Phase 1–2 testing |
+| 7.4 | Business logic — agent function tools | ✅ Built (2026-07-17/18, branch `feature/voice-livekit-phase-4-tools`, unmerged): `check_calendar_availability` / `book_meeting` / `end_call(reason)` behind per-tenant `voice_engine`+`functions_enabled` gate; opt_out→DNC; recording-notice pre-roll + AI-disclosure tracking; `call_learnings` persistence; Google Calendar Domain-Wide Delegation granted → real email invites + Meet links |
+| 7.5 | Testing — unit + scripted conversation + latency benchmark | ✅ ~90 new tests incl. FakeLLM scripted flow (check→book→end in order); synthetic-caller audio harness; **browser Voice Simulator** (dashboard `/voice`) verified end-to-end incl. a real human conversation |
+| 7.6 | Production deploy — `lk agent deploy`, switch Koren's tenant to `livekit` | ⏳ Blocked on the real-phone-call merge gate (user abroad); stale 07-14 cloud deployment deleted 2026-07-18 |
+| 7.7 | Weekly iteration loop — human review of 20 sampled calls/week + regression tests | ⏳ Not started (ongoing) |
+
+**Merge gate for 7.4:** a real phone call — qualify → book → event visible in Google Calendar within 5s + `scheduled_calls` + `call_learnings.analysis.tool_calls`. Until then the branch stays unmerged.
+
+**Rollback plan:** Retell code stays alive during migration. Rollback = single SQL update to flip `tenants.settings.voice_engine` back to `'retell'`.
+
+**Success criteria (before decommissioning Retell):**
+- Latency P95 < 800ms, P50 < 500ms per turn
+- Blind test: 3+ humans can't reliably identify agent as bot
+- 30 days of clean operation on Koren's tenant
+- Verified cost < $0.12/min
 
 ---
 
@@ -147,12 +180,23 @@ Everything needed to start building on top of.
 | `UCHAT_API_TOKEN` | WhatsApp | ✅ Set |
 | `UCHAT_WEBHOOK_SECRET` | WhatsApp | ✅ Set |
 | `UCHAT_WEBHOOK_TENANT_ID` | WhatsApp | ✅ Set |
-| `TWILIO_ACCOUNT_SID` | Voice | — |
-| `TWILIO_AUTH_TOKEN` | Voice | — |
-| `TWILIO_PHONE_NUMBER` | Voice | — |
-| `ELEVENLABS_API_KEY` | Voice | ✅ Set |
-| `ELEVENLABS_AGENT_ID` | Voice | ✅ Set |
-| `ELEVENLABS_PHONE_NUMBER_ID` | Voice outbound | ✅ Set |
+| `TWILIO_ACCOUNT_SID` | Voice (conference monitoring only) | ✅ Set |
+| `TWILIO_AUTH_TOKEN` | Voice (conference monitoring only) | ✅ Set |
+| `TWILIO_WHATSAPP_NUMBER` | WhatsApp (Twilio path — legacy) | — |
+| `RETELL_API_KEY` | Voice — current engine | ✅ Set |
+| `RETELL_AGENT_ID` | Voice — current engine | ✅ Set |
+| `ZADARMA_API_KEY` | Voice — SIP number / caller ID | ✅ Set |
+| `ZADARMA_API_SECRET` | Voice — SIP number / caller ID | ✅ Set |
+| `ZADARMA_PHONE_NUMBER` | Voice — the actual phone number | ✅ Set |
+| `LIVEKIT_URL` | Voice — Phase 7 target engine | ⏳ To add |
+| `LIVEKIT_API_KEY` | Voice — Phase 7 target engine | ⏳ To add |
+| `LIVEKIT_API_SECRET` | Voice — Phase 7 target engine | ⏳ To add |
+| `CARTESIA_API_KEY` | Voice — TTS | ⏳ To add |
+| `CARTESIA_VOICE_ID_HE` | Voice — Hebrew voice selection | ⏳ To add |
+| `OPENAI_REALTIME_MODEL` | Voice — Phase 7 STT (default: `gpt-realtime-whisper`) | ⏳ To add |
+| ~~`ELEVENLABS_API_KEY`~~ | ~~Voice (original POC)~~ | Retired |
+| ~~`ELEVENLABS_AGENT_ID`~~ | ~~Voice (original POC)~~ | Retired |
+| ~~`ELEVENLABS_PHONE_NUMBER_ID`~~ | ~~Voice outbound (original POC)~~ | Retired |
 | `RESEND_API_KEY` | Email | — |
 | `RESEND_FROM_EMAIL` | Email | — |
 | `RESEND_INBOUND_TENANT_ID` | Email webhook | — |
