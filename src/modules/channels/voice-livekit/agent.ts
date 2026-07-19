@@ -246,7 +246,9 @@ export default defineAgent({
       sttModel: env.STT_PROVIDER === 'soniox' ? env.SONIOX_MODEL : env.OPENAI_REALTIME_MODEL,
       turnDetection: env.VOICE_TURN_DETECTION,
       llmModel: env.VOICE_LLM_MODEL ?? env.AI_MODEL,
-      ttsModel: env.CARTESIA_MODEL,
+      // The report must name the engine that actually spoke — a DeepDub call labeled sonic-3
+      // sends whoever reads the latency numbers chasing the wrong provider.
+      ttsModel: env.VOICE_TTS_PROVIDER === 'deepdub' ? `deepdub/${env.DEEPDUB_MODEL}` : env.CARTESIA_MODEL,
     });
 
     // LEGAL PRE-ROLL, started FIRST and awaited just before the greeting: the recorded-call
