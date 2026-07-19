@@ -200,6 +200,22 @@ export class DeepdubTTS extends tts.TTS {
     return { client, release };
   }
 
+  /**
+   * Opens (or refreshes) the streaming socket WITHOUT synthesizing anything, so the first real
+   * turn doesn't pay the ~550–1900ms connect. Call it at call start — the recording-notice
+   * pre-roll is ~2s of free time that covers the whole handshake. Best-effort by contract: a
+   * failed prewarm logs and does nothing; the first synthesis will simply connect as before.
+   */
+  async prewarm(): Promise<void> {
+    try {
+      const { release } = await this.acquire();
+      release(true);
+      console.log('deepdub_prewarmed');
+    } catch (err) {
+      console.error('deepdub_prewarm_failed', err instanceof Error ? err.message : String(err));
+    }
+  }
+
   override synthesize(
     text: string,
     connOptions?: APIConnectOptions,

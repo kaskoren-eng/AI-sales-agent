@@ -25,6 +25,7 @@ import {
 } from './prompts/thinking-fillers.he.js';
 import { guardStream, withFiller } from './speech-guard.js';
 import { ShadowSTT } from './stt/shadow-stt.js';
+import { DeepdubTTS } from './tts/deepdub.tts.js';
 import { buildAgentTools } from './tools/index.js';
 import { buildToolRuntime, type ToolRuntimeContext } from './tools/tool-context.js';
 
@@ -216,7 +217,13 @@ export default defineAgent({
   // Runs once per call.
   entry: async (ctx: JobContext) => {
     const vad = ctx.proc.userData.vad as silero.VAD;
-    const session = new voice.AgentSession(buildSessionComponents(env, vad));
+    const components = buildSessionComponents(env, vad);
+    const session = new voice.AgentSession(components);
+
+    // DeepDub's realtime advantage only exists on a WARM socket (cold connect ~550–1900ms, warm
+    // TTFB ~460ms — measured). Open it NOW, in parallel with everything below; by the time the
+    // greeting synthesizes, the handshake is long done. No-op for other TTS providers.
+    if (components.tts instanceof DeepdubTTS) void components.tts.prewarm();
 
     // Connect FIRST. waitForParticipant() throws "room is not connected" otherwise — you cannot
     // ask who is on the call before picking up the phone. (session.start() below also connects,
