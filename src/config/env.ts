@@ -87,6 +87,11 @@ const envSchema = z.object({
   // UUID of the tenant that receives inbound voice calls (enables learning injection)
   VOICE_WEBHOOK_TENANT_ID: z.string().uuid().optional(),
 
+  // OpenAI service tier for the VOICE LLM only ('priority' = faster TTFT at ~2x token cost —
+  // pennies on ~50-token voice turns, and TTFT is the voice pipeline's biggest visible block).
+  // Verified eligible 2026-07-20. Empty = provider default.
+  VOICE_LLM_SERVICE_TIER: z.enum(['auto', 'default', 'flex', 'priority']).optional(),
+
   // Channels - Voice (LiveKit self-built pipeline) — the replacement engine
   LIVEKIT_URL: z.string().url().optional(),
   LIVEKIT_API_KEY: z.string().min(1).optional(),

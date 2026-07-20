@@ -87,6 +87,10 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
     llm: new openai.LLM({
       model: env.VOICE_LLM_MODEL ?? env.AI_MODEL,
       ...(env.VOICE_LLM_REASONING_EFFORT ? { reasoningEffort: env.VOICE_LLM_REASONING_EFFORT } : {}),
+      // 'priority' buys faster time-to-first-token — the single largest VISIBLE block in the
+      // pipeline (preemptive generation can only hide ~200-600ms of it inside the endpointing
+      // window). ~2x token cost is pennies on 50-token voice turns.
+      ...(env.VOICE_LLM_SERVICE_TIER ? { serviceTier: env.VOICE_LLM_SERVICE_TIER } : {}),
     }),
     tts: buildTTS(env),
     turnHandling: {

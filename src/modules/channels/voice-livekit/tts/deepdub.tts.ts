@@ -38,12 +38,20 @@ import type { Env } from '../../../../config/env.js';
 const NUM_CHANNELS = 1;
 // How DeepDub signals "generation done": it DOESN'T. The streaming protocol never sends an
 // `isFinished: true` terminal — the official SDK example drains until a recv timeout, and so do we.
+// (The SDK's OTHER websocket mode — per-generation `generateTo*` — does send isFinished, but its
+// warm TTFB measured the same as this mode, 514ms vs 478ms median, so switching buys nothing on
+// the caller-audible number. Probed 2026-07-19.)
 // FIRST_AUDIO waits out the model's cold/first-token latency; once audio is flowing, a gap longer
 // than IDLE means the utterance is over (chunks otherwise arrive faster than realtime). IDLE is a
 // truncation-vs-latency trade: too short clips the tail on a network hiccup, too long holds the
-// shared connection past the turn. 800ms is comfortably above observed inter-chunk gaps.
+// SHARED SERIALIZED connection past the turn — which stalls the next segment (and, with
+// preemptive TTS, the real reply behind a discarded draft). Measured inter-chunk gaps are tens of
+// ms; 350ms is still >5x above them and returns the connection ~450ms sooner than the old 800ms.
 const FIRST_AUDIO_TIMEOUT_MS = 12_000;
-const RECV_IDLE_TIMEOUT_MS = 800;
+const RECV_IDLE_TIMEOUT_MS = 350;
+// Cancellation responsiveness: recv waits are sliced so a cancelled stream (barge-in, discarded
+// preemptive draft) frees the shared connection within one slice instead of one full timeout.
+const RECV_SLICE_MS = 150;
 
 /**
  * The breaker fits the DISCRETE, awaitable op we own: opening the streaming connection. Auth
@@ -127,16 +135,25 @@ async function receiveAudio(
   isCancelled: () => boolean,
 ): Promise<void> {
   let gotAudio = false;
-  while (!isCancelled()) {
-    const timeoutMs = gotAudio ? RECV_IDLE_TIMEOUT_MS : FIRST_AUDIO_TIMEOUT_MS;
-    const msg = await client.asyncStreamRecv({ timeoutMs });
-    if (msg === null) break; // idle gap after audio => done; or first-audio timeout => give up
+  // Sliced waits: each recv blocks at most RECV_SLICE_MS, the silence budget spans slices. This
+  // keeps end-detection semantics identical while letting a cancel take effect within ~150ms —
+  // the old single 800ms recv held the SHARED connection hostage to its own timeout. Slices only
+  // add empty-timeout iterations during SILENCE, so no audio chunk ever hits the listener gap.
+  let silenceBudgetMs = FIRST_AUDIO_TIMEOUT_MS;
+  while (!isCancelled() && silenceBudgetMs > 0) {
+    const slice = Math.min(RECV_SLICE_MS, silenceBudgetMs);
+    const msg = await client.asyncStreamRecv({ timeoutMs: slice });
+    if (msg === null) {
+      silenceBudgetMs -= slice; // quiet slice; utterance is over when the budget runs out
+      continue;
+    }
     if (msg.error) throw new Error(String(msg.message ?? msg.error));
     if (typeof msg.data === 'string' && msg.data.length > 0) {
       emitter.write(Buffer.from(msg.data, 'base64'));
       gotAudio = true;
     }
     if (msg.isFinished) break;
+    silenceBudgetMs = gotAudio ? RECV_IDLE_TIMEOUT_MS : FIRST_AUDIO_TIMEOUT_MS;
   }
   emitter.end();
 }
