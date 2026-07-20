@@ -49,8 +49,11 @@ describe('deepdubOptions — validation', () => {
 describe('DeepdubTTS — the LiveKit tts.TTS surface', () => {
   const tts = new DeepdubTTS(deepdubOptions(baseEnv));
 
-  it('reports the configured sample rate and mono channel', () => {
-    expect(tts.sampleRate).toBe(24_000);
+  it('reports the protocol-native 48kHz rate and mono channel', () => {
+    // The per-generation WS protocol is WAV-only at the model's native 48kHz — the sampleRate
+    // option is NOT honored there (the streaming protocol honored it; we left that protocol for
+    // the EU endpoint + exact isFinished, see the adapter header). LiveKit resamples downstream.
+    expect(tts.sampleRate).toBe(48_000);
     expect(tts.numChannels).toBe(1);
   });
 

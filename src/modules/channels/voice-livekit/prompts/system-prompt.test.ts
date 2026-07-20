@@ -173,6 +173,16 @@ describe('Keren Phase 4 — tools-mode prompt', () => {
     expect(TOOLS_PROMPT).toMatch(/end_call` with reason "bad_time"/u);
   });
 
+  it('opens every reply with a SHORT first sentence — the latency rule (both variants)', () => {
+    // The voice starts only after the FIRST SENTENCE completes (guardStream flushes per sentence),
+    // so a long first sentence is pure dead air. Measured 2026-07-20: the tail of sentence-1
+    // generation was worth 300-500ms per turn. If this rule is ever dropped, that time comes back.
+    for (const prompt of [SYSTEM_PROMPT_HE, TOOLS_PROMPT]) {
+      expect(prompt).toMatch(/SHORT first sentence/u);
+      expect(prompt).toMatch(/2 to 4 words/u);
+    }
+  });
+
   it('shared guarantees hold in BOTH variants', () => {
     for (const prompt of [SYSTEM_PROMPT_HE, TOOLS_PROMPT]) {
       expect(prompt).toMatch(/קרן \(Keren\)/u);

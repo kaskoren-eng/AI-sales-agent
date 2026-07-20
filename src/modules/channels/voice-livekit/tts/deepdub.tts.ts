@@ -13,52 +13,49 @@ import { CircuitBreaker } from '../../../../shared/circuit-breaker.js';
 import type { Env } from '../../../../config/env.js';
 
 /**
- * DeepDub TTS — a hand-written LiveKit `tts.TTS` over DeepDub's streaming WebSocket.
+ * DeepDub TTS — a hand-written LiveKit `tts.TTS` over DeepDub's PER-GENERATION WebSocket.
  *
  * WHY THIS IS HAND-WRITTEN (unlike the Soniox STT, which uses an official LiveKit plugin): there is
  * no LiveKit plugin for DeepDub. So the parts LiveKit would normally own — framing raw PCM into
- * AudioFrames, the input/flush protocol, TTFB accounting — are implemented here against the base
- * `tts.SynthesizeStream` contract, mirroring how `@livekit/agents-plugin-cartesia` does it.
+ * AudioFrames, the input protocol, TTFB accounting — are implemented here against the base
+ * `tts.SynthesizeStream` contract.
  *
  * WHY DEEPDUB AT ALL: it won a blind Hebrew A/B (6:1) on quality and native gender, at cost parity
- * with Cartesia, and its realtime model reports ~125ms TTFB. It is NOT the default — Cartesia stays
- * shipped — this is selected only by VOICE_TTS_PROVIDER=deepdub. Strangler-fig, one env var to
- * revert, exactly like STT_PROVIDER. See tests/hebrew-tts-niqqud-ab/ for the evidence.
+ * with Cartesia. It is selected only by VOICE_TTS_PROVIDER=deepdub — Cartesia stays shipped.
+ * Strangler-fig, one env var to revert, exactly like STT_PROVIDER.
  *
- * KEY DESIGN — ONE PERSISTENT CONNECTION, REUSED. A fresh streaming connect costs ~550ms; the
- * realtime win only exists on a WARM socket. Verified that DeepDub keeps the streaming socket open
- * across generations (gen2 on the same socket: 331ms TTFB, socket still OPEN), so this holds a single
- * connection on the TTS instance and serializes turns through it. A dead socket is transparently
- * reconnected; the connect (the real failure point: auth, network) is what the circuit breaker wraps.
+ * WHY THE PER-GENERATION PROTOCOL AND NOT THE STREAMING SESSION (v1 of this file used streaming;
+ * switched 2026-07-20 after measuring, at Koren's directive to maximize DeepDub):
  *
- * RAW PCM, NOT WAV. We ask DeepDub for `s16le` (not `wav`), so each chunk is headerless PCM that
- * feeds `AudioByteStream` directly — no per-chunk RIFF header to strip.
+ *  1. GEOGRAPHY. The streaming endpoint is GLOBAL-ONLY (`wss.deepdub.ai` — measured 330ms TCP
+ *     connect ≈ US), while this protocol has a real EU host (`wsapi.eu.deepdub.ai` — 184ms from
+ *     the same machine). ~145ms LESS round-trip baked into EVERY turn, and far less than that
+ *     from the eu-central production agent. DeepDub's advertised <200ms floor is only reachable
+ *     near their servers.
+ *  2. AN EXPLICIT `isFinished` TERMINAL. The streaming session never says "done" — v1 had to
+ *     declare end-of-utterance via an idle recv timeout, an artificial tail on every reply. Here
+ *     the server says so, exactly.
+ *  3. NO SERIALIZATION. Streaming forced ONE generation at a time through a mutex; chunks here
+ *     are routed by generationId, so overlapping syntheses (a preemptive-TTS draft plus the real
+ *     reply) never queue behind each other.
+ *
+ * FORMAT: this protocol is WAV-only over WS (no s16le, no sampleRate param) — chunks arrive as
+ * 48kHz WAV pieces; `headerless: true` makes the SDK strip each chunk's header, so we frame raw
+ * 48k PCM and LiveKit resamples downstream. env DEEPDUB_SAMPLE_RATE is therefore unused here.
  */
 
 const NUM_CHANNELS = 1;
-// How DeepDub signals "generation done": it DOESN'T. The streaming protocol never sends an
-// `isFinished: true` terminal — the official SDK example drains until a recv timeout, and so do we.
-// (The SDK's OTHER websocket mode — per-generation `generateTo*` — does send isFinished, but its
-// warm TTFB measured the same as this mode, 514ms vs 478ms median, so switching buys nothing on
-// the caller-audible number. Probed 2026-07-19.)
-// FIRST_AUDIO waits out the model's cold/first-token latency; once audio is flowing, a gap longer
-// than IDLE means the utterance is over (chunks otherwise arrive faster than realtime). IDLE is a
-// truncation-vs-latency trade: too short clips the tail on a network hiccup, too long holds the
-// SHARED SERIALIZED connection past the turn — which stalls the next segment (and, with
-// preemptive TTS, the real reply behind a discarded draft). Measured inter-chunk gaps are tens of
-// ms; 350ms is still >5x above them and returns the connection ~450ms sooner than the old 800ms.
-const FIRST_AUDIO_TIMEOUT_MS = 12_000;
-const RECV_IDLE_TIMEOUT_MS = 350;
-// Cancellation responsiveness: recv waits are sliced so a cancelled stream (barge-in, discarded
-// preemptive draft) frees the shared connection within one slice instead of one full timeout.
-const RECV_SLICE_MS = 150;
+/** The model's native output rate over the per-generation WS protocol (probed: RIFF says 48000). */
+const NATIVE_SAMPLE_RATE = 48_000;
+/** Hard cap per sentence — the SDK's generation promise has NO timeout of its own; a server that
+ * never sends isFinished would otherwise hang the reply forever. */
+const GENERATION_TIMEOUT_MS = 30_000;
 
 /**
- * The breaker fits the DISCRETE, awaitable op we own: opening the streaming connection. Auth
- * failures, a dead region, a network partition — five of those in a row and this stops trying for
- * 30s instead of hammering DeepDub on every turn. The long-lived streaming read itself is guarded by
- * the base `SynthesizeStream.run()` error path plus AgentSession's TTS fallback, the same division of
- * labour documented for the Soniox breaker (stt/soniox.stt.ts).
+ * The breaker fits the DISCRETE, awaitable op we own: opening the websocket. Auth failures, a dead
+ * region, a network partition — five of those in a row and this stops trying for 30s instead of
+ * hammering DeepDub on every turn. Generation errors surface through the base stream error path
+ * plus AgentSession's TTS fallback.
  */
 export const deepdubCircuit = new CircuitBreaker({
   name: 'deepdub',
@@ -97,67 +94,6 @@ export function deepdubOptions(env: Env): DeepdubTTSOptions {
   };
 }
 
-const isOpen = (c: DeepdubClient): boolean => !!c.streamingSocket && c.streamingSocket.readyState === 1;
-
-function safeDisconnect(c: DeepdubClient): void {
-  try {
-    c.disconnectStreaming();
-  } catch {
-    /* already gone */
-  }
-}
-
-async function connectStreaming(opts: DeepdubTTSOptions): Promise<DeepdubClient> {
-  const client = new DeepdubClient(opts.apiKey, { protocol: 'websocket', eu: opts.eu });
-  await client.asyncStreamConnect({
-    model: opts.model,
-    locale: opts.locale,
-    voicePromptId: opts.voicePromptId,
-    // Headerless PCM straight into AudioByteStream.
-    format: 's16le',
-    sampleRate: opts.sampleRate,
-    realtime: opts.realtime,
-  });
-  return client;
-}
-
-/**
- * Drains one DeepDub generation into the frame emitter and returns the moment it is DONE.
- *
- * DeepDub streaming sends no terminal message, so end-of-utterance is a recv timeout: a long window
- * for the first chunk (cold/first-token latency), then a short idle gap once audio is flowing. We
- * still break on `isFinished` in case a future model does send it. `asyncStreamRecv` (not
- * `...RecvAudio`) is used so we see the raw message and can react to errors and flags.
- */
-async function receiveAudio(
-  client: DeepdubClient,
-  emitter: FrameEmitter,
-  isCancelled: () => boolean,
-): Promise<void> {
-  let gotAudio = false;
-  // Sliced waits: each recv blocks at most RECV_SLICE_MS, the silence budget spans slices. This
-  // keeps end-detection semantics identical while letting a cancel take effect within ~150ms —
-  // the old single 800ms recv held the SHARED connection hostage to its own timeout. Slices only
-  // add empty-timeout iterations during SILENCE, so no audio chunk ever hits the listener gap.
-  let silenceBudgetMs = FIRST_AUDIO_TIMEOUT_MS;
-  while (!isCancelled() && silenceBudgetMs > 0) {
-    const slice = Math.min(RECV_SLICE_MS, silenceBudgetMs);
-    const msg = await client.asyncStreamRecv({ timeoutMs: slice });
-    if (msg === null) {
-      silenceBudgetMs -= slice; // quiet slice; utterance is over when the budget runs out
-      continue;
-    }
-    if (msg.error) throw new Error(String(msg.message ?? msg.error));
-    if (typeof msg.data === 'string' && msg.data.length > 0) {
-      emitter.write(Buffer.from(msg.data, 'base64'));
-      gotAudio = true;
-    }
-    if (msg.isFinished) break;
-    silenceBudgetMs = gotAudio ? RECV_IDLE_TIMEOUT_MS : FIRST_AUDIO_TIMEOUT_MS;
-  }
-  emitter.end();
-}
-
 function wrapError(e: unknown): APIError {
   if (e instanceof APIError) return e;
   return new APIConnectionError({
@@ -166,14 +102,28 @@ function wrapError(e: unknown): APIError {
   });
 }
 
+async function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${what} timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export class DeepdubTTS extends tts.TTS {
   label = 'deepdub.TTS';
   #opts: DeepdubTTSOptions;
-  #idle: DeepdubClient | null = null;
-  #chain: Promise<void> = Promise.resolve();
+  #client: DeepdubClient | null = null;
+  #connecting: Promise<DeepdubClient> | null = null;
 
   constructor(opts: DeepdubTTSOptions) {
-    super(opts.sampleRate, NUM_CHANNELS, { streaming: true });
+    super(NATIVE_SAMPLE_RATE, NUM_CHANNELS, { streaming: true });
     this.#opts = opts;
   }
 
@@ -190,46 +140,82 @@ export class DeepdubTTS extends tts.TTS {
     return this.#opts;
   }
 
-  /**
-   * Serializes generations through ONE reused streaming connection. Each caller awaits the previous
-   * caller's `release()`, gets a warm (or freshly reconnected) socket, and must call `release`.
-   */
-  async acquire(): Promise<{ client: DeepdubClient; release: (healthy: boolean) => void }> {
-    let unlock!: () => void;
-    const gate = new Promise<void>((r) => {
-      unlock = r;
-    });
-    const prev = this.#chain;
-    this.#chain = prev.then(() => gate);
-    await prev;
-
-    let client = this.#idle;
-    this.#idle = null;
-    if (!client || !isOpen(client)) {
-      if (client) safeDisconnect(client);
-      client = await deepdubCircuit.execute(() => connectStreaming(this.#opts));
+  /** One shared socket; generations multiplex over it by generationId. Reconnects transparently,
+   * with a single in-flight connect so concurrent streams don't race to dial. */
+  async client(): Promise<DeepdubClient> {
+    const c = this.#client;
+    if (c?.socket && c.socket.readyState === 1) return c;
+    if (!this.#connecting) {
+      this.#connecting = deepdubCircuit
+        .execute(async () => {
+          const fresh = new DeepdubClient(this.#opts.apiKey, {
+            protocol: 'websocket',
+            eu: this.#opts.eu, // wsapi.eu.deepdub.ai — the EU host is THE latency point, see header
+          });
+          await fresh.connect();
+          return fresh;
+        })
+        .then((fresh) => {
+          this.#client = fresh;
+          return fresh;
+        })
+        .finally(() => {
+          this.#connecting = null;
+        });
     }
-    const release = (healthy: boolean): void => {
-      if (healthy && isOpen(client)) this.#idle = client;
-      else safeDisconnect(client);
-      unlock();
-    };
-    return { client, release };
+    return this.#connecting;
   }
 
   /**
-   * Opens (or refreshes) the streaming socket WITHOUT synthesizing anything, so the first real
-   * turn doesn't pay the ~550–1900ms connect. Call it at call start — the recording-notice
-   * pre-roll is ~2s of free time that covers the whole handshake. Best-effort by contract: a
-   * failed prewarm logs and does nothing; the first synthesis will simply connect as before.
+   * Opens (or refreshes) the websocket WITHOUT synthesizing anything, so the first real turn
+   * doesn't pay the connect. Called at call entry, in parallel with the recording-notice pre-roll
+   * (~2s of free time). Best-effort: a failure logs and the first synthesis dials as before.
    */
   async prewarm(): Promise<void> {
     try {
-      const { release } = await this.acquire();
-      release(true);
+      await this.client();
       console.log('deepdub_prewarmed');
     } catch (err) {
       console.error('deepdub_prewarm_failed', err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /**
+   * One sentence → one generation. Chunks stream into `emit` as they arrive (headerless 48k PCM);
+   * resolves on the server's explicit isFinished. A cancelled stream stops emitting immediately —
+   * the server finishes on its own, harmlessly, routed to a generationId nobody listens to.
+   */
+  async generate(text: string, emit: (pcm: Buffer) => void, isCancelled: () => boolean): Promise<void> {
+    const client = await this.client();
+    try {
+      await withTimeout(
+        client.generateToBuffer(text, {
+          voicePromptId: this.#opts.voicePromptId,
+          model: this.#opts.model,
+          locale: this.#opts.locale,
+          realtime: this.#opts.realtime,
+          headerless: true,
+          accentControl: {
+            accentBaseLocale: this.#opts.locale,
+            accentLocale: this.#opts.locale,
+            accentRatio: this.#opts.accentRatio,
+          },
+          onChunk: (chunk: Buffer) => {
+            if (!isCancelled() && chunk.length > 0) emit(chunk);
+          },
+        }),
+        GENERATION_TIMEOUT_MS,
+        'DeepDub generation',
+      );
+    } catch (e) {
+      // A dead socket poisons every future generation — drop it so the next call redials.
+      try {
+        this.#client?.disconnect();
+      } catch {
+        /* already gone */
+      }
+      this.#client = null;
+      throw e;
     }
   }
 
@@ -246,8 +232,12 @@ export class DeepdubTTS extends tts.TTS {
   }
 
   override async close(): Promise<void> {
-    if (this.#idle) safeDisconnect(this.#idle);
-    this.#idle = null;
+    try {
+      this.#client?.disconnect();
+    } catch {
+      /* already gone */
+    }
+    this.#client = null;
     await super.close();
   }
 }
@@ -256,19 +246,22 @@ export class DeepdubTTS extends tts.TTS {
 class FrameEmitter {
   #bstream: AudioByteStream;
   #last: AudioFrame | undefined;
-  constructor(
-    sampleRate: number,
-    private readonly put: (frame: AudioFrame, final: boolean) => void,
-  ) {
+  put: (frame: AudioFrame, final: boolean) => void;
+
+  constructor(sampleRate: number, put: (frame: AudioFrame, final: boolean) => void) {
     this.#bstream = new AudioByteStream(sampleRate, NUM_CHANNELS);
+    this.put = put;
   }
+
   write(chunk: Buffer): void {
-    const ab = chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength);
-    for (const frame of this.#bstream.write(ab)) {
+    for (const frame of this.#bstream.write(
+      chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength),
+    )) {
       this.#flushLast(false);
       this.#last = frame;
     }
   }
+
   end(): void {
     for (const frame of this.#bstream.flush()) {
       this.#flushLast(false);
@@ -276,6 +269,7 @@ class FrameEmitter {
     }
     this.#flushLast(true);
   }
+
   #flushLast(final: boolean): void {
     if (this.#last) {
       this.put(this.#last, final);
@@ -287,51 +281,42 @@ class FrameEmitter {
 export class DeepdubSynthesizeStream extends tts.SynthesizeStream {
   label = 'deepdub.SynthesizeStream';
   #dtts: DeepdubTTS;
-  #opts: DeepdubTTSOptions;
 
   constructor(dtts: DeepdubTTS, connOptions?: APIConnectOptions) {
     super(dtts, connOptions);
     this.#dtts = dtts;
-    this.#opts = dtts.options;
   }
 
   protected async run(): Promise<void> {
     const requestId = shortuuid();
-    const { client, release } = await this.#dtts.acquire();
-    let healthy = true;
+    const cancelled = (): boolean => this.closed || this.abortSignal.aborted;
     try {
-      const emitter = new FrameEmitter(this.#opts.sampleRate, (frame, final) => {
+      const emitter = new FrameEmitter(NATIVE_SAMPLE_RATE, (frame, final) => {
         if (!this.queue.closed) {
           this.queue.put({ requestId, segmentId: requestId, frame, final });
         }
       });
 
-      const inputTask = (async () => {
-        let started = false;
-        for await (const data of this.input) {
-          if (data === DeepdubSynthesizeStream.FLUSH_SENTINEL) continue; // DeepDub streams continuously
-          if (!data) continue;
-          if (!started) {
-            // Anchor TTFB to the first byte actually sent, not to connect/queueing above it.
-            this.markStarted();
-            started = true;
-          }
-          await client.asyncStreamText(data);
+      // guardStream upstream gates text by SENTENCE, so each input chunk is one speakable
+      // sentence → one generation with an exact server-side end. Sequential awaits keep order.
+      let started = false;
+      for await (const data of this.input) {
+        if (cancelled()) break;
+        if (data === DeepdubSynthesizeStream.FLUSH_SENTINEL || !data) continue;
+        if (!started) {
+          // Anchor TTFB to the first sentence actually sent, not to connect/queueing above it.
+          this.markStarted();
+          started = true;
         }
-        await client.asyncStreamEnd();
-      })();
+        await this.#dtts.generate(data, (pcm) => emitter.write(pcm), cancelled);
+      }
 
-      const recvTask = receiveAudio(client, emitter, () => this.closed || this.abortSignal.aborted);
-
-      await Promise.all([inputTask, recvTask]);
+      emitter.end();
       if (!this.queue.closed) {
         this.queue.put(DeepdubSynthesizeStream.END_OF_STREAM);
       }
     } catch (e) {
-      healthy = false;
       throw wrapError(e);
-    } finally {
-      release(healthy);
     }
   }
 }
@@ -339,7 +324,6 @@ export class DeepdubSynthesizeStream extends tts.SynthesizeStream {
 export class DeepdubChunkedStream extends tts.ChunkedStream {
   label = 'deepdub.ChunkedStream';
   #dtts: DeepdubTTS;
-  #opts: DeepdubTTSOptions;
 
   constructor(
     dtts: DeepdubTTS,
@@ -349,27 +333,24 @@ export class DeepdubChunkedStream extends tts.ChunkedStream {
   ) {
     super(text, dtts, connOptions, abortSignal);
     this.#dtts = dtts;
-    this.#opts = dtts.options;
   }
 
   protected async run(): Promise<void> {
     const requestId = shortuuid();
-    const { client, release } = await this.#dtts.acquire();
-    let healthy = true;
     try {
-      const emitter = new FrameEmitter(this.#opts.sampleRate, (frame, final) => {
+      const emitter = new FrameEmitter(NATIVE_SAMPLE_RATE, (frame, final) => {
         if (!this.queue.closed) {
           this.queue.put({ requestId, segmentId: requestId, frame, final });
         }
       });
-      await client.asyncStreamText(this.inputText);
-      await client.asyncStreamEnd();
-      await receiveAudio(client, emitter, () => this.abortSignal.aborted);
+      await this.#dtts.generate(
+        this.inputText,
+        (pcm) => emitter.write(pcm),
+        () => this.abortSignal.aborted,
+      );
+      emitter.end();
     } catch (e) {
-      healthy = false;
       throw wrapError(e);
-    } finally {
-      release(healthy);
     }
   }
 }

@@ -17,3 +17,4 @@ call-reports/
 # Agent deploy secrets — never commit
 .env.agent
 .agent-build/
+.agent-secrets.env
