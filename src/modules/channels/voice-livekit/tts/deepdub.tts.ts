@@ -47,9 +47,25 @@ import type { Env } from '../../../../config/env.js';
 const NUM_CHANNELS = 1;
 /** The model's native output rate over the per-generation WS protocol (probed: RIFF says 48000). */
 const NATIVE_SAMPLE_RATE = 48_000;
-/** Hard cap per sentence — the SDK's generation promise has NO timeout of its own; a server that
- * never sends isFinished would otherwise hang the reply forever. */
-const GENERATION_TIMEOUT_MS = 30_000;
+/**
+ * Liveness is judged by INACTIVITY, not a total cap: a healthy long answer streams chunks
+ * continuously, so "no chunk for 10s" means the generation is dead — while a fixed 30s total
+ * (v2.0) meant 30 SECONDS OF SILENCE on a real call before anyone noticed. That is exactly the
+ * "she disappeared" bug Koren hit on 2026-07-20: one failure was allowed to hold the line.
+ */
+const GENERATION_IDLE_TIMEOUT_MS = 10_000;
+/** Absolute ceiling per sentence, streaming or not — nothing legitimate takes this long. */
+const GENERATION_HARD_CAP_MS = 60_000;
+/**
+ * Two sockets, generations spread across them. Two jobs:
+ *  1. FAILURE ISOLATION — a dead socket takes down only ITS generations; v2.0 killed the single
+ *     shared socket on any error, which silently hung every other in-flight generation (the SDK's
+ *     per-generation promise has no close handling — it just never settles).
+ *  2. NO SERVER-SIDE QUEUING — two concurrent generations on ONE socket (a preemptive-TTS draft
+ *     plus the real reply) came back as whole-audio-at-once lumps (ttfb == duration, observed
+ *     2131ms and 2515ms on Koren's call). Separate sockets, separate lanes.
+ */
+const SOCKET_POOL_SIZE = 2;
 
 /**
  * The breaker fits the DISCRETE, awaitable op we own: opening the websocket. Auth failures, a dead
@@ -102,25 +118,17 @@ function wrapError(e: unknown): APIError {
   });
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`${what} timed out after ${ms}ms`)), ms);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
+interface PoolEntry {
+  client: DeepdubClient;
+  inFlight: number;
+  dead: boolean;
 }
 
 export class DeepdubTTS extends tts.TTS {
   label = 'deepdub.TTS';
   #opts: DeepdubTTSOptions;
-  #client: DeepdubClient | null = null;
-  #connecting: Promise<DeepdubClient> | null = null;
+  #pool: PoolEntry[] = [];
+  #dialing = 0;
 
   constructor(opts: DeepdubTTSOptions) {
     super(NATIVE_SAMPLE_RATE, NUM_CHANNELS, { streaming: true });
@@ -140,40 +148,54 @@ export class DeepdubTTS extends tts.TTS {
     return this.#opts;
   }
 
-  /** One shared socket; generations multiplex over it by generationId. Reconnects transparently,
-   * with a single in-flight connect so concurrent streams don't race to dial. */
-  async client(): Promise<DeepdubClient> {
-    const c = this.#client;
-    if (c?.socket && c.socket.readyState === 1) return c;
-    if (!this.#connecting) {
-      this.#connecting = deepdubCircuit
-        .execute(async () => {
+  /** Least-busy open socket from the pool, dialing a fresh one while there is room. */
+  async #lease(): Promise<PoolEntry> {
+    this.#pool = this.#pool.filter((e) => {
+      const alive = !e.dead && e.client.socket?.readyState === 1;
+      if (!alive) {
+        try {
+          e.client.disconnect();
+        } catch {
+          /* already gone */
+        }
+      }
+      return alive;
+    });
+
+    const idle = this.#pool.find((e) => e.inFlight === 0);
+    if (idle) return idle;
+
+    if (this.#pool.length + this.#dialing < SOCKET_POOL_SIZE) {
+      this.#dialing++;
+      try {
+        const client = await deepdubCircuit.execute(async () => {
           const fresh = new DeepdubClient(this.#opts.apiKey, {
             protocol: 'websocket',
             eu: this.#opts.eu, // wsapi.eu.deepdub.ai — the EU host is THE latency point, see header
           });
           await fresh.connect();
           return fresh;
-        })
-        .then((fresh) => {
-          this.#client = fresh;
-          return fresh;
-        })
-        .finally(() => {
-          this.#connecting = null;
         });
+        const entry: PoolEntry = { client, inFlight: 0, dead: false };
+        this.#pool.push(entry);
+        return entry;
+      } finally {
+        this.#dialing--;
+      }
     }
-    return this.#connecting;
+
+    // Pool is full and busy — share the least-loaded socket (lump risk beats a fresh dial's cost).
+    return this.#pool.reduce((a, b) => (a.inFlight <= b.inFlight ? a : b));
   }
 
   /**
-   * Opens (or refreshes) the websocket WITHOUT synthesizing anything, so the first real turn
-   * doesn't pay the connect. Called at call entry, in parallel with the recording-notice pre-roll
-   * (~2s of free time). Best-effort: a failure logs and the first synthesis dials as before.
+   * Opens the first socket WITHOUT synthesizing anything, so the first real turn doesn't pay the
+   * connect. Called at call entry, in parallel with the recording-notice pre-roll (~2s of free
+   * time). Best-effort: a failure logs and the first synthesis dials as before.
    */
   async prewarm(): Promise<void> {
     try {
-      await this.client();
+      await this.#lease();
       console.log('deepdub_prewarmed');
     } catch (err) {
       console.error('deepdub_prewarm_failed', err instanceof Error ? err.message : String(err));
@@ -181,15 +203,71 @@ export class DeepdubTTS extends tts.TTS {
   }
 
   /**
-   * One sentence → one generation. Chunks stream into `emit` as they arrive (headerless 48k PCM);
-   * resolves on the server's explicit isFinished. A cancelled stream stops emitting immediately —
-   * the server finishes on its own, harmlessly, routed to a generationId nobody listens to.
+   * One sentence → one generation, with ONE retry on a fresh socket.
+   *
+   * The retry exists for the failure Koren actually hit: a socket dies mid-call, and without a
+   * retry the reply is silence and the caller says "הלו? שומעת?" into the void. Retried ONLY when
+   * nothing was emitted yet — replaying a half-spoken sentence would stutter, which is worse.
    */
   async generate(text: string, emit: (pcm: Buffer) => void, isCancelled: () => boolean): Promise<void> {
-    const client = await this.client();
+    let emitted = false;
+    const guardedEmit = (pcm: Buffer): void => {
+      emitted = true;
+      emit(pcm);
+    };
     try {
-      await withTimeout(
-        client.generateToBuffer(text, {
+      await this.#generateOnce(text, guardedEmit, isCancelled);
+    } catch (e) {
+      if (isCancelled() || emitted) throw e;
+      console.error(
+        'deepdub_generation_retry',
+        JSON.stringify({ error: asError(e).message, textLen: text.length }),
+      );
+      await this.#generateOnce(text, guardedEmit, isCancelled);
+    }
+  }
+
+  /**
+   * Chunks stream into `emit` as they arrive (headerless 48k PCM); resolves on the server's
+   * explicit isFinished. Fails FAST — not after a long cap — on the two ways a generation
+   * actually dies: its socket closing (the SDK promise would otherwise never settle) and chunk
+   * inactivity. A failure marks ONLY the leased socket dead; other generations keep their lanes.
+   * A cancelled stream stops emitting immediately; the server finishes harmlessly on its own.
+   */
+  async #generateOnce(
+    text: string,
+    emit: (pcm: Buffer) => void,
+    isCancelled: () => boolean,
+  ): Promise<void> {
+    const entry = await this.#lease();
+    entry.inFlight++;
+
+    const socket = entry.client.socket;
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    let hardTimer: ReturnType<typeof setTimeout> | undefined;
+    let onSocketClose: (() => void) | undefined;
+
+    const failure = new Promise<never>((_, reject) => {
+      const armIdle = (): void => {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(
+          () => reject(new Error(`DeepDub generation stalled: no chunk for ${GENERATION_IDLE_TIMEOUT_MS}ms`)),
+          GENERATION_IDLE_TIMEOUT_MS,
+        );
+      };
+      armIdle();
+      (entry as PoolEntry & { armIdle?: () => void }).armIdle = armIdle;
+      hardTimer = setTimeout(
+        () => reject(new Error(`DeepDub generation exceeded ${GENERATION_HARD_CAP_MS}ms`)),
+        GENERATION_HARD_CAP_MS,
+      );
+      onSocketClose = () => reject(new Error('DeepDub socket closed mid-generation'));
+      socket?.once('close', onSocketClose);
+    });
+
+    try {
+      await Promise.race([
+        entry.client.generateToBuffer(text, {
           voicePromptId: this.#opts.voicePromptId,
           model: this.#opts.model,
           locale: this.#opts.locale,
@@ -201,21 +279,27 @@ export class DeepdubTTS extends tts.TTS {
             accentRatio: this.#opts.accentRatio,
           },
           onChunk: (chunk: Buffer) => {
+            (entry as PoolEntry & { armIdle?: () => void }).armIdle?.();
             if (!isCancelled() && chunk.length > 0) emit(chunk);
           },
         }),
-        GENERATION_TIMEOUT_MS,
-        'DeepDub generation',
-      );
+        failure,
+      ]);
     } catch (e) {
-      // A dead socket poisons every future generation — drop it so the next call redials.
+      // Kill ONLY this socket. v2.0 disconnected the shared client here, which hung every other
+      // in-flight generation — the root of the she-went-silent bug.
+      entry.dead = true;
       try {
-        this.#client?.disconnect();
+        entry.client.disconnect();
       } catch {
         /* already gone */
       }
-      this.#client = null;
       throw e;
+    } finally {
+      if (idleTimer) clearTimeout(idleTimer);
+      if (hardTimer) clearTimeout(hardTimer);
+      if (onSocketClose) socket?.off('close', onSocketClose);
+      entry.inFlight--;
     }
   }
 
@@ -232,12 +316,14 @@ export class DeepdubTTS extends tts.TTS {
   }
 
   override async close(): Promise<void> {
-    try {
-      this.#client?.disconnect();
-    } catch {
-      /* already gone */
+    for (const entry of this.#pool) {
+      try {
+        entry.client.disconnect();
+      } catch {
+        /* already gone */
+      }
     }
-    this.#client = null;
+    this.#pool = [];
     await super.close();
   }
 }

@@ -1,9 +1,11 @@
 import { readFile } from 'node:fs/promises';
+import { setTimeout as delay } from 'node:timers/promises';
 import {
   AudioFrame,
   AudioSource,
   LocalAudioTrack,
   type Room,
+  RoomEvent,
   TrackPublishOptions,
   TrackSource,
 } from '@livekit/rtc-node';
@@ -71,6 +73,42 @@ export function parseWavPcm16(buf: Buffer): ParsedWav {
 const FRAME_MS = 100;
 
 /**
+ * How long to wait for the caller to actually SUBSCRIBE to the notice track before playing.
+ *
+ * WHY: the notice used to play the instant the track was published — but subscription negotiation
+ * takes time, and a ~2s track that starts before anyone is attached is partly or fully missed.
+ * Koren heard exactly that on 2026-07-20: log said played:true, his ears said nothing played.
+ * `played:true` must mean "a subscribed listener existed while the audio went out", or it is a
+ * compliance lie.
+ */
+const SUBSCRIBER_WAIT_MS = 5_000;
+
+/** Jitter-buffer tail: audio still in flight when waitForPlayout resolves locally. Unpublishing
+ * immediately clips the last words of the notice off the caller's ear. */
+const TAIL_GRACE_MS = 500;
+
+/** Resolves true when OUR publication gains a subscriber, false on timeout. */
+function waitForSubscriber(room: Room, trackSid: string, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onSubscribed = (track: { sid?: string }): void => {
+      if (track?.sid && track.sid !== trackSid) return; // someone else's track
+      cleanup();
+      resolve(true);
+    };
+    const cleanup = (): void => {
+      if (timer) clearTimeout(timer);
+      room.off(RoomEvent.LocalTrackSubscribed, onSubscribed);
+    };
+    room.on(RoomEvent.LocalTrackSubscribed, onSubscribed);
+    timer = setTimeout(() => {
+      cleanup();
+      resolve(false);
+    }, timeoutMs);
+  });
+}
+
+/**
  * Plays the notice into the room and resolves when the audio has fully played out.
  * Returns the ISO timestamp of playback start on success, null on ANY failure — the caller logs
  * the outcome either way, because "we don't know if it played" must be visible, not silent.
@@ -87,19 +125,27 @@ export async function playRecordingNotice(
     const { sampleRate, channels, pcm } = parseWavPcm16(await readFile(assetPath));
     if (channels !== 1) throw new Error(`expected mono asset, got ${channels} channels`);
 
-    const startedAt = new Date().toISOString();
     source = new AudioSource(sampleRate, 1);
     const track = LocalAudioTrack.createAudioTrack('recording-notice', source);
     const options = new TrackPublishOptions({ source: TrackSource.SOURCE_MICROPHONE });
     const publication = await room.localParticipant?.publishTrack(track, options);
     if (!publication) throw new Error('no local participant to publish from');
 
+    // Do NOT play into an empty line: wait until the caller's client has actually subscribed.
+    // On timeout we play anyway (a SIP participant may not surface the event) but say so in the
+    // log — a notice nobody could hear must never be recorded as clean compliance silently.
+    const subscribed = await waitForSubscriber(room, publication.sid ?? '', SUBSCRIBER_WAIT_MS);
+    if (!subscribed) console.error('recording_notice_no_subscriber_confirmed');
+
+    const startedAt = new Date().toISOString();
     const samplesPerFrame = Math.floor((sampleRate * FRAME_MS) / 1000);
     for (let off = 0; off < pcm.length; off += samplesPerFrame) {
       const chunk = pcm.subarray(off, Math.min(off + samplesPerFrame, pcm.length));
       await source.captureFrame(new AudioFrame(chunk, sampleRate, 1, chunk.length));
     }
     await source.waitForPlayout();
+    // Let the network tail drain — unpublishing on the local playout edge clips the last words.
+    await delay(TAIL_GRACE_MS);
 
     await room.localParticipant?.unpublishTrack(publication.sid!).catch(() => undefined);
     return startedAt;
