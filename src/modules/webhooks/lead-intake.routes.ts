@@ -25,6 +25,9 @@ const genericLeadSchema = z.object({
   phone: z.string().min(1).optional(),
   source: z.string().default('webhook'),
   metadata: z.record(z.unknown()).optional(),
+  // The consent checkbox on the intake form. true → we may send business-initiated (template)
+  // WhatsApp to this lead; recorded with source+timestamp+ip as the proof.
+  whatsapp_consent: z.boolean().optional(),
 }).refine(d => d.phone || d.email, {
   message: 'At least one of phone or email is required',
 });
@@ -104,7 +107,12 @@ export async function leadIntakeRoutes(app: FastifyInstance) {
       });
     }
 
-    const { name, email, phone, source: leadSource, metadata } = parsed.data;
+    const { name, email, phone, source: leadSource, metadata, whatsapp_consent } = parsed.data;
+    // Consent is only ever GRANTED here — an unticked box means "no change", never a revocation
+    // (revocation is an explicit opt-out flow, not an absent field).
+    const consentRecord = whatsapp_consent === true
+      ? { granted: true, source: 'intake_form', at: new Date().toISOString(), ip: request.ip }
+      : undefined;
 
     // 3. Verify tenant exists
     const [tenant] = await app.db
@@ -147,9 +155,16 @@ export async function leadIntakeRoutes(app: FastifyInstance) {
           source: leadSource,
           status: 'new',
           metadata: metadata ?? {},
+          ...(consentRecord ? { whatsappConsent: consentRecord } : {}),
         })
         .returning();
       lead = created;
+    } else if (consentRecord && !(lead.whatsappConsent as { granted?: boolean } | null)?.granted) {
+      // Existing lead ticked the box on a new form — record it (never downgrade existing consent).
+      await app.db
+        .update(leads)
+        .set({ whatsappConsent: consentRecord, updatedAt: new Date() })
+        .where(and(eq(leads.id, lead.id), eq(leads.tenantId, tenantId)));
     }
 
     // 5. Kick off the lead-intake flow if tenant has one configured

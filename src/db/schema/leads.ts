@@ -1,6 +1,20 @@
 import { pgTable, uuid, varchar, integer, timestamp, jsonb, index } from 'drizzle-orm/pg-core';
 import { tenants } from './tenants.js';
 
+/**
+ * WhatsApp consent record — who said we may message them, and how we can prove it.
+ * `source`: 'intake_form' (checkbox on the lead form) | 'voice_verbal' (confirmed their number
+ * for confirmations on a recorded call — the transcript is the proof) | future sources.
+ * Business-initiated (out-of-24h-window template) sends REQUIRE granted=true; freeform replies
+ * inside an open session don't (they messaged us first).
+ */
+export interface WhatsappConsent {
+  granted: boolean;
+  source: string;
+  at: string;
+  ip?: string;
+}
+
 export const leads = pgTable('leads', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
@@ -12,6 +26,10 @@ export const leads = pgTable('leads', {
   status: varchar('status', { length: 50 }).default('new').notNull(),
   score: integer('score').default(0),
   metadata: jsonb('metadata').default({}),
+  // Meta's 24h customer-service window: freeform WhatsApp is allowed only within 24h of the
+  // lead's LAST INBOUND message. Updated by every inbound WhatsApp webhook (UChat + Twilio).
+  lastInboundWhatsappAt: timestamp('last_inbound_whatsapp_at', { withTimezone: true }),
+  whatsappConsent: jsonb('whatsapp_consent').$type<WhatsappConsent>(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [

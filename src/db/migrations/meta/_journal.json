@@ -29,6 +29,13 @@
       "when": 1783955136431,
       "tag": "0003_mature_miracleman",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784815077212,
+      "tag": "0004_giant_toad",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { WhatsAppService } from './whatsapp.service.js';
+import { touchWhatsappWindow } from './whatsapp-window.js';
 import { enqueueMessage } from '../../../queues/message-processor.queue.js';
 import { isTimestampFresh } from '../../../shared/webhook-timestamp.js';
 
@@ -96,6 +97,12 @@ export async function whatsappRoutes(app: FastifyInstance) {
       rawPayload: body,
     });
 
+    // The lead just messaged us → their 24h freeform window opens NOW. Best-effort: the message
+    // itself is already queued; a failed stamp only means an outbound falls back to template.
+    void touchWhatsappWindow(app.db, tenantId, from).catch((err) =>
+      app.log.warn({ err }, 'whatsapp window stamp failed (twilio)'),
+    );
+
     app.log.info({ from, messageSid, tenantId }, 'Twilio WhatsApp message enqueued');
 
     // Twilio expects TwiML response (empty is fine — we send outbound separately)
@@ -147,6 +154,11 @@ export async function whatsappRoutes(app: FastifyInstance) {
       contentType: message_type,
       rawPayload: request.body as Record<string, unknown>,
     });
+
+    // Inbound message → the 24h freeform window opens. Best-effort, same contract as Twilio path.
+    void touchWhatsappWindow(app.db, tenantId, phone).catch((err) =>
+      app.log.warn({ err }, 'whatsapp window stamp failed (uchat)'),
+    );
 
     app.log.info({ phone, userNs: user_ns, tenantId }, 'WhatsApp message enqueued');
 
