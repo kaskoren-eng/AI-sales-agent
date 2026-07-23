@@ -23,6 +23,7 @@ import { createOutboundSenderWorker } from './queues/workers/outbound-sender.wor
 import { createFlowExecutorWorker } from './queues/workers/flow-executor.worker.js';
 import { createCsvImportWorker } from './queues/workers/csv-import.worker.js';
 import { createCallAnalysisWorker } from './queues/workers/call-analysis.worker.js';
+import { createMeetingRemindersWorker } from './queues/workers/meeting-reminders.worker.js';
 import { WhatsAppService } from './modules/channels/whatsapp/whatsapp.service.js';
 import { EmailService } from './modules/channels/email/email.service.js';
 import { VoiceService } from './modules/channels/voice/voice.service.js';
@@ -244,12 +245,23 @@ export async function buildApp(): Promise<FastifyInstance> {
     deadLetterQueue: app.queues.deadLetter,
   });
 
+  const meetingRemindersWorker = createMeetingRemindersWorker({
+    db: app.db,
+    redis: app.redis,
+    deadLetterQueue: app.queues.deadLetter,
+    remindersQueue: app.queues.meetingReminders,
+    whatsapp: whatsappService,
+    email: emailService,
+    logger: app.log,
+  });
+
   app.addHook('onClose', async () => {
     await messageProcessorWorker.close();
     await outboundSenderWorker.close();
     await flowExecutorWorker.close();
     await csvImportWorker.close();
     await callAnalysisWorker.close();
+    await meetingRemindersWorker.close();
   });
 
   return app;

@@ -34,6 +34,22 @@ export const REMINDER_DEFAULTS: ReminderSettings = {
   quietHours: { start: '21:00', end: '08:00' },
 };
 
+/**
+ * Is this Israel-local minute-of-day inside the quiet window? Windows may wrap midnight —
+ * the default 21:00→08:00 does. End-exclusive: at exactly 08:00 the window is over.
+ */
+export function inQuietWindow(minutesOfDay: number, window: ReminderQuietHours): boolean {
+  const toMin = (hhmm: string): number => {
+    const [h, m] = hhmm.split(':').map(Number);
+    return (h ?? 0) * 60 + (m ?? 0);
+  };
+  const start = toMin(window.start);
+  const end = toMin(window.end);
+  return start < end
+    ? minutesOfDay >= start && minutesOfDay < end
+    : minutesOfDay >= start || minutesOfDay < end;
+}
+
 const MIN_OFFSET_MINUTES = 5;
 const MAX_OFFSET_MINUTES = 14 * 24 * 60;
 const MAX_OFFSETS = 6;

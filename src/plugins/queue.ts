@@ -10,6 +10,7 @@ declare module 'fastify' {
       deadLetter: Queue;
       csvImport: Queue;
       callAnalysis: Queue;
+      meetingReminders: Queue;
     };
   }
 }
@@ -23,8 +24,9 @@ export default fp(async (app) => {
   const deadLetter = new Queue('dead-letter', { connection });
   const csvImport = new Queue('csv-import', { connection });
   const callAnalysis = new Queue('call-analysis', { connection });
+  const meetingReminders = new Queue('meeting-reminders', { connection });
 
-  app.decorate('queues', { messageProcessor, outboundSender, flowExecutor, deadLetter, csvImport, callAnalysis });
+  app.decorate('queues', { messageProcessor, outboundSender, flowExecutor, deadLetter, csvImport, callAnalysis, meetingReminders });
 
   app.addHook('onClose', async () => {
     await messageProcessor.close();
@@ -33,5 +35,6 @@ export default fp(async (app) => {
     await deadLetter.close();
     await csvImport.close();
     await callAnalysis.close();
+    await meetingReminders.close();
   });
 });

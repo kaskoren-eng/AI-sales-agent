@@ -100,6 +100,34 @@ export function israelDayKey(now: Date = new Date()): string {
   return `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
 }
 
+/** Minutes since Israel-local midnight — what quiet-hours windows are compared against. */
+export function israelMinutesOfDay(instant: Date): number {
+  return israelParts(instant).minutesOfDay;
+}
+
+/**
+ * The NEXT instant at which Israeli wall clocks read `hhmm` — today if that time is still
+ * ahead, otherwise tomorrow. Used by the reminders worker to defer a quiet-hours delivery to
+ * the end of the window (e.g. next 08:00). Same two-pass offset trick as startOfIsraelDay,
+ * with a wrap guard for targets near midnight, so it stays correct across DST transitions.
+ */
+export function nextIsraelClockTime(now: Date, hhmm: string): Date {
+  const [h, m] = hhmm.split(':').map(Number);
+  const target = (h ?? 0) * 60 + (m ?? 0);
+  const p = israelParts(now);
+  const dayAdd = target > p.minutesOfDay ? 0 : 1;
+
+  let candidate = new Date(Date.UTC(p.year, p.month - 1, p.day + dayAdd, 0, target));
+  for (let pass = 0; pass < 2; pass += 1) {
+    let diff = israelParts(candidate).minutesOfDay - target;
+    if (diff > 720) diff -= 1440; // candidate crossed an Israel midnight — wrap
+    if (diff < -720) diff += 1440;
+    if (diff === 0) break;
+    candidate = new Date(candidate.getTime() - diff * 60_000);
+  }
+  return candidate;
+}
+
 /**
  * "מחר, יום שלישי, 21 ביולי, בשעה 11:00" — how the agent offers a slot out loud.
  *
