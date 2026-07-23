@@ -3,6 +3,7 @@ import { getTenantId } from '../../shared/tenant-context.js';
 import { GoogleCalendarProvider } from './providers/google-calendar.provider.js';
 import { scheduledCalls } from '../../db/schema/index.js';
 import { eq, and } from 'drizzle-orm';
+import { cancelMeetingReminders } from '../../queues/meeting-reminders.queue.js';
 
 function getCalendarProvider(app: FastifyInstance): GoogleCalendarProvider | null {
   const { GOOGLE_CALENDAR_ID, GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL, GOOGLE_CALENDAR_PRIVATE_KEY } = app.env;
@@ -96,6 +97,19 @@ export async function schedulingRoutes(app: FastifyInstance) {
     const { bookingUid } = request.params;
     await provider.cancelBooking(bookingUid);
 
+    // Read the row BEFORE flipping status — its reminders.jobIds is the list of pending
+    // reminder jobs we can now remove by name (tenant-scoped, like every read here).
+    const rows = await app.db
+      .select({ reminders: scheduledCalls.reminders })
+      .from(scheduledCalls)
+      .where(
+        and(
+          eq(scheduledCalls.tenantId, tenantId),
+          eq(scheduledCalls.providerRef, bookingUid),
+        ),
+      )
+      .limit(1);
+
     await app.db
       .update(scheduledCalls)
       .set({ status: 'cancelled', updatedAt: new Date() })
@@ -105,6 +119,18 @@ export async function schedulingRoutes(app: FastifyInstance) {
           eq(scheduledCalls.providerRef, bookingUid),
         ),
       );
+
+    // Best-effort: a job we miss here dies anyway at the worker's status check — the row is
+    // 'cancelled' now. So removal failures must never fail the cancellation itself.
+    const jobIds = rows[0]?.reminders?.jobIds ?? [];
+    if (jobIds.length > 0) {
+      try {
+        const removed = await cancelMeetingReminders(app.queues.meetingReminders, jobIds);
+        app.log.info({ tenantId, bookingUid, removed, of: jobIds.length }, 'Reminder jobs removed');
+      } catch (err) {
+        app.log.warn({ tenantId, bookingUid, err }, 'Reminder job removal failed — worker backstop will skip them');
+      }
+    }
 
     app.log.info({ tenantId, bookingUid }, 'Google Calendar booking cancelled');
     return { ok: true };

@@ -4,7 +4,7 @@
  * Strategy: mock BullMQ Worker and the enqueueFlowStep helper so no Redis
  * connection is made. Capture the processor and invoke it directly.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ── Mock BullMQ ────────────────────────────────────────────────────────────
 const capturedProcessors: Array<(job: any) => Promise<any>> = [];
@@ -109,6 +109,15 @@ describe('flow-executor worker', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedProcessors.length = 0;
+    // The worker's make_call operating-hours guard reads REAL time (new Date()). Without
+    // pinning, these tests pass by day and fail by night (or on Israeli holidays — the guard
+    // reschedules the dial instead of placing it). Pin a plain Tuesday noon in Israel.
+    // Fake only Date so async mock plumbing (timers, promises) stays real.
+    vi.useFakeTimers({ now: new Date('2026-07-21T09:00:00.000Z'), toFake: ['Date'] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   // ── send_whatsapp step ────────────────────────────────────────────────────
