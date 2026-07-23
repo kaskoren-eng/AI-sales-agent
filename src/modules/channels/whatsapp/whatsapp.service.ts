@@ -14,6 +14,50 @@ export class WhatsAppService {
     return this.sendViaUChat(to, message);
   }
 
+  /** Can this tenant deployment send pre-approved template messages? (Twilio Content API only —
+   * UChat has no template surface, so out-of-window sends there are undeliverable.) */
+  get supportsTemplates(): boolean {
+    return Boolean(this.app.env.TWILIO_ACCOUNT_SID);
+  }
+
+  /**
+   * Sends a pre-approved WhatsApp TEMPLATE via Twilio's Content API — the only legal way to
+   * message someone outside Meta's 24h customer-service window. `contentSid` is the tenant's own
+   * approved template (settings.whatsapp_templates); `variables` fill its numbered placeholders.
+   */
+  async sendTemplate(to: string, contentSid: string, variables: Record<string, string>): Promise<void> {
+    const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_NUMBER } = this.app.env;
+    if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_NUMBER) {
+      throw new Error('Template sends require Twilio WhatsApp configuration');
+    }
+
+    const params = new URLSearchParams({
+      From: `whatsapp:${TWILIO_WHATSAPP_NUMBER}`,
+      To: `whatsapp:${to}`,
+      ContentSid: contentSid,
+      ContentVariables: JSON.stringify(variables),
+    });
+
+    const credentials = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+    const response = await fetch(`${TWILIO_API_BASE}/${TWILIO_ACCOUNT_SID}/Messages.json`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Basic ${credentials}`,
+      },
+      body: params.toString(),
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      this.app.log.error({ status: response.status, body: errBody, to, contentSid }, 'Twilio template send failed');
+      throw new Error(`Twilio API error: ${response.status}`);
+    }
+
+    this.app.log.info({ to, contentSid }, 'WhatsApp template sent via Twilio');
+  }
+
   async sendVideo(to: string, url: string, caption?: string): Promise<void> {
     if (this.app.env.TWILIO_ACCOUNT_SID) {
       const body = caption ? `${caption}\n${url}` : url;

@@ -3,6 +3,10 @@ import { tenants } from '../../db/schema/index.js';
 import type { Database } from '../../db/client.js';
 import { encrypt, decrypt } from '../../shared/crypto.js';
 import { NotFoundError } from '../../shared/errors.js';
+import {
+  resolveWhatsappTemplates,
+  type WhatsappTemplatesConfig,
+} from '../channels/whatsapp/whatsapp-window.js';
 
 export interface BusinessProfile {
   companyName: string;
@@ -66,6 +70,36 @@ export class SettingsService {
       .where(eq(tenants.id, tenantId));
 
     return profile;
+  }
+
+  /** The tenant's approved WhatsApp template SIDs — see whatsapp-window.ts for the slot keys. */
+  async getWhatsappTemplates(tenantId: string): Promise<WhatsappTemplatesConfig> {
+    const [tenant] = await this.db
+      .select({ settings: tenants.settings })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    if (!tenant) throw new NotFoundError('Tenant', tenantId);
+    return resolveWhatsappTemplates(tenant.settings);
+  }
+
+  async saveWhatsappTemplates(tenantId: string, templates: WhatsappTemplatesConfig): Promise<WhatsappTemplatesConfig> {
+    const [tenant] = await this.db
+      .select({ settings: tenants.settings })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    if (!tenant) throw new NotFoundError('Tenant', tenantId);
+
+    const settings = getTenantSettings(tenant.settings);
+    settings.whatsapp_templates = templates;
+
+    await this.db
+      .update(tenants)
+      .set({ settings, updatedAt: new Date() })
+      .where(eq(tenants.id, tenantId));
+
+    return resolveWhatsappTemplates(settings);
   }
 
   async getZadarmaSettings(tenantId: string): Promise<{ configured: boolean; phoneNumber: string | null; configuredAt: string | null }> {
