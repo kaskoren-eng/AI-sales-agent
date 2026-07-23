@@ -32,6 +32,13 @@ export async function leadRoutes(app: FastifyInstance) {
     return service.getById(tenantId, id);
   });
 
+  // GET /:id/timeline — lead + conversations + messages + scheduled calls (for Lead Detail page)
+  app.get('/:id/timeline', async (request) => {
+    const tenantId = getTenantId(request);
+    const { id } = request.params as { id: string };
+    return service.getByIdWithTimeline(tenantId, id);
+  });
+
   app.patch('/:id', async (request) => {
     const tenantId = getTenantId(request);
     const { id } = request.params as { id: string };

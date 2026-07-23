@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AppLayout } from './components/layout/AppLayout.js'
 import { Overview } from './pages/Overview.js'
 import { Leads } from './pages/Leads.js'
+import { LeadDetail } from './pages/LeadDetail.js'
 import { Calls } from './pages/Calls.js'
 import { VoiceChat } from './pages/VoiceChat.js'
 import { CallDetail } from './pages/CallDetail.js'
@@ -16,6 +17,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Overview />} />
           <Route path="/leads" element={<Leads />} />
+          <Route path="/leads/:id" element={<LeadDetail />} />
           <Route path="/calls" element={<Calls />} />
           <Route path="/calls/:id" element={<CallDetail />} />
           <Route path="/voice" element={<VoiceChat />} />

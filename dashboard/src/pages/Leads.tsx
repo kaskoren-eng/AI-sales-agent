@@ -1,4 +1,5 @@
 import { useState, useId } from 'react'
+import { Link } from 'react-router-dom'
 import { Users, Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useLeadsList } from '../hooks/useLeadsList.js'
 import { Badge, statusToBadgeVariant } from '../components/ui/Badge.js'
@@ -297,14 +298,19 @@ export function Leads() {
                         {formatDate(lead.lastActivityAt ?? lead.updatedAt)}
                       </td>
                       <td style={{ padding: '13px 16px' }}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
+                        <Link
+                          to={`/leads/${lead.id}`}
                           aria-label={`View details for ${lead.name ?? 'lead'}`}
-                          style={{ fontSize: '12px', color: 'var(--accent-cyan)' }}
+                          style={{ textDecoration: 'none' }}
                         >
-                          View
-                        </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            style={{ fontSize: '12px', color: 'var(--accent-cyan)' }}
+                          >
+                            View
+                          </Button>
+                        </Link>
                       </td>
                     </tr>
                   ))

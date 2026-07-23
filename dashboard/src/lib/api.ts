@@ -5,6 +5,7 @@ import type {
   CallDetail,
   LeadsFilters,
   LeadsListResponse,
+  LeadTimelineResponse,
   BookingsListResponse,
   TenantMe,
 } from './types.js'
@@ -34,6 +35,20 @@ export function fetchLeads(filters: LeadsFilters = {}): Promise<LeadsListRespons
   if (filters.limit != null) params.set('limit', String(filters.limit))
   const qs = params.toString()
   return apiFetch<LeadsListResponse>(`/leads${qs ? `?${qs}` : ''}`)
+}
+
+export function fetchLeadTimeline(id: string): Promise<LeadTimelineResponse> {
+  return apiFetch<LeadTimelineResponse>(`/leads/${id}/timeline`)
+}
+
+export function updateLead(
+  id: string,
+  patch: { name?: string | null; email?: string | null; phone?: string | null; status?: string; score?: number | null },
+): Promise<LeadTimelineResponse['lead']> {
+  return apiFetch(`/leads/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
 }
 
 export function fetchBookings(): Promise<BookingsListResponse> {
