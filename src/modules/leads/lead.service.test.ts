@@ -76,12 +76,23 @@ describe('LeadService', () => {
   });
 
   describe('list', () => {
-    it('returns all leads for the tenant', async () => {
-      const builder = makeQueryBuilder([SAMPLE_LEAD]);
-      db.select.mockReturnValue(builder);
+    it('returns paginated leads with total for the tenant', async () => {
+      // list() issues two selects: count first, then the page of data
+      const countBuilder: any = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockResolvedValue([{ value: 1 }]),
+      };
+      const dataBuilder: any = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        offset: vi.fn().mockResolvedValue([SAMPLE_LEAD]),
+      };
+      db.select.mockReturnValueOnce(countBuilder).mockReturnValueOnce(dataBuilder);
 
       const result = await service.list(TENANT);
-      expect(result).toEqual([SAMPLE_LEAD]);
+      expect(result).toEqual({ data: [SAMPLE_LEAD], total: 1 });
     });
   });
 
