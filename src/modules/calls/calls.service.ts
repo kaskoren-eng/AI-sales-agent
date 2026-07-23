@@ -502,7 +502,7 @@ export class CallsService {
         }
       } catch (err) {
         this.logger?.warn(
-          { event: 'learnings_fetch_failed', conversationId: id, error: err instanceof Error ? err.message : String(err) },
+          { event: 'learnings_fetch_failed', conversationId: id, channelRef: row.channelRef, error: err instanceof Error ? err.message : String(err) },
           'call_learnings lookup failed; returning call without learnings',
         );
       }
