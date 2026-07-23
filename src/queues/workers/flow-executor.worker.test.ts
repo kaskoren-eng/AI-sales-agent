@@ -299,6 +299,29 @@ describe('flow-executor worker', () => {
     expect(deps.voice.initiateOutboundCall).not.toHaveBeenCalled();
   });
 
+  it('make_call step — SKIPS (never throws) when the daily spend limit is exhausted', async () => {
+    const tenant = makeTenantWithFlow('onboarding', [CALL_STEP]);
+    const deps = makeDeps();
+    deps.redis.duplicate = vi.fn().mockReturnValue({});
+    // Real-time call-count cap: the INCR says this is attempt #101 of a 100/day tenant.
+    deps.redis.incr = vi.fn().mockResolvedValue(101);
+    deps.redis.expire = vi.fn().mockResolvedValue(1);
+    deps.db.select
+      .mockReturnValueOnce(makeSelectChain([tenant])) // flow lookup
+      .mockReturnValueOnce(makeSelectChain([{ status: 'new' }])) // DNC check — not opted out
+      .mockReturnValueOnce(makeSelectChain([tenant])) // engine settings
+      .mockReturnValueOnce(makeSelectChain([{ totalSecs: 0, nullCount: 0 }])); // spend query
+
+    const voice = { initiateOutboundCall: vi.fn() };
+    deps.voice = voice;
+
+    createFlowExecutorWorker(deps);
+    const result = await capturedProcessors[0](makeJob({ stepIndex: 0 }));
+
+    expect(voice.initiateOutboundCall).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ action: 'make_call' }); // job SUCCEEDS — no DLQ poisoning
+  });
+
   it('make_call step — skips when voice service not configured', async () => {
     const tenant = makeTenantWithFlow('onboarding', [CALL_STEP]);
     const deps = makeDeps();

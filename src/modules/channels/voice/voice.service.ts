@@ -2,6 +2,9 @@ import { eq, and, ne, desc } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { CircuitBreaker } from '../../../shared/circuit-breaker.js';
 import { callLearnings } from '../../../db/schema/call-learnings.js';
+import { tenants } from '../../../db/schema/index.js';
+import { AppError } from '../../../shared/errors.js';
+import { checkDailySpendLimit } from '../../calls/spend-guard.js';
 import { CallAnalysisService } from '../../calls/call-analysis.service.js';
 import { SettingsService } from '../../settings/settings.service.js';
 
@@ -88,6 +91,23 @@ export class VoiceService {
     if (!RETELL_API_KEY || !RETELL_AGENT_ID || !ZADARMA_PHONE_NUMBER) {
       this.app.log.warn({ to }, 'Retell outbound not fully configured — skipping call');
       return { callId: 'skipped' };
+    }
+
+    // Toll-fraud brake — the SERVICE is the choke point every dial path shares (flow executor,
+    // HTTP /outbound, anything future). AppError → the HTTP layer answers 429.
+    const [tenantRow] = await this.app.db
+      .select({ settings: tenants.settings })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    const decision = await checkDailySpendLimit(
+      { db: this.app.db, redis: this.app.redis },
+      tenantId,
+      tenantRow?.settings,
+    );
+    if (!decision.allowed) {
+      this.app.log.warn({ tenantId, ...decision }, 'Outbound dial blocked by daily spend limit');
+      throw new AppError('Daily outbound spend limit reached', 429, 'SPEND_LIMIT_EXCEEDED');
     }
 
     const dynamicVars = await this.buildDynamicVariables(tenantId);

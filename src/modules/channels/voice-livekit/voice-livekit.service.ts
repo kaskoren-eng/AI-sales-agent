@@ -1,8 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
+import type { Redis } from 'ioredis';
 import { SipClient } from 'livekit-server-sdk';
 import type { Env } from '../../../config/env.js';
+import type { Database } from '../../../db/client.js';
+import { tenants } from '../../../db/schema/index.js';
 import { CircuitBreaker } from '../../../shared/circuit-breaker.js';
 import { AppError } from '../../../shared/errors.js';
+import { checkDailySpendLimit } from '../../calls/spend-guard.js';
 
 /**
  * Places outbound calls through LiveKit instead of Retell.
@@ -34,7 +39,10 @@ export interface OutboundCallMetadata {
 export class LiveKitVoiceService {
   private sip: SipClient;
 
-  constructor(private env: Env) {
+  constructor(
+    private env: Env,
+    private deps?: { db?: Database; redis?: Redis },
+  ) {
     if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) {
       throw new AppError('LiveKit is not configured', 500, 'LIVEKIT_NOT_CONFIGURED');
     }
@@ -56,6 +64,28 @@ export class LiveKitVoiceService {
     const trunkId = this.env.LIVEKIT_SIP_OUTBOUND_TRUNK_ID;
     if (!trunkId) {
       return { callId: 'skipped' };
+    }
+
+    // Toll-fraud brake at the dial itself (defense in depth with the flow-executor pre-check).
+    // Bench/test constructions without deps skip it WITH A WARNING — production (server.ts)
+    // always injects db+redis.
+    if (this.deps?.db) {
+      const [tenantRow] = await this.deps.db
+        .select({ settings: tenants.settings })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+      const decision = await checkDailySpendLimit(
+        { db: this.deps.db, redis: this.deps.redis ?? null },
+        tenantId,
+        tenantRow?.settings,
+      );
+      if (!decision.allowed) {
+        console.warn('livekit_dial_blocked_spend_limit', JSON.stringify({ tenantId, reason: decision.reason }));
+        throw new AppError('Daily outbound spend limit reached', 429, 'SPEND_LIMIT_EXCEEDED');
+      }
+    } else {
+      console.warn('livekit_dial_spend_guard_skipped — no db injected (non-production construction)');
     }
 
     const roomName = `call-out-${randomUUID()}`;

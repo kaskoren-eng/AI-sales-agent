@@ -83,6 +83,24 @@ function israelDayStamp(instant: Date): number {
 }
 
 /**
+ * The UTC instant of TODAY's midnight in Israel — the day boundary for daily limits.
+ * Two-pass offset trick, DST-safe with no libraries: take 00:00 UTC of the Israel-local date;
+ * in Israel that instant reads as 02:00 (IST) or 03:00 (IDT); subtract exactly that offset.
+ */
+export function startOfIsraelDay(now: Date = new Date()): Date {
+  const p = israelParts(now);
+  const candidate = new Date(Date.UTC(p.year, p.month - 1, p.day));
+  const cp = israelParts(candidate);
+  return new Date(candidate.getTime() - cp.minutesOfDay * 60_000);
+}
+
+/** Israel-local calendar date as YYYY-MM-DD — the per-day key for counters. */
+export function israelDayKey(now: Date = new Date()): string {
+  const p = israelParts(now);
+  return `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+}
+
+/**
  * "מחר, יום שלישי, 21 ביולי, בשעה 11:00" — how the agent offers a slot out loud.
  *
  * The relative prefix (היום/מחר/מחרתיים) is computed against Israel-local CALENDAR dates, not

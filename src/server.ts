@@ -204,7 +204,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   // the flow executor fall back to Retell rather than taking the whole app down at boot.
   let voiceLivekitService: LiveKitVoiceService | undefined;
   try {
-    voiceLivekitService = new LiveKitVoiceService(env);
+    voiceLivekitService = new LiveKitVoiceService(env, { db: app.db, redis: app.redis });
   } catch {
     app.log.info('LiveKit voice not configured — outbound calls will use Retell');
   }

@@ -7,6 +7,7 @@ import {
   resolveWhatsappTemplates,
   type WhatsappTemplatesConfig,
 } from '../channels/whatsapp/whatsapp-window.js';
+import { resolveTollFraudSettings, type TollFraudSettings } from '../calls/spend-guard.js';
 
 export interface BusinessProfile {
   companyName: string;
@@ -70,6 +71,36 @@ export class SettingsService {
       .where(eq(tenants.id, tenantId));
 
     return profile;
+  }
+
+  /** Daily outbound caps — resolver clamps everything invalid to the defaults (never off). */
+  async getTollFraudSettings(tenantId: string): Promise<TollFraudSettings> {
+    const [tenant] = await this.db
+      .select({ settings: tenants.settings })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    if (!tenant) throw new NotFoundError('Tenant', tenantId);
+    return resolveTollFraudSettings(tenant.settings);
+  }
+
+  async saveTollFraudSettings(tenantId: string, input: Partial<TollFraudSettings>): Promise<TollFraudSettings> {
+    const [tenant] = await this.db
+      .select({ settings: tenants.settings })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    if (!tenant) throw new NotFoundError('Tenant', tenantId);
+
+    const settings = getTenantSettings(tenant.settings);
+    settings.toll_fraud = { ...(settings.toll_fraud as object | undefined), ...input };
+
+    await this.db
+      .update(tenants)
+      .set({ settings, updatedAt: new Date() })
+      .where(eq(tenants.id, tenantId));
+
+    return resolveTollFraudSettings(settings);
   }
 
   /** The tenant's approved WhatsApp template SIDs — see whatsapp-window.ts for the slot keys. */

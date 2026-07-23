@@ -9,6 +9,7 @@ import type { Database } from '../../db/client.js';
 import { tenants, leads } from '../../db/schema/index.js';
 import type { WhatsAppService } from '../../modules/channels/whatsapp/whatsapp.service.js';
 import type { VoiceService } from '../../modules/channels/voice/voice.service.js';
+import { checkDailySpendLimit } from '../../modules/calls/spend-guard.js';
 import {
   resolveVoiceEngine,
   type LiveKitVoiceService,
@@ -204,6 +205,26 @@ export function createFlowExecutorWorker(deps: WorkerDeps) {
           .from(tenants)
           .where(eq(tenants.id, ctx.tenantId))
           .limit(1);
+
+        // Toll-fraud brake, flow-level: a capped tenant SKIPS (never throws) — a policy block
+        // must not retry the job into the DLQ. The dial services check again (defense in depth),
+        // covering the HTTP path this worker never sees.
+        const spend = await checkDailySpendLimit({ db, redis }, ctx.tenantId, engineRow?.settings);
+        if (!spend.allowed) {
+          logger?.warn(
+            {
+              event: 'call_skipped_spend_limit',
+              tenantId: ctx.tenantId,
+              leadId: ctx.leadId,
+              reason: spend.reason,
+              spentUsd: Math.round(spend.spentUsd * 100) / 100,
+              callsToday: spend.callsToday,
+            },
+            'Flow executor: outbound call blocked by daily spend limit',
+          );
+          return {};
+        }
+
         const engine = resolveVoiceEngine(engineRow?.settings, env);
         const dialer = engine === 'livekit' ? voiceLivekit : voice;
 
