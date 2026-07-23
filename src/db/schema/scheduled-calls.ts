@@ -3,6 +3,16 @@ import { tenants } from './tenants.js';
 import { leads } from './leads.js';
 import { conversations } from './conversations.js';
 
+/**
+ * Reminder bookkeeping for a booked meeting: every BullMQ job id ever enqueued for this row
+ * (including quiet-hours re-enqueues, suffixed -d1...), so cancellation can remove them all.
+ * `plannedAt` mirrors the intended fire instants for debugging.
+ */
+export interface ScheduledCallReminders {
+  jobIds: string[];
+  plannedAt?: string[];
+}
+
 export const scheduledCalls = pgTable('scheduled_calls', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
@@ -15,6 +25,7 @@ export const scheduledCalls = pgTable('scheduled_calls', {
   status: varchar('status', { length: 20 }).default('pending').notNull(),
   attendees: jsonb('attendees').default([]),
   notes: text('notes'),
+  reminders: jsonb('reminders').$type<ScheduledCallReminders>(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [
