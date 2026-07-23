@@ -35,12 +35,28 @@ function fakeReport(): CallReport {
   return { recordToolCall: vi.fn() } as unknown as CallReport;
 }
 
+function fakeQueues() {
+  const closeQueues = vi.fn(async () => undefined);
+  return {
+    closeQueues,
+    makeQueues: () => ({
+      outboundQueue: { add: vi.fn() } as never,
+      remindersQueue: { add: vi.fn() } as never,
+      close: closeQueues,
+    }),
+  };
+}
+
 function deps(settings: unknown, close = vi.fn(async () => undefined)) {
+  const q = fakeQueues();
   return {
     close,
+    closeQueues: q.closeQueues,
     deps: {
       connectDb: () => ({ db: {} as Database, close }),
       loadSettings: async () => settings,
+      // Stubbed so unit tests never dial a real Redis through the default factory.
+      makeQueues: q.makeQueues,
     },
   };
 }
@@ -169,6 +185,37 @@ describe('buildToolRuntime — fail-closed matrix', () => {
     expect(rt.leadId).toBe('lead-1');
     expect(rt.bookingCompleted).toBe(false);
     expect(rt.makeProvider(15)).toBeInstanceOf(GoogleCalendarProvider);
+  });
+
+  it('keeps the tenant settings object on the runtime — tools read config without a second query', async () => {
+    const result = await buildToolRuntime(baseEnv, callOpts(), deps(ENABLED_SETTINGS).deps);
+    expect(result.runtime!.settings).toEqual(ENABLED_SETTINGS);
+  });
+
+  it('builds the messaging queues and lastBooking starts null', async () => {
+    const result = await buildToolRuntime(baseEnv, callOpts(), deps(ENABLED_SETTINGS).deps);
+    expect(result.runtime!.outboundQueue).not.toBeNull();
+    expect(result.runtime!.remindersQueue).not.toBeNull();
+    expect(result.runtime!.lastBooking).toBeNull();
+  });
+
+  it('Redis failure degrades to null queues — the CALL proceeds', async () => {
+    const { deps: d } = deps(ENABLED_SETTINGS);
+    d.makeQueues = () => {
+      throw new Error('redis unreachable');
+    };
+    const result = await buildToolRuntime(baseEnv, callOpts(), d);
+    expect(result.disabledReason).toBeNull(); // gate still passed
+    expect(result.runtime!.outboundQueue).toBeNull();
+    expect(result.runtime!.remindersQueue).toBeNull();
+  });
+
+  it('closeDb tears down queues AND the pool', async () => {
+    const { deps: d, close, closeQueues } = deps(ENABLED_SETTINGS);
+    const result = await buildToolRuntime(baseEnv, callOpts(), d);
+    await result.runtime!.closeDb();
+    expect(closeQueues).toHaveBeenCalled();
+    expect(close).toHaveBeenCalled();
   });
 });
 

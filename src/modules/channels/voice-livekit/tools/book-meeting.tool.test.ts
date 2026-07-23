@@ -206,11 +206,14 @@ describe('executeBookMeeting — argument validation', () => {
 });
 
 describe('executeBookMeeting — lead identity, always tenant-scoped', () => {
-  it('outbound call: updates the known lead, inserts nothing into leads', async () => {
+  it('outbound call: updates the known lead (backfill + verbal consent), inserts nothing', async () => {
     const { rt, captured } = fakeRt({ leadId: 'lead-known' });
     await executeBookMeeting(rt, args(), NOW);
-    expect(captured.leadUpdates).toHaveLength(1);
+    // Two updates: the contact backfill (status: qualified) and the verbal WhatsApp consent —
+    // he just confirmed his number for confirmations on a recorded call.
+    expect(captured.leadUpdates).toHaveLength(2);
     expect(captured.leadUpdates[0]).toMatchObject({ status: 'qualified' });
+    expect(captured.leadUpdates[1]).toHaveProperty('whatsappConsent');
     expect(captured.leadInserts).toHaveLength(0);
     expect(captured.callInserts[0]).toMatchObject({ leadId: 'lead-known' });
   });

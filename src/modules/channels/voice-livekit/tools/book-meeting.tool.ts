@@ -1,7 +1,7 @@
 import { llm } from '@livekit/agents';
 import { z } from 'zod';
 import { scheduledCalls } from '../../../../db/schema/index.js';
-import { upsertLead } from './lead-store.js';
+import { grantWhatsappConsentVerbal, upsertLead } from './lead-store.js';
 import {
   BOOKING_BUFFER_MINUTES,
   BOOKING_TIMEZONE,
@@ -127,7 +127,16 @@ export async function executeBookMeeting(
       { name: args.name.trim(), phone: args.phone, email },
       { status: 'qualified' },
     );
-    if (leadId) rt.leadId = leadId;
+    if (leadId) {
+      rt.leadId = leadId;
+      // VERBAL CONSENT: he just provided and confirmed this WhatsApp number for confirmations,
+      // on a recorded call — that is business-initiated-messaging consent, transcript as proof.
+      // Without this, a phone lead (who never sees the intake form) could never legally receive
+      // an out-of-window template. Never downgrades existing consent.
+      await grantWhatsappConsentVerbal(rt.db, rt.tenantId, leadId, now).catch((err) =>
+        console.error('verbal_consent_write_failed', err instanceof Error ? err.message : String(err)),
+      );
+    }
     await rt.db.insert(scheduledCalls).values({
       tenantId: rt.tenantId,
       leadId: leadId ?? undefined,
@@ -158,6 +167,16 @@ export async function executeBookMeeting(
   // Delegation the event is real but the invite is NOT emailed (BookingResult.inviteSent=false)
   // — in that case the truthful line is "the team will send you the details".
   const inviteSent = booking.inviteSent !== false;
+  rt.lastBooking = {
+    uid: booking.uid,
+    start: booking.start,
+    meetLink: booking.meetLink,
+    name: args.name.trim(),
+    email,
+    phone: args.phone,
+    durationMinutes: duration,
+    inviteSent,
+  };
   const spoken = formatSlotHe(booking.start, now);
   return (
     `Meeting booked: ${spoken} (${duration} minutes).` +
@@ -169,7 +188,9 @@ export async function executeBookMeeting(
     (inviteSent
       ? ' and that an invite was sent to their email,'
       : ' and that the team will email them the meeting details shortly — do NOT claim an invite was already sent,') +
-    ' then say a warm goodbye and call end_call with reason "meeting_booked".'
+    ' then, if appropriate, call send_whatsapp_confirmation and/or send_email_confirmation — and' +
+    ' mention a WhatsApp or email message ONLY if the matching tool returned success. Finally say a' +
+    ' warm goodbye and call end_call with reason "meeting_booked".'
   );
 }
 

@@ -102,6 +102,30 @@ export async function upsertLead(
 }
 
 /**
+ * Records VERBAL WhatsApp consent — the voice-lead consent path. A phone lead never fills the
+ * intake form; the moment he provides AND confirms his WhatsApp number for confirmations on a
+ * recorded call, that IS consent, and the transcript is the proof. Never downgrades: an already
+ * granted consent (any source) is left untouched.
+ */
+export async function grantWhatsappConsentVerbal(
+  db: Database,
+  tenantId: string,
+  leadId: string,
+  at: Date = new Date(),
+): Promise<void> {
+  await db
+    .update(leads)
+    .set({
+      whatsappConsent: sql`CASE
+        WHEN coalesce((${leads.whatsappConsent}->>'granted')::boolean, false) THEN ${leads.whatsappConsent}
+        ELSE ${JSON.stringify({ granted: true, source: 'voice_verbal', at: at.toISOString() })}::jsonb
+      END`,
+      updatedAt: at,
+    })
+    .where(and(eq(leads.id, leadId), eq(leads.tenantId, tenantId)));
+}
+
+/**
  * Merges qualification facts into `leads.metadata.qualification` WITHOUT touching unrelated
  * metadata keys (mondayItemId etc. must survive), and raises the score monotonically —
  * GREATEST(existing, floor), so a later hesitant note never erases an earlier hot signal.

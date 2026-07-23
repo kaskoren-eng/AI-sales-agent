@@ -1,4 +1,6 @@
 import { eq } from 'drizzle-orm';
+import { Queue } from 'bullmq';
+import { Redis } from 'ioredis';
 import type { Env } from '../../../../config/env.js';
 import { createDatabase, type Database } from '../../../../db/client.js';
 import { tenants } from '../../../../db/schema/index.js';
@@ -34,6 +36,18 @@ export const FLAG_READ_TIMEOUT_MS = 2_000;
 export const PROVIDER_UTC_WORK_START = '06:00';
 export const PROVIDER_UTC_WORK_END = '15:00';
 
+/** What book_meeting proved on THIS call — the confirmation tools' single source of truth. */
+export interface LastBooking {
+  uid: string;
+  start: string;
+  meetLink?: string;
+  name: string;
+  email: string;
+  phone: string;
+  durationMinutes: number;
+  inviteSent: boolean;
+}
+
 export interface ToolRuntimeContext {
   tenantId: string;
   /** From outbound dial metadata. Null on inbound — book_meeting upserts the lead by phone. */
@@ -59,16 +73,27 @@ export interface ToolRuntimeContext {
   lastCheckedDurationMinutes: number | null;
   bookingCompleted: boolean;
   endReason: string | null;
+  /** Raw tenants.settings loaded at gate time — previously discarded; tools read per-tenant
+   * config (templates, reminders, limits) from here without a second DB round trip. */
+  settings: unknown;
+  /** BullMQ handle to 'outbound-sender'. Null when Redis is unreachable — messaging tools then
+   * refuse TRUTHFULLY instead of the call failing. */
+  outboundQueue: Queue | null;
+  /** BullMQ handle to 'meeting-reminders' (same Redis connection). Null on Redis failure. */
+  remindersQueue: Queue | null;
+  /** Set by book_meeting on success; cleared never (one meeting per call). */
+  lastBooking: LastBooking | null;
 }
 
 export type ToolRuntimeResult =
   | { runtime: ToolRuntimeContext; disabledReason: null }
   | { runtime: null; disabledReason: string };
 
-/** Injection seam for tests — the default deps hit the real DB. */
+/** Injection seam for tests — the default deps hit the real DB/Redis. */
 export interface ToolRuntimeDeps {
   connectDb?: () => { db: Database; close: () => Promise<void> };
   loadSettings?: (db: Database, tenantId: string) => Promise<unknown>;
+  makeQueues?: (env: Env) => { outboundQueue: Queue; remindersQueue: Queue; close: () => Promise<void> };
 }
 
 /** What the outbound dialer put on the SIP participant (voice-livekit.service.ts). */
@@ -159,6 +184,25 @@ export async function buildToolRuntime(
     return { runtime: null, disabledReason: gate.reason! };
   }
 
+  // Messaging queues — best-effort: a dead Redis degrades the messaging TOOLS (they refuse
+  // truthfully), never the call. One connection, two queues, closed together with the pool.
+  let outboundQueue: Queue | null = null;
+  let remindersQueue: Queue | null = null;
+  let closeQueues: () => Promise<void> = async () => undefined;
+  try {
+    const built = (deps.makeQueues ?? defaultMakeQueues)(env);
+    outboundQueue = built.outboundQueue;
+    remindersQueue = built.remindersQueue;
+    closeQueues = built.close;
+  } catch (err) {
+    console.error('tool_runtime_redis_failed', err instanceof Error ? err.message : String(err));
+  }
+
+  const closeAll = async (): Promise<void> => {
+    await closeQueues().catch(() => undefined);
+    await connection.close().catch(() => undefined);
+  };
+
   const privateKey = env.GOOGLE_CALENDAR_PRIVATE_KEY.replace(/\\n/g, '\n');
   return {
     disabledReason: null,
@@ -169,7 +213,7 @@ export async function buildToolRuntime(
       callId: opts.callId,
       callerPhone: opts.callerPhone,
       db: connection.db,
-      closeDb: connection.close,
+      closeDb: closeAll,
       makeProvider: (slotMinutes: number) =>
         new GoogleCalendarProvider({
           calendarId: env.GOOGLE_CALENDAR_ID!,
@@ -185,8 +229,37 @@ export async function buildToolRuntime(
       lastCheckedDurationMinutes: null,
       bookingCompleted: false,
       endReason: null,
+      settings,
+      outboundQueue,
+      remindersQueue,
+      lastBooking: null,
     },
   };
+}
+
+/** Real queue construction — one Redis connection shared by both queues. */
+function defaultMakeQueues(env: Env): {
+  outboundQueue: Queue;
+  remindersQueue: Queue;
+  close: () => Promise<void>;
+} {
+  const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null, lazyConnect: false });
+  const outboundQueue = new Queue('outbound-sender', { connection: redis });
+  const remindersQueue = new Queue('meeting-reminders', { connection: redis });
+  return {
+    outboundQueue,
+    remindersQueue,
+    close: async () => {
+      await outboundQueue.close().catch(() => undefined);
+      await remindersQueue.close().catch(() => undefined);
+      await redis.quit().catch(() => undefined);
+    },
+  };
+}
+
+/** Timeboxes a queue enqueue so a hung Redis costs the caller milliseconds, not the call. */
+export async function timeboxedEnqueue<T>(op: () => Promise<T>, ms = 1_500): Promise<T> {
+  return withTimeout(op(), ms);
 }
 
 /**
