@@ -1,7 +1,7 @@
 import { llm } from '@livekit/agents';
-import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { leads, scheduledCalls } from '../../../../db/schema/index.js';
+import { scheduledCalls } from '../../../../db/schema/index.js';
+import { upsertLead } from './lead-store.js';
 import {
   BOOKING_BUFFER_MINUTES,
   BOOKING_TIMEZONE,
@@ -62,10 +62,8 @@ export function normalizeEmail(raw: string): string | null {
   return email;
 }
 
-/** Last 9 digits — enough to match an Israeli number across +972/0/dashed formats. */
-export function phoneSuffix(raw: string): string {
-  return raw.replace(/\D/g, '').slice(-9);
-}
+/** Moved to lead-store.ts; re-exported so existing importers (end-call.tool, tests) stay valid. */
+export { phoneSuffix } from './lead-store.js';
 
 export async function executeBookMeeting(
   rt: ToolRuntimeContext,
@@ -122,7 +120,14 @@ export async function executeBookMeeting(
   // ---- Invariant 2: from here on, nothing is allowed to fail the tool ----
   let dbOk = true;
   try {
-    const leadId = await upsertLead(rt, { name: args.name.trim(), phone: args.phone, email });
+    const leadId = await upsertLead(
+      rt.db,
+      rt.tenantId,
+      { leadId: rt.leadId, callerPhone: rt.callerPhone },
+      { name: args.name.trim(), phone: args.phone, email },
+      { status: 'qualified' },
+    );
+    if (leadId) rt.leadId = leadId;
     await rt.db.insert(scheduledCalls).values({
       tenantId: rt.tenantId,
       leadId: leadId ?? undefined,
@@ -166,72 +171,6 @@ export async function executeBookMeeting(
       : ' and that the team will email them the meeting details shortly — do NOT claim an invite was already sent,') +
     ' then say a warm goodbye and call end_call with reason "meeting_booked".'
   );
-}
-
-/**
- * Ties the booking to a `leads` row without ever crossing tenants.
- * Outbound calls arrive with rt.leadId; inbound callers are matched by phone (last 9 digits,
- * format-proof via regexp_replace) or created fresh as a qualified voice lead.
- * Returns null only when even the insert failed — the booking still stands.
- */
-async function upsertLead(
-  rt: ToolRuntimeContext,
-  info: { name: string; phone: string; email: string },
-): Promise<string | null> {
-  if (rt.leadId) {
-    await rt.db
-      .update(leads)
-      .set({
-        // Backfill what the call taught us; never blank an existing value.
-        name: sql`coalesce(nullif(${leads.name}, ''), ${info.name})`,
-        email: sql`coalesce(nullif(${leads.email}, ''), ${info.email})`,
-        phone: sql`coalesce(nullif(${leads.phone}, ''), ${info.phone})`,
-        status: 'qualified',
-        updatedAt: new Date(),
-      })
-      .where(and(eq(leads.id, rt.leadId), eq(leads.tenantId, rt.tenantId)));
-    return rt.leadId;
-  }
-
-  const suffix = phoneSuffix(info.phone);
-  if (suffix.length >= 7) {
-    const existing = await rt.db
-      .select({ id: leads.id })
-      .from(leads)
-      .where(
-        and(
-          eq(leads.tenantId, rt.tenantId),
-          sql`regexp_replace(coalesce(${leads.phone}, ''), '\\D', '', 'g') LIKE ${`%${suffix}`}`,
-        ),
-      )
-      .limit(1);
-    if (existing.length > 0) {
-      const leadId = existing[0]!.id;
-      await rt.db
-        .update(leads)
-        .set({
-          name: sql`coalesce(nullif(${leads.name}, ''), ${info.name})`,
-          email: sql`coalesce(nullif(${leads.email}, ''), ${info.email})`,
-          status: 'qualified',
-          updatedAt: new Date(),
-        })
-        .where(and(eq(leads.id, leadId), eq(leads.tenantId, rt.tenantId)));
-      return leadId;
-    }
-  }
-
-  const inserted = await rt.db
-    .insert(leads)
-    .values({
-      tenantId: rt.tenantId,
-      name: info.name,
-      phone: info.phone,
-      email: info.email,
-      source: 'voice-livekit',
-      status: 'qualified',
-    })
-    .returning({ id: leads.id });
-  return inserted[0]?.id ?? null;
 }
 
 const BOOKING_FILLER_HE = 'רגע, אני קובעת לך את הפגישה...';

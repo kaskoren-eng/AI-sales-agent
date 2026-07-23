@@ -1,0 +1,97 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { ToolRuntimeContext } from './tool-context.js';
+import {
+  captureLeadInfoSchema,
+  executeCaptureLeadInfo,
+  type CaptureLeadInfoArgs,
+} from './capture-lead-info.tool.js';
+
+function fakeRt(opts: { leadId?: string | null; phoneMatch?: string | null; insertFails?: boolean } = {}) {
+  const updates: Record<string, unknown>[] = [];
+  const inserts: Record<string, unknown>[] = [];
+  const db = {
+    select: vi.fn(() => ({
+      from: () => ({
+        where: () => ({ limit: async () => (opts.phoneMatch ? [{ id: opts.phoneMatch }] : []) }),
+      }),
+    })),
+    update: vi.fn(() => ({
+      set: (vals: Record<string, unknown>) => ({
+        where: async () => {
+          updates.push(vals);
+        },
+      }),
+    })),
+    insert: vi.fn(() => ({
+      values: (vals: Record<string, unknown>) => {
+        inserts.push(vals);
+        return { returning: async () => (opts.insertFails ? [] : [{ id: 'lead-new' }]) };
+      },
+    })),
+  };
+  const rt = {
+    tenantId: 'tenant-1',
+    leadId: opts.leadId ?? null,
+    callerPhone: '+972501234567',
+    callId: 'call-1',
+    db,
+    report: { recordToolCall: vi.fn() },
+    lastCheckedDurationMinutes: null,
+    bookingCompleted: false,
+    endReason: null,
+  } as unknown as ToolRuntimeContext;
+  return { rt, updates, inserts };
+}
+
+const args = (over: Partial<CaptureLeadInfoArgs>): CaptureLeadInfoArgs => over as CaptureLeadInfoArgs;
+
+describe('captureLeadInfoSchema', () => {
+  it('rejects a call with nothing to save', () => {
+    expect(captureLeadInfoSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('accepts any single field', () => {
+    expect(captureLeadInfoSchema.safeParse({ budget: 'בערך 20 אלף' }).success).toBe(true);
+    expect(captureLeadInfoSchema.safeParse({ qualification: 'hot' }).success).toBe(true);
+  });
+
+  it('rejects unknown qualification values', () => {
+    expect(captureLeadInfoSchema.safeParse({ qualification: 'boiling' }).success).toBe(false);
+  });
+});
+
+describe('executeCaptureLeadInfo', () => {
+  it('caches the resolved lead id back onto the runtime for later tools', async () => {
+    const { rt } = fakeRt({ phoneMatch: 'lead-existing' });
+    await executeCaptureLeadInfo(rt, args({ business_type: 'חנות רהיטים' }));
+    expect(rt.leadId).toBe('lead-existing');
+  });
+
+  it('qualification facts land in metadata merge with the call id stamped', async () => {
+    const { rt, updates } = fakeRt({ leadId: 'lead-1' });
+    await executeCaptureLeadInfo(rt, args({ pain_point: 'מפספס לידים', qualification: 'hot' }));
+    // update #1 = contact backfill (upsert), update #2 = qualification metadata merge + score
+    expect(updates).toHaveLength(2);
+    expect(updates[1]).toHaveProperty('metadata');
+    expect(updates[1]).toHaveProperty('score'); // hot → GREATEST(score, 90)
+  });
+
+  it('contact-only capture (name/email) performs no metadata merge', async () => {
+    const { rt, updates } = fakeRt({ leadId: 'lead-1' });
+    await executeCaptureLeadInfo(rt, args({ name: 'דנה לוי', email: 'Dana@Example.com' }));
+    expect(updates).toHaveLength(1); // just the backfill
+    expect(updates[0]).not.toHaveProperty('metadata');
+  });
+
+  it('never touches lead status — that belongs to book_meeting/end_call', async () => {
+    const { rt, updates } = fakeRt({ leadId: 'lead-1' });
+    await executeCaptureLeadInfo(rt, args({ qualification: 'cold', notes: 'לא בשל' }));
+    for (const u of updates) expect(u).not.toHaveProperty('status');
+  });
+
+  it('tells the model to keep quiet about the save', async () => {
+    const { rt } = fakeRt({ leadId: 'lead-1' });
+    const out = await executeCaptureLeadInfo(rt, args({ budget: '20K' }));
+    expect(out).toContain('do not mention');
+  });
+});
