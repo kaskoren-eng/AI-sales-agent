@@ -1,7 +1,12 @@
 import type { llm } from '@livekit/agents';
 import { bookMeetingTool } from './book-meeting.tool.js';
+import { captureLeadInfoTool } from './capture-lead-info.tool.js';
 import { checkCalendarAvailabilityTool } from './check-calendar-availability.tool.js';
 import { endCallTool } from './end-call.tool.js';
+import {
+  sendEmailConfirmationTool,
+  sendWhatsappConfirmationTool,
+} from './send-confirmation.tools.js';
 import type { ToolRuntimeContext } from './tool-context.js';
 
 /**
@@ -28,6 +33,9 @@ export const TOOL_NAMES = [
   'check_calendar_availability',
   'book_meeting',
   'end_call',
+  'capture_lead_info',
+  'send_whatsapp_confirmation',
+  'send_email_confirmation',
 ] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
@@ -37,5 +45,8 @@ export function buildAgentTools(rt: ToolRuntimeContext): llm.FunctionTool[] {
     checkCalendarAvailabilityTool(rt),
     bookMeetingTool(rt),
     endCallTool(rt),
+    captureLeadInfoTool(rt),
+    sendWhatsappConfirmationTool(rt),
+    sendEmailConfirmationTool(rt),
   ] as llm.FunctionTool[];
 }

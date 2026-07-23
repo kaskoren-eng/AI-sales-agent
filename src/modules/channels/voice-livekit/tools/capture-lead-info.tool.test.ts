@@ -46,8 +46,10 @@ function fakeRt(opts: { leadId?: string | null; phoneMatch?: string | null; inse
 const args = (over: Partial<CaptureLeadInfoArgs>): CaptureLeadInfoArgs => over as CaptureLeadInfoArgs;
 
 describe('captureLeadInfoSchema', () => {
-  it('rejects a call with nothing to save', () => {
-    expect(captureLeadInfoSchema.safeParse({}).success).toBe(false);
+  it('empty args pass the SCHEMA (plain z.object for LiveKit) but the HANDLER refuses', async () => {
+    expect(captureLeadInfoSchema.safeParse({}).success).toBe(true); // ZodEffects would break llm.tool
+    const { rt } = fakeRt({ leadId: 'lead-1' });
+    await expect(executeCaptureLeadInfo(rt, args({}))).rejects.toThrow('Nothing to save');
   });
 
   it('accepts any single field', () => {

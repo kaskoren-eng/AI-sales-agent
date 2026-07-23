@@ -23,28 +23,26 @@ const QUALIFICATION_SCORE_FLOOR: Record<'hot' | 'warm' | 'cold', number> = {
   cold: 20,
 };
 
-export const captureLeadInfoSchema = z
-  .object({
-    name: z.string().min(2).optional().describe('Full name exactly as the lead stated it'),
-    email: z.string().min(5).optional().describe('Email address if the lead gave one'),
-    phone: z
-      .string()
-      .min(7)
-      .optional()
-      .describe('Phone number ONLY if the lead gave one different from the number he is calling from'),
-    business_type: z.string().optional().describe("The lead's business, in his own words"),
-    pain_point: z.string().optional().describe('The concrete problem he wants solved'),
-    budget: z.string().optional().describe('Budget indication, verbatim as stated'),
-    timeline: z.string().optional().describe('When he wants to start'),
-    qualification: z
-      .enum(['hot', 'warm', 'cold'])
-      .optional()
-      .describe('Your current read: hot = ready to book now, warm = interested, cold = weak fit'),
-    notes: z.string().optional().describe('Short Hebrew free-text observation worth keeping'),
-  })
-  .refine((args) => Object.values(args).some((v) => v !== undefined), {
-    message: 'Provide at least one field — calling this with nothing to save is a mistake.',
-  });
+// NOTE: must stay a PLAIN z.object — LiveKit's llm.tool() rejects ZodEffects, so the
+// "at least one field" rule is enforced in the handler, not with .refine().
+export const captureLeadInfoSchema = z.object({
+  name: z.string().min(2).optional().describe('Full name exactly as the lead stated it'),
+  email: z.string().min(5).optional().describe('Email address if the lead gave one'),
+  phone: z
+    .string()
+    .min(7)
+    .optional()
+    .describe('Phone number ONLY if the lead gave one different from the number he is calling from'),
+  business_type: z.string().optional().describe("The lead's business, in his own words"),
+  pain_point: z.string().optional().describe('The concrete problem he wants solved'),
+  budget: z.string().optional().describe('Budget indication, verbatim as stated'),
+  timeline: z.string().optional().describe('When he wants to start'),
+  qualification: z
+    .enum(['hot', 'warm', 'cold'])
+    .optional()
+    .describe('Your current read: hot = ready to book now, warm = interested, cold = weak fit'),
+  notes: z.string().optional().describe('Short Hebrew free-text observation worth keeping'),
+});
 
 export type CaptureLeadInfoArgs = z.infer<typeof captureLeadInfoSchema>;
 
@@ -52,6 +50,9 @@ export async function executeCaptureLeadInfo(
   rt: ToolRuntimeContext,
   args: CaptureLeadInfoArgs,
 ): Promise<string> {
+  if (!Object.values(args).some((v) => v !== undefined)) {
+    throw new llm.ToolError('Nothing to save — call this only with at least one learned fact.');
+  }
   const leadId = await upsertLead(
     rt.db,
     rt.tenantId,

@@ -165,6 +165,21 @@ describe('Keren Phase 4 — tools-mode prompt', () => {
     expect(SYSTEM_PROMPT_HE).toMatch(/DO NOT SAY THE MEETING IS BOOKED/u);
   });
 
+  it('capture_lead_info: save-as-you-learn instruction in the tools variant ONLY, silent by rule', () => {
+    expect(TOOLS_PROMPT).toMatch(/call `capture_lead_info` to save them/u);
+    expect(TOOLS_PROMPT).toMatch(/never announce it, never invent values/u);
+    // The no-tools variant must not instruct a tool that doesn't exist there.
+    expect(SYSTEM_PROMPT_HE).not.toMatch(/capture_lead_info/u);
+  });
+
+  it('confirmations: a channel is mentioned ONLY when its tool returned success', () => {
+    expect(TOOLS_PROMPT).toMatch(/send_whatsapp_confirmation/u);
+    expect(TOOLS_PROMPT).toMatch(/send_email_confirmation/u);
+    expect(TOOLS_PROMPT).toMatch(/ONLY if the matching tool returned success/u);
+    expect(TOOLS_PROMPT).toMatch(/you say NOTHING about that channel/u);
+    expect(SYSTEM_PROMPT_HE).not.toMatch(/send_whatsapp_confirmation/u);
+  });
+
   it('every end_call carries a reason the analytics can read', () => {
     expect(TOOLS_PROMPT).toMatch(/end_call` with reason "meeting_booked"/u);
     expect(TOOLS_PROMPT).toMatch(/end_call` with reason "not_qualified"/u);

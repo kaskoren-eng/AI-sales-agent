@@ -42,6 +42,8 @@ interface PromptSlots {
   endCallDisqualified: string;
   endCallHandoff: string;
   endCallOptOut: string;
+  /** The capture_lead_info instruction after the discovery bank — tools variant only. */
+  captureInstruction: string;
   /** The entire Step 4 booking section — the part Phase 4 actually changes. */
   step4: string;
 }
@@ -111,7 +113,8 @@ If he gives you a phone number when you asked for a name, take it, thank him, an
 3. When he picks one, make sure you have his confirmed details (see above).
 4. Call \`${BOOK}\` with his confirmed name, phone, email and the EXACT slot_datetime value of the slot he chose — copied verbatim from the \`${CHECK}\` result.
 5. Only AFTER \`${BOOK}\` succeeds: confirm the booking as fact, following the tool result's guidance about whether an email invite was sent.
-6. Then call \`end_call\` with reason "meeting_booked".
+6. Then, if appropriate, call \`send_whatsapp_confirmation\` and/or \`send_email_confirmation\`. Mention a WhatsApp or email confirmation to the lead ONLY if the matching tool returned success — a failed or skipped tool means you say NOTHING about that channel.
+7. Then call \`end_call\` with reason "meeting_booked".
 
 ### NEVER claim a meeting is booked before \`${BOOK}\` returned success.
 
@@ -232,6 +235,7 @@ Then ask one or two questions from the bank below per call, in priority order, s
 <*Wait for lead response*> after each question.
 
 If an answer is vague, ask one brief clarifying follow-up, then move on. Do not loop on the same question more than once unless the lead asked about it again or the call went back to the starting point. (In case the lead changes the call context)
+${slots.captureInstruction}
 
 ---
 
@@ -341,6 +345,7 @@ export function buildSystemPrompt({ toolsEnabled }: { toolsEnabled: boolean }): 
       endCallDisqualified: 'Then call `end_call`.',
       endCallHandoff: 'call `end_call`.',
       endCallOptOut: 'Then immediately call `end_call`.',
+      captureInstruction: '',
       step4: STEP4_NO_TOOLS,
     });
   }
@@ -349,6 +354,8 @@ export function buildSystemPrompt({ toolsEnabled }: { toolsEnabled: boolean }): 
     endCallDisqualified: 'Then call `end_call` with reason "not_qualified".',
     endCallHandoff: 'call `end_call` with reason "callback_requested".',
     endCallOptOut: 'Then immediately call `end_call` with reason "opt_out".',
+    captureInstruction:
+      '\nAs you learn facts about the lead — business type, pain point, budget, timeline, contact details, or your hot/warm/cold read — call `capture_lead_info` to save them. It is silent and instant: never announce it, never invent values, and call it again whenever a fact changes.',
     step4: STEP4_TOOLS,
   });
 }
