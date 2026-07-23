@@ -267,6 +267,53 @@ describe('executeBookMeeting — calendar beats database', () => {
   });
 });
 
+describe('executeBookMeeting — meeting reminders hook (C1)', () => {
+  const attachQueue = (rt: ToolRuntimeContext, impl?: () => Promise<void>) => {
+    const added: { data: Record<string, unknown>; opts: Record<string, unknown> }[] = [];
+    (rt as { remindersQueue: unknown }).remindersQueue = {
+      add: vi.fn(async (_name: string, data: Record<string, unknown>, opts: Record<string, unknown>) => {
+        if (impl) await impl();
+        added.push({ data, opts });
+      }),
+    };
+    return added;
+  };
+
+  it('booking ~71h out → 4 delayed jobs (T-24h + T-1h × wa/email) keyed to the scheduled_calls row, jobIds persisted', async () => {
+    const { rt, captured } = fakeRt();
+    const added = attachQueue(rt);
+    await executeBookMeeting(rt, args(), NOW);
+
+    expect(added).toHaveLength(4);
+    // The insert mock returns id 'lead-new' for every .returning() — so that's the row id here.
+    const ids = added.map((a) => a.opts.jobId);
+    expect(ids).toContain('reminder-lead-new-t1440-wa');
+    expect(ids).toContain('reminder-lead-new-t60-email');
+    expect(added.every((a) => a.data.tenantId === 'tenant-1')).toBe(true);
+    // jobIds land on the row so the cancel endpoint can find them.
+    const persisted = captured.leadUpdates.find((u) => 'reminders' in u) as
+      | { reminders: { jobIds: string[] } }
+      | undefined;
+    expect(persisted?.reminders.jobIds).toHaveLength(4);
+  });
+
+  it('reminder scheduling failure NEVER fails the booking (invariant 2 extends to reminders)', async () => {
+    const { rt } = fakeRt();
+    attachQueue(rt, async () => {
+      throw new Error('redis down');
+    });
+    const out = await executeBookMeeting(rt, args(), NOW);
+    expect(out).toContain('Meeting booked');
+    expect(rt.bookingCompleted).toBe(true);
+  });
+
+  it('no remindersQueue (Redis was down at call start) → booking proceeds, hook silently skipped', async () => {
+    const { rt } = fakeRt(); // fakeRt sets no remindersQueue
+    const out = await executeBookMeeting(rt, args(), NOW);
+    expect(out).toContain('Meeting booked');
+  });
+});
+
 describe('helpers', () => {
   it('normalizeEmail handles case, spaces, and spoken at/dot', () => {
     expect(normalizeEmail('  Dana@Example.COM ')).toBe('dana@example.com');

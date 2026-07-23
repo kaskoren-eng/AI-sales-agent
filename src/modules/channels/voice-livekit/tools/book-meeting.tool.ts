@@ -1,6 +1,8 @@
 import { llm } from '@livekit/agents';
 import { z } from 'zod';
 import { scheduledCalls } from '../../../../db/schema/index.js';
+import { resolveReminderSettings } from '../../../scheduling/reminders/reminder-settings.js';
+import { scheduleReminders } from '../../../scheduling/reminders/reminder-scheduler.js';
 import { grantWhatsappConsentVerbal, upsertLead } from './lead-store.js';
 import {
   BOOKING_BUFFER_MINUTES,
@@ -119,6 +121,7 @@ export async function executeBookMeeting(
 
   // ---- Invariant 2: from here on, nothing is allowed to fail the tool ----
   let dbOk = true;
+  let scheduledCallId: string | null = null;
   try {
     const leadId = await upsertLead(
       rt.db,
@@ -137,18 +140,22 @@ export async function executeBookMeeting(
         console.error('verbal_consent_write_failed', err instanceof Error ? err.message : String(err)),
       );
     }
-    await rt.db.insert(scheduledCalls).values({
-      tenantId: rt.tenantId,
-      leadId: leadId ?? undefined,
-      conversationId: rt.conversationId ?? undefined,
-      provider: 'google', // the legacy /book route leaves this defaulting to 'trafft' — a bug we don't copy
-      providerRef: booking.uid,
-      scheduledAt: new Date(booking.start),
-      duration,
-      status: 'scheduled',
-      attendees: [{ name: args.name.trim(), email, phone: args.phone }],
-      notes: args.notes,
-    });
+    const insertedCalls = await rt.db
+      .insert(scheduledCalls)
+      .values({
+        tenantId: rt.tenantId,
+        leadId: leadId ?? undefined,
+        conversationId: rt.conversationId ?? undefined,
+        provider: 'google', // the legacy /book route leaves this defaulting to 'trafft' — a bug we don't copy
+        providerRef: booking.uid,
+        scheduledAt: new Date(booking.start),
+        duration,
+        status: 'scheduled',
+        attendees: [{ name: args.name.trim(), email, phone: args.phone }],
+        notes: args.notes,
+      })
+      .returning({ id: scheduledCalls.id });
+    scheduledCallId = insertedCalls[0]?.id ?? null;
   } catch (err) {
     dbOk = false;
     console.error(
@@ -159,6 +166,39 @@ export async function executeBookMeeting(
         error: err instanceof Error ? err.message : String(err),
       }),
     );
+  }
+
+  // Meeting reminders (C1): delayed jobs at T-24h/T-1h per tenant settings. Own try/catch —
+  // a reminder that fails to schedule must never fail the booking, and the <24h skip happens
+  // inside computeReminderPlan (past fire times drop out of the plan naturally).
+  if (scheduledCallId && rt.remindersQueue) {
+    try {
+      await scheduleReminders(
+        { queue: rt.remindersQueue, db: rt.db },
+        {
+          tenantId: rt.tenantId,
+          scheduledCallId,
+          leadId: rt.leadId ?? undefined,
+          leadName: args.name.trim(),
+          phone: args.phone,
+          email,
+          meetingStartIso: booking.start,
+          meetLink: booking.meetLink,
+          bookingUid: booking.uid,
+          settings: resolveReminderSettings(rt.settings),
+          now,
+        },
+      );
+    } catch (err) {
+      console.error(
+        'reminder_schedule_failed',
+        JSON.stringify({
+          tenantId: rt.tenantId,
+          scheduledCallId,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
   }
 
   rt.bookingCompleted = true; // the speech-guard now lets her say it out loud
