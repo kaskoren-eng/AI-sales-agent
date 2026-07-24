@@ -1,0 +1,30 @@
+{
+  "nav": {
+    "overview": "סקירה",
+    "leads": "לידים",
+    "calls": "שיחות",
+    "testKeren": "בדיקת קרן",
+    "bookings": "פגישות",
+    "integrations": "אינטגרציות",
+    "settings": "הגדרות",
+    "mainNavigation": "ניווט ראשי"
+  },
+  "topbar": {
+    "callDetail": "פרטי שיחה",
+    "leadDetail": "פרטי ליד",
+    "dashboard": "לוח בקרה"
+  },
+  "language": {
+    "label": "שפה",
+    "switchToEnglish": "מעבר לאנגלית",
+    "switchToHebrew": "מעבר לעברית"
+  },
+  "sidebar": {
+    "tagline": "מבית ClickScales",
+    "kerenActive": "קרן פעילה",
+    "viewActivity": "צפייה בפעילות של קרן — הסוכנת פעילה",
+    "recentActivity": "פעילות אחרונה",
+    "activityDescription": "5 הפעילויות האחרונות של קרן",
+    "closeActivity": "סגירת חלונית הפעילות"
+  }
+}

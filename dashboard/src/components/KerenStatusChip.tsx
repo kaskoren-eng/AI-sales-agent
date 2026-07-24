@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { X, Phone, Users, CalendarDays } from 'lucide-react'
 import * as Dialog from '@radix-ui/react-dialog'
 
@@ -32,12 +33,13 @@ const typeColor: Record<ActivityEntry['type'], string> = {
 
 export function KerenStatusChip() {
   const [open, setOpen] = useState(false)
+  const { t } = useTranslation()
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
         <button
-          aria-label="View Keren's activity — agent is active"
+          aria-label={t('sidebar.viewActivity')}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -77,7 +79,7 @@ export function KerenStatusChip() {
               fontFamily: "'Assistant', sans-serif",
             }}
           >
-            Keren is active
+            {t('sidebar.kerenActive')}
           </span>
         </button>
       </Dialog.Trigger>
@@ -125,11 +127,11 @@ export function KerenStatusChip() {
                 color: 'var(--text-primary)',
               }}
             >
-              Recent Activity
+              {t('sidebar.recentActivity')}
             </Dialog.Title>
             <Dialog.Close asChild>
               <button
-                aria-label="Close activity panel"
+                aria-label={t('sidebar.closeActivity')}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -149,7 +151,7 @@ export function KerenStatusChip() {
           </div>
 
           <p id="activity-desc" className="sr-only">
-            Last 5 activity entries from Keren
+            {t('sidebar.activityDescription')}
           </p>
 
           <ul

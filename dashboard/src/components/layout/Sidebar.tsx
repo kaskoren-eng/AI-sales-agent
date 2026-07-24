@@ -1,4 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   AudioLines,
   LayoutDashboard,
@@ -9,26 +10,28 @@ import {
   Settings,
 } from 'lucide-react'
 import { KerenStatusChip } from '../KerenStatusChip.js'
+import { LanguageSwitcher } from '../LanguageSwitcher.js'
 
 interface NavItem {
   to: string
-  label: string
+  labelKey: string
   icon: React.ReactNode
   end?: boolean
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: '/', label: 'Overview', icon: <LayoutDashboard size={18} strokeWidth={1.5} />, end: true },
-  { to: '/leads', label: 'Leads', icon: <Users size={18} strokeWidth={1.5} /> },
-  { to: '/calls', label: 'Calls', icon: <Phone size={18} strokeWidth={1.5} /> },
-  { to: '/voice', label: 'Test Keren', icon: <AudioLines size={18} strokeWidth={1.5} /> },
-  { to: '/bookings', label: 'Bookings', icon: <CalendarDays size={18} strokeWidth={1.5} /> },
-  { to: '/integrations', label: 'Integrations', icon: <Plug size={18} strokeWidth={1.5} /> },
-  { to: '/settings', label: 'Settings', icon: <Settings size={18} strokeWidth={1.5} /> },
+  { to: '/', labelKey: 'nav.overview', icon: <LayoutDashboard size={18} strokeWidth={1.5} />, end: true },
+  { to: '/leads', labelKey: 'nav.leads', icon: <Users size={18} strokeWidth={1.5} /> },
+  { to: '/calls', labelKey: 'nav.calls', icon: <Phone size={18} strokeWidth={1.5} /> },
+  { to: '/voice', labelKey: 'nav.testKeren', icon: <AudioLines size={18} strokeWidth={1.5} /> },
+  { to: '/bookings', labelKey: 'nav.bookings', icon: <CalendarDays size={18} strokeWidth={1.5} /> },
+  { to: '/integrations', labelKey: 'nav.integrations', icon: <Plug size={18} strokeWidth={1.5} /> },
+  { to: '/settings', labelKey: 'nav.settings', icon: <Settings size={18} strokeWidth={1.5} /> },
 ]
 
 export function Sidebar() {
   const location = useLocation()
+  const { t } = useTranslation()
 
   return (
     <aside
@@ -41,11 +44,11 @@ export function Sidebar() {
         display: 'flex',
         flexDirection: 'column',
         backgroundColor: 'var(--bg-inset)',
-        borderRight: '1px solid var(--border-subtle)',
+        borderInlineEnd: '1px solid var(--border-subtle)',
         zIndex: 40,
         overflow: 'hidden',
       }}
-      aria-label="Main navigation"
+      aria-label={t('nav.mainNavigation')}
     >
       {/* Logo */}
       <div
@@ -89,7 +92,7 @@ export function Sidebar() {
               fontFamily: "'Assistant', sans-serif",
             }}
           >
-            by ClickScales
+            {t('sidebar.tagline')}
           </span>
         </div>
       </div>
@@ -118,7 +121,7 @@ export function Sidebar() {
                 fontWeight: isActive ? 600 : 400,
                 color: isActive ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                 backgroundColor: isActive ? 'rgba(0, 245, 255, 0.07)' : 'transparent',
-                borderLeft: isActive ? '2px solid var(--accent-cyan)' : '2px solid transparent',
+                borderInlineStart: isActive ? '2px solid var(--accent-cyan)' : '2px solid transparent',
                 transition: `background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard)`,
                 textDecoration: 'none',
               }}
@@ -137,20 +140,24 @@ export function Sidebar() {
               aria-current={isActive ? 'page' : undefined}
             >
               <span style={{ flexShrink: 0 }}>{item.icon}</span>
-              {item.label}
+              {t(item.labelKey)}
             </NavLink>
           )
         })}
       </nav>
 
-      {/* Status chip */}
+      {/* Footer: language switcher + status chip */}
       <div
         style={{
           padding: '16px 16px 20px',
           borderTop: '1px solid var(--border-subtle)',
           flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
         }}
       >
+        <LanguageSwitcher />
         <KerenStatusChip />
       </div>
     </aside>

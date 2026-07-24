@@ -1,23 +1,28 @@
 import { Bell } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
-const PAGE_TITLES: Record<string, string> = {
-  '/': 'Overview',
-  '/leads': 'Leads',
-  '/calls': 'Calls',
-  '/bookings': 'Bookings',
-  '/integrations': 'Integrations',
-  '/settings': 'Settings',
+const PAGE_TITLE_KEYS: Record<string, string> = {
+  '/': 'nav.overview',
+  '/leads': 'nav.leads',
+  '/calls': 'nav.calls',
+  '/voice': 'nav.testKeren',
+  '/bookings': 'nav.bookings',
+  '/integrations': 'nav.integrations',
+  '/settings': 'nav.settings',
 }
 
-function getTitle(pathname: string): string {
-  if (pathname.startsWith('/calls/')) return 'Call Detail'
-  return PAGE_TITLES[pathname] ?? 'Dashboard'
+function getTitleKey(pathname: string): string {
+  if (pathname.startsWith('/calls/')) return 'topbar.callDetail'
+  if (pathname.startsWith('/leads/')) return 'topbar.leadDetail'
+  return PAGE_TITLE_KEYS[pathname] ?? 'topbar.dashboard'
 }
 
 export function TopBar() {
   const location = useLocation()
-  const title = getTitle(location.pathname)
+  const { t, i18n } = useTranslation()
+  const title = t(getTitleKey(location.pathname))
+  const isHebrew = i18n.language.startsWith('he')
 
   return (
     <header
@@ -37,11 +42,11 @@ export function TopBar() {
     >
       <h2
         style={{
-          fontFamily: "'Montserrat', sans-serif",
+          fontFamily: isHebrew ? "'Heebo', sans-serif" : "'Montserrat', sans-serif",
           fontWeight: 700,
           fontSize: '15px',
-          letterSpacing: '0.06em',
-          textTransform: 'uppercase',
+          letterSpacing: isHebrew ? 'normal' : '0.06em',
+          textTransform: isHebrew ? 'none' : 'uppercase',
           color: 'var(--text-primary)',
         }}
       >

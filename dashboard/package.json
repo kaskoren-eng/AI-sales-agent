@@ -19,10 +19,13 @@
     "@tanstack/react-query": "^5.97.0",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.38.0",
+    "i18next": "^26.3.6",
+    "i18next-browser-languagedetector": "^8.2.1",
     "livekit-client": "^2.20.1",
     "lucide-react": "^1.14.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-i18next": "^17.0.11",
     "react-router-dom": "^7.14.0",
     "tailwindcss": "^4.2.4"
   },

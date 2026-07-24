@@ -1,0 +1,30 @@
+{
+  "nav": {
+    "overview": "Overview",
+    "leads": "Leads",
+    "calls": "Calls",
+    "testKeren": "Test Keren",
+    "bookings": "Bookings",
+    "integrations": "Integrations",
+    "settings": "Settings",
+    "mainNavigation": "Main navigation"
+  },
+  "topbar": {
+    "callDetail": "Call Detail",
+    "leadDetail": "Lead Detail",
+    "dashboard": "Dashboard"
+  },
+  "language": {
+    "label": "Language",
+    "switchToEnglish": "Switch to English",
+    "switchToHebrew": "Switch to Hebrew"
+  },
+  "sidebar": {
+    "tagline": "by ClickScales",
+    "kerenActive": "Keren is active",
+    "viewActivity": "View Keren's activity — agent is active",
+    "recentActivity": "Recent Activity",
+    "activityDescription": "Last 5 activity entries from Keren",
+    "closeActivity": "Close activity panel"
+  }
+}
