@@ -8,16 +8,51 @@ Multi-channel AI sales agent (WhatsApp, Email, Voice) that qualifies leads and b
 - **"Danie" is deprecated.** `brand_assets/brand_identity` (v2) is superseded by `brand_assets/keren-brand-brief-v3.md` — the single source of truth for all dashboard design work (tokens, typography, i18n/RTL rules, component DoD, Danie→KEREN migration checklist).
 - Dashboard is **bilingual (HE+EN) from day one**: react-i18next, all UI strings via `t('...')`, CSS logical properties only, `dir="auto"` on all user content. See brief §2 + §7.
 
-## Parallel workstreams (two Claude Code sessions)
+## Parallel workstreams — see ⚠️ TERRITORY RULES below (single source of truth)
 
-- **Voice workstream** owns `src/modules/channels/voice-livekit/` (+ voice docs).
-- **Dashboard workstream** owns `dashboard/` + `src/modules/calls/` + `src/modules/leads/`, on `feature/dashboard-*` branches.
-- Neither touches the other's territory. Cross-cutting changes are coordinated by updating this file.
+An earlier version of this section contradicted the TERRITORY RULES on `src/modules/calls/` and `src/modules/leads/` ownership. **The TERRITORY RULES section below is canonical.** Resolution of the contradiction: within `calls/` and `leads/`, ownership splits by file role — VOICE owns services/workers/guards, DASHBOARD owns/extends API routes additively (details below).
+
 - **Open handoff → Voice session (Task 0):** create a `conversations` row (`channel: 'voice'`, `channelRef: <roomName>`) at LiveKit call initiation (outbound + web-call). Note: `web-call-*` rooms have no real lead — needs a placeholder lead or explicit skip (calls list inner-joins leads). Until this lands, LiveKit calls don't appear in the dashboard calls list and the `learnings` join returns null.
+
+### Dev servers — shared machine rules
+
+- Ports: API `:3000` and dashboard `:3001` belong to the **voice session**; the **dashboard session** runs its own dashboard instance on `:3002` (`npm run dev -- --port 3002`).
+- **Never kill or restart a dev server you didn't start** — the other session may be mid-test. If a server looks stale, say so in your summary and let Koren decide.
+- The vite proxy default is the LOCAL backend (`http://localhost:3000`). Pointing a dev dashboard at production requires an explicit `VITE_PROXY_TARGET=` — never make prod the default (dev clicks mutate real data: lead status PATCH, booking cancel, API-key regeneration).
 
 ## Stack
 
 TypeScript + Fastify 5 + Drizzle ORM + PostgreSQL + Redis + BullMQ + Zod + OpenAI gpt-5.4
+
+## ⚠️ PARALLEL WORKSTREAMS — TERRITORY RULES (two Claude Code sessions on this repo)
+
+Two agents work this repo simultaneously. Respect your lane:
+
+**VOICE agent** — owns: `src/modules/channels/voice-livekit/**`, `src/modules/channels/whatsapp/**` (window/consent logic), `src/queues/workers/meeting-reminders*`, `src/modules/scheduling/**` (may extend), `docs/phase-4-*`, `docs/go-live-plan.md`. Branches: `feature/voice-livekit-*`, `feature/meeting-reminders`.
+
+**DASHBOARD agent** — owns: `dashboard/**`, `docs/phase-5-dashboard-*`, `brand_assets/**`. Branches: `feature/dashboard-*`.
+
+**SPLIT-OWNERSHIP modules (`src/modules/calls/**`, `src/modules/leads/**`):**
+- VOICE owns **services / workers / guards** (call-analysis, spend-guard, monitor, lead upsert logic)
+- DASHBOARD owns/extends **API routes** (`calls.routes.ts`, `leads` timeline endpoint) — additively, read-only queries
+- Neither rewrites the other's files in these modules; both announce schema-adjacent changes here first
+
+**SHARED FILES — collision zone. Special rules apply:**
+- `src/config/env.ts`, `.env.example`, `package.json`, `server.ts`, `src/plugins/**` — additive-only edits; never reorder/reformat existing lines; pull/rebase before editing.
+- `src/db/schema/**` + migrations — **migration numbers are claimed in the table below BEFORE generating.** Never renumber someone else's migration.
+- `CLAUDE.md`, `tenants` settings keys — announce in the claims lists below before changing.
+
+**Migration number claims:** 0004 = leads whatsapp fields (VOICE, applied) · 0005 = scheduled_calls.reminders (VOICE, applied) · next free: 0006.
+
+**tenants.settings key claims:** `voice_engine` (VOICE) · `functions_enabled` (VOICE) · `whatsapp_templates` (VOICE) · `toll_fraud` (VOICE) · `reminders` (VOICE) · `flows` (pre-existing, shared) · `billing_provider` (reserved, Workstream D). New keys → add here in the same commit.
+
+**Rules of engagement:**
+1. NEVER edit files in the other agent's territory — if you think you must, STOP and tell Koren why.
+2. NEVER commit to the other agent's branches; never merge/rebase their branches.
+3. Before touching a shared file: `git fetch` + check the other branch for pending changes to that file (`git diff main...<other-branch> -- <file>`). Conflict likely → coordinate via Koren.
+4. If you find uncommitted changes you didn't make — do NOT revert/stash them. They're the other agent's work. Tell Koren.
+5. New tenants.settings keys: check this section's claims first, add your key to the claims list in the same commit.
+6. `npm install`: announce new deps in commit message clearly (`deps: add X for Y`) — the other agent must `npm install` after pulling.
 
 ## Current initiative — Voice engine migration (Retell → LiveKit)
 

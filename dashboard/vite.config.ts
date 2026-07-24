@@ -8,9 +8,11 @@ export default defineConfig({
     port: 3001,
     proxy: {
       '/api': {
-        // Default: the deployed backend. Point at a local one with:
-        //   VITE_PROXY_TARGET=http://localhost:3000 npm run dev
-        target: process.env.VITE_PROXY_TARGET || 'https://ai-sales-agent-production-9736.up.railway.app',
+        // SAFETY: default is the LOCAL backend. Dev dashboards must never mutate
+        // production data by accident (lead status PATCH, booking cancel, API-key
+        // regeneration all go through this proxy). To intentionally target prod:
+        //   VITE_PROXY_TARGET=https://ai-sales-agent-production-9736.up.railway.app npm run dev
+        target: process.env.VITE_PROXY_TARGET || 'http://localhost:3000',
         changeOrigin: true,
         secure: false,
         configure: (proxy) => {
