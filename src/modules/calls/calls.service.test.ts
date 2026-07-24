@@ -159,6 +159,7 @@ describe('getCall — call_learnings join', () => {
     const l = call!.learnings!;
     expect(l.status).toBe('analyzed');
     expect(l.outcome).toBe('won');
+    expect(call!.duration_secs).toBe(130); // no terminal-message metadata → learnings row provides it
     expect(l.end_reason).toBe('meeting_booked');
     expect(l.tool_calls).toHaveLength(3);
     expect(l.tool_calls[1]).toEqual({ atMs: 75_000, name: 'book_meeting', durationMs: 480, ok: false, error: 'slot taken' });

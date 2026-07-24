@@ -6,7 +6,297 @@ import { Card } from '../components/ui/Card.js'
 import { Skeleton } from '../components/ui/Skeleton.js'
 import { Button } from '../components/ui/Button.js'
 import { formatDate, formatDuration } from '../lib/format.js'
-import type { TranscriptTurn } from '../lib/types.js'
+import type { CallLearnings, TranscriptTurn } from '../lib/types.js'
+
+function humanizeSnake(s: string): string {
+  const words = s.replace(/_/g, ' ').trim()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+function scoreVariant(score: number): 'success' | 'warning' | 'error' {
+  if (score >= 7) return 'success'
+  if (score >= 4) return 'warning'
+  return 'error'
+}
+
+const SCORE_COLOR: Record<'success' | 'warning' | 'error', string> = {
+  success: 'var(--success)',
+  warning: 'var(--warning)',
+  error: 'var(--error)',
+}
+
+// -------------------------------------------------------------------------
+// Verdict strip — the call's outcome at a glance, above the grid (§4.1)
+// -------------------------------------------------------------------------
+function VerdictStrip({ learnings }: { learnings: CallLearnings }) {
+  const inProgress = learnings.status === 'pending' || learnings.status === 'transcribing'
+  const score = learnings.sales_analysis?.overall_effectiveness_score ?? null
+  const notice = learnings.compliance.recording_notice_played
+  const disclosure = learnings.compliance.ai_disclosure
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }} aria-label="Call verdict">
+      {learnings.outcome && (
+        <Badge variant={statusToBadgeVariant(learnings.outcome)}>{humanizeSnake(learnings.outcome)}</Badge>
+      )}
+      {learnings.end_reason && <Badge variant="violet">{humanizeSnake(learnings.end_reason)}</Badge>}
+      {score != null && (
+        <Badge variant={scoreVariant(score)}>{score}/10 effectiveness</Badge>
+      )}
+      {notice != null && (
+        <Badge variant={notice ? 'success' : 'error'}>
+          {notice ? <CheckCircle size={11} strokeWidth={1.5} /> : <XCircle size={11} strokeWidth={1.5} />}
+          Recording notice {notice ? 'played' : 'not played'}
+        </Badge>
+      )}
+      {disclosure && (
+        <Badge variant={disclosure === 'during_call' ? 'success' : disclosure === 'at_end' ? 'warning' : 'error'}>
+          {disclosure === 'during_call' ? (
+            <CheckCircle size={11} strokeWidth={1.5} />
+          ) : disclosure === 'at_end' ? (
+            <AlertCircle size={11} strokeWidth={1.5} />
+          ) : (
+            <XCircle size={11} strokeWidth={1.5} />
+          )}
+          {disclosure === 'during_call'
+            ? 'AI disclosed during call'
+            : disclosure === 'at_end'
+              ? 'AI disclosed at end'
+              : 'AI disclosure missed'}
+        </Badge>
+      )}
+      {inProgress && (
+        <Badge variant="default">
+          <Clock size={11} strokeWidth={1.5} />
+          Analysis in progress…
+        </Badge>
+      )}
+    </div>
+  )
+}
+
+// -------------------------------------------------------------------------
+// Tool-call timeline — one pill per tool invocation, ordered by time (§4.2)
+// -------------------------------------------------------------------------
+function ToolCallStrip({ toolCalls }: { toolCalls: CallLearnings['tool_calls'] }) {
+  if (toolCalls.length === 0) return null
+  const sorted = [...toolCalls].sort((a, b) => a.atMs - b.atMs)
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '6px',
+        paddingInline: '20px',
+        paddingBlock: '12px',
+        borderBottom: '1px solid var(--border-subtle)',
+      }}
+      aria-label="Tool calls during this call"
+    >
+      {sorted.map((tc, i) => (
+        <ToolCallPill key={`${tc.name}-${tc.atMs}-${i}`} tc={tc} />
+      ))}
+    </div>
+  )
+}
+
+function ToolCallPill({ tc }: { tc: CallLearnings['tool_calls'][number] }) {
+  const failed = !tc.ok
+  // The agent's tool budget is <500ms (voice-agent-development-methodology) — flag breaches
+  const slow = tc.ok && tc.durationMs > 500
+  const tint: React.CSSProperties = failed
+    ? { backgroundColor: 'rgba(239, 68, 68, 0.10)', border: '1px solid rgba(239, 68, 68, 0.30)', color: 'var(--error)' }
+    : slow
+      ? { backgroundColor: 'rgba(245, 158, 11, 0.10)', border: '1px solid rgba(245, 158, 11, 0.30)', color: 'var(--warning)' }
+      : { backgroundColor: 'var(--bg-inset)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }
+
+  return (
+    <span
+      title={failed ? (tc.error ?? 'Tool call failed') : slow ? 'Over the 500ms tool-latency budget' : undefined}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        paddingInline: '9px',
+        paddingBlock: '3px',
+        borderRadius: '9999px',
+        fontSize: '11px',
+        fontWeight: 600,
+        fontFamily: "'Assistant', sans-serif",
+        whiteSpace: 'nowrap',
+        ...tint,
+      }}
+    >
+      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', fontWeight: 400, color: 'var(--text-muted)' }}>
+        {formatDuration(Math.floor(tc.atMs / 1000))}
+      </span>
+      {tc.name}
+      {tc.ok ? <CheckCircle size={11} strokeWidth={1.5} /> : <XCircle size={11} strokeWidth={1.5} />}
+      <span style={{ fontSize: '10px', fontWeight: 400, color: slow ? 'var(--warning)' : 'var(--text-muted)' }}>
+        {tc.durationMs}ms
+      </span>
+    </span>
+  )
+}
+
+// -------------------------------------------------------------------------
+// Sales Analysis card — the worker's coaching read on the call (§4.3)
+// -------------------------------------------------------------------------
+function ListBlock({ label, items }: { label: string; items: string[] }) {
+  if (items.length === 0) return null
+  return (
+    <div style={{ marginBlockEnd: '12px' }}>
+      <p
+        style={{
+          fontSize: '11px',
+          fontWeight: 600,
+          letterSpacing: '0.05em',
+          textTransform: 'uppercase',
+          color: 'var(--text-muted)',
+          margin: 0,
+          marginBlockEnd: '6px',
+        }}
+      >
+        {label}
+      </p>
+      <ul style={{ margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        {items.map((item, i) => (
+          <li
+            key={i}
+            dir="auto"
+            style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.55, listStylePosition: 'inside' }}
+          >
+            {item}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function SalesAnalysisCard({ analysis }: { analysis: NonNullable<CallLearnings['sales_analysis']> }) {
+  const score = analysis.overall_effectiveness_score
+  const hasCoachingNotes =
+    analysis.what_worked.length > 0 ||
+    analysis.what_didnt_work.length > 0 ||
+    analysis.key_questions_asked.length > 0 ||
+    analysis.recommendations.length > 0
+
+  return (
+    <Card>
+      <h3
+        style={{
+          fontFamily: "'Montserrat', sans-serif",
+          fontWeight: 700,
+          fontSize: '11px',
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          color: 'var(--text-muted)',
+          marginBottom: '16px',
+        }}
+      >
+        Sales Analysis
+      </h3>
+
+      {score != null && (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px', marginBlockEnd: '14px' }}>
+          <span
+            style={{
+              fontFamily: "'Montserrat', sans-serif",
+              fontWeight: 800,
+              fontSize: '32px',
+              lineHeight: 1,
+              color: SCORE_COLOR[scoreVariant(score)],
+            }}
+          >
+            {score}
+          </span>
+          <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>/10 effectiveness</span>
+        </div>
+      )}
+
+      <ListBlock label="Pain points" items={analysis.pain_points_uncovered} />
+
+      {analysis.objections.length > 0 && (
+        <div style={{ marginBlockEnd: '12px' }}>
+          <p
+            style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+              color: 'var(--text-muted)',
+              margin: 0,
+              marginBlockEnd: '6px',
+            }}
+          >
+            Objections
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {analysis.objections.map((o, i) => (
+              <div
+                key={i}
+                style={{
+                  paddingInline: '10px',
+                  paddingBlock: '8px',
+                  backgroundColor: 'var(--bg-inset)',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-subtle)',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '7px',
+                }}
+              >
+                {o.handled_well ? (
+                  <CheckCircle size={13} strokeWidth={1.5} style={{ color: 'var(--success)', flexShrink: 0, marginBlockStart: '2px' }} />
+                ) : (
+                  <XCircle size={13} strokeWidth={1.5} style={{ color: 'var(--error)', flexShrink: 0, marginBlockStart: '2px' }} />
+                )}
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <p dir="auto" style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.5 }}>
+                    {o.objection}
+                  </p>
+                  <p dir="auto" style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                    {o.response}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(analysis.opening_technique || analysis.closing_technique || analysis.rapport_building) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBlockEnd: '12px' }}>
+          {analysis.opening_technique && (
+            <MetaRow label="Opening" value={<span dir="auto">{analysis.opening_technique}</span>} />
+          )}
+          {analysis.closing_technique && (
+            <MetaRow label="Closing" value={<span dir="auto">{analysis.closing_technique}</span>} />
+          )}
+          {analysis.rapport_building && (
+            <MetaRow label="Rapport" value={<span dir="auto">{analysis.rapport_building}</span>} />
+          )}
+        </div>
+      )}
+
+      {hasCoachingNotes && (
+        <details>
+          <summary style={{ cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>
+            Coaching notes
+          </summary>
+          <div style={{ marginBlockStart: '10px' }}>
+            <ListBlock label="What worked" items={analysis.what_worked} />
+            <ListBlock label="What didn't work" items={analysis.what_didnt_work} />
+            <ListBlock label="Key questions" items={analysis.key_questions_asked} />
+            <ListBlock label="Recommendations" items={analysis.recommendations} />
+          </div>
+        </details>
+      )}
+    </Card>
+  )
+}
 
 function TranscriptBubble({ turn }: { turn: TranscriptTurn }) {
   const isAgent = turn.role === 'agent'
@@ -52,7 +342,7 @@ function TranscriptBubble({ turn }: { turn: TranscriptTurn }) {
           color: 'var(--text-primary)',
         }}
       >
-        <p>{turn.message}</p>
+        <p dir="auto">{turn.message}</p>
         {turn.time_in_call_secs != null && (
           <p
             style={{
@@ -165,6 +455,9 @@ export function CallDetail() {
         </Link>
       </div>
 
+      {/* Verdict strip — what the agent knew, did, and proved (§4.1) */}
+      {call.learnings && <VerdictStrip learnings={call.learnings} />}
+
       {/* Two-column layout */}
       <div
         style={{
@@ -201,6 +494,8 @@ export function CallDetail() {
               {call.transcript.length} {call.transcript.length === 1 ? 'turn' : 'turns'}
             </span>
           </div>
+
+          {call.learnings && <ToolCallStrip toolCalls={call.learnings.tool_calls} />}
 
           <div
             style={{
@@ -368,6 +663,7 @@ export function CallDetail() {
               )}
               {call.analysis.transcript_summary && (
                 <p
+                  dir="auto"
                   style={{
                     fontSize: '13px',
                     color: 'var(--text-secondary)',
@@ -378,6 +674,11 @@ export function CallDetail() {
                 </p>
               )}
             </Card>
+          )}
+
+          {/* Sales Analysis — the worker's coaching read (§4.3) */}
+          {call.learnings?.sales_analysis && (
+            <SalesAnalysisCard analysis={call.learnings.sales_analysis} />
           )}
         </div>
       </div>

@@ -3,7 +3,7 @@ import { format } from 'date-fns'
 export function formatDuration(secs: number | null | undefined): string {
   if (secs == null) return '—'
   const m = Math.floor(secs / 60)
-  const s = secs % 60
+  const s = Math.floor(secs % 60)
   return `${m}:${String(s).padStart(2, '0')}`
 }
 

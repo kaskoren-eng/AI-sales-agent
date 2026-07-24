@@ -478,6 +478,7 @@ export class CallsService {
     // name (conference_name = channel_ref). Missing row → learnings stays null; a
     // learnings failure must never take down the call page.
     let learnings: CallLearnings | null = null;
+    let learningsDurationSecs: number | null = null;
     if (row.channelRef) {
       try {
         const [learningsRow] = await this.db
@@ -493,6 +494,7 @@ export class CallsService {
 
         if (learningsRow) {
           learnings = mapLearnings(learningsRow);
+          learningsDurationSecs = learningsRow.durationSecs ?? null;
 
           // The learnings transcript is the only one a LiveKit call has — use it,
           // but never override a transcript the Retell/messages path already built.
@@ -514,7 +516,8 @@ export class CallsService {
       status: row.status,
       created_at: row.createdAt.toISOString(),
       updated_at: row.updatedAt.toISOString(),
-      duration_secs: durationSecs,
+      // LiveKit calls have no terminal-message metadata — the learnings row carries duration
+      duration_secs: durationSecs ?? learningsDurationSecs,
       lead: {
         id: row.lead.id,
         name: row.lead.name ?? null,
