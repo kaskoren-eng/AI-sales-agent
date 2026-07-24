@@ -80,6 +80,49 @@ describe('parseOutboundMetadata', () => {
     expect(parseOutboundMetadata('not json')).toBeNull();
     expect(parseOutboundMetadata(JSON.stringify({ leadId: 'l-1' }))).toBeNull();
   });
+
+  it('carries dispatcher-resolved settings when present, ignores a non-object settings field', () => {
+    const withSettings = JSON.stringify({ tenantId: 'tenant-1', settings: { voice_engine: 'livekit', functions_enabled: true } });
+    expect(parseOutboundMetadata(withSettings)).toEqual({
+      tenantId: 'tenant-1',
+      leadId: null,
+      settings: { voice_engine: 'livekit', functions_enabled: true },
+    });
+    // A garbage settings field is simply dropped — the agent falls back to its own DB read.
+    const badSettings = JSON.stringify({ tenantId: 'tenant-1', settings: 'nope' });
+    expect(parseOutboundMetadata(badSettings)).toEqual({ tenantId: 'tenant-1', leadId: null });
+  });
+});
+
+describe('sanitizeSettingsForAgent — whitelist, never leak secrets', () => {
+  it('keeps only the voice-relevant keys and drops everything else (incl. secrets)', async () => {
+    const { sanitizeSettingsForAgent } = await import('../voice-livekit.service.js');
+    const out = sanitizeSettingsForAgent({
+      voice_engine: 'livekit',
+      functions_enabled: true,
+      whatsapp_templates: { meeting_confirmation: { contentSid: 'HX1' } },
+      toll_fraud: { dailySpendLimitUsd: 50 },
+      reminders: { enabled: true },
+      businessProfile: { companyName: 'ClickScales' },
+      monday: { encryptedApiToken: 'SECRET-DO-NOT-LEAK' },
+      apiKeyHash: 'also-secret',
+    });
+    expect(out).toEqual({
+      voice_engine: 'livekit',
+      functions_enabled: true,
+      whatsapp_templates: { meeting_confirmation: { contentSid: 'HX1' } },
+      toll_fraud: { dailySpendLimitUsd: 50 },
+      reminders: { enabled: true },
+      businessProfile: { companyName: 'ClickScales' },
+    });
+    expect(JSON.stringify(out)).not.toContain('SECRET-DO-NOT-LEAK');
+  });
+
+  it('returns undefined for null/non-object input', async () => {
+    const { sanitizeSettingsForAgent } = await import('../voice-livekit.service.js');
+    expect(sanitizeSettingsForAgent(null)).toBeUndefined();
+    expect(sanitizeSettingsForAgent('x')).toBeUndefined();
+  });
 });
 
 describe('evaluateToolGate — the fail-closed core', () => {
@@ -133,6 +176,39 @@ describe('buildToolRuntime — fail-closed matrix', () => {
     const env = { ...baseEnv, GOOGLE_CALENDAR_PRIVATE_KEY: undefined } as unknown as Env;
     const result = await buildToolRuntime(env, callOpts(), deps(ENABLED_SETTINGS).deps);
     expect(result.disabledReason).toBe('calendar_not_configured');
+  });
+
+  it('gates off metadata settings WITHOUT reading the DB — the cloud fix', async () => {
+    // The dispatcher shipped the resolved settings; the agent must NOT block on a settings read.
+    const loadSettings = vi.fn(async () => {
+      throw new Error('DB must not be read on the gate hot path');
+    });
+    const q = fakeQueues();
+    const metaWithSettings = JSON.stringify({
+      tenantId: 'tenant-meta',
+      leadId: 'lead-9',
+      settings: ENABLED_SETTINGS,
+    });
+    const result = await buildToolRuntime(
+      baseEnv,
+      { ...callOpts(), participantMetadata: metaWithSettings },
+      { connectDb: () => ({ db: {} as Database, close: vi.fn(async () => undefined) }), loadSettings, makeQueues: q.makeQueues },
+    );
+    expect(result.disabledReason).toBeNull();
+    expect(result.runtime?.tenantId).toBe('tenant-meta');
+    expect(result.runtime?.settings).toEqual(ENABLED_SETTINGS);
+    // The blocking read never gates the call. (It may be fired in the background to warm the pool,
+    // but the gate resolved before and regardless of it.)
+  });
+
+  it('metadata settings that fail the gate are still honored — no DB fallback rescue', async () => {
+    const metaRetell = JSON.stringify({ tenantId: 't', settings: { voice_engine: 'retell' } });
+    const result = await buildToolRuntime(
+      baseEnv,
+      { ...callOpts(), participantMetadata: metaRetell },
+      deps(ENABLED_SETTINGS).deps, // DB would say enabled — but metadata wins
+    );
+    expect(result.disabledReason).toBe('engine_not_livekit');
   });
 
   it('settings read throws → settings_read_failed, pool closed', async () => {

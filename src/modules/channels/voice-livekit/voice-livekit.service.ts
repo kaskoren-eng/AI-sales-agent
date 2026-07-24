@@ -34,6 +34,9 @@ export interface OutboundCallMetadata {
   leadEmail?: string;
   leadPhone: string;
   direction: 'outbound';
+  /** Sanitized per-tenant gate config, resolved here (fast DB) so the agent gates off metadata
+   * instead of a cold cross-region DB read at pickup. Absent only if the settings load failed. */
+  settings?: Record<string, unknown>;
 }
 
 export class LiveKitVoiceService {
@@ -68,13 +71,15 @@ export class LiveKitVoiceService {
 
     // Toll-fraud brake at the dial itself (defense in depth with the flow-executor pre-check).
     // Bench/test constructions without deps skip it WITH A WARNING — production (server.ts)
-    // always injects db+redis.
+    // always injects db+redis. The same settings row also feeds the agent's gate (below).
+    let gateSettings: Record<string, unknown> | undefined;
     if (this.deps?.db) {
       const [tenantRow] = await this.deps.db
         .select({ settings: tenants.settings })
         .from(tenants)
         .where(eq(tenants.id, tenantId))
         .limit(1);
+      gateSettings = sanitizeSettingsForAgent(tenantRow?.settings);
       const decision = await checkDailySpendLimit(
         { db: this.deps.db, redis: this.deps.redis ?? null },
         tenantId,
@@ -96,6 +101,7 @@ export class LiveKitVoiceService {
       leadEmail: leadContext?.email,
       leadPhone: to,
       direction: 'outbound',
+      ...(gateSettings ? { settings: gateSettings } : {}),
     };
 
     await livekitCircuit.execute(() =>
@@ -142,6 +148,34 @@ export function resolveVoiceEngine(
  * tools write to the tenant's calendar and tables, so absence of the flag means NO. This is the
  * per-tenant kill switch the migration plan requires before any tool goes near production.
  */
+/**
+ * The non-secret, voice-relevant subset of `tenants.settings` that the dispatcher (web-call route,
+ * outbound dialer) ships to the agent in call metadata — so the agent gates off metadata instead
+ * of a cold cross-region DB read at pickup (which was silently disabling every cloud call's tools).
+ *
+ * WHITELIST, never the raw blob: `tenants.settings` can hold secrets (e.g. monday.encryptedApiToken).
+ * Only these keys ever leave the backend in a token the browser holds; the caller is the
+ * authenticated tenant anyway.
+ */
+export const AGENT_SETTINGS_KEYS = [
+  'voice_engine',
+  'functions_enabled',
+  'whatsapp_templates',
+  'toll_fraud',
+  'reminders',
+  'businessProfile',
+] as const;
+
+export function sanitizeSettingsForAgent(settings: unknown): Record<string, unknown> | undefined {
+  if (!settings || typeof settings !== 'object') return undefined;
+  const src = settings as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of AGENT_SETTINGS_KEYS) {
+    if (src[key] !== undefined) out[key] = src[key];
+  }
+  return out;
+}
+
 export function resolveFunctionsEnabled(settings: unknown): boolean {
   return (
     settings !== null &&

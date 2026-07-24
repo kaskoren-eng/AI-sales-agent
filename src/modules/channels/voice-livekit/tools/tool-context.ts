@@ -96,10 +96,12 @@ export interface ToolRuntimeDeps {
   makeQueues?: (env: Env) => { outboundQueue: Queue; remindersQueue: Queue; close: () => Promise<void> };
 }
 
-/** What the outbound dialer put on the SIP participant (voice-livekit.service.ts). */
+/** What the outbound dialer / web-call route put on the participant. `settings` is the sanitized
+ * per-tenant config (see sanitizeSettingsForAgent) — present on cloud dispatch, absent on inbound
+ * SIP (which falls back to the agent-side DB read). */
 export function parseOutboundMetadata(
   metadata: string | undefined,
-): { tenantId: string; leadId: string | null } | null {
+): { tenantId: string; leadId: string | null; settings?: unknown } | null {
   if (!metadata) return null;
   try {
     const parsed = JSON.parse(metadata) as Record<string, unknown>;
@@ -107,6 +109,7 @@ export function parseOutboundMetadata(
       return {
         tenantId: parsed.tenantId,
         leadId: typeof parsed.leadId === 'string' && parsed.leadId.length > 0 ? parsed.leadId : null,
+        ...(parsed.settings && typeof parsed.settings === 'object' ? { settings: parsed.settings } : {}),
       };
     }
   } catch {
@@ -167,14 +170,29 @@ export async function buildToolRuntime(
     return { runtime: null, disabledReason: 'db_connect_failed' };
   }
 
+  // 3. The gate config. PREFER the settings the dispatcher already resolved and shipped in the
+  //    metadata (backend-side, fast+correct DB) — the agent then gates instantly and never depends
+  //    on a cold cross-region DB read at pickup. Only inbound SIP (no dispatcher settings) falls
+  //    back to the timeboxed agent-side read. Tenant id is logged on failure so a mis-stamped or
+  //    missing tenant is diagnosable instead of a silent "settings_read_failed".
   let settings: unknown;
-  try {
-    settings = await withTimeout(load(connection.db, identity.tenantId), FLAG_READ_TIMEOUT_MS);
-  } catch (err) {
-    await connection.close().catch(() => undefined);
-    const reason = err instanceof Error && err.message === 'timeout' ? 'settings_read_timeout' : 'settings_read_failed';
-    console.error('tool_runtime_settings_failed', err instanceof Error ? err.message : String(err));
-    return { runtime: null, disabledReason: reason };
+  if ('settings' in identity && identity.settings !== undefined) {
+    settings = identity.settings;
+    // Warm the pool off the hot path so the first mid-call tool WRITE isn't cold. Errors are
+    // irrelevant here — the gate already has its answer; writes degrade gracefully (invariant 2).
+    void load(connection.db, identity.tenantId).catch(() => undefined);
+  } else {
+    try {
+      settings = await withTimeout(load(connection.db, identity.tenantId), FLAG_READ_TIMEOUT_MS);
+    } catch (err) {
+      await connection.close().catch(() => undefined);
+      const reason = err instanceof Error && err.message === 'timeout' ? 'settings_read_timeout' : 'settings_read_failed';
+      console.error(
+        'tool_runtime_settings_failed',
+        JSON.stringify({ tenantId: identity.tenantId, error: err instanceof Error ? err.message : String(err) }),
+      );
+      return { runtime: null, disabledReason: reason };
+    }
   }
 
   // 4. The per-tenant kill switch.
