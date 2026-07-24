@@ -1,4 +1,10 @@
 {
+  "common": {
+    "close": "Close",
+    "cancel": "Cancel",
+    "save": "Save",
+    "retry": "Try again"
+  },
   "nav": {
     "overview": "Overview",
     "leads": "Leads",

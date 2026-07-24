@@ -1,4 +1,10 @@
 {
+  "common": {
+    "close": "סגירה",
+    "cancel": "ביטול",
+    "save": "שמירה",
+    "retry": "נסו שוב"
+  },
   "nav": {
     "overview": "סקירה",
     "leads": "לידים",
