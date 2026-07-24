@@ -32,5 +32,54 @@
     "recentActivity": "Recent Activity",
     "activityDescription": "Last 5 activity entries from Keren",
     "closeActivity": "Close activity panel"
+  },
+  "status": {
+    "new": "new",
+    "contacted": "contacted",
+    "qualifying": "qualifying",
+    "qualified": "qualified",
+    "booked": "booked",
+    "disqualified": "disqualified",
+    "lost": "lost",
+    "opted_out": "opted out"
+  },
+  "channels": {
+    "whatsapp": "WhatsApp",
+    "email": "Email",
+    "voice": "Voice",
+    "meta_ads": "Meta Ads",
+    "csv": "CSV"
+  },
+  "leads": {
+    "filterLeads": "Filter leads",
+    "searchLabel": "Search leads",
+    "searchPlaceholder": "Search name, email, phone...",
+    "statusLabel": "Filter by status",
+    "allStatuses": "All statuses",
+    "count_one": "{{formattedCount}} lead",
+    "count_other": "{{formattedCount}} leads",
+    "tableLabel": "Leads table",
+    "columns": {
+      "name": "Name",
+      "contact": "Contact",
+      "channel": "Channel",
+      "status": "Status",
+      "score": "Score",
+      "lastActivity": "Last Activity",
+      "actions": "Actions"
+    },
+    "view": "View",
+    "viewDetails": "View details for {{name}}",
+    "emptyTitle": "No leads yet",
+    "emptyDescription": "Connect a channel to start receiving leads.",
+    "loadError": "Failed to load leads. Please try again.",
+    "pagination": {
+      "label": "Pagination",
+      "pageOf": "Page {{page}} of {{total}}",
+      "prev": "Prev",
+      "next": "Next",
+      "previousPage": "Previous page",
+      "nextPage": "Next page"
+    }
   }
 }

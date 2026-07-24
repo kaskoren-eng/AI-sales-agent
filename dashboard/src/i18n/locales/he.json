@@ -32,5 +32,54 @@
     "recentActivity": "פעילות אחרונה",
     "activityDescription": "5 הפעילויות האחרונות של קרן",
     "closeActivity": "סגירת חלונית הפעילות"
+  },
+  "status": {
+    "new": "חדש",
+    "contacted": "נוצר קשר",
+    "qualifying": "בבדיקה",
+    "qualified": "מוסמך",
+    "booked": "נקבעה פגישה",
+    "disqualified": "נפסל",
+    "lost": "אבוד",
+    "opted_out": "ביקש להסיר"
+  },
+  "channels": {
+    "whatsapp": "וואטסאפ",
+    "email": "אימייל",
+    "voice": "קולי",
+    "meta_ads": "Meta Ads",
+    "csv": "CSV"
+  },
+  "leads": {
+    "filterLeads": "סינון לידים",
+    "searchLabel": "חיפוש לידים",
+    "searchPlaceholder": "חיפוש שם, אימייל, טלפון...",
+    "statusLabel": "סינון לפי סטטוס",
+    "allStatuses": "כל הסטטוסים",
+    "count_one": "ליד {{formattedCount}}",
+    "count_other": "{{formattedCount}} לידים",
+    "tableLabel": "טבלת לידים",
+    "columns": {
+      "name": "שם",
+      "contact": "פרטי קשר",
+      "channel": "ערוץ",
+      "status": "סטטוס",
+      "score": "ניקוד",
+      "lastActivity": "פעילות אחרונה",
+      "actions": "פעולות"
+    },
+    "view": "צפייה",
+    "viewDetails": "צפייה בפרטים של {{name}}",
+    "emptyTitle": "אין עדיין לידים",
+    "emptyDescription": "חברו ערוץ כדי להתחיל לקבל לידים.",
+    "loadError": "טעינת הלידים נכשלה. נסו שוב.",
+    "pagination": {
+      "label": "עימוד",
+      "pageOf": "עמוד {{page}} מתוך {{total}}",
+      "prev": "הקודם",
+      "next": "הבא",
+      "previousPage": "העמוד הקודם",
+      "nextPage": "העמוד הבא"
+    }
   }
 }

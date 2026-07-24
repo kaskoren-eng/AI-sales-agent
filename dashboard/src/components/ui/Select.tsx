@@ -12,19 +12,21 @@ interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'chi
   placeholder?: string
   size?: 'sm' | 'md'
   invalid?: boolean
+  /** false → content-sized (for inline filters); true (default) → fills its container. */
+  fullWidth?: boolean
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
-  { options, placeholder, size = 'md', invalid = false, style, ...props },
+  { options, placeholder, size = 'md', invalid = false, fullWidth = true, style, ...props },
   ref,
 ) {
   return (
-    <div style={{ position: 'relative', display: 'inline-flex', width: '100%' }}>
+    <div style={{ position: 'relative', display: 'inline-flex', width: fullWidth ? '100%' : 'auto' }}>
       <select
         ref={ref}
         aria-invalid={invalid || undefined}
         style={{
-          width: '100%',
+          width: fullWidth ? '100%' : 'auto',
           height: size === 'sm' ? '32px' : '40px',
           appearance: 'none',
           // Chevron gutter is inline-end — logical padding flips under RTL.

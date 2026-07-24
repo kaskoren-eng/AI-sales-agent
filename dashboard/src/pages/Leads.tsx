@@ -1,23 +1,20 @@
 import { useState, useId } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Users, Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useLeadsList } from '../hooks/useLeadsList.js'
 import { Badge, statusToBadgeVariant } from '../components/ui/Badge.js'
 import { Button } from '../components/ui/Button.js'
 import { Card } from '../components/ui/Card.js'
+import { Input } from '../components/ui/Input.js'
+import { Select } from '../components/ui/Select.js'
+import { EmptyState } from '../components/ui/EmptyState.js'
+import { Bidi } from '../components/ui/Bidi.js'
 import { TableSkeleton } from '../components/ui/Skeleton.js'
 import { formatDate } from '../lib/format.js'
 
-const STATUS_OPTIONS = ['', 'new', 'contacted', 'qualified', 'booked', 'lost']
+const STATUS_OPTIONS = ['new', 'contacted', 'qualified', 'booked', 'lost']
 const LIMIT = 20
-
-const channelLabel: Record<string, string> = {
-  whatsapp: 'WhatsApp',
-  email: 'Email',
-  voice: 'Voice',
-  meta_ads: 'Meta Ads',
-  csv: 'CSV',
-}
 
 function ScoreBar({ score }: { score: number | null }) {
   if (score == null) {
@@ -53,6 +50,7 @@ function ScoreBar({ score }: { score: number | null }) {
 }
 
 export function Leads() {
+  const { t } = useTranslation()
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
@@ -87,6 +85,16 @@ export function Leads() {
     setPage(1)
   }
 
+  const columns: Array<{ key: string; label: string }> = [
+    { key: 'name', label: t('leads.columns.name') },
+    { key: 'contact', label: t('leads.columns.contact') },
+    { key: 'channel', label: t('leads.columns.channel') },
+    { key: 'status', label: t('leads.columns.status') },
+    { key: 'score', label: t('leads.columns.score') },
+    { key: 'lastActivity', label: t('leads.columns.lastActivity') },
+    { key: 'actions', label: t('leads.columns.actions') },
+  ]
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
@@ -99,82 +107,45 @@ export function Leads() {
           flexWrap: 'wrap',
         }}
         role="search"
-        aria-label="Filter leads"
+        aria-label={t('leads.filterLeads')}
       >
         {/* Search */}
-        <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: '360px' }}>
-          <label htmlFor={searchId} className="sr-only">Search leads</label>
-          <Search
-            size={15}
-            strokeWidth={1.5}
-            style={{
-              position: 'absolute',
-              left: '11px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: 'var(--text-muted)',
-              pointerEvents: 'none',
-            }}
-            aria-hidden="true"
-          />
-          <input
+        <div style={{ flex: '1 1 220px', maxWidth: '360px' }}>
+          <label htmlFor={searchId} className="sr-only">{t('leads.searchLabel')}</label>
+          <Input
             id={searchId}
             type="search"
-            placeholder="Search name, email, phone..."
+            placeholder={t('leads.searchPlaceholder')}
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
-            style={{
-              width: '100%',
-              height: '36px',
-              backgroundColor: 'var(--bg-surface)',
-              border: '1px solid var(--border-default)',
-              borderRadius: '8px',
-              padding: '0 12px 0 36px',
-              color: 'var(--text-primary)',
-              fontSize: '13px',
-              fontFamily: "'Assistant', sans-serif",
-              outline: 'none',
-            }}
+            startIcon={<Search size={15} strokeWidth={1.5} />}
+            style={{ height: '36px', backgroundColor: 'var(--bg-surface)', fontSize: '13px' }}
           />
         </div>
 
         {/* Status filter */}
         <div>
-          <label htmlFor={statusId} className="sr-only">Filter by status</label>
-          <select
+          <label htmlFor={statusId} className="sr-only">{t('leads.statusLabel')}</label>
+          <Select
             id={statusId}
+            fullWidth={false}
             value={status}
             onChange={(e) => handleStatusChange(e.target.value)}
+            aria-label={t('leads.statusLabel')}
+            placeholder={t('leads.allStatuses')}
+            options={STATUS_OPTIONS.map((s) => ({ value: s, label: t(`status.${s}`) }))}
             style={{
               height: '36px',
               backgroundColor: 'var(--bg-surface)',
-              border: '1px solid var(--border-default)',
-              borderRadius: '8px',
-              padding: '0 32px 0 12px',
-              color: status ? 'var(--text-primary)' : 'var(--text-muted)',
               fontSize: '13px',
-              fontFamily: "'Assistant', sans-serif",
-              outline: 'none',
-              cursor: 'pointer',
-              appearance: 'none',
-              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='1.5'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
-              backgroundRepeat: 'no-repeat',
-              backgroundPosition: 'right 10px center',
+              color: status ? 'var(--text-primary)' : 'var(--text-muted)',
             }}
-            aria-label="Filter by status"
-          >
-            <option value="">All statuses</option>
-            {STATUS_OPTIONS.filter(Boolean).map((s) => (
-              <option key={s} value={s}>
-                {s.charAt(0).toUpperCase() + s.slice(1)}
-              </option>
-            ))}
-          </select>
+          />
         </div>
 
         {meta && (
-          <span style={{ fontSize: '13px', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-            {meta.total.toLocaleString()} {meta.total === 1 ? 'lead' : 'leads'}
+          <span style={{ fontSize: '13px', color: 'var(--text-muted)', marginInlineStart: 'auto' }}>
+            {t('leads.count', { count: meta.total, formattedCount: meta.total.toLocaleString() })}
           </span>
         )}
       </div>
@@ -191,7 +162,7 @@ export function Leads() {
               fontSize: '14px',
             }}
           >
-            Failed to load leads. Please try again.
+            {t('leads.loadError')}
           </div>
         )}
 
@@ -199,28 +170,28 @@ export function Leads() {
           <div style={{ overflowX: 'auto' }}>
             <table
               style={{ width: '100%', borderCollapse: 'collapse', minWidth: '640px' }}
-              aria-label="Leads table"
+              aria-label={t('leads.tableLabel')}
               aria-busy={isLoading}
             >
               <thead>
                 <tr>
-                  {['Name', 'Contact', 'Channel', 'Status', 'Score', 'Last Activity', 'Actions'].map((h) => (
+                  {columns.map((col) => (
                     <th
-                      key={h}
+                      key={col.key}
                       scope="col"
                       style={{
                         padding: '10px 16px',
                         fontSize: '11px',
                         fontWeight: 600,
                         color: 'var(--text-muted)',
-                        textAlign: 'left',
+                        textAlign: 'start',
                         letterSpacing: '0.05em',
                         textTransform: 'uppercase',
                         borderBottom: '1px solid var(--border-subtle)',
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      {h}
+                      {col.label}
                     </th>
                   ))}
                 </tr>
@@ -230,14 +201,13 @@ export function Leads() {
                   <TableSkeleton rows={8} cols={7} />
                 ) : leads.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ padding: '64px 20px', textAlign: 'center' }}>
-                      <Users size={32} strokeWidth={1} style={{ color: 'var(--text-disabled)', marginBottom: '12px', display: 'block', margin: '0 auto 12px' }} />
-                      <p style={{ fontSize: '15px', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '6px' }}>
-                        No leads yet
-                      </p>
-                      <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                        Connect a channel to start receiving leads.
-                      </p>
+                    <td colSpan={7} style={{ padding: 0 }}>
+                      <EmptyState
+                        style={{ padding: '64px 20px' }}
+                        icon={<Users size={32} strokeWidth={1} />}
+                        title={t('leads.emptyTitle')}
+                        description={t('leads.emptyDescription')}
+                      />
                     </td>
                   </tr>
                 ) : (
@@ -256,9 +226,9 @@ export function Leads() {
                       }}
                     >
                       <td style={{ padding: '13px 16px' }}>
-                        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        <Bidi style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
                           {lead.name ?? '—'}
-                        </span>
+                        </Bidi>
                       </td>
                       <td style={{ padding: '13px 16px' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -280,7 +250,7 @@ export function Leads() {
                       <td style={{ padding: '13px 16px' }}>
                         {lead.channel ? (
                           <Badge variant="default">
-                            {channelLabel[lead.channel] ?? lead.channel}
+                            {t(`channels.${lead.channel}`, { defaultValue: lead.channel })}
                           </Badge>
                         ) : (
                           <span style={{ fontSize: '13px', color: 'var(--text-disabled)' }}>—</span>
@@ -288,19 +258,19 @@ export function Leads() {
                       </td>
                       <td style={{ padding: '13px 16px' }}>
                         <Badge variant={statusToBadgeVariant(lead.status)}>
-                          {lead.status}
+                          {t(`status.${lead.status}`, { defaultValue: lead.status })}
                         </Badge>
                       </td>
                       <td style={{ padding: '13px 16px', minWidth: '100px' }}>
                         <ScoreBar score={lead.score} />
                       </td>
                       <td style={{ padding: '13px 16px', fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                        {formatDate(lead.lastActivityAt ?? lead.updatedAt)}
+                        <Bidi>{formatDate(lead.lastActivityAt ?? lead.updatedAt)}</Bidi>
                       </td>
                       <td style={{ padding: '13px 16px' }}>
                         <Link
                           to={`/leads/${lead.id}`}
-                          aria-label={`View details for ${lead.name ?? 'lead'}`}
+                          aria-label={t('leads.viewDetails', { name: lead.name ?? t('leads.columns.name') })}
                           style={{ textDecoration: 'none' }}
                         >
                           <Button
@@ -308,7 +278,7 @@ export function Leads() {
                             size="sm"
                             style={{ fontSize: '12px', color: 'var(--accent-cyan)' }}
                           >
-                            View
+                            {t('leads.view')}
                           </Button>
                         </Link>
                       </td>
@@ -330,10 +300,10 @@ export function Leads() {
             justifyContent: 'space-between',
             paddingTop: '4px',
           }}
-          aria-label="Pagination"
+          aria-label={t('leads.pagination.label')}
         >
           <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-            Page {page} of {totalPages}
+            {t('leads.pagination.pageOf', { page, total: totalPages })}
           </span>
           <div style={{ display: 'flex', gap: '8px' }}>
             <Button
@@ -341,18 +311,18 @@ export function Leads() {
               size="sm"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              aria-label="Previous page"
+              aria-label={t('leads.pagination.previousPage')}
             >
-              <ChevronLeft size={14} strokeWidth={1.5} /> Prev
+              <ChevronLeft size={14} strokeWidth={1.5} className="flip-rtl" /> {t('leads.pagination.prev')}
             </Button>
             <Button
               variant="secondary"
               size="sm"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              aria-label="Next page"
+              aria-label={t('leads.pagination.nextPage')}
             >
-              Next <ChevronRight size={14} strokeWidth={1.5} />
+              {t('leads.pagination.next')} <ChevronRight size={14} strokeWidth={1.5} className="flip-rtl" />
             </Button>
           </div>
         </div>
