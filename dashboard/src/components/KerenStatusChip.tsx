@@ -30,14 +30,14 @@ const typeColor: Record<ActivityEntry['type'], string> = {
   booking: 'var(--success)',
 }
 
-export function DanieStatusChip() {
+export function KerenStatusChip() {
   const [open, setOpen] = useState(false)
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
         <button
-          aria-label="View Danie activity — agent is active"
+          aria-label="View Keren's activity — agent is active"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -77,7 +77,7 @@ export function DanieStatusChip() {
               fontFamily: "'Assistant', sans-serif",
             }}
           >
-            Danie is active
+            Keren is active
           </span>
         </button>
       </Dialog.Trigger>
@@ -149,7 +149,7 @@ export function DanieStatusChip() {
           </div>
 
           <p id="activity-desc" className="sr-only">
-            Last 5 activity entries from Danie
+            Last 5 activity entries from Keren
           </p>
 
           <ul

@@ -8,7 +8,7 @@ import {
   Plug,
   Settings,
 } from 'lucide-react'
-import { DanieStatusChip } from '../DanieStatusChip.js'
+import { KerenStatusChip } from '../KerenStatusChip.js'
 
 interface NavItem {
   to: string
@@ -21,7 +21,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Overview', icon: <LayoutDashboard size={18} strokeWidth={1.5} />, end: true },
   { to: '/leads', label: 'Leads', icon: <Users size={18} strokeWidth={1.5} /> },
   { to: '/calls', label: 'Calls', icon: <Phone size={18} strokeWidth={1.5} /> },
-  { to: '/voice', label: 'Voice Simulator', icon: <AudioLines size={18} strokeWidth={1.5} /> },
+  { to: '/voice', label: 'Test Keren', icon: <AudioLines size={18} strokeWidth={1.5} /> },
   { to: '/bookings', label: 'Bookings', icon: <CalendarDays size={18} strokeWidth={1.5} /> },
   { to: '/integrations', label: 'Integrations', icon: <Plug size={18} strokeWidth={1.5} /> },
   { to: '/settings', label: 'Settings', icon: <Settings size={18} strokeWidth={1.5} /> },
@@ -60,24 +60,38 @@ export function Sidebar() {
       >
         <img
           src="/logo.png"
-          alt="Danie logo"
+          alt="KEREN logo"
           style={{ width: '36px', height: '36px', objectFit: 'contain', flexShrink: 0 }}
         />
-        <span
-          style={{
-            fontFamily: "'Montserrat', sans-serif",
-            fontWeight: 800,
-            fontSize: '18px',
-            letterSpacing: '0.12em',
-            textTransform: 'uppercase',
-            background: 'linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-violet) 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-          }}
-        >
-          DANIE
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <span
+            style={{
+              fontFamily: "'Montserrat', sans-serif",
+              fontWeight: 800,
+              fontSize: '18px',
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              lineHeight: 1.2,
+              background: 'linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-violet) 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}
+          >
+            KEREN
+          </span>
+          <span
+            style={{
+              fontSize: '10px',
+              fontWeight: 600,
+              letterSpacing: '0.08em',
+              color: 'var(--text-muted)',
+              fontFamily: "'Assistant', sans-serif",
+            }}
+          >
+            by ClickScales
+          </span>
+        </div>
       </div>
 
       {/* Nav */}
@@ -137,7 +151,7 @@ export function Sidebar() {
           flexShrink: 0,
         }}
       >
-        <DanieStatusChip />
+        <KerenStatusChip />
       </div>
     </aside>
   )

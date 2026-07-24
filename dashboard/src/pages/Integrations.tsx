@@ -30,7 +30,7 @@ const INTEGRATIONS: Integration[] = [
   {
     id: 'voice',
     name: 'Voice',
-    description: 'AI voice calls via Twilio + ElevenLabs',
+    description: 'Hebrew-first AI voice calls — Zadarma SIP + Retell, migrating to LiveKit + Cartesia',
     icon: <Phone size={24} strokeWidth={1.5} />,
     status: 'not_configured',
   },
@@ -86,7 +86,7 @@ export function Integrations() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <p style={{ fontSize: '14px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-        Connect your channels and third-party tools. Each integration extends Danie's reach and capabilities.
+        Connect your channels and third-party tools. Each integration extends Keren's reach and capabilities.
       </p>
 
       <div
