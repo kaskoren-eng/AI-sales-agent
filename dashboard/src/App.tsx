@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AppLayout } from './components/layout/AppLayout.js'
 import { Overview } from './pages/Overview.js'
@@ -9,6 +10,9 @@ import { CallDetail } from './pages/CallDetail.js'
 import { Bookings } from './pages/Bookings.js'
 import { Integrations } from './pages/Integrations.js'
 import { Settings } from './pages/Settings.js'
+
+// Dev-only primitives inventory. Lazy + DEV-guarded so it never enters the prod bundle.
+const Styleguide = import.meta.env.DEV ? lazy(() => import('./pages/Styleguide.js').then((m) => ({ default: m.Styleguide }))) : null
 
 export default function App() {
   return (
@@ -24,6 +28,16 @@ export default function App() {
           <Route path="/bookings" element={<Bookings />} />
           <Route path="/integrations" element={<Integrations />} />
           <Route path="/settings" element={<Settings />} />
+          {Styleguide && (
+            <Route
+              path="/styleguide"
+              element={
+                <Suspense fallback={null}>
+                  <Styleguide />
+                </Suspense>
+              }
+            />
+          )}
         </Routes>
       </AppLayout>
     </BrowserRouter>
