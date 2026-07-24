@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   ArrowLeft,
   User,
@@ -20,6 +22,9 @@ import { Badge, statusToBadgeVariant } from '../components/ui/Badge.js'
 import { Card } from '../components/ui/Card.js'
 import { Skeleton } from '../components/ui/Skeleton.js'
 import { Button } from '../components/ui/Button.js'
+import { Select } from '../components/ui/Select.js'
+import { Bidi } from '../components/ui/Bidi.js'
+import { useToast } from '../components/ui/Toast.js'
 import { formatDate } from '../lib/format.js'
 import type {
   LeadTimelineResponse,
@@ -42,22 +47,6 @@ const STATUS_OPTIONS = [
   'opted_out',
 ] as const
 
-const CHANNEL_LABEL: Record<string, string> = {
-  voice: 'Voice',
-  whatsapp: 'WhatsApp',
-  email: 'Email',
-}
-
-const SOURCE_LABEL: Record<string, string> = {
-  meta_ads: 'Meta Ads',
-  facebook: 'Facebook',
-  google_sheets: 'Google Sheets',
-  csv: 'CSV import',
-  webhook: 'Webhook',
-  api: 'API',
-  voice_inbound: 'Inbound call',
-}
-
 // -------------------------------------------------------------------------
 // Timeline event model — unified shape for anything we render on the feed
 // -------------------------------------------------------------------------
@@ -78,6 +67,7 @@ type TimelineEvent =
 // -------------------------------------------------------------------------
 export function LeadDetail() {
   const { id } = useParams<{ id: string }>()
+  const { t } = useTranslation()
   const { data, isLoading, isError, error } = useLeadDetail(id!)
 
   if (isLoading) return <LeadDetailSkeleton />
@@ -88,16 +78,14 @@ export function LeadDetail() {
       <div style={{ textAlign: 'center', padding: '64px 0' }}>
         <User size={36} strokeWidth={1} style={{ color: 'var(--text-disabled)', display: 'block', margin: '0 auto 16px' }} />
         <p style={{ fontSize: '16px', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '8px' }}>
-          {is404 ? 'Lead not found' : 'Failed to load lead'}
+          {is404 ? t('leadDetail.notFound') : t('leadDetail.loadError')}
         </p>
         <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' }}>
-          {is404
-            ? 'This lead does not exist or has been removed.'
-            : 'Something went wrong. Please try again.'}
+          {is404 ? t('leadDetail.notFoundDesc') : t('leadDetail.loadErrorDesc')}
         </p>
         <Link to="/leads">
           <Button variant="secondary" size="sm">
-            <ArrowLeft size={14} strokeWidth={1.5} /> Back to Leads
+            <ArrowLeft size={14} strokeWidth={1.5} className="flip-rtl" /> {t('leadDetail.backToLeads')}
           </Button>
         </Link>
       </div>
@@ -113,9 +101,10 @@ export function LeadDetail() {
 // Content
 // -------------------------------------------------------------------------
 function LeadDetailContent({ data }: { data: LeadTimelineResponse }) {
+  const { t } = useTranslation()
   const { lead, conversations, messages, scheduledCalls } = data
   const events = useMemo(() => buildTimeline(data), [data])
-  const displayName = lead.name?.trim() || lead.email || lead.phone || 'Unnamed lead'
+  const displayName = lead.name?.trim() || lead.email || lead.phone || t('leadDetail.unnamedLead')
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -139,8 +128,8 @@ function LeadDetailContent({ data }: { data: LeadTimelineResponse }) {
             ;(e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-secondary)'
           }}
         >
-          <ArrowLeft size={14} strokeWidth={1.5} />
-          Back to Leads
+          <ArrowLeft size={14} strokeWidth={1.5} className="flip-rtl" />
+          {t('leadDetail.backToLeads')}
         </Link>
       </div>
 
@@ -173,7 +162,8 @@ function LeadDetailContent({ data }: { data: LeadTimelineResponse }) {
             <User size={18} strokeWidth={1.5} />
           </div>
           <div style={{ minWidth: 0 }}>
-            <h1
+            <Bidi
+              as="h1"
               style={{
                 fontFamily: "'Montserrat', sans-serif",
                 fontWeight: 700,
@@ -185,12 +175,12 @@ function LeadDetailContent({ data }: { data: LeadTimelineResponse }) {
               }}
             >
               {displayName}
-            </h1>
+            </Bidi>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-              <Badge variant={statusToBadgeVariant(lead.status)}>{lead.status}</Badge>
+              <Badge variant={statusToBadgeVariant(lead.status)}>{t(`status.${lead.status}`, { defaultValue: lead.status })}</Badge>
               {lead.source && (
                 <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                  via {SOURCE_LABEL[lead.source] ?? lead.source}
+                  {t('leadDetail.via', { source: t(`sources.${lead.source}`, { defaultValue: lead.source }) })}
                 </span>
               )}
             </div>
@@ -199,7 +189,7 @@ function LeadDetailContent({ data }: { data: LeadTimelineResponse }) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            Updated {formatDate(lead.updatedAt)}
+            {t('leadDetail.updatedLabel')} <Bidi>{formatDate(lead.updatedAt)}</Bidi>
           </span>
         </div>
       </div>
@@ -237,13 +227,14 @@ function LeadDetailContent({ data }: { data: LeadTimelineResponse }) {
 // LEFT column components
 // -------------------------------------------------------------------------
 function LeadIdentityCard({ lead }: { lead: LeadTimelineResponse['lead'] }) {
+  const { t } = useTranslation()
   return (
     <Card>
-      <CardHeader label="Identity" />
+      <CardHeader label={t('leadDetail.identity')} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <MetaRow label="Name" value={lead.name ?? '—'} />
+        <MetaRow label={t('leadDetail.name')} value={<Bidi>{lead.name ?? '—'}</Bidi>} />
         <MetaRow
-          label="Email"
+          label={t('leadDetail.email')}
           value={
             lead.email ? (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
@@ -256,7 +247,7 @@ function LeadIdentityCard({ lead }: { lead: LeadTimelineResponse['lead'] }) {
           }
         />
         <MetaRow
-          label="Phone"
+          label={t('leadDetail.phone')}
           value={
             lead.phone ? (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
@@ -268,14 +259,16 @@ function LeadIdentityCard({ lead }: { lead: LeadTimelineResponse['lead'] }) {
             )
           }
         />
-        <MetaRow label="Score" value={lead.score != null ? `${lead.score} / 100` : '—'} />
-        <MetaRow label="Created" value={formatDate(lead.createdAt)} />
+        <MetaRow label={t('leadDetail.score')} value={lead.score != null ? t('leadDetail.scoreValue', { score: lead.score }) : '—'} />
+        <MetaRow label={t('leadDetail.created')} value={<Bidi>{formatDate(lead.createdAt)}</Bidi>} />
       </div>
     </Card>
   )
 }
 
 function StatusEditor({ leadId, currentStatus }: { leadId: string; currentStatus: string }) {
+  const { t } = useTranslation()
+  const { toast } = useToast()
   const [status, setStatus] = useState(currentStatus)
   const mutation = useUpdateLead(leadId)
 
@@ -283,49 +276,33 @@ function StatusEditor({ leadId, currentStatus }: { leadId: string; currentStatus
 
   return (
     <Card>
-      <CardHeader label="Status" />
+      <CardHeader label={t('leadDetail.statusHeader')} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <select
+        <Select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
           disabled={mutation.isPending}
-          style={{
-            height: '36px',
-            backgroundColor: 'var(--bg-inset)',
-            border: '1px solid var(--border-default)',
-            borderRadius: '8px',
-            padding: '0 32px 0 12px',
-            color: 'var(--text-primary)',
-            fontSize: '13px',
-            fontFamily: "'Assistant', sans-serif",
-            outline: 'none',
-            cursor: mutation.isPending ? 'wait' : 'pointer',
-            appearance: 'none',
-            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='1.5'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
-            backgroundRepeat: 'no-repeat',
-            backgroundPosition: 'right 10px center',
-            width: '100%',
-          }}
-          aria-label="Lead status"
-        >
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>
-              {s.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
-            </option>
-          ))}
-        </select>
+          aria-label={t('leadDetail.leadStatus')}
+          options={STATUS_OPTIONS.map((s) => ({ value: s, label: t(`status.${s}`) }))}
+          style={{ height: '36px', fontSize: '13px', cursor: mutation.isPending ? 'wait' : 'pointer' }}
+        />
         <Button
           variant="primary"
           size="sm"
-          onClick={() => mutation.mutate({ status })}
+          onClick={() =>
+            mutation.mutate(
+              { status },
+              { onSuccess: () => toast({ variant: 'success', title: t('leadDetail.saveSuccessTitle') }) },
+            )
+          }
           disabled={!dirty || mutation.isPending}
           style={{ width: '100%' }}
         >
-          {mutation.isPending ? 'Saving…' : dirty ? 'Save change' : 'Saved'}
+          {mutation.isPending ? t('leadDetail.saving') : dirty ? t('leadDetail.saveChange') : t('leadDetail.saved')}
         </Button>
         {mutation.isError && (
           <p style={{ fontSize: '12px', color: 'var(--error)', margin: 0 }}>
-            Failed to save. Try again.
+            {t('leadDetail.saveError')}
           </p>
         )}
       </div>
@@ -334,6 +311,7 @@ function StatusEditor({ leadId, currentStatus }: { leadId: string; currentStatus
 }
 
 function LeadMetadataCard({ lead }: { lead: LeadTimelineResponse['lead'] }) {
+  const { t } = useTranslation()
   const meta = lead.metadata as Record<string, unknown> | null
   if (!meta || Object.keys(meta).length === 0) return null
 
@@ -349,10 +327,10 @@ function LeadMetadataCard({ lead }: { lead: LeadTimelineResponse['lead'] }) {
 
   return (
     <Card>
-      <CardHeader label="Extracted by agent" />
+      <CardHeader label={t('leadDetail.extractedByAgent')} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {knownRows.map(([k, v]) => (
-          <MetaRow key={k} label={humanizeKey(k)} value={String(v)} />
+          <MetaRow key={k} label={humanizeKey(k)} value={<Bidi>{String(v)}</Bidi>} />
         ))}
         {rest.length > 0 && (
           <details style={{ marginTop: '4px' }}>
@@ -364,11 +342,11 @@ function LeadMetadataCard({ lead }: { lead: LeadTimelineResponse['lead'] }) {
                 fontWeight: 600,
               }}
             >
-              More ({rest.length})
+              {t('leadDetail.more', { count: rest.length })}
             </summary>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
               {rest.map(([k, v]) => (
-                <MetaRow key={k} label={humanizeKey(k)} value={String(v)} />
+                <MetaRow key={k} label={humanizeKey(k)} value={<Bidi>{String(v)}</Bidi>} />
               ))}
             </div>
           </details>
@@ -382,6 +360,7 @@ function LeadMetadataCard({ lead }: { lead: LeadTimelineResponse['lead'] }) {
 // CENTER: Timeline feed
 // -------------------------------------------------------------------------
 function TimelineFeed({ events }: { events: TimelineEvent[] }) {
+  const { t } = useTranslation()
   return (
     <Card padding="none" style={{ display: 'flex', flexDirection: 'column', minHeight: '480px' }}>
       <div
@@ -402,11 +381,12 @@ function TimelineFeed({ events }: { events: TimelineEvent[] }) {
             textTransform: 'uppercase',
             color: 'var(--text-secondary)',
           }}
+          className="uppercase-track"
         >
-          Activity Timeline
+          {t('leadDetail.activityTimeline')}
         </h3>
         <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-          {events.length} {events.length === 1 ? 'event' : 'events'}
+          {t('leadDetail.events', { count: events.length })}
         </span>
       </div>
 
@@ -419,7 +399,7 @@ function TimelineFeed({ events }: { events: TimelineEvent[] }) {
               style={{ color: 'var(--text-disabled)', margin: '0 auto 12px', display: 'block' }}
             />
             <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-              No activity yet. Once the agent reaches out, it will show up here.
+              {t('leadDetail.emptyTimeline')}
             </p>
           </div>
         ) : (
@@ -439,17 +419,18 @@ function TimelineFeed({ events }: { events: TimelineEvent[] }) {
 }
 
 function TimelineItem({ event, isLast }: { event: TimelineEvent; isLast: boolean }) {
-  const { icon, iconBg, iconBorder, iconColor, title, subtitle, body } = describeEvent(event)
+  const { t } = useTranslation()
+  const { icon, iconBg, iconBorder, iconColor, title, subtitle, body } = describeEvent(event, t)
 
   return (
-    <li style={{ position: 'relative', paddingLeft: '32px', paddingBottom: isLast ? 0 : '20px' }}>
+    <li style={{ position: 'relative', paddingInlineStart: '32px', paddingBottom: isLast ? 0 : '20px' }}>
       {/* vertical connector line */}
       {!isLast && (
         <div
           aria-hidden="true"
           style={{
             position: 'absolute',
-            left: '11px',
+            insetInlineStart: '11px',
             top: '24px',
             bottom: '0',
             width: '1px',
@@ -463,7 +444,7 @@ function TimelineItem({ event, isLast }: { event: TimelineEvent; isLast: boolean
         aria-hidden="true"
         style={{
           position: 'absolute',
-          left: 0,
+          insetInlineStart: 0,
           top: 0,
           width: '24px',
           height: '24px',
@@ -498,14 +479,14 @@ function TimelineItem({ event, isLast }: { event: TimelineEvent; isLast: boolean
           >
             {title}
           </p>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)', flexShrink: 0 }}>
+          <Bidi as="span" style={{ fontSize: '11px', color: 'var(--text-muted)', flexShrink: 0 }}>
             {formatDate(event.at)}
-          </span>
+          </Bidi>
         </div>
         {subtitle && (
-          <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+          <Bidi as="p" style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
             {subtitle}
-          </p>
+          </Bidi>
         )}
         {body}
       </div>
@@ -523,12 +504,13 @@ function ConversationsSummary({
   conversations: LeadConversation[]
   messages: LeadMessage[]
 }) {
+  const { t } = useTranslation()
   if (conversations.length === 0) {
     return (
       <Card>
-        <CardHeader label="Conversations" />
+        <CardHeader label={t('leadDetail.conversations')} />
         <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>
-          No conversations yet.
+          {t('leadDetail.noConversations')}
         </p>
       </Card>
     )
@@ -536,11 +518,12 @@ function ConversationsSummary({
 
   return (
     <Card>
-      <CardHeader label={`Conversations (${conversations.length})`} />
+      <CardHeader label={t('leadDetail.conversationsCount', { count: conversations.length })} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {conversations.map((c) => {
           const count = messages.filter((m) => m.conversationId === c.id).length
           const linkTo = c.channel === 'voice' ? `/calls/${c.id}` : null
+          const channelName = t(`channels.${c.channel}`, { defaultValue: c.channel })
           const content = (
             <div
               style={{
@@ -572,12 +555,12 @@ function ConversationsSummary({
                       color: 'var(--text-primary)',
                     }}
                   >
-                    {CHANNEL_LABEL[c.channel] ?? c.channel}
+                    {channelName}
                   </span>
-                  <Badge variant={statusToBadgeVariant(c.status)}>{c.status}</Badge>
+                  <Badge variant={statusToBadgeVariant(c.status)}>{t(`status.${c.status}`, { defaultValue: c.status })}</Badge>
                 </div>
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  {count} {count === 1 ? 'message' : 'messages'} · {formatDate(c.updatedAt)}
+                  {t('leadDetail.messages', { count })} · <Bidi>{formatDate(c.updatedAt)}</Bidi>
                 </span>
               </div>
             </div>
@@ -587,7 +570,7 @@ function ConversationsSummary({
               key={c.id}
               to={linkTo}
               style={{ textDecoration: 'none' }}
-              aria-label={`Open ${c.channel} conversation`}
+              aria-label={t('leadDetail.openConversation', { channel: channelName })}
             >
               {content}
             </Link>
@@ -601,12 +584,13 @@ function ConversationsSummary({
 }
 
 function BookingsCard({ bookings }: { bookings: LeadScheduledCall[] }) {
+  const { t } = useTranslation()
   if (bookings.length === 0) {
     return (
       <Card>
-        <CardHeader label="Meetings" />
+        <CardHeader label={t('leadDetail.meetings')} />
         <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>
-          No meetings scheduled.
+          {t('leadDetail.noMeetings')}
         </p>
       </Card>
     )
@@ -614,7 +598,7 @@ function BookingsCard({ bookings }: { bookings: LeadScheduledCall[] }) {
 
   return (
     <Card>
-      <CardHeader label={`Meetings (${bookings.length})`} />
+      <CardHeader label={t('leadDetail.meetingsCount', { count: bookings.length })} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {bookings.map((b) => {
           const isFuture = new Date(b.scheduledAt).getTime() > Date.now()
@@ -653,16 +637,17 @@ function BookingsCard({ bookings }: { bookings: LeadScheduledCall[] }) {
                     strokeWidth={1.5}
                     style={{ color: 'var(--accent-violet)' }}
                   />
-                  {formatDate(b.scheduledAt)}
+                  <Bidi>{formatDate(b.scheduledAt)}</Bidi>
                 </span>
-                <Badge variant={statusToBadgeVariant(b.status)}>{b.status}</Badge>
+                <Badge variant={statusToBadgeVariant(b.status)}>{t(`status.${b.status}`, { defaultValue: b.status })}</Badge>
               </div>
               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                {b.duration ?? 30} min · {b.provider}
-                {isFuture ? ' · upcoming' : ' · past'}
+                {t('leadDetail.minutes', { count: b.duration ?? 30 })} · {t(`providers.${b.provider}`, { defaultValue: b.provider })}
+                {isFuture ? ` · ${t('leadDetail.upcoming')}` : ` · ${t('leadDetail.past')}`}
               </span>
               {b.notes && (
-                <p
+                <Bidi
+                  as="p"
                   style={{
                     margin: '4px 0 0',
                     fontSize: '12px',
@@ -671,7 +656,7 @@ function BookingsCard({ bookings }: { bookings: LeadScheduledCall[] }) {
                   }}
                 >
                   {b.notes}
-                </p>
+                </Bidi>
               )}
             </div>
           )
@@ -687,6 +672,7 @@ function BookingsCard({ bookings }: { bookings: LeadScheduledCall[] }) {
 function CardHeader({ label }: { label: string }) {
   return (
     <h3
+      className="uppercase-track"
       style={{
         fontFamily: "'Montserrat', sans-serif",
         fontWeight: 700,
@@ -713,7 +699,7 @@ function MetaRow({ label, value }: { label: string; value: React.ReactNode }) {
         style={{
           fontSize: '13px',
           color: 'var(--text-secondary)',
-          textAlign: 'right',
+          textAlign: 'end',
           wordBreak: 'break-word',
         }}
       >
@@ -867,7 +853,10 @@ function channelVisual(channel: string): {
   }
 }
 
-function describeEvent(event: TimelineEvent): {
+function describeEvent(
+  event: TimelineEvent,
+  t: TFunction,
+): {
   icon: React.ReactNode
   iconBg: string
   iconBorder: string
@@ -883,19 +872,20 @@ function describeEvent(event: TimelineEvent): {
         iconBg: 'rgba(99, 102, 241, 0.12)',
         iconBorder: 'rgba(99, 102, 241, 0.30)',
         iconColor: 'var(--accent-violet)',
-        title: 'Lead created',
-        subtitle: 'Entered the system',
+        title: t('leadDetail.timeline.leadCreated'),
+        subtitle: t('leadDetail.timeline.enteredSystem'),
         body: null,
       }
     case 'conversation_started': {
       const c = event.conversation
       const viz = channelVisual(c.channel)
+      const channelName = t(`channels.${c.channel}`, { defaultValue: c.channel })
       return {
         icon: <viz.Icon size={12} strokeWidth={1.5} />,
         iconBg: viz.bg,
         iconBorder: viz.border,
         iconColor: viz.color,
-        title: `${CHANNEL_LABEL[c.channel] ?? c.channel} conversation started`,
+        title: t('leadDetail.timeline.conversationStarted', { channel: channelName }),
         subtitle: c.summary ?? null,
         body: null,
       }
@@ -906,15 +896,17 @@ function describeEvent(event: TimelineEvent): {
       const channel = c?.channel ?? 'unknown'
       const viz = channelVisual(channel)
       const isOut = m.direction === 'outbound'
+      const channelName = t(`channels.${channel}`, { defaultValue: channel })
       return {
         icon: isOut ? <Send size={12} strokeWidth={1.5} /> : <Inbox size={12} strokeWidth={1.5} />,
         iconBg: viz.bg,
         iconBorder: viz.border,
         iconColor: viz.color,
-        title: `${isOut ? 'Sent' : 'Received'} · ${CHANNEL_LABEL[channel] ?? channel}`,
+        title: `${isOut ? t('leadDetail.timeline.sent') : t('leadDetail.timeline.received')} · ${channelName}`,
         subtitle: null,
         body: (
           <p
+            dir="auto"
             style={{
               margin: '6px 0 0',
               fontSize: '13px',
@@ -925,9 +917,7 @@ function describeEvent(event: TimelineEvent): {
               borderRadius: '6px',
               border: '1px solid var(--border-subtle)',
               whiteSpace: 'pre-wrap',
-              dir: 'auto',
             }}
-            dir="auto"
           >
             {m.content}
           </p>
@@ -941,8 +931,8 @@ function describeEvent(event: TimelineEvent): {
         iconBg: 'rgba(99, 102, 241, 0.12)',
         iconBorder: 'rgba(99, 102, 241, 0.30)',
         iconColor: 'var(--accent-violet)',
-        title: 'Meeting booked',
-        subtitle: `Scheduled for ${formatDate(b.scheduledAt)} · ${b.duration ?? 30} min`,
+        title: t('leadDetail.timeline.meetingBooked'),
+        subtitle: t('leadDetail.timeline.scheduledFor', { date: formatDate(b.scheduledAt), duration: b.duration ?? 30 }),
         body: null,
       }
     }
@@ -958,8 +948,8 @@ function describeEvent(event: TimelineEvent): {
         iconBg: 'rgba(0, 245, 255, 0.10)',
         iconBorder: 'rgba(0, 245, 255, 0.30)',
         iconColor: 'var(--accent-cyan)',
-        title: isPast ? 'Meeting time (past)' : 'Meeting upcoming',
-        subtitle: `${b.provider} · ${b.duration ?? 30} min`,
+        title: isPast ? t('leadDetail.timeline.meetingPast') : t('leadDetail.timeline.meetingUpcoming'),
+        subtitle: t('leadDetail.timeline.providerDuration', { provider: b.provider, duration: b.duration ?? 30 }),
         body: null,
       }
     }

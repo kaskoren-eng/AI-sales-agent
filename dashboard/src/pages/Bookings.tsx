@@ -1,110 +1,21 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, X } from 'lucide-react'
-import * as Dialog from '@radix-ui/react-dialog'
+import { useTranslation, Trans } from 'react-i18next'
+import { CalendarDays } from 'lucide-react'
 import { fetchBookings } from '../lib/api.js'
 import { Badge, statusToBadgeVariant } from '../components/ui/Badge.js'
 import { Button } from '../components/ui/Button.js'
 import { Card } from '../components/ui/Card.js'
+import { Modal } from '../components/ui/Modal.js'
+import { EmptyState } from '../components/ui/EmptyState.js'
+import { Bidi } from '../components/ui/Bidi.js'
 import { TableSkeleton } from '../components/ui/Skeleton.js'
 import { formatDate } from '../lib/format.js'
 import { apiFetch } from '../lib/apiClient.js'
 import type { Booking } from '../lib/types.js'
 
-const providerLabel: Record<string, string> = {
-  google_calendar: 'Google Calendar',
-  trafft: 'Trafft',
-}
-
-function CancelDialog({
-  booking,
-  open,
-  onOpenChange,
-  onConfirm,
-  isPending,
-}: {
-  booking: Booking | null
-  open: boolean
-  onOpenChange: (v: boolean) => void
-  onConfirm: () => void
-  isPending: boolean
-}) {
-  return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.6)',
-            zIndex: 50,
-          }}
-        />
-        <Dialog.Content
-          style={{
-            position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: '380px',
-            backgroundColor: 'var(--bg-surface)',
-            border: '1px solid var(--border-default)',
-            borderRadius: '12px',
-            boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
-            padding: '24px',
-            zIndex: 51,
-          }}
-          aria-describedby="cancel-booking-desc"
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-            <Dialog.Title
-              style={{
-                fontFamily: "'Montserrat', sans-serif",
-                fontWeight: 700,
-                fontSize: '15px',
-                color: 'var(--text-primary)',
-              }}
-            >
-              Cancel Booking
-            </Dialog.Title>
-            <Dialog.Close asChild>
-              <button
-                aria-label="Close dialog"
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px' }}
-              >
-                <X size={16} strokeWidth={1.5} />
-              </button>
-            </Dialog.Close>
-          </div>
-          <p
-            id="cancel-booking-desc"
-            style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '24px' }}
-          >
-            Are you sure you want to cancel the booking for{' '}
-            <strong style={{ color: 'var(--text-primary)' }}>
-              {booking?.leadName ?? 'this lead'}
-            </strong>
-            {' '}on{' '}
-            <strong style={{ color: 'var(--text-primary)' }}>
-              {booking ? formatDate(booking.scheduledAt) : ''}
-            </strong>
-            ? This action cannot be undone.
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-            <Dialog.Close asChild>
-              <Button variant="secondary" size="sm">Keep booking</Button>
-            </Dialog.Close>
-            <Button variant="danger" size="sm" onClick={onConfirm} loading={isPending}>
-              Cancel booking
-            </Button>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  )
-}
-
 export function Bookings() {
+  const { t } = useTranslation()
   const [cancelTarget, setCancelTarget] = useState<Booking | null>(null)
   const queryClient = useQueryClient()
 
@@ -125,6 +36,14 @@ export function Bookings() {
 
   const bookings = data?.data ?? []
 
+  const columns: Array<{ key: string; label: string }> = [
+    { key: 'lead', label: t('bookings.columns.lead') },
+    { key: 'dateTime', label: t('bookings.columns.dateTime') },
+    { key: 'status', label: t('bookings.columns.status') },
+    { key: 'provider', label: t('bookings.columns.provider') },
+    { key: 'actions', label: t('bookings.columns.actions') },
+  ]
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <Card padding="none">
@@ -133,7 +52,7 @@ export function Bookings() {
             role="alert"
             style={{ padding: '32px', textAlign: 'center', color: 'var(--error)', fontSize: '14px' }}
           >
-            Failed to load bookings. Please try again.
+            {t('bookings.loadError')}
           </div>
         )}
 
@@ -141,28 +60,28 @@ export function Bookings() {
           <div style={{ overflowX: 'auto' }}>
             <table
               style={{ width: '100%', borderCollapse: 'collapse', minWidth: '540px' }}
-              aria-label="Bookings table"
+              aria-label={t('bookings.tableLabel')}
               aria-busy={isLoading}
             >
               <thead>
                 <tr>
-                  {['Lead', 'Date / Time', 'Status', 'Provider', 'Actions'].map((h) => (
+                  {columns.map((col) => (
                     <th
-                      key={h}
+                      key={col.key}
                       scope="col"
                       style={{
                         padding: '10px 16px',
                         fontSize: '11px',
                         fontWeight: 600,
                         color: 'var(--text-muted)',
-                        textAlign: 'left',
+                        textAlign: 'start',
                         letterSpacing: '0.05em',
                         textTransform: 'uppercase',
                         borderBottom: '1px solid var(--border-subtle)',
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      {h}
+                      {col.label}
                     </th>
                   ))}
                 </tr>
@@ -172,14 +91,13 @@ export function Bookings() {
                   <TableSkeleton rows={6} cols={5} />
                 ) : bookings.length === 0 ? (
                   <tr>
-                    <td colSpan={5} style={{ padding: '64px 20px', textAlign: 'center' }}>
-                      <CalendarDays size={32} strokeWidth={1} style={{ color: 'var(--text-disabled)', display: 'block', margin: '0 auto 12px' }} />
-                      <p style={{ fontSize: '15px', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '6px' }}>
-                        No bookings yet
-                      </p>
-                      <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                        Bookings will appear here once leads are scheduled.
-                      </p>
+                    <td colSpan={5} style={{ padding: 0 }}>
+                      <EmptyState
+                        style={{ padding: '64px 20px' }}
+                        icon={<CalendarDays size={32} strokeWidth={1} />}
+                        title={t('bookings.emptyTitle')}
+                        description={t('bookings.emptyDescription')}
+                      />
                     </td>
                   </tr>
                 ) : (
@@ -198,17 +116,19 @@ export function Bookings() {
                       }}
                     >
                       <td style={{ padding: '13px 16px', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                        {booking.leadName ?? '—'}
+                        <Bidi>{booking.leadName ?? '—'}</Bidi>
                       </td>
                       <td style={{ padding: '13px 16px', fontSize: '13px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                        {formatDate(booking.scheduledAt)}
+                        <Bidi>{formatDate(booking.scheduledAt)}</Bidi>
                       </td>
                       <td style={{ padding: '13px 16px' }}>
-                        <Badge variant={statusToBadgeVariant(booking.status)}>{booking.status}</Badge>
+                        <Badge variant={statusToBadgeVariant(booking.status)}>
+                          {t(`status.${booking.status}`, { defaultValue: booking.status })}
+                        </Badge>
                       </td>
                       <td style={{ padding: '13px 16px' }}>
                         <Badge variant="default">
-                          {providerLabel[booking.provider] ?? booking.provider}
+                          {t(`providers.${booking.provider}`, { defaultValue: booking.provider })}
                         </Badge>
                       </td>
                       <td style={{ padding: '13px 16px' }}>
@@ -217,9 +137,9 @@ export function Bookings() {
                             variant="danger"
                             size="sm"
                             onClick={() => setCancelTarget(booking)}
-                            aria-label={`Cancel booking for ${booking.leadName ?? 'this lead'}`}
+                            aria-label={t('bookings.cancelFor', { name: booking.leadName ?? t('bookings.thisLead') })}
                           >
-                            Cancel
+                            {t('bookings.cancel')}
                           </Button>
                         )}
                       </td>
@@ -232,17 +152,42 @@ export function Bookings() {
         )}
       </Card>
 
-      <CancelDialog
-        booking={cancelTarget}
+      <Modal
         open={cancelTarget !== null}
-        onOpenChange={(open) => { if (!open) setCancelTarget(null) }}
-        onConfirm={() => cancelTarget && cancelMutation.mutate(cancelTarget.id)}
-        isPending={cancelMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open) setCancelTarget(null)
+        }}
+        title={t('bookings.cancelTitle')}
+        description={
+          <Trans
+            i18nKey="bookings.cancelConfirm"
+            values={{
+              name: cancelTarget?.leadName ?? t('bookings.thisLead'),
+              date: cancelTarget ? formatDate(cancelTarget.scheduledAt) : '',
+            }}
+            components={{ strong: <strong style={{ color: 'var(--text-primary)' }} /> }}
+          />
+        }
+        footer={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setCancelTarget(null)}>
+              {t('bookings.keepBooking')}
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => cancelTarget && cancelMutation.mutate(cancelTarget.id)}
+              loading={cancelMutation.isPending}
+            >
+              {t('bookings.confirmCancel')}
+            </Button>
+          </>
+        }
       />
 
       {cancelMutation.isError && (
         <p role="alert" style={{ fontSize: '13px', color: 'var(--error)' }}>
-          Failed to cancel booking. Please try again.
+          {t('bookings.cancelError')}
         </p>
       )}
     </div>
