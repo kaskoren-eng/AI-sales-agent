@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Assistant:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;600;700&family=Montserrat:wght@700;800&family=Assistant:wght@400;600&display=swap');
 @import "tailwindcss";
 
 :root {
@@ -48,6 +48,31 @@ html, body {
 #root {
   height: 100%;
   min-height: 100vh;
+}
+
+/* --- Hebrew typography (brief §1.1) --- */
+/* Heebo is preferred for Hebrew; Assistant also covers Hebrew as a fallback. Body text
+   (no inline font-family) inherits this automatically; components with an inline
+   Montserrat heading font switch to Heebo per-component (see PageHeader / TopBar). */
+:lang(he) {
+  font-family: 'Heebo', 'Assistant', system-ui, sans-serif;
+}
+
+/* Uppercase + wide tracking are meaningless in Hebrew — neutralize wherever a class sets them.
+   (Inline-styled headings are gated in JS instead, since inline styles beat CSS.) */
+:lang(he) .display,
+:lang(he) h1,
+:lang(he) h2,
+[lang="he"] .uppercase-track {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* --- RTL directional icons (brief §2) --- */
+/* Apply to back-arrows, pagination chevrons, timeline connectors — anything whose meaning
+   is tied to reading direction. Purely decorative icons must NOT get this class. */
+[dir="rtl"] .flip-rtl {
+  transform: scaleX(-1);
 }
 
 a {
