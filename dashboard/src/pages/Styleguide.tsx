@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Search, Users } from 'lucide-react'
+import { LineChart, Line, ResponsiveContainer } from 'recharts'
 import { Button } from '../components/ui/Button.js'
 import { Badge } from '../components/ui/Badge.js'
 import { Card } from '../components/ui/Card.js'
@@ -206,6 +207,16 @@ function Inventory() {
           <Skeleton height="14px" width="40%" />
           <Skeleton height="14px" width="70%" />
           <Skeleton height="14px" width="55%" />
+        </div>
+      </Section>
+
+      <Section title="recharts (smoke — D2 will build real charts)">
+        <div style={{ width: '100%', height: '80px' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={[{ v: 3 }, { v: 7 }, { v: 5 }, { v: 9 }, { v: 6 }, { v: 11 }]}>
+              <Line type="monotone" dataKey="v" stroke="var(--accent-cyan)" strokeWidth={2} dot={false} isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       </Section>
     </Card>
