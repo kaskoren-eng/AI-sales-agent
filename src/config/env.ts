@@ -314,6 +314,12 @@ const envSchema = z.object({
   VOICE_LLM_REASONING_EFFORT: z.enum(['none', 'low', 'medium', 'high']).optional(),
   // Default engine for tenants with no explicit tenants.settings.voice_engine override
   VOICE_ENGINE_DEFAULT: z.enum(['retell', 'livekit']).default('retell'),
+  // Recorded-call legal pre-roll (Wiretapping Law 1979 §2). DISABLED for now (Koren, 2026-07-27):
+  // the choppy playback on the PSTN leg is worse than no notice for the interim test phase, and it
+  // is not legally required while calls are pre-launch. The playback code (compliance/recording-
+  // notice.ts) stays intact — flip this to 'true' to re-enable once the frame-size fix is verified
+  // on a real phone call. When off, compliance is recorded as played:false reason:disabled.
+  VOICE_RECORDING_NOTICE_ENABLED: z.enum(['true', 'false', '1', '0']).optional(),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),

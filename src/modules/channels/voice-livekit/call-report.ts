@@ -66,6 +66,9 @@ export interface ComplianceLog {
   /** The recorded-call notice pre-roll actually played (Wiretapping Law 1979 §2). */
   recording_notice_played?: boolean;
   recording_notice_at?: string;
+  /** 'disabled' (VOICE_RECORDING_NOTICE_ENABLED off) distinguishes an intentional skip from a
+   * playback FAILURE — both leave played:false, but only one is a bug worth chasing. */
+  recording_notice_status?: 'played' | 'disabled' | 'failed';
   /** When the caller learned they were talking to an AI. 'missed' should never happen. */
   ai_disclosure?: 'during_call' | 'at_end' | 'missed';
 }

@@ -255,7 +255,15 @@ export default defineAgent({
     // notice (Wiretapping Law 1979 §2) plays from a static asset in a flat broadcast voice —
     // deliberately not Keren's — while everything below (the tenant flag read, provider
     // construction, session start) warms up in parallel. The notice costs the caller nothing.
-    const noticePromise = playRecordingNotice(ctx.room);
+    //
+    // DISABLED via VOICE_RECORDING_NOTICE_ENABLED (default off, Koren 2026-07-27): the choppy
+    // PSTN playback is worse than none for the interim test phase. Code stays as-is; when off we
+    // resolve immediately to null so compliance records played:false without touching the room.
+    const recordingNoticeOn =
+      env.VOICE_RECORDING_NOTICE_ENABLED === 'true' || env.VOICE_RECORDING_NOTICE_ENABLED === '1';
+    const noticePromise: Promise<string | null> = recordingNoticeOn
+      ? playRecordingNotice(ctx.room)
+      : Promise.resolve(null);
 
     // PHASE 4 — may this call use tools? One tenant-settings read, timeboxed at 2s, FAIL-CLOSED:
     // if the tenant can't be identified (outbound metadata → VOICE_WEBHOOK_TENANT_ID fallback) or
@@ -515,11 +523,13 @@ export default defineAgent({
     // and a notice she talked over is a notice that wasn't given. Its outcome is recorded either
     // way: `recording_notice_played` in call_learnings.analysis is the provable-compliance bit.
     const noticeAt = await noticePromise;
+    const noticeStatus = !recordingNoticeOn ? 'disabled' : noticeAt !== null ? 'played' : 'failed';
     report.recordCompliance({
       recording_notice_played: noticeAt !== null,
+      recording_notice_status: noticeStatus,
       ...(noticeAt ? { recording_notice_at: noticeAt } : {}),
     });
-    console.log('recording_notice', JSON.stringify({ played: noticeAt !== null, at: noticeAt }));
+    console.log('recording_notice', JSON.stringify({ status: noticeStatus, at: noticeAt }));
 
     // Speak the greeting verbatim rather than letting the LLM improvise one: deterministic
     // wording, and no LLM round-trip before the caller hears anything.
