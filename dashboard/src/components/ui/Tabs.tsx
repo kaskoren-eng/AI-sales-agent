@@ -49,8 +49,8 @@ export function Tabs({ items, defaultValue, ariaLabel }: TabsProps) {
                 fontWeight: 600,
                 fontFamily: "'Assistant', sans-serif",
                 cursor: 'pointer',
-                color: active ? 'var(--accent-cyan)' : 'var(--text-muted)',
-                borderBottom: `2px solid ${active ? 'var(--accent-cyan)' : 'transparent'}`,
+                color: active ? 'var(--accent-teal)' : 'var(--text-muted)',
+                borderBottom: `2px solid ${active ? 'var(--accent-teal)' : 'transparent'}`,
                 marginBottom: '-1px',
                 transition: `color var(--duration-fast) var(--ease-standard)`,
               }}

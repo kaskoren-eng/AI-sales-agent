@@ -44,10 +44,10 @@ export function Modal({
             transform: 'translate(-50%, -50%)',
             width,
             maxWidth: 'calc(100vw - 32px)',
-            backgroundColor: 'var(--bg-elevated)',
+            backgroundColor: 'var(--glass-bg-solid)',
             border: '1px solid var(--border-default)',
-            borderRadius: '12px',
-            boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+            borderRadius: '14px',
+            boxShadow: '0 16px 48px rgba(38, 37, 36, 0.20)',
             padding: '24px',
             zIndex: 51,
           }}

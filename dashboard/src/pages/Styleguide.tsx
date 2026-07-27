@@ -214,7 +214,7 @@ function Inventory() {
         <div style={{ width: '100%', height: '80px' }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={[{ v: 3 }, { v: 7 }, { v: 5 }, { v: 9 }, { v: 6 }, { v: 11 }]}>
-              <Line type="monotone" dataKey="v" stroke="var(--accent-cyan)" strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="v" stroke="var(--accent-teal)" strokeWidth={2} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>

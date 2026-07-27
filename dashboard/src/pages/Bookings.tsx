@@ -109,7 +109,7 @@ export function Bookings() {
                         transition: `background-color var(--duration-fast) var(--ease-standard)`,
                       }}
                       onMouseEnter={(e) => {
-                        ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'var(--bg-elevated)'
+                        ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'var(--glass-hover)'
                       }}
                       onMouseLeave={(e) => {
                         ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent'

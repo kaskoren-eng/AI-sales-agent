@@ -41,7 +41,7 @@ export function LanguageSwitcher() {
               fontFamily: "'Assistant', sans-serif",
               cursor: active ? 'default' : 'pointer',
               backgroundColor: active ? 'rgba(15, 163, 172, 0.12)' : 'transparent',
-              color: active ? 'var(--accent-cyan)' : 'var(--text-muted)',
+              color: active ? 'var(--accent-teal)' : 'var(--text-muted)',
               transition: `background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard)`,
             }}
             onMouseEnter={(e) => {

@@ -73,10 +73,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 alignItems: 'flex-start',
                 gap: '10px',
                 padding: '12px 14px',
-                backgroundColor: 'var(--bg-elevated)',
+                backgroundColor: 'var(--glass-bg-solid)',
                 border: '1px solid var(--border-default)',
                 borderRadius: '10px',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                boxShadow: '0 8px 32px rgba(38, 37, 36, 0.18)',
               }}
             >
               <span

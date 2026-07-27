@@ -321,9 +321,9 @@ function TranscriptBubble({ turn }: { turn: TranscriptTurn }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: isAgent ? 'rgba(15, 163, 172, 0.1)' : 'var(--bg-elevated)',
+          backgroundColor: isAgent ? 'rgba(15, 163, 172, 0.1)' : 'var(--glass-hover)',
           border: `1px solid ${isAgent ? 'rgba(15, 163, 172, 0.25)' : 'var(--border-default)'}`,
-          color: isAgent ? 'var(--accent-cyan)' : 'var(--text-secondary)',
+          color: isAgent ? 'var(--accent-teal)' : 'var(--text-secondary)',
         }}
       >
         {isAgent ? <Bot size={14} strokeWidth={1.5} /> : <User size={14} strokeWidth={1.5} />}
@@ -335,7 +335,7 @@ function TranscriptBubble({ turn }: { turn: TranscriptTurn }) {
           maxWidth: '72%',
           padding: '10px 14px',
           borderRadius: isAgent ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
-          backgroundColor: isAgent ? 'rgba(15, 163, 172, 0.08)' : 'var(--bg-elevated)',
+          backgroundColor: isAgent ? 'rgba(15, 163, 172, 0.08)' : 'var(--glass-hover)',
           border: `1px solid ${isAgent ? 'rgba(15, 163, 172, 0.15)' : 'var(--border-subtle)'}`,
           fontSize: '13px',
           lineHeight: 1.6,
@@ -689,7 +689,7 @@ export function CallDetail() {
           style={{
             position: 'sticky',
             bottom: '0',
-            backgroundColor: 'var(--bg-surface)',
+            backgroundColor: 'var(--glass-bg-solid)',
             borderTop: '1px solid var(--border-default)',
             padding: '12px 20px',
             display: 'flex',
@@ -698,7 +698,7 @@ export function CallDetail() {
             borderRadius: '12px',
           }}
         >
-          <Phone size={16} strokeWidth={1.5} style={{ color: 'var(--accent-cyan)', flexShrink: 0 }} />
+          <Phone size={16} strokeWidth={1.5} style={{ color: 'var(--accent-teal)', flexShrink: 0 }} />
           <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 600 }}>
             Call Recording
           </span>

@@ -30,7 +30,7 @@ export function TopBar() {
         position: 'sticky',
         top: 0,
         height: '60px',
-        backgroundColor: 'var(--bg-primary)',
+        backgroundColor: 'var(--bg-page)',
         borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
         alignItems: 'center',
@@ -70,7 +70,7 @@ export function TopBar() {
             transition: `background-color var(--duration-fast) var(--ease-standard)`,
           }}
           onMouseEnter={(e) => {
-            ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--bg-elevated)'
+            ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--glass-hover)'
           }}
           onMouseLeave={(e) => {
             ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'
@@ -86,13 +86,13 @@ export function TopBar() {
             width: '36px',
             height: '36px',
             borderRadius: '50%',
-            background: 'linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-violet) 100%)',
+            background: 'linear-gradient(135deg, var(--accent-teal) 0%, var(--accent-violet) 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             fontSize: '13px',
             fontWeight: 700,
-            color: 'var(--text-on-cyan)',
+            color: 'var(--text-on-teal)',
             flexShrink: 0,
             cursor: 'pointer',
             fontFamily: "'Montserrat', sans-serif",

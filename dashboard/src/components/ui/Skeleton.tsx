@@ -21,7 +21,7 @@ export function Skeleton({
         height: typeof height === 'number' ? `${height}px` : height,
         width: typeof width === 'number' ? `${width}px` : width,
         borderRadius,
-        background: 'linear-gradient(90deg, var(--bg-elevated) 25%, var(--bg-surface) 50%, var(--bg-elevated) 75%)',
+        background: 'linear-gradient(90deg, var(--glass-hover) 25%, var(--glass-bg-solid) 50%, var(--glass-hover) 75%)',
         backgroundSize: '200% 100%',
         animation: 'shimmer 1.5s infinite linear',
         flexShrink: 0,

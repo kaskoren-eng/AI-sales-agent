@@ -75,7 +75,7 @@ export function Sidebar() {
               letterSpacing: '0.12em',
               textTransform: 'uppercase',
               lineHeight: 1.2,
-              background: 'linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-violet) 100%)',
+              background: 'linear-gradient(135deg, var(--accent-teal) 0%, var(--accent-violet) 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
               backgroundClip: 'text',
@@ -119,15 +119,15 @@ export function Sidebar() {
                 borderRadius: '8px',
                 fontSize: '14px',
                 fontWeight: isActive ? 600 : 400,
-                color: isActive ? 'var(--accent-cyan)' : 'var(--text-secondary)',
+                color: isActive ? 'var(--accent-teal)' : 'var(--text-secondary)',
                 backgroundColor: isActive ? 'rgba(15, 163, 172, 0.07)' : 'transparent',
-                borderInlineStart: isActive ? '2px solid var(--accent-cyan)' : '2px solid transparent',
+                borderInlineStart: isActive ? '2px solid var(--accent-teal)' : '2px solid transparent',
                 transition: `background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard)`,
                 textDecoration: 'none',
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  ;(e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'var(--bg-elevated)'
+                  ;(e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'var(--glass-hover)'
                   ;(e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-primary)'
                 }
               }}

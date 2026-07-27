@@ -358,7 +358,7 @@ function ApiTab() {
               left: '50%',
               transform: 'translate(-50%, -50%)',
               width: '400px',
-              backgroundColor: 'var(--bg-surface)',
+              backgroundColor: 'var(--glass-bg-solid)',
               border: '1px solid var(--border-default)',
               borderRadius: '12px',
               boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
@@ -593,7 +593,7 @@ function TwilioTab() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '560px' }}>
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-          <Phone size={16} strokeWidth={1.5} color="var(--accent-cyan)" />
+          <Phone size={16} strokeWidth={1.5} color="var(--accent-teal)" />
           <h3 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 700, fontSize: '12px', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
             Twilio Account
           </h3>
@@ -680,7 +680,7 @@ function TwilioTab() {
 
             <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px', lineHeight: 1.5 }}>
               Find your Account SID and Auth Token in the{' '}
-              <span style={{ color: 'var(--accent-cyan)' }}>Twilio Console → Dashboard</span>.
+              <span style={{ color: 'var(--accent-teal)' }}>Twilio Console → Dashboard</span>.
               Your auth token is encrypted before storage.
             </p>
           </div>
@@ -692,7 +692,7 @@ function TwilioTab() {
         <Dialog.Portal>
           <Dialog.Overlay style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 50 }} />
           <Dialog.Content
-            style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '400px', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-default)', borderRadius: '12px', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', padding: '24px', zIndex: 51 }}
+            style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '400px', backgroundColor: 'var(--glass-bg-solid)', border: '1px solid var(--border-default)', borderRadius: '12px', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', padding: '24px', zIndex: 51 }}
             aria-describedby="disconnect-desc"
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
@@ -727,8 +727,8 @@ const tabTriggerStyle = (active: boolean): React.CSSProperties => ({
   padding: '8px 16px',
   backgroundColor: 'transparent',
   border: 'none',
-  borderBottom: active ? '2px solid var(--accent-cyan)' : '2px solid transparent',
-  color: active ? 'var(--accent-cyan)' : 'var(--text-secondary)',
+  borderBottom: active ? '2px solid var(--accent-teal)' : '2px solid transparent',
+  color: active ? 'var(--accent-teal)' : 'var(--text-secondary)',
   fontFamily: "'Assistant', sans-serif",
   fontWeight: 600,
   fontSize: '14px',

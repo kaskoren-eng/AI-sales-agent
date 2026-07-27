@@ -107,7 +107,7 @@ export function Overview() {
             label="Calls Booked"
             value={leadsLoading ? '—' : bookedCount.toLocaleString()}
             loading={leadsLoading}
-            accentColor="var(--accent-cyan)"
+            accentColor="var(--accent-teal)"
           />
           <StatCard
             icon={<MessageSquare size={20} strokeWidth={1.5} />}
@@ -265,7 +265,7 @@ export function Overview() {
                 alignItems: 'center',
                 gap: '4px',
                 fontSize: '12px',
-                color: 'var(--accent-cyan)',
+                color: 'var(--accent-teal)',
                 fontWeight: 600,
               }}
             >
@@ -335,7 +335,7 @@ export function Overview() {
                       transition: `background-color var(--duration-fast) var(--ease-standard)`,
                     }}
                     onMouseEnter={(e) => {
-                      ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'var(--bg-elevated)'
+                      ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'var(--glass-hover)'
                     }}
                     onMouseLeave={(e) => {
                       ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent'

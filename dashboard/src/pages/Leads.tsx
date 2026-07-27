@@ -119,7 +119,7 @@ export function Leads() {
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
             startIcon={<Search size={15} strokeWidth={1.5} />}
-            style={{ height: '36px', backgroundColor: 'var(--bg-surface)', fontSize: '13px' }}
+            style={{ height: '36px', backgroundColor: 'var(--glass-bg-solid)', fontSize: '13px' }}
           />
         </div>
 
@@ -136,7 +136,7 @@ export function Leads() {
             options={STATUS_OPTIONS.map((s) => ({ value: s, label: t(`status.${s}`) }))}
             style={{
               height: '36px',
-              backgroundColor: 'var(--bg-surface)',
+              backgroundColor: 'var(--glass-bg-solid)',
               fontSize: '13px',
               color: status ? 'var(--text-primary)' : 'var(--text-muted)',
             }}
@@ -219,7 +219,7 @@ export function Leads() {
                         transition: `background-color var(--duration-fast) var(--ease-standard)`,
                       }}
                       onMouseEnter={(e) => {
-                        ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'var(--bg-elevated)'
+                        ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'var(--glass-hover)'
                       }}
                       onMouseLeave={(e) => {
                         ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent'
@@ -276,7 +276,7 @@ export function Leads() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            style={{ fontSize: '12px', color: 'var(--accent-cyan)' }}
+                            style={{ fontSize: '12px', color: 'var(--accent-teal)' }}
                           >
                             {t('leads.view')}
                           </Button>

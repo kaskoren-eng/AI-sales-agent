@@ -74,7 +74,7 @@ const INTEGRATIONS: Integration[] = [
 const iconColor: Record<Integration['id'], string> = {
   whatsapp: '#25D366',
   email: 'var(--info)',
-  voice: 'var(--accent-cyan)',
+  voice: 'var(--accent-teal)',
   monday: '#F62B54',
   google_sheets: '#34A853',
   google_calendar: '#4285F4',

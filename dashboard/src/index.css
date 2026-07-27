@@ -49,15 +49,6 @@
   --duration-slow:     400ms;
   --glow:              1600ms;
   --ease-standard:     cubic-bezier(0.4, 0, 0.2, 1);
-
-  /* --- Legacy aliases: one-commit bridge so var(--old) references keep compiling
-         through the hex sweep. Removed in the Phase A cleanup commit. --- */
-  --bg-primary:        var(--bg-page);
-  --bg-surface:        var(--glass-bg-solid);
-  --bg-elevated:       var(--glass-hover);
-  --accent-cyan:       var(--accent-teal);
-  --accent-cyan-dim:   var(--accent-teal-dim);
-  --text-on-cyan:      var(--text-on-teal);
 }
 
 *, *::before, *::after {

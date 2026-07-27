@@ -26,7 +26,7 @@ const typeIcon: Record<ActivityEntry['type'], React.ReactNode> = {
 }
 
 const typeColor: Record<ActivityEntry['type'], string> = {
-  call: 'var(--accent-cyan)',
+  call: 'var(--accent-teal)',
   lead: 'var(--accent-violet)',
   booking: 'var(--success)',
 }
@@ -65,7 +65,7 @@ export function KerenStatusChip() {
               width: '8px',
               height: '8px',
               borderRadius: '50%',
-              backgroundColor: 'var(--accent-cyan)',
+              backgroundColor: 'var(--accent-teal)',
               flexShrink: 0,
               animation: 'pulse-dot 2s ease-in-out infinite',
             }}
@@ -75,7 +75,7 @@ export function KerenStatusChip() {
             style={{
               fontSize: '12px',
               fontWeight: 600,
-              color: 'var(--accent-cyan)',
+              color: 'var(--accent-teal)',
               fontFamily: "'Assistant', sans-serif",
             }}
           >

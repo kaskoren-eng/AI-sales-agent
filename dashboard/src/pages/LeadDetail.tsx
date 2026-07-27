@@ -155,7 +155,7 @@ function LeadDetailContent({ data }: { data: LeadTimelineResponse }) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: 'var(--accent-cyan)',
+              color: 'var(--accent-teal)',
               flexShrink: 0,
             }}
           >
@@ -824,7 +824,7 @@ function channelVisual(channel: string): {
   switch (channel) {
     case 'voice':
       return {
-        color: 'var(--accent-cyan)',
+        color: 'var(--accent-teal)',
         bg: 'rgba(15, 163, 172, 0.10)',
         border: 'rgba(15, 163, 172, 0.30)',
         Icon: Mic,
@@ -947,7 +947,7 @@ function describeEvent(
         ),
         iconBg: 'rgba(15, 163, 172, 0.10)',
         iconBorder: 'rgba(15, 163, 172, 0.30)',
-        iconColor: 'var(--accent-cyan)',
+        iconColor: 'var(--accent-teal)',
         title: isPast ? t('leadDetail.timeline.meetingPast') : t('leadDetail.timeline.meetingUpcoming'),
         subtitle: t('leadDetail.timeline.providerDuration', { provider: b.provider, duration: b.duration ?? 30 }),
         body: null,

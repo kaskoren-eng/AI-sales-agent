@@ -14,7 +14,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         style={{
           display: 'flex',
           minHeight: '100vh',
-          backgroundColor: 'var(--bg-primary)',
+          backgroundColor: 'var(--bg-page)',
         }}
       >
         <Sidebar />

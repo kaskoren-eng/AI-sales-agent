@@ -39,7 +39,7 @@ export function Calls() {
 
   const inputStyle: React.CSSProperties = {
     height: '36px',
-    backgroundColor: 'var(--bg-surface)',
+    backgroundColor: 'var(--glass-bg-solid)',
     border: '1px solid var(--border-default)',
     borderRadius: '8px',
     padding: '0 12px',
@@ -189,7 +189,7 @@ export function Calls() {
                         transition: `background-color var(--duration-fast) var(--ease-standard)`,
                       }}
                       onMouseEnter={(e) => {
-                        ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'var(--bg-elevated)'
+                        ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'var(--glass-hover)'
                       }}
                       onMouseLeave={(e) => {
                         ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent'
@@ -220,7 +220,7 @@ export function Calls() {
                       </td>
                       <td style={{ padding: '13px 16px' }}>
                         <Link to={`/calls/${call.id}`} aria-label={`View call detail for ${call.lead?.name ?? 'this call'}`}>
-                          <Button variant="ghost" size="sm" style={{ fontSize: '12px', color: 'var(--accent-cyan)', gap: '4px' }}>
+                          <Button variant="ghost" size="sm" style={{ fontSize: '12px', color: 'var(--accent-teal)', gap: '4px' }}>
                             <ExternalLink size={12} strokeWidth={1.5} /> View
                           </Button>
                         </Link>
