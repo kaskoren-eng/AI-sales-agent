@@ -83,6 +83,9 @@ export interface ToolRuntimeContext {
   outboundQueue: Queue | null;
   /** BullMQ handle to 'meeting-reminders' (same Redis connection). Null on Redis failure. */
   remindersQueue: Queue | null;
+  /** BullMQ handle to 'call-analysis' (same Redis connection). Null on Redis failure. Used at call
+   * end to enqueue the LiveKit transcript analysis (GPT summary + conversation finalize). */
+  callAnalysisQueue: Queue | null;
   /** Set by book_meeting on success; cleared never (one meeting per call). */
   lastBooking: LastBooking | null;
 }
@@ -95,7 +98,12 @@ export type ToolRuntimeResult =
 export interface ToolRuntimeDeps {
   connectDb?: () => { db: Database; close: () => Promise<void> };
   loadSettings?: (db: Database, tenantId: string) => Promise<unknown>;
-  makeQueues?: (env: Env) => { outboundQueue: Queue; remindersQueue: Queue; close: () => Promise<void> };
+  makeQueues?: (env: Env) => {
+    outboundQueue: Queue;
+    remindersQueue: Queue;
+    callAnalysisQueue: Queue;
+    close: () => Promise<void>;
+  };
 }
 
 /** What the outbound dialer / web-call route put on the participant. `settings` is the sanitized
@@ -212,11 +220,13 @@ export async function buildToolRuntime(
   // truthfully), never the call. One connection, two queues, closed together with the pool.
   let outboundQueue: Queue | null = null;
   let remindersQueue: Queue | null = null;
+  let callAnalysisQueue: Queue | null = null;
   let closeQueues: () => Promise<void> = async () => undefined;
   try {
     const built = (deps.makeQueues ?? defaultMakeQueues)(env);
     outboundQueue = built.outboundQueue;
     remindersQueue = built.remindersQueue;
+    callAnalysisQueue = built.callAnalysisQueue;
     closeQueues = built.close;
   } catch (err) {
     console.error('tool_runtime_redis_failed', err instanceof Error ? err.message : String(err));
@@ -256,26 +266,31 @@ export async function buildToolRuntime(
       settings,
       outboundQueue,
       remindersQueue,
+      callAnalysisQueue,
       lastBooking: null,
     },
   };
 }
 
-/** Real queue construction — one Redis connection shared by both queues. */
+/** Real queue construction — one Redis connection shared by all queues. */
 function defaultMakeQueues(env: Env): {
   outboundQueue: Queue;
   remindersQueue: Queue;
+  callAnalysisQueue: Queue;
   close: () => Promise<void>;
 } {
   const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null, lazyConnect: false });
   const outboundQueue = new Queue('outbound-sender', { connection: redis });
   const remindersQueue = new Queue('meeting-reminders', { connection: redis });
+  const callAnalysisQueue = new Queue('call-analysis', { connection: redis });
   return {
     outboundQueue,
     remindersQueue,
+    callAnalysisQueue,
     close: async () => {
       await outboundQueue.close().catch(() => undefined);
       await remindersQueue.close().catch(() => undefined);
+      await callAnalysisQueue.close().catch(() => undefined);
       await redis.quit().catch(() => undefined);
     },
   };

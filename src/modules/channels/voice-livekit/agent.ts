@@ -28,6 +28,7 @@ import { ShadowSTT } from './stt/shadow-stt.js';
 import { DeepdubTTS } from './tts/deepdub.tts.js';
 import { buildAgentTools } from './tools/index.js';
 import { buildToolRuntime, type ToolRuntimeContext } from './tools/tool-context.js';
+import { enqueueLiveKitCallAnalysis } from '../../../queues/call-analysis.queue.js';
 
 /** Where every call's report lands. Repo-root relative, gitignored — these contain caller PII. */
 const CALL_REPORTS_DIR = 'call-reports';
@@ -375,7 +376,7 @@ export default defineAgent({
       if (runtime) {
         try {
           const json = report.toJson();
-          await runtime.db.insert(callLearnings).values({
+          const [inserted] = await runtime.db.insert(callLearnings).values({
             tenantId: runtime.tenantId,
             conferenceName: (ctx.room.name ?? 'unknown').slice(0, 64),
             transcript: json.transcript.map((t) => ({
@@ -401,8 +402,25 @@ export default defineAgent({
             durationSecs: json.durationSec,
             status: 'pending',
             label: 'livekit',
-          });
-          console.log('call_learnings_written', JSON.stringify({ tenantId: runtime.tenantId }));
+          }).returning({ id: callLearnings.id });
+          console.log('call_learnings_written', JSON.stringify({ tenantId: runtime.tenantId, learningId: inserted?.id }));
+
+          // Hand the transcript to the call-analysis worker: GPT sales analysis (summary, learnings)
+          // layered over the agent's own instrumentation, and the Task-0 conversation finalized to
+          // 'ended' + summarized. Best-effort — a dead queue leaves the row 'pending' (recoverable),
+          // never crashes teardown. The transcript is already safely persisted above.
+          if (inserted?.id && runtime.callAnalysisQueue) {
+            try {
+              await enqueueLiveKitCallAnalysis(runtime.callAnalysisQueue, {
+                tenantId: runtime.tenantId,
+                learningId: inserted.id,
+                ...(runtime.conversationId ? { conversationId: runtime.conversationId } : {}),
+              });
+              console.log('call_analysis_enqueued', JSON.stringify({ learningId: inserted.id }));
+            } catch (err) {
+              console.error('call_analysis_enqueue_failed', err instanceof Error ? err.message : String(err));
+            }
+          }
         } catch (err) {
           console.error('call_learnings_write_failed', err instanceof Error ? err.message : String(err));
         }

@@ -8,6 +8,7 @@ Extract structured learnings to help an AI sales agent perform better on future 
 
 Respond with a JSON object (all fields optional, omit what cannot be determined):
 {
+  "summary": "one short paragraph recapping what happened on the call — who the lead was, what they wanted, and the outcome",
   "opening_technique": "how the opener established rapport or interest",
   "pain_points_uncovered": ["list of customer pain points discovered"],
   "objections": [{ "objection": "what they said", "response": "how it was handled", "handled_well": true }],

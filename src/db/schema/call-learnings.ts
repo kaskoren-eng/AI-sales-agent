@@ -8,6 +8,9 @@ export interface TranscriptSegment {
 }
 
 export interface SalesCallAnalysis {
+  /** One-paragraph plain-language recap of the call — shown as conversations.summary in the
+   * dashboard calls list/detail. Added for the LiveKit analysis path; the Retell path fills it too. */
+  summary?: string;
   opening_technique?: string;
   pain_points_uncovered?: string[];
   objections?: Array<{ objection: string; response: string; handled_well: boolean }>;

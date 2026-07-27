@@ -6,6 +6,8 @@ import type { Env } from '../../config/env.js';
 import type { Redis } from 'ioredis';
 import type { Queue } from 'bullmq';
 import { callLearnings } from '../../db/schema/call-learnings.js';
+import type { SalesCallAnalysis, TranscriptSegment } from '../../db/schema/call-learnings.js';
+import { conversations } from '../../db/schema/index.js';
 import { CallAnalysisService } from '../../modules/calls/call-analysis.service.js';
 import { handleDeadLetter } from '../dead-letter.js';
 
@@ -23,7 +25,15 @@ export function createCallAnalysisWorker(deps: WorkerDeps) {
   const worker = new Worker<CallAnalysisJob>(
     'call-analysis',
     async (job) => {
+      // LiveKit calls arrive with the transcript already on the row (the agent wrote it at call
+      // end) — no recording to download, no Whisper. Analyze in place and finalize the dashboard
+      // conversation. See enqueueLiveKitCallAnalysis.
+      if (job.data.source === 'livekit') {
+        return analyzeLiveKitCall(deps, analysisService, job.data);
+      }
+
       const { tenantId, learningId, recordingUrl, durationSecs } = job.data;
+      if (!recordingUrl) throw new Error('call-analysis: recordingUrl required for the Retell path');
 
       // 1. Mark as transcribing
       await db
@@ -71,4 +81,59 @@ export function createCallAnalysisWorker(deps: WorkerDeps) {
   });
 
   return worker;
+}
+
+/**
+ * The LiveKit path. The agent already persisted the transcript (and its own instrumentation —
+ * tool_calls, end_reason, compliance) on the call_learnings row at call end. Here we add the GPT
+ * sales analysis on top of that transcript and finalize the dashboard conversation.
+ *
+ * The GPT analysis is MERGED over the agent's fields, never replaces them — losing tool_calls or the
+ * compliance verdicts would blind the audit trail. The conversation summary (shown in the calls
+ * list) comes from the analysis's plain-language `summary`.
+ */
+export async function analyzeLiveKitCall(
+  deps: Pick<WorkerDeps, 'db'>,
+  analysisService: Pick<CallAnalysisService, 'analyzeTranscript'>,
+  data: CallAnalysisJob,
+): Promise<{ learningId: string; transcriptSegments: number }> {
+  const { db } = deps;
+  const { tenantId, learningId, conversationId } = data;
+
+  const [row] = await db
+    .select({ transcript: callLearnings.transcript, analysis: callLearnings.analysis })
+    .from(callLearnings)
+    .where(and(eq(callLearnings.id, learningId), eq(callLearnings.tenantId, tenantId)))
+    .limit(1);
+  if (!row) throw new Error(`call-analysis(livekit): learning ${learningId} not found for tenant`);
+
+  const transcript: TranscriptSegment[] = row.transcript ?? [];
+  const agentAnalysis: SalesCallAnalysis = row.analysis ?? {};
+
+  // A too-thin transcript isn't worth an LLM round-trip (and a one-line call yields nothing to
+  // learn). Still finalize: mark analyzed and end the conversation so it doesn't hang 'active'.
+  const gptAnalysis: SalesCallAnalysis =
+    transcript.length >= 2 ? await analysisService.analyzeTranscript(transcript) : {};
+
+  // Agent-written fields (tool_calls, end_reason, compliance) are the base; GPT fields layer on top.
+  const merged: SalesCallAnalysis = { ...agentAnalysis, ...gptAnalysis };
+
+  await db
+    .update(callLearnings)
+    .set({ analysis: merged, status: 'analyzed' })
+    .where(and(eq(callLearnings.id, learningId), eq(callLearnings.tenantId, tenantId)));
+
+  // Finalize the Task-0 conversation row so the dashboard shows the call as ended + summarized.
+  if (conversationId) {
+    await db
+      .update(conversations)
+      .set({
+        status: 'ended',
+        ...(merged.summary ? { summary: merged.summary } : {}),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, tenantId)));
+  }
+
+  return { learningId, transcriptSegments: transcript.length };
 }

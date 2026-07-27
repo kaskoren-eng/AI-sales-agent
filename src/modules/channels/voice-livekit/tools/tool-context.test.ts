@@ -42,6 +42,7 @@ function fakeQueues() {
     makeQueues: () => ({
       outboundQueue: { add: vi.fn() } as never,
       remindersQueue: { add: vi.fn() } as never,
+      callAnalysisQueue: { add: vi.fn() } as never,
       close: closeQueues,
     }),
   };
@@ -290,6 +291,7 @@ describe('buildToolRuntime — fail-closed matrix', () => {
     const result = await buildToolRuntime(baseEnv, callOpts(), deps(ENABLED_SETTINGS).deps);
     expect(result.runtime!.outboundQueue).not.toBeNull();
     expect(result.runtime!.remindersQueue).not.toBeNull();
+    expect(result.runtime!.callAnalysisQueue).not.toBeNull();
     expect(result.runtime!.lastBooking).toBeNull();
   });
 
@@ -302,6 +304,7 @@ describe('buildToolRuntime — fail-closed matrix', () => {
     expect(result.disabledReason).toBeNull(); // gate still passed
     expect(result.runtime!.outboundQueue).toBeNull();
     expect(result.runtime!.remindersQueue).toBeNull();
+    expect(result.runtime!.callAnalysisQueue).toBeNull();
   });
 
   it('closeDb tears down queues AND the pool', async () => {
