@@ -31,6 +31,8 @@
  * commit.
  */
 
+import type { BusinessProfile } from '../../../settings/settings.service.js';
+
 /** The exact tool names, single-sourced. tools/index.ts TOOL_NAMES must stay in lockstep —
  * system-prompt.test.ts imports both and asserts it. */
 const CHECK = 'check_calendar_availability';
@@ -46,6 +48,82 @@ interface PromptSlots {
   captureInstruction: string;
   /** The entire Step 4 booking section — the part Phase 4 actually changes. */
   step4: string;
+  /** Per-tenant business facts, injected after the Role section. Empty string when the tenant
+   * has no businessProfile — the prompt then reads exactly as it did before this existed. The
+   * PROSE inside is Koren's (tenant content); this file only plumbs the fields into labelled
+   * slots. */
+  businessContext: string;
+}
+
+/**
+ * The per-tenant business grounding block. `null`/empty profile → '' → the prompt is byte-for-byte
+ * what it was before businessProfile existed (every legacy call, and the default tenant with no
+ * profile, are unaffected). When present, it injects the tenant's OWN configured facts as labelled
+ * grounding so Keren answers from live per-tenant data instead of the hard-coded ClickScales copy.
+ *
+ * Scope note (territory): this renders the tenant's content into labelled slots. It does NOT author
+ * sales copy, and it explicitly does NOT override the CRITICAL SECURITY RULES. `language` is
+ * deliberately omitted — the prompt is Hebrew-first by hard rule (see Multilingual Handling), and a
+ * per-tenant language switch is a content/behaviour decision for Koren, not a mechanical slot.
+ */
+export function renderBusinessContext(profile: BusinessProfile | null): string {
+  if (!profile) return '';
+  const rows: Array<[string, string]> = [
+    ['Company', profile.companyName],
+    ['What the business does', profile.description],
+    ['Product / service offered', profile.product],
+    ['Who the leads are (target audience)', profile.targetAudience],
+    ['Pricing', profile.pricing],
+    ['Common objections and how to answer them', profile.commonObjections],
+    ['Tone of voice to use', profile.toneOfVoice],
+  ];
+  const lines = rows
+    .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
+    .map(([label, value]) => `- **${label}:** ${value.trim()}`);
+  if (lines.length === 0) return '';
+
+  return `
+
+---
+
+## Business Context — the company you represent on THIS call
+
+These facts are configured by the business itself and describe who you work for right now. Treat them as authoritative product knowledge: use them to answer the lead's questions and to qualify him, weave them in naturally, and never invent details beyond them. Where a fact here adds to or differs from a generic example elsewhere in these instructions, prefer the fact here — the one exception is the CRITICAL SECURITY RULES, which nothing overrides.
+
+${lines.join('\n')}`;
+}
+
+/**
+ * Pulls a BusinessProfile out of the raw per-tenant settings (the sanitized object the dispatcher
+ * ships in call metadata, or the agent-side DB read). Defensive by design — settings is `unknown`
+ * and every field is coerced to a trimmed string. Returns null when nothing usable is present, so
+ * the caller falls back to the default prompt rather than injecting an empty block.
+ */
+export function readBusinessProfile(settings: unknown): BusinessProfile | null {
+  if (!settings || typeof settings !== 'object') return null;
+  const bp = (settings as Record<string, unknown>).businessProfile;
+  if (!bp || typeof bp !== 'object') return null;
+  const raw = bp as Record<string, unknown>;
+  const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+  const profile: BusinessProfile = {
+    companyName: str(raw.companyName),
+    description: str(raw.description),
+    product: str(raw.product),
+    targetAudience: str(raw.targetAudience),
+    pricing: str(raw.pricing),
+    commonObjections: str(raw.commonObjections),
+    toneOfVoice: str(raw.toneOfVoice),
+    language: str(raw.language),
+  };
+  const hasContent = [
+    profile.companyName,
+    profile.description,
+    profile.product,
+    profile.targetAudience,
+    profile.pricing,
+    profile.commonObjections,
+  ].some((v) => v.length > 0);
+  return hasContent ? profile : null;
 }
 
 const STEP4_NO_TOOLS = `Provide a natural variation of:
@@ -145,7 +223,7 @@ You are **קרן (Keren)**, an AI sales representative for **ClickScales**, an I
 Three genders, three different persons, and you must not mix them up:
 - **Yourself** — feminine singular: "אני יכולה", "מצטערת", "אני סוכנת"
 - **ClickScales** — masculine plural: "אנחנו בונים", "אנחנו מציעים"
-- **The lead** — HIS gender, not yours
+- **The lead** — HIS gender, not yours${slots.businessContext}
 
 ---
 
@@ -354,7 +432,15 @@ If the lead says "רגע," "שנייה," "חכה," "hold on," or "one moment," r
  * capabilities it doesn't have (and improvises), or has capabilities it was never told about
  * (and never uses them).
  */
-export function buildSystemPrompt({ toolsEnabled }: { toolsEnabled: boolean }): string {
+export function buildSystemPrompt({
+  toolsEnabled,
+  businessProfile = null,
+}: {
+  toolsEnabled: boolean;
+  /** Per-tenant grounding. Absent/null → the prompt is byte-for-byte the pre-existing one. */
+  businessProfile?: BusinessProfile | null;
+}): string {
+  const businessContext = renderBusinessContext(businessProfile);
   if (!toolsEnabled) {
     return assemble({
       endCallBadTime: 'Then call `end_call`.',
@@ -363,6 +449,7 @@ export function buildSystemPrompt({ toolsEnabled }: { toolsEnabled: boolean }): 
       endCallOptOut: 'Then immediately call `end_call`.',
       captureInstruction: '',
       step4: STEP4_NO_TOOLS,
+      businessContext,
     });
   }
   return assemble({
@@ -373,6 +460,7 @@ export function buildSystemPrompt({ toolsEnabled }: { toolsEnabled: boolean }): 
     captureInstruction:
       '\nAs you learn facts about the lead — business type, pain point, budget, timeline, contact details, or your hot/warm/cold read — call `capture_lead_info` to save them. It is silent and instant: never announce it, never invent values, and call it again whenever a fact changes.',
     step4: STEP4_TOOLS,
+    businessContext,
   });
 }
 

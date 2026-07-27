@@ -17,7 +17,7 @@ import { buildSessionComponents } from './agent.config.js';
 import { CallReport } from './call-report.js';
 import { hasAiDisclosure } from './compliance/ai-disclosure.js';
 import { playRecordingNotice } from './compliance/recording-notice.js';
-import { GREETING_HE, buildSystemPrompt } from './prompts/system-prompt.he.js';
+import { GREETING_HE, buildSystemPrompt, readBusinessProfile } from './prompts/system-prompt.he.js';
 import {
   FILLER_COOLDOWN_MS,
   MAX_FILLERS_PER_CALL,
@@ -445,9 +445,14 @@ export default defineAgent({
     // tool set (a prompt naming tools the model doesn't have makes it improvise; tools the prompt
     // never mentions never get used). The tool set is FIXED for the whole call — never mutate it
     // (or chatCtx) mid-call, that invalidates preemptive generation.
+    // Per-tenant grounding: when the gate opened we have the tenant's settings in hand, so Keren
+    // speaks from the business's OWN configured facts (product, pricing, objections, tone) instead
+    // of the hard-coded ClickScales copy. No profile → readBusinessProfile returns null → the
+    // prompt is byte-for-byte the previous one. (No runtime = gate closed = no settings loaded.)
+    const businessProfile = runtime ? readBusinessProfile(runtime.settings) : null;
     const agent = new ClickScalesAgent(
       {
-        instructions: buildSystemPrompt({ toolsEnabled: runtime !== null }),
+        instructions: buildSystemPrompt({ toolsEnabled: runtime !== null, businessProfile }),
         ...(runtime ? { tools: buildAgentTools(runtime) } : {}),
       },
       runtime,
