@@ -72,7 +72,20 @@ function callOpts() {
 
 describe('parseOutboundMetadata', () => {
   it('reads tenantId + leadId from the outbound dialer payload', () => {
-    expect(parseOutboundMetadata(OUTBOUND_META)).toEqual({ tenantId: 'tenant-1', leadId: 'lead-1' });
+    expect(parseOutboundMetadata(OUTBOUND_META)).toEqual({
+      tenantId: 'tenant-1',
+      leadId: 'lead-1',
+      conversationId: null,
+    });
+  });
+
+  it('carries the dispatcher-created conversationId (Task 0) when present', () => {
+    const withConvo = JSON.stringify({ tenantId: 'tenant-1', leadId: 'lead-1', conversationId: 'convo-9' });
+    expect(parseOutboundMetadata(withConvo)).toEqual({
+      tenantId: 'tenant-1',
+      leadId: 'lead-1',
+      conversationId: 'convo-9',
+    });
   });
 
   it('returns null for absent, garbage, and tenant-less metadata — inbound calls, not errors', () => {
@@ -86,11 +99,16 @@ describe('parseOutboundMetadata', () => {
     expect(parseOutboundMetadata(withSettings)).toEqual({
       tenantId: 'tenant-1',
       leadId: null,
+      conversationId: null,
       settings: { voice_engine: 'livekit', functions_enabled: true },
     });
     // A garbage settings field is simply dropped — the agent falls back to its own DB read.
     const badSettings = JSON.stringify({ tenantId: 'tenant-1', settings: 'nope' });
-    expect(parseOutboundMetadata(badSettings)).toEqual({ tenantId: 'tenant-1', leadId: null });
+    expect(parseOutboundMetadata(badSettings)).toEqual({
+      tenantId: 'tenant-1',
+      leadId: null,
+      conversationId: null,
+    });
   });
 });
 

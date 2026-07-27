@@ -52,7 +52,9 @@ export interface ToolRuntimeContext {
   tenantId: string;
   /** From outbound dial metadata. Null on inbound — book_meeting upserts the lead by phone. */
   leadId: string | null;
-  /** Nothing creates a conversations row for LiveKit calls yet — carried for the day one does. */
+  /** The `conversations` row for this call, created at dial/web-call time (Task 0) and threaded in
+   * via metadata. Null on inbound SIP (no dispatcher row yet) and on calls where the insert failed.
+   * When set, end-of-call finalization updates THIS row (status='ended', summary). */
   conversationId: string | null;
   /** The LiveKit room name — the call's id everywhere (same role as Retell's call_id). */
   callId: string;
@@ -101,7 +103,7 @@ export interface ToolRuntimeDeps {
  * SIP (which falls back to the agent-side DB read). */
 export function parseOutboundMetadata(
   metadata: string | undefined,
-): { tenantId: string; leadId: string | null; settings?: unknown } | null {
+): { tenantId: string; leadId: string | null; conversationId: string | null; settings?: unknown } | null {
   if (!metadata) return null;
   try {
     const parsed = JSON.parse(metadata) as Record<string, unknown>;
@@ -109,6 +111,10 @@ export function parseOutboundMetadata(
       return {
         tenantId: parsed.tenantId,
         leadId: typeof parsed.leadId === 'string' && parsed.leadId.length > 0 ? parsed.leadId : null,
+        conversationId:
+          typeof parsed.conversationId === 'string' && parsed.conversationId.length > 0
+            ? parsed.conversationId
+            : null,
         ...(parsed.settings && typeof parsed.settings === 'object' ? { settings: parsed.settings } : {}),
       };
     }
@@ -138,7 +144,7 @@ export async function buildToolRuntime(
   // 1. Who is this call for? Outbound dials carry it in metadata; inbound falls back to the
   //    single-tenant env var (same pattern as the Retell webhook). No tenant, no tools.
   const identity = parseOutboundMetadata(opts.participantMetadata) ?? (env.VOICE_WEBHOOK_TENANT_ID
-    ? { tenantId: env.VOICE_WEBHOOK_TENANT_ID, leadId: null }
+    ? { tenantId: env.VOICE_WEBHOOK_TENANT_ID, leadId: null, conversationId: null }
     : null);
   if (!identity) return { runtime: null, disabledReason: 'no_tenant' };
 
@@ -227,7 +233,7 @@ export async function buildToolRuntime(
     runtime: {
       tenantId: identity.tenantId,
       leadId: identity.leadId,
-      conversationId: null,
+      conversationId: identity.conversationId,
       callId: opts.callId,
       callerPhone: opts.callerPhone,
       db: connection.db,

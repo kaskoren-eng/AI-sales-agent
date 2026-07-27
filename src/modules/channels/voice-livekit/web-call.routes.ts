@@ -4,6 +4,7 @@ import { AccessToken } from 'livekit-server-sdk';
 import { eq } from 'drizzle-orm';
 import { tenants } from '../../../db/schema/index.js';
 import { sanitizeSettingsForAgent } from './voice-livekit.service.js';
+import { createVoiceConversation, ensureWebCallPlaceholderLead } from './call-record.js';
 
 /**
  * Browser voice simulation — talk to Keren from the dashboard instead of a phone.
@@ -57,11 +58,28 @@ export default async function webCallRoutes(app: FastifyInstance) {
     }
 
     const roomName = `web-call-${randomUUID()}`;
+
+    // Task 0: surface the simulator session in the dashboard calls list too. A web call has no real
+    // lead, so it hangs off ONE reusable per-tenant placeholder ("Web simulator"). Best-effort — a
+    // DB hiccup here must never block a rehearsal; the call just won't be listed.
+    let conversationId: string | undefined;
+    try {
+      const leadId = await ensureWebCallPlaceholderLead(app.db, tenantId);
+      conversationId = await createVoiceConversation(app.db, { tenantId, leadId, roomName });
+    } catch (err) {
+      app.log.warn({ tenantId, roomName, err }, 'web-call: could not create conversation row (call still proceeds)');
+    }
+
     const token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
       identity: `web-${randomUUID().slice(0, 8)}`,
       ttl: TOKEN_TTL_SECONDS,
       // The agent reads this exactly like outbound SIP metadata → per-tenant tool gate.
-      metadata: JSON.stringify({ tenantId, direction: 'web', ...(gateSettings ? { settings: gateSettings } : {}) }),
+      metadata: JSON.stringify({
+        tenantId,
+        direction: 'web',
+        ...(gateSettings ? { settings: gateSettings } : {}),
+        ...(conversationId ? { conversationId } : {}),
+      }),
     });
     token.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
 

@@ -8,6 +8,7 @@ import { tenants } from '../../../db/schema/index.js';
 import { CircuitBreaker } from '../../../shared/circuit-breaker.js';
 import { AppError } from '../../../shared/errors.js';
 import { checkDailySpendLimit } from '../../calls/spend-guard.js';
+import { createVoiceConversation } from './call-record.js';
 
 /**
  * Places outbound calls through LiveKit instead of Retell.
@@ -37,6 +38,9 @@ export interface OutboundCallMetadata {
   /** Sanitized per-tenant gate config, resolved here (fast DB) so the agent gates off metadata
    * instead of a cold cross-region DB read at pickup. Absent only if the settings load failed. */
   settings?: Record<string, unknown>;
+  /** The `conversations` row created at dial time (Task 0) — threaded so the agent finalizes THIS
+   * row at call end. Absent if the row could not be created (best-effort; never blocks the dial). */
+  conversationId?: string;
 }
 
 export class LiveKitVoiceService {
@@ -94,6 +98,26 @@ export class LiveKitVoiceService {
     }
 
     const roomName = `call-out-${randomUUID()}`;
+
+    // Task 0: make the call visible in the dashboard from the moment it's dialled. Best-effort —
+    // a failed insert logs and proceeds; a missing calls-list row must never cost a real call.
+    // Needs both a DB and a real lead (outbound always has one via the flow executor).
+    let conversationId: string | undefined;
+    if (this.deps?.db && leadContext?.leadId) {
+      try {
+        conversationId = await createVoiceConversation(this.deps.db, {
+          tenantId,
+          leadId: leadContext.leadId,
+          roomName,
+        });
+      } catch (err) {
+        console.warn(
+          'livekit_conversation_create_failed',
+          JSON.stringify({ tenantId, roomName, error: err instanceof Error ? err.message : String(err) }),
+        );
+      }
+    }
+
     const metadata: OutboundCallMetadata = {
       tenantId,
       leadId: leadContext?.leadId,
@@ -102,6 +126,7 @@ export class LiveKitVoiceService {
       leadPhone: to,
       direction: 'outbound',
       ...(gateSettings ? { settings: gateSettings } : {}),
+      ...(conversationId ? { conversationId } : {}),
     };
 
     await livekitCircuit.execute(() =>
