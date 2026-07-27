@@ -239,7 +239,7 @@ function LeadIdentityCard({ lead }: { lead: LeadTimelineResponse['lead'] }) {
             lead.email ? (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                 <Mail size={12} strokeWidth={1.5} style={{ color: 'var(--text-muted)' }} />
-                {lead.email}
+                <Bidi>{lead.email}</Bidi>
               </span>
             ) : (
               '—'
@@ -252,7 +252,7 @@ function LeadIdentityCard({ lead }: { lead: LeadTimelineResponse['lead'] }) {
             lead.phone ? (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                 <Phone size={12} strokeWidth={1.5} style={{ color: 'var(--text-muted)' }} />
-                {lead.phone}
+                <Bidi>{lead.phone}</Bidi>
               </span>
             ) : (
               '—'

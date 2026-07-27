@@ -42,7 +42,9 @@ const ACCENT: Record<ToastVariant, string> = {
 let nextId = 0
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  // Dismiss-swipe follows reading direction: leftward in RTL, rightward in LTR.
+  const swipeDirection = i18n.language.startsWith('he') ? 'left' : 'right'
   const [toasts, setToasts] = useState<ToastItem[]>([])
 
   const toast = useCallback((options: ToastOptions) => {
@@ -55,7 +57,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   return (
     <ToastContext.Provider value={{ toast }}>
-      <RadixToast.Provider swipeDirection="right" duration={4000}>
+      <RadixToast.Provider swipeDirection={swipeDirection} duration={4000}>
         {children}
 
         {toasts.map((item) => {
