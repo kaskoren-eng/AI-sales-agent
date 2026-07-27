@@ -150,8 +150,8 @@ function LeadDetailContent({ data }: { data: LeadTimelineResponse }) {
               width: '40px',
               height: '40px',
               borderRadius: '50%',
-              backgroundColor: 'rgba(0, 245, 255, 0.12)',
-              border: '1px solid rgba(0, 245, 255, 0.25)',
+              backgroundColor: 'rgba(15, 163, 172, 0.12)',
+              border: '1px solid rgba(15, 163, 172, 0.25)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -825,8 +825,8 @@ function channelVisual(channel: string): {
     case 'voice':
       return {
         color: 'var(--accent-cyan)',
-        bg: 'rgba(0, 245, 255, 0.10)',
-        border: 'rgba(0, 245, 255, 0.30)',
+        bg: 'rgba(15, 163, 172, 0.10)',
+        border: 'rgba(15, 163, 172, 0.30)',
         Icon: Mic,
       }
     case 'whatsapp':
@@ -869,8 +869,8 @@ function describeEvent(
     case 'lead_created':
       return {
         icon: <UserPlus size={12} strokeWidth={1.5} />,
-        iconBg: 'rgba(99, 102, 241, 0.12)',
-        iconBorder: 'rgba(99, 102, 241, 0.30)',
+        iconBg: 'rgba(91, 91, 214, 0.12)',
+        iconBorder: 'rgba(91, 91, 214, 0.30)',
         iconColor: 'var(--accent-violet)',
         title: t('leadDetail.timeline.leadCreated'),
         subtitle: t('leadDetail.timeline.enteredSystem'),
@@ -928,8 +928,8 @@ function describeEvent(
       const b = event.booking
       return {
         icon: <Sparkles size={12} strokeWidth={1.5} />,
-        iconBg: 'rgba(99, 102, 241, 0.12)',
-        iconBorder: 'rgba(99, 102, 241, 0.30)',
+        iconBg: 'rgba(91, 91, 214, 0.12)',
+        iconBorder: 'rgba(91, 91, 214, 0.30)',
         iconColor: 'var(--accent-violet)',
         title: t('leadDetail.timeline.meetingBooked'),
         subtitle: t('leadDetail.timeline.scheduledFor', { date: formatDate(b.scheduledAt), duration: b.duration ?? 30 }),
@@ -945,8 +945,8 @@ function describeEvent(
         ) : (
           <Clock size={12} strokeWidth={1.5} />
         ),
-        iconBg: 'rgba(0, 245, 255, 0.10)',
-        iconBorder: 'rgba(0, 245, 255, 0.30)',
+        iconBg: 'rgba(15, 163, 172, 0.10)',
+        iconBorder: 'rgba(15, 163, 172, 0.30)',
         iconColor: 'var(--accent-cyan)',
         title: isPast ? t('leadDetail.timeline.meetingPast') : t('leadDetail.timeline.meetingUpcoming'),
         subtitle: t('leadDetail.timeline.providerDuration', { provider: b.provider, duration: b.duration ?? 30 }),

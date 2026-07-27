@@ -46,17 +46,17 @@ export function KerenStatusChip() {
             gap: '8px',
             padding: '8px 12px',
             borderRadius: '8px',
-            border: '1px solid rgba(0, 245, 255, 0.2)',
-            backgroundColor: 'rgba(0, 245, 255, 0.05)',
+            border: '1px solid rgba(15, 163, 172, 0.2)',
+            backgroundColor: 'rgba(15, 163, 172, 0.05)',
             cursor: 'pointer',
             width: '100%',
             transition: `background-color var(--duration-fast) var(--ease-standard)`,
           }}
           onMouseEnter={(e) => {
-            ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(0, 245, 255, 0.1)'
+            ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(15, 163, 172, 0.1)'
           }}
           onMouseLeave={(e) => {
-            ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(0, 245, 255, 0.05)'
+            ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(15, 163, 172, 0.05)'
           }}
         >
           {/* Pulsing dot */}
@@ -96,13 +96,13 @@ export function KerenStatusChip() {
         <Dialog.Content
           style={{
             position: 'fixed',
-            left: '248px',
+            insetInlineStart: '248px',
             bottom: '20px',
             width: '320px',
-            backgroundColor: 'var(--bg-surface)',
+            backgroundColor: 'var(--glass-bg-solid)',
             border: '1px solid var(--border-default)',
             borderRadius: '12px',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            boxShadow: '0 8px 32px rgba(38, 37, 36, 0.18)',
             zIndex: 51,
             overflow: 'hidden',
           }}

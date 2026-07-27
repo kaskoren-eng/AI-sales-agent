@@ -193,8 +193,8 @@ export function VoiceChat() {
     <div style={{ display: 'flex', justifyContent: 'center', padding: '48px 24px' }}>
       <style>{`
         @keyframes vc-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(0, 245, 255, 0.25); }
-          50% { box-shadow: 0 0 0 18px rgba(0, 245, 255, 0); }
+          0%, 100% { box-shadow: 0 0 0 0 rgba(15, 163, 172, 0.25); }
+          50% { box-shadow: 0 0 0 18px rgba(15, 163, 172, 0); }
         }
         @media (prefers-reduced-motion: reduce) {
           .vc-ring { animation: none !important; }
@@ -233,7 +233,7 @@ export function VoiceChat() {
             border: `2px solid ${inCall ? (agentSpeaking ? 'var(--accent-cyan)' : 'var(--border-strong)') : 'var(--accent-cyan-dim)'}`,
             background:
               state === 'live'
-                ? 'radial-gradient(circle at 50% 45%, rgba(0,245,255,0.10), var(--bg-surface) 70%)'
+                ? 'radial-gradient(circle at 50% 45%, rgba(15, 163, 172,0.10), var(--bg-surface) 70%)'
                 : 'var(--bg-surface)',
             color: 'var(--text-primary)',
             cursor: 'pointer',

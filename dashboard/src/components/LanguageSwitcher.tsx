@@ -40,7 +40,7 @@ export function LanguageSwitcher() {
               fontWeight: 600,
               fontFamily: "'Assistant', sans-serif",
               cursor: active ? 'default' : 'pointer',
-              backgroundColor: active ? 'rgba(0, 245, 255, 0.12)' : 'transparent',
+              backgroundColor: active ? 'rgba(15, 163, 172, 0.12)' : 'transparent',
               color: active ? 'var(--accent-cyan)' : 'var(--text-muted)',
               transition: `background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard)`,
             }}

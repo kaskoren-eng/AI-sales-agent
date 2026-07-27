@@ -120,7 +120,7 @@ export function Sidebar() {
                 fontSize: '14px',
                 fontWeight: isActive ? 600 : 400,
                 color: isActive ? 'var(--accent-cyan)' : 'var(--text-secondary)',
-                backgroundColor: isActive ? 'rgba(0, 245, 255, 0.07)' : 'transparent',
+                backgroundColor: isActive ? 'rgba(15, 163, 172, 0.07)' : 'transparent',
                 borderInlineStart: isActive ? '2px solid var(--accent-cyan)' : '2px solid transparent',
                 transition: `background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard)`,
                 textDecoration: 'none',

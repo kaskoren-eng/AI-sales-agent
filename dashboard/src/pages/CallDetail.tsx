@@ -321,8 +321,8 @@ function TranscriptBubble({ turn }: { turn: TranscriptTurn }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: isAgent ? 'rgba(0, 245, 255, 0.1)' : 'var(--bg-elevated)',
-          border: `1px solid ${isAgent ? 'rgba(0, 245, 255, 0.25)' : 'var(--border-default)'}`,
+          backgroundColor: isAgent ? 'rgba(15, 163, 172, 0.1)' : 'var(--bg-elevated)',
+          border: `1px solid ${isAgent ? 'rgba(15, 163, 172, 0.25)' : 'var(--border-default)'}`,
           color: isAgent ? 'var(--accent-cyan)' : 'var(--text-secondary)',
         }}
       >
@@ -335,8 +335,8 @@ function TranscriptBubble({ turn }: { turn: TranscriptTurn }) {
           maxWidth: '72%',
           padding: '10px 14px',
           borderRadius: isAgent ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
-          backgroundColor: isAgent ? 'rgba(0, 245, 255, 0.08)' : 'var(--bg-elevated)',
-          border: `1px solid ${isAgent ? 'rgba(0, 245, 255, 0.15)' : 'var(--border-subtle)'}`,
+          backgroundColor: isAgent ? 'rgba(15, 163, 172, 0.08)' : 'var(--bg-elevated)',
+          border: `1px solid ${isAgent ? 'rgba(15, 163, 172, 0.15)' : 'var(--border-subtle)'}`,
           fontSize: '13px',
           lineHeight: 1.6,
           color: 'var(--text-primary)',
