@@ -41,36 +41,39 @@ export function Badge({ variant = 'default', children, className = '' }: BadgePr
   )
 }
 
+// v4: light tint of the semantic color over cream, text in a darkened shade of the same hue
+// so 11px badge text clears AA on the tint (the raw mid-tone accents do not — verified in the
+// Phase A contrast pass). Tints stay ~0.12 so the pill reads as a wash, not a solid chip.
 const variantInlineStyles: Record<BadgeVariant, React.CSSProperties> = {
   success: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    color: 'var(--success)',
-    border: '1px solid rgba(16, 185, 129, 0.3)',
+    backgroundColor: 'rgba(29, 158, 117, 0.12)',
+    color: '#0F6B4F',
+    border: '1px solid rgba(29, 158, 117, 0.28)',
   },
   warning: {
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    backgroundColor: 'rgba(180, 83, 9, 0.12)',
     color: 'var(--warning)',
-    border: '1px solid rgba(245, 158, 11, 0.3)',
+    border: '1px solid rgba(180, 83, 9, 0.28)',
   },
   error: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    backgroundColor: 'rgba(179, 38, 30, 0.12)',
     color: 'var(--error)',
-    border: '1px solid rgba(239, 68, 68, 0.3)',
+    border: '1px solid rgba(179, 38, 30, 0.28)',
   },
   info: {
-    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+    backgroundColor: 'rgba(24, 95, 165, 0.12)',
     color: 'var(--info)',
-    border: '1px solid rgba(59, 130, 246, 0.3)',
+    border: '1px solid rgba(24, 95, 165, 0.28)',
   },
   default: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: 'rgba(38, 37, 36, 0.06)',
     color: 'var(--text-secondary)',
     border: '1px solid var(--border-default)',
   },
   violet: {
-    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    backgroundColor: 'rgba(91, 91, 214, 0.12)',
     color: 'var(--accent-violet)',
-    border: '1px solid rgba(99, 102, 241, 0.3)',
+    border: '1px solid rgba(91, 91, 214, 0.28)',
   },
 }
 

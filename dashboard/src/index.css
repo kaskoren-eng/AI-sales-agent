@@ -2,31 +2,62 @@
 @import "tailwindcss";
 
 :root {
-  --bg-primary:        #0B132B;
-  --bg-surface:        #1C2541;
-  --bg-elevated:       #1F2A4A;
-  --bg-inset:          #060A1A;
-  --accent-cyan:       #00F5FF;
-  --accent-cyan-dim:   #00B8C2;
-  --accent-violet:     #6366F1;
-  --accent-violet-dim: #4F46E5;
-  --text-primary:      #F0F4FF;
-  --text-secondary:    #A0AEC0;
-  --text-muted:        #6B7280;
-  --text-disabled:     #4A5568;
-  --text-on-cyan:      #0B132B;
-  --success:           #10B981;
-  --warning:           #F59E0B;
-  --error:             #EF4444;
-  --info:              #3B82F6;
-  --border-subtle:     rgba(255, 255, 255, 0.08);
-  --border-default:    rgba(255, 255, 255, 0.12);
-  --border-strong:     rgba(255, 255, 255, 0.20);
-  --focus-ring:        #00F5FF;
+  /* v4 CREAM + GLASS palette — brand brief §1. Replaces the retired midnight/cyan theme. */
+
+  /* Base — warm cream, never pure white */
+  --bg-page:           #F4EFE6;
+  --bg-page-alt:       #EFE9DE;
+  --bg-inset:          #E8E1D4;
+
+  /* Glass surfaces — the signature material */
+  --glass-bg:          rgba(255, 255, 255, 0.62);
+  --glass-bg-solid:    #FBF9F5;
+  --glass-border:      rgba(38, 37, 36, 0.08);
+  --glass-blur:        10px;
+  --glass-hover:       rgba(255, 255, 255, 0.78);
+
+  /* Text — warm charcoal, never cold black */
+  --text-primary:      #262524;
+  --text-secondary:    #6B6A66;
+  --text-muted:        #8B8880;
+  --text-disabled:     #B3AFA6;
+  --text-on-teal:      #FFFFFF;
+
+  /* Accents — re-tuned for light backgrounds */
+  --accent-teal:       #0FA3AC;
+  --accent-teal-dim:   #0C8A92;
+  --accent-teal-tint:  rgba(15, 163, 172, 0.10);
+  --accent-violet:     #5B5BD6;
+  --accent-violet-dim: #4A4AC0;
+  --accent-violet-tint: rgba(91, 91, 214, 0.10);
+
+  /* Semantic — muted for light bg (AAA against cream) */
+  --success:           #1D9E75;
+  --warning:           #B45309;
+  --error:             #B3261E;
+  --info:              #185FA5;
+
+  /* Borders & focus */
+  --border-subtle:     rgba(38, 37, 36, 0.06);
+  --border-default:    rgba(38, 37, 36, 0.12);
+  --border-strong:     rgba(38, 37, 36, 0.20);
+  --focus-ring:        #0FA3AC;
+
+  /* Motion (unchanged from v2) */
   --duration-fast:     150ms;
   --duration-base:     220ms;
   --duration-slow:     400ms;
+  --glow:              1600ms;
   --ease-standard:     cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* --- Legacy aliases: one-commit bridge so var(--old) references keep compiling
+         through the hex sweep. Removed in the Phase A cleanup commit. --- */
+  --bg-primary:        var(--bg-page);
+  --bg-surface:        var(--glass-bg-solid);
+  --bg-elevated:       var(--glass-hover);
+  --accent-cyan:       var(--accent-teal);
+  --accent-cyan-dim:   var(--accent-teal-dim);
+  --text-on-cyan:      var(--text-on-teal);
 }
 
 *, *::before, *::after {
@@ -48,6 +79,22 @@ html, body {
 #root {
   height: 100%;
   min-height: 100vh;
+}
+
+/* --- Glass material (brief §1). No shadows on glass; depth is border + translucency. --- */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+}
+
+/* Solid variant — for rows inside scroll containers (never blur inside a scroller: kills 60fps). */
+.glass-solid {
+  background: var(--glass-bg-solid);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
 }
 
 /* --- Hebrew typography (brief §1.1) --- */
