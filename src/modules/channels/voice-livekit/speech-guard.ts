@@ -258,6 +258,51 @@ export async function* withFiller(
   filler: string | null,
   text: AsyncIterable<string>,
 ): AsyncIterable<string> {
-  if (filler) yield `${filler} `;
-  yield* text;
+  if (!filler) {
+    yield* text;
+    return;
+  }
+
+  // COLLISION GUARD. The filler ends in "..." — a sentence terminator — so guardStream flushes it as
+  // its OWN TTS chunk. If the reply's SHORT opener starts with the same word (e.g. filler "רגע..."
+  // and the prompt's opener example "רגע, בודקת."), the caller hears that word TWICE back-to-back.
+  // Koren heard exactly this. So peek the reply's first word before committing the filler, and drop
+  // the filler when the opener is about to repeat it. We buffer only up to the first word boundary —
+  // a few characters — so the fast-filler benefit is essentially unchanged.
+  const fillerWord = normalizeFillerWord(filler);
+  const iterator = text[Symbol.asyncIterator]();
+  const wordBoundary = /[\s.,!?…׃]/u;
+  let buffer = '';
+  let streamDone = false;
+  while (buffer.length <= 40) {
+    const next = await iterator.next();
+    if (next.done) {
+      streamDone = true;
+      break;
+    }
+    buffer += next.value;
+    if (wordBoundary.test(buffer)) break;
+  }
+
+  const firstWord = buffer.split(wordBoundary)[0] ?? '';
+  const collides = firstWord.length > 0 && normalizeFillerWord(firstWord) === fillerWord;
+  if (!collides) yield `${filler} `;
+
+  if (buffer) yield buffer;
+  if (!streamDone) {
+    for (;;) {
+      const next = await iterator.next();
+      if (next.done) break;
+      yield next.value;
+    }
+  }
+}
+
+/** Bare comparison key for a filler/opener word: drop trailing ellipsis + punctuation and Hebrew
+ * niqqud, so "רגע..." and an opener "רגע," match. */
+function normalizeFillerWord(s: string): string {
+  return s
+    .replace(/[֑-ׇ]/gu, '') // niqqud / cantillation
+    .replace(/[\s.,!?…׃]+/gu, '')
+    .toLowerCase();
 }
