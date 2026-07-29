@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en" dir="ltr" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KEREN — Meetings (v5 preview)</title>
+<meta name="theme-color" content="#EDF0F6">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Rubik:wght@500;600;700&family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* =========================================================================
+   v5 tokens — brand_assets/keren-brand-brief-v5.md §1.1 (light) + §1.2 (dark).
+   The ONLY place colour values live. Everything else references var(--token).
+   ========================================================================= */
+:root {
+  --surface-page:#EDF0F6; --surface-card:#FFFFFF; --surface-sunken:#E4E9F1; --surface-overlay:#FFFFFF;
+  --text-primary:#0C1226; --text-secondary:#5B667E; --text-tertiary:#7A8598; --text-on-accent:#FFFFFF;
+  --border-default:#D9E0EA; --border-strong:#C3CDDB;
+  --accent:#2F35C7; --accent-hover:#252AB3; --accent-tint:#EAEAFB; --accent-fg:#2F35C7;
+  --data-1:#2F35C7; --data-2:#D9861B; --data-2-glow:#F2B24E; --data-2-tint:#FCF0DC;
+  --status-success:#1B7F5A; --status-warning:#9A5D0F; --status-danger:#C0392B; --status-neutral:#5B667E;
+  --r-sm:8px; --r:14px; --r-lg:22px; --r-full:999px; --container-max:1180px;
+  --shadow-card:0 1px 2px rgba(12,18,38,.04), 0 8px 24px rgba(12,18,38,.06);
+  --shadow-overlay:0 2px 4px rgba(12,18,38,.06), 0 24px 60px rgba(12,18,38,.16);
+  --font-display:"Bricolage Grotesque","Rubik",system-ui,sans-serif;
+  --font-body:"Instrument Sans","Assistant",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono","Assistant",ui-monospace,monospace;
+  --dur-fast:150ms; --dur-base:220ms; --ease:cubic-bezier(.4,0,.2,1);
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --surface-page:#0A0F20; --surface-card:#141B31; --surface-sunken:#070B17; --surface-overlay:#1A2240;
+  --text-primary:#EDF0F6; --text-secondary:#A2A9BC; --text-tertiary:#767E93; --text-on-accent:#FFFFFF;
+  --border-default:#232941; --border-strong:#333B57;
+  --accent:#2F35C7; --accent-fg:#8B90F0; --accent-hover:#3A41D8; --accent-tint:#1B2145;
+  --data-1:#6E74E8; --data-2:#F2B24E; --data-2-glow:#F8CC85; --data-2-tint:#2A2113;
+  --status-success:#3FB88C; --status-warning:#E0A64E; --status-danger:#E86A5E; --status-neutral:#A2A9BC;
+  --shadow-card:0 0 0 1px rgba(0,0,0,0), 0 8px 24px rgba(0,0,0,.24);
+  --shadow-overlay:0 2px 4px rgba(0,0,0,.3), 0 24px 60px rgba(0,0,0,.5);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--surface-page); color: var(--text-primary);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
+  padding-block-start: 46px; padding-block-end: 72px; /* room for preview bar + sticky save */
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-tertiary); }
+:lang(he) .eyebrow { text-transform: none; letter-spacing: normal; }
+
+/* ---- Top bar ---- */
+.topbar { position: sticky; top: 46px; z-index: 20; display: flex; align-items: center; gap: 20px; block-size: 60px; padding-inline: 24px; background: var(--surface-card); border-block-end: 1px solid var(--border-default); }
+.brand { display: flex; align-items: baseline; gap: 8px; }
+.brand .mark { font-family: var(--font-display); font-weight: 800; font-size: 20px; letter-spacing: .02em; color: var(--text-primary); }
+.brand .tag { font-size: 12px; color: var(--text-tertiary); }
+.presence { display: inline-flex; align-items: center; gap: 9px; padding: 6px 12px 6px 10px; background: var(--accent-tint); border: 1px solid var(--border-default); border-radius: var(--r-full); font-size: 13px; color: var(--text-secondary); }
+.dot { inline-size: 8px; block-size: 8px; border-radius: 50%; flex-shrink: 0; }
+.presence .dot { background: var(--accent-fg); position: relative; }
+.presence:not(.idle) .dot::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 1px solid var(--accent-fg); opacity: .5; animation: pulse 1.6s var(--ease) infinite; }
+.presence strong { color: var(--text-primary); font-weight: 600; }
+@keyframes pulse { 0%{transform:scale(1);opacity:.5} 70%{transform:scale(2.1);opacity:0} 100%{opacity:0} }
+@media (prefers-reduced-motion: reduce) { .presence .dot::after { animation: none; display: none; } }
+.topbar .spacer { margin-inline-start: auto; }
+.top-actions { display: flex; align-items: center; gap: 8px; }
+.icon-btn { inline-size: 36px; block-size: 36px; display: grid; place-items: center; border: 1px solid var(--border-default); border-radius: 10px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.icon-btn:hover { background: var(--surface-sunken); color: var(--text-primary); }
+.avatar { inline-size: 34px; block-size: 34px; border-radius: 50%; background: var(--accent); color: var(--text-on-accent); display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 13px; cursor: pointer; }
+
+/* ---- Layout ---- */
+.wrap { max-inline-size: 1080px; margin-inline: auto; padding: 28px 24px 60px; }
+.page-head { margin-block-end: 22px; }
+.page-title { font-family: var(--font-display); font-weight: 700; font-size: 30px; letter-spacing: -.02em; }
+:lang(he) .page-title { letter-spacing: normal; }
+.page-sub { margin-block-start: 6px; font-size: 13.5px; color: var(--text-secondary); }
+
+.card { background: var(--surface-card); border: 1px solid var(--border-default); border-radius: var(--r); box-shadow: var(--shadow-card); }
+.sec-head { display: flex; align-items: baseline; gap: 12px; margin-block: 30px 12px; }
+.sec-title { font-family: var(--font-display); font-weight: 600; font-size: 17px; }
+.sec-note { font-size: 12.5px; color: var(--text-tertiary); }
+
+/* ---- Upcoming meetings ---- */
+.mtg { display: flex; align-items: center; gap: 16px; padding: 15px 18px; border-block-end: 1px solid var(--border-default); }
+.mtg:last-child { border-block-end: 0; }
+.mtg-when { inline-size: 108px; flex-shrink: 0; }
+.mtg-when .d { font-weight: 600; font-size: 13.5px; color: var(--text-primary); }
+.mtg-when .t { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--text-secondary); margin-block-start: 2px; }
+.mtg-main { flex: 1; min-inline-size: 0; }
+.mtg-lead { font-weight: 600; font-size: 14.5px; color: var(--text-primary); }
+.mtg-biz { font-size: 12.5px; color: var(--text-secondary); }
+.mtg-type { font-size: 11.5px; color: var(--text-tertiary); margin-block-start: 2px; }
+.mtg-end { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+/* status chips — §1.4.1 PROPOSED colours (await sign-off) */
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 9px; border-radius: var(--r-full); font-size: 11.5px; font-weight: 600; border: 1px solid transparent; }
+.chip .cdot { inline-size: 6px; block-size: 6px; border-radius: 50%; flex-shrink: 0; }
+.chip.confirmed { color: var(--status-success); background: color-mix(in srgb, var(--status-success) 12%, transparent); border-color: color-mix(in srgb, var(--status-success) 26%, transparent); }
+.chip.confirmed .cdot { background: var(--status-success); }
+.chip.pending { color: var(--status-warning); background: color-mix(in srgb, var(--status-warning) 12%, transparent); border-color: color-mix(in srgb, var(--status-warning) 26%, transparent); }
+.chip.pending .cdot { background: var(--status-warning); }
+.mtg-join { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border: 1px solid var(--border-default); border-radius: 9px; background: var(--surface-card); color: var(--text-primary); font-family: var(--font-body); font-size: 12.5px; font-weight: 600; cursor: pointer; text-decoration: none; }
+.mtg-join:hover { background: var(--surface-sunken); }
+.mtg-join svg { inline-size: 14px; block-size: 14px; }
+.mtg-kebab { inline-size: 32px; block-size: 32px; display: grid; place-items: center; border: 0; background: transparent; border-radius: 8px; color: var(--text-tertiary); cursor: pointer; }
+.mtg-kebab:hover { background: var(--surface-sunken); color: var(--text-primary); }
+
+/* ---- Availability: config left / booking preview right ---- */
+.avail { display: grid; grid-template-columns: 1fr 384px; gap: 22px; align-items: start; }
+@media (max-width: 920px) { .avail { grid-template-columns: 1fr; } }
+
+/* summary rows (Calendly-style: heading + plain-language current value) */
+.sumrow { border: 1px solid var(--border-default); border-radius: 12px; background: var(--surface-card); margin-block-end: 10px; box-shadow: var(--shadow-card); overflow: hidden; }
+.sumrow:last-child { margin-block-end: 0; }
+.sumrow-head { display: flex; align-items: center; gap: 14px; inline-size: 100%; padding: 15px 16px; background: transparent; border: 0; cursor: pointer; text-align: start; font-family: var(--font-body); }
+.sumrow-ic { inline-size: 34px; block-size: 34px; border-radius: 9px; background: var(--surface-sunken); display: grid; place-items: center; color: var(--text-secondary); flex-shrink: 0; }
+.sumrow-ic svg { inline-size: 17px; block-size: 17px; }
+.sumrow-main { flex: 1; min-inline-size: 0; }
+.sumrow-name { font-weight: 600; font-size: 13px; color: var(--text-tertiary); }
+.sumrow-val { font-size: 14.5px; color: var(--text-primary); margin-block-start: 2px; }
+.sumrow-chev { color: var(--text-tertiary); flex-shrink: 0; transition: transform var(--dur-fast) var(--ease); }
+.sumrow-head[aria-expanded="true"] .sumrow-chev { transform: rotate(180deg); }
+.sumrow-body { padding: 4px 16px 18px; border-block-start: 1px solid var(--border-default); margin-block-start: -1px; }
+.sumrow-body[hidden] { display: none; }
+.sumrow-body .sb-lead { padding-block: 14px 12px; font-size: 12.5px; color: var(--text-secondary); }
+
+/* day toggle chips (working hours) */
+.daychips { display: flex; gap: 6px; flex-wrap: wrap; }
+.daychip { inline-size: 40px; block-size: 40px; border-radius: 10px; border: 1px solid var(--border-default); background: var(--surface-card); color: var(--text-secondary); font-family: var(--font-body); font-size: 13px; font-weight: 600; cursor: pointer; }
+.daychip[aria-pressed="true"] { background: var(--accent-tint); border-color: var(--accent); color: var(--accent-fg); }
+.hours-range { display: flex; align-items: center; gap: 10px; margin-block-start: 16px; flex-wrap: wrap; }
+.hours-range label { font-size: 12.5px; color: var(--text-secondary); }
+.time-input { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 14px; color: var(--text-primary); padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--surface-card); inline-size: 92px; }
+.time-input:focus { outline: none; border-color: var(--accent); }
+
+/* inline segmented (reused for length / buffer / notice) */
+.seg-inline { display: inline-flex; padding: 3px; background: var(--surface-sunken); border: 1px solid var(--border-default); border-radius: 10px; inline-size: max-content; flex-wrap: wrap; }
+.seg-inline button { font-family: var(--font-body); font-size: 13px; font-weight: 500; padding: 7px 15px; border: 0; border-radius: 7px; cursor: pointer; background: transparent; color: var(--text-secondary); }
+.seg-inline button[aria-pressed="true"] { background: var(--surface-card); color: var(--text-primary); box-shadow: var(--shadow-card); }
+
+/* connected-calendar row */
+.cal-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--border-default); border-radius: 12px; background: var(--surface-sunken); margin-block-start: 6px; }
+.cal-logo { inline-size: 34px; block-size: 34px; border-radius: 9px; background: var(--surface-card); border: 1px solid var(--border-default); display: grid; place-items: center; flex-shrink: 0; }
+.cal-meta { flex: 1; min-inline-size: 0; }
+.cal-name { font-weight: 600; font-size: 14px; }
+.cal-acct { font-family: var(--font-mono); font-size: 12px; color: var(--text-tertiary); }
+.cal-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--status-success); }
+.cal-change { background: transparent; border: 1px solid var(--border-default); border-radius: 9px; padding: 7px 12px; font-family: var(--font-body); font-size: 12.5px; font-weight: 600; color: var(--text-primary); cursor: pointer; }
+.tz-select { font-family: var(--font-body); font-size: 14px; color: var(--text-primary); padding: 9px 12px; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--surface-card); max-inline-size: 280px; inline-size: 100%; }
+
+/* ---- Booking preview (what the lead sees) ---- */
+.bk-wrap { position: sticky; top: 118px; }
+.bk-eyebrow { display: flex; align-items: center; gap: 7px; margin-block-end: 10px; }
+.bk-eyebrow svg { inline-size: 13px; block-size: 13px; color: var(--text-tertiary); }
+.bk { border: 1px solid var(--border-default); border-radius: var(--r); background: var(--surface-card); box-shadow: var(--shadow-card); overflow: hidden; }
+.bk-top { padding: 20px; border-block-end: 1px solid var(--border-default); display: flex; align-items: center; gap: 13px; }
+.bk-ava { inline-size: 46px; block-size: 46px; border-radius: 50%; background: var(--accent); color: var(--text-on-accent); display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 18px; flex-shrink: 0; }
+.bk-title { font-family: var(--font-display); font-weight: 700; font-size: 18px; }
+.bk-meta { font-size: 12.5px; color: var(--text-secondary); margin-block-start: 2px; display: flex; align-items: center; gap: 6px; }
+.bk-meta svg { inline-size: 13px; block-size: 13px; }
+.bk-body { padding: 16px 20px 20px; }
+.bk-lbl { font-size: 12px; font-weight: 600; color: var(--text-tertiary); margin-block: 4px 9px; }
+.bk-days { display: flex; gap: 7px; }
+.bk-day { flex: 1; padding: 9px 0; border-radius: 10px; border: 1px solid var(--border-default); background: var(--surface-card); cursor: pointer; text-align: center; }
+.bk-day .dow { display: block; font-size: 11px; color: var(--text-tertiary); }
+.bk-day .num { display: block; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 600; color: var(--text-primary); margin-block-start: 2px; }
+.bk-day[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); }
+.bk-day[aria-pressed="true"] .dow, .bk-day[aria-pressed="true"] .num { color: var(--text-on-accent); }
+.bk-slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-block-start: 16px; }
+.bk-slot { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 13.5px; font-weight: 500; padding: 10px 0; border-radius: 9px; border: 1px solid var(--border-default); background: var(--surface-card); color: var(--text-primary); cursor: pointer; }
+.bk-slot:hover { border-color: var(--accent); }
+.bk-slot[aria-pressed="true"] { background: var(--accent-tint); border-color: var(--accent); color: var(--accent-fg); }
+.bk-foot { display: flex; align-items: center; gap: 7px; margin-block-start: 16px; font-size: 12px; color: var(--text-tertiary); }
+.bk-foot svg { inline-size: 13px; block-size: 13px; flex-shrink: 0; }
+
+/* sticky save bar */
+.savebar { position: fixed; inset-block-end: 0; inset-inline: 0; z-index: 40; background: var(--surface-card); border-block-start: 1px solid var(--border-default); box-shadow: 0 -8px 24px rgba(12,18,38,.06); }
+.savebar-in { max-inline-size: 1080px; margin-inline: auto; padding: 12px 24px; display: flex; align-items: center; gap: 12px; }
+.savebar .sb-note { font-size: 12.5px; color: var(--text-tertiary); }
+.savebar .sb-actions { margin-inline-start: auto; display: flex; gap: 10px; }
+.btn { font-family: var(--font-body); font-size: 13.5px; font-weight: 600; padding: 9px 18px; border-radius: 10px; cursor: pointer; border: 1px solid var(--border-default); background: var(--surface-card); color: var(--text-primary); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
+
+/* ---- Preview-control bar ---- */
+.preview-controls { position: fixed; inset-block-start: 0; inset-inline: 0; z-index: 100; block-size: 46px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-inline: 18px; background: var(--text-primary); color: var(--surface-page); border-block-end: 1px solid var(--border-strong); }
+.preview-controls .pc-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; opacity: .65; }
+.pc-groups { display: flex; align-items: center; gap: 20px; }
+.pc-group { display: flex; align-items: center; gap: 9px; }
+.pc-cap { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; opacity: .55; }
+.seg-ctl { display: inline-flex; gap: 5px; }
+.seg-ctl button { font-family: var(--font-body); font-size: 12px; font-weight: 600; padding: 5px 13px; border: 1px solid currentColor; border-radius: var(--r-full); cursor: pointer; background: transparent; color: inherit; opacity: .55; transition: opacity var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease); }
+.seg-ctl button:hover { opacity: .85; }
+.seg-ctl button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ================= PREVIEW CONTROL BAR ================= -->
+<div class="preview-controls" role="group" aria-label="Preview controls">
+  <span class="pc-label">Preview · not part of the design</span>
+  <div class="pc-groups">
+    <div class="pc-group"><span class="pc-cap">Theme</span>
+      <div class="seg-ctl" id="theme-ctl"><button data-theme-val="light" aria-pressed="true">Light</button><button data-theme-val="dark" aria-pressed="false">Dark</button></div>
+    </div>
+    <div class="pc-group"><span class="pc-cap">Language</span>
+      <div class="seg-ctl" id="lang-ctl"><button data-lang-val="en" aria-pressed="true">EN</button><button data-lang-val="he" aria-pressed="false">עברית</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= TOP BAR ================= -->
+<header class="topbar">
+  <div class="brand"><span class="mark">KEREN</span><span class="tag" data-i18n="brand.tag">by ClickScales</span></div>
+  <div class="presence" id="presence"><span class="dot"></span><span><span data-i18n="presence.prefix">Keren is on a call with</span> <strong dir="auto">דני כהן</strong></span></div>
+  <span class="spacer"></span>
+  <div class="top-actions">
+    <button class="icon-btn" data-i18n-aria="a11y.notifications" aria-label="Notifications"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" width="17" height="17"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+    <div class="avatar" title="ClickScales" aria-hidden="true">CS</div>
+  </div>
+</header>
+
+<!-- ================= CONTENT ================= -->
+<main class="wrap">
+  <div class="page-head">
+    <h1 class="page-title" data-i18n="page.title">Meetings</h1>
+    <p class="page-sub" data-i18n="page.sub">See what Keren has booked, and set the rules for when she is allowed to book.</p>
+  </div>
+
+  <!-- ===== UPCOMING MEETINGS ===== -->
+  <div class="sec-head">
+    <h2 class="sec-title" data-i18n="sec.upcoming">Upcoming meetings</h2>
+    <span class="sec-note" data-i18n="up.count">3 booked this week</span>
+  </div>
+  <div class="card">
+    <div class="mtg">
+      <div class="mtg-when"><div class="d" data-i18n="up.today">Today</div><div class="t">15:30</div></div>
+      <div class="mtg-main">
+        <div class="mtg-lead" dir="auto">דני כהן</div>
+        <div class="mtg-biz" dir="auto">שיפוצים כהן</div>
+        <div class="mtg-type" data-i18n="up.demo">Demo call · 30 min · Google Meet</div>
+      </div>
+      <div class="mtg-end">
+        <span class="chip confirmed"><span class="cdot"></span><span data-i18n="st.confirmed">Confirmed</span></span>
+        <a class="mtg-join" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 10l4.5-3v10L15 14M4 6h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"/></svg><span data-i18n="up.join">Join</span></a>
+        <button class="mtg-kebab" data-i18n-aria="a11y.more" aria-label="More"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
+      </div>
+    </div>
+    <div class="mtg">
+      <div class="mtg-when"><div class="d" data-i18n="up.tomorrow">Tomorrow</div><div class="t">10:00</div></div>
+      <div class="mtg-main">
+        <div class="mtg-lead" dir="auto">מאיה לוי</div>
+        <div class="mtg-biz" dir="auto">מספרת מאיה</div>
+        <div class="mtg-type" data-i18n="up.demo">Demo call · 30 min · Google Meet</div>
+      </div>
+      <div class="mtg-end">
+        <span class="chip confirmed"><span class="cdot"></span><span data-i18n="st.confirmed">Confirmed</span></span>
+        <a class="mtg-join" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 10l4.5-3v10L15 14M4 6h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"/></svg><span data-i18n="up.join">Join</span></a>
+        <button class="mtg-kebab" data-i18n-aria="a11y.more" aria-label="More"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
+      </div>
+    </div>
+    <div class="mtg">
+      <div class="mtg-when"><div class="d" data-i18n="up.sun">Sunday</div><div class="t">09:40</div></div>
+      <div class="mtg-main">
+        <div class="mtg-lead" dir="auto">אבי מזרחי</div>
+        <div class="mtg-biz" dir="auto">מוסך מזרחי</div>
+        <div class="mtg-type" data-i18n="up.demo">Demo call · 30 min · Google Meet</div>
+      </div>
+      <div class="mtg-end">
+        <span class="chip pending"><span class="cdot"></span><span data-i18n="st.pending">Awaiting confirmation</span></span>
+        <a class="mtg-join" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 10l4.5-3v10L15 14M4 6h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"/></svg><span data-i18n="up.join">Join</span></a>
+        <button class="mtg-kebab" data-i18n-aria="a11y.more" aria-label="More"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== AVAILABILITY: CONFIG LEFT / BOOKING PREVIEW RIGHT ===== -->
+  <div class="sec-head">
+    <h2 class="sec-title" data-i18n="sec.avail">When Keren can book</h2>
+    <span class="sec-note" data-i18n="avail.sub">Change a rule and the booking page on the right updates.</span>
+  </div>
+
+  <div class="avail">
+    <!-- LEFT: summary rows -->
+    <div class="avail-config">
+
+      <!-- Working hours (expanded by default to show the pattern) -->
+      <div class="sumrow">
+        <button class="sumrow-head" aria-expanded="true" aria-controls="row-hours">
+          <span class="sumrow-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+          <span class="sumrow-main">
+            <span class="sumrow-name" data-i18n="r.hours">Working hours</span>
+            <span class="sumrow-val" dir="auto" data-i18n="r.hours.v">Sunday to Thursday, 9:00 to 17:00</span>
+          </span>
+          <svg class="sumrow-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="sumrow-body" id="row-hours">
+          <p class="sb-lead" data-i18n="r.hours.lead">Pick the days and hours Keren may offer to leads.</p>
+          <div class="daychips" role="group" data-i18n-aria="r.hours.days" aria-label="Working days">
+            <button class="daychip" aria-pressed="true" data-i18n="day.sun">Sun</button>
+            <button class="daychip" aria-pressed="true" data-i18n="day.mon">Mon</button>
+            <button class="daychip" aria-pressed="true" data-i18n="day.tue">Tue</button>
+            <button class="daychip" aria-pressed="true" data-i18n="day.wed">Wed</button>
+            <button class="daychip" aria-pressed="true" data-i18n="day.thu">Thu</button>
+            <button class="daychip" aria-pressed="false" data-i18n="day.fri">Fri</button>
+            <button class="daychip" aria-pressed="false" data-i18n="day.sat">Sat</button>
+          </div>
+          <div class="hours-range">
+            <label data-i18n="r.hours.from">From</label>
+            <input class="time-input" value="09:00" inputmode="numeric" aria-label="Start time">
+            <label data-i18n="r.hours.to">to</label>
+            <input class="time-input" value="17:00" inputmode="numeric" aria-label="End time">
+          </div>
+        </div>
+      </div>
+
+      <!-- Meeting length -->
+      <div class="sumrow">
+        <button class="sumrow-head" aria-expanded="false" aria-controls="row-length">
+          <span class="sumrow-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 8v4M4 12a8 8 0 1 0 16 0 8 8 0 0 0-16 0M9 3h6"/></svg></span>
+          <span class="sumrow-main">
+            <span class="sumrow-name" data-i18n="r.length">Meeting length</span>
+            <span class="sumrow-val" data-i18n="r.length.v">30 minutes</span>
+          </span>
+          <svg class="sumrow-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="sumrow-body" id="row-length" hidden>
+          <p class="sb-lead" data-i18n="r.length.lead">How long each demo call runs.</p>
+          <div class="seg-inline" role="group" data-i18n-aria="r.length" aria-label="Meeting length">
+            <button aria-pressed="false" data-i18n="len.15">15 min</button>
+            <button aria-pressed="true" data-i18n="len.30">30 min</button>
+            <button aria-pressed="false" data-i18n="len.45">45 min</button>
+            <button aria-pressed="false" data-i18n="len.60">60 min</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gap between calls -->
+      <div class="sumrow">
+        <button class="sumrow-head" aria-expanded="false" aria-controls="row-buffer">
+          <span class="sumrow-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h6v10H4zM14 7h6v10h-6"/></svg></span>
+          <span class="sumrow-main">
+            <span class="sumrow-name" data-i18n="r.buffer">Gap between calls</span>
+            <span class="sumrow-val" data-i18n="r.buffer.v">10 minutes</span>
+          </span>
+          <svg class="sumrow-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="sumrow-body" id="row-buffer" hidden>
+          <p class="sb-lead" data-i18n="r.buffer.lead">Free time Keren leaves after every call, so back-to-back demos do not collide.</p>
+          <div class="seg-inline" role="group" data-i18n-aria="r.buffer" aria-label="Gap between calls">
+            <button aria-pressed="false" data-i18n="buf.0">None</button>
+            <button aria-pressed="false" data-i18n="buf.5">5 min</button>
+            <button aria-pressed="true" data-i18n="buf.10">10 min</button>
+            <button aria-pressed="false" data-i18n="buf.15">15 min</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Minimum notice -->
+      <div class="sumrow">
+        <button class="sumrow-head" aria-expanded="false" aria-controls="row-notice">
+          <span class="sumrow-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
+          <span class="sumrow-main">
+            <span class="sumrow-name" data-i18n="r.notice">Minimum notice</span>
+            <span class="sumrow-val" data-i18n="r.notice.v">At least 2 hours ahead</span>
+          </span>
+          <svg class="sumrow-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="sumrow-body" id="row-notice" hidden>
+          <p class="sb-lead" data-i18n="r.notice.lead">How much lead time Keren needs before a slot. Sooner than this, she will not offer it.</p>
+          <div class="seg-inline" role="group" data-i18n-aria="r.notice" aria-label="Minimum notice">
+            <button aria-pressed="false" data-i18n="not.1">1 hour</button>
+            <button aria-pressed="true" data-i18n="not.2">2 hours</button>
+            <button aria-pressed="false" data-i18n="not.4">4 hours</button>
+            <button aria-pressed="false" data-i18n="not.24">1 day</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Calendar -->
+      <div class="sumrow">
+        <button class="sumrow-head" aria-expanded="false" aria-controls="row-cal">
+          <span class="sumrow-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg></span>
+          <span class="sumrow-main">
+            <span class="sumrow-name" data-i18n="r.cal">Calendar</span>
+            <span class="sumrow-val">Google Calendar · <span class="mono">koren@clickscales.com</span></span>
+          </span>
+          <svg class="sumrow-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="sumrow-body" id="row-cal" hidden>
+          <p class="sb-lead" data-i18n="r.cal.lead">Keren reads this calendar to know when you are busy, and writes every booked demo back to it.</p>
+          <div class="cal-row">
+            <span class="cal-logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" width="18" height="18" style="color:var(--accent-fg)"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg></span>
+            <div class="cal-meta">
+              <div class="cal-name">Google Calendar</div>
+              <div class="cal-acct mono">koren@clickscales.com</div>
+            </div>
+            <span class="cal-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="13" height="13"><path d="m5 13 4 4L19 7"/></svg><span data-i18n="r.cal.on">Connected</span></span>
+            <button class="cal-change" data-i18n="r.cal.change">Change</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Time zone -->
+      <div class="sumrow">
+        <button class="sumrow-head" aria-expanded="false" aria-controls="row-tz">
+          <span class="sumrow-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18"/></svg></span>
+          <span class="sumrow-main">
+            <span class="sumrow-name" data-i18n="r.tz">Time zone</span>
+            <span class="sumrow-val" data-i18n="r.tz.v">Jerusalem, Israel (GMT+3)</span>
+          </span>
+          <svg class="sumrow-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="sumrow-body" id="row-tz" hidden>
+          <p class="sb-lead" data-i18n="r.tz.lead">Your working hours are set in this zone. Leads always see times converted to their own.</p>
+          <select class="tz-select" aria-label="Time zone">
+            <option selected data-i18n="tz.jer">Jerusalem, Israel (GMT+3)</option>
+            <option data-i18n="tz.lon">London, UK (GMT+1)</option>
+            <option data-i18n="tz.ny">New York, USA (GMT-4)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: booking preview -->
+    <div class="bk-wrap">
+      <div class="bk-eyebrow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span class="eyebrow" data-i18n="bk.eyebrow">What the lead sees</span>
+      </div>
+      <div class="bk">
+        <div class="bk-top">
+          <div class="bk-ava">ק</div>
+          <div>
+            <div class="bk-title" data-i18n="bk.title">Book a demo</div>
+            <div class="bk-meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span data-i18n="bk.meta">30 min with Keren · Google Meet</span></div>
+          </div>
+        </div>
+        <div class="bk-body">
+          <div class="bk-lbl" data-i18n="bk.pickday">Pick a day</div>
+          <div class="bk-days" role="group" data-i18n-aria="bk.pickday" aria-label="Pick a day">
+            <button class="bk-day" aria-pressed="true"><span class="dow" data-i18n="day.sun">Sun</span><span class="num">2</span></button>
+            <button class="bk-day" aria-pressed="false"><span class="dow" data-i18n="day.mon">Mon</span><span class="num">3</span></button>
+            <button class="bk-day" aria-pressed="false"><span class="dow" data-i18n="day.tue">Tue</span><span class="num">4</span></button>
+            <button class="bk-day" aria-pressed="false"><span class="dow" data-i18n="day.wed">Wed</span><span class="num">5</span></button>
+            <button class="bk-day" aria-pressed="false"><span class="dow" data-i18n="day.thu">Thu</span><span class="num">6</span></button>
+          </div>
+          <div class="bk-lbl" style="margin-block-start:16px" data-i18n="bk.picktime">Pick a time</div>
+          <div class="bk-slots" role="group" data-i18n-aria="bk.picktime" aria-label="Pick a time">
+            <button class="bk-slot" aria-pressed="false">09:00</button>
+            <button class="bk-slot" aria-pressed="false">09:40</button>
+            <button class="bk-slot" aria-pressed="true">10:20</button>
+            <button class="bk-slot" aria-pressed="false">11:00</button>
+            <button class="bk-slot" aria-pressed="false">11:40</button>
+            <button class="bk-slot" aria-pressed="false">12:20</button>
+            <button class="bk-slot" aria-pressed="false">13:00</button>
+            <button class="bk-slot" aria-pressed="false">13:40</button>
+            <button class="bk-slot" aria-pressed="false">14:20</button>
+          </div>
+          <div class="bk-foot">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18"/></svg>
+            <span data-i18n="bk.tznote">Times shown in the lead's own time zone</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ================= STICKY SAVE BAR ================= -->
+<div class="savebar">
+  <div class="savebar-in">
+    <span class="sb-note" data-i18n="save.note">Changes update the booking page right away.</span>
+    <div class="sb-actions">
+      <button class="btn" data-i18n="save.discard">Discard</button>
+      <button class="btn primary" data-i18n="save.save">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const I18N = {
+  en: {
+    "brand.tag":"by ClickScales","presence.prefix":"Keren is on a call with",
+    "a11y.notifications":"Notifications","a11y.more":"More options",
+    "page.title":"Meetings","page.sub":"See what Keren has booked, and set the rules for when she is allowed to book.",
+    "sec.upcoming":"Upcoming meetings","up.count":"3 booked this week",
+    "up.today":"Today","up.tomorrow":"Tomorrow","up.sun":"Sunday",
+    "up.demo":"Demo call · 30 min · Google Meet","up.join":"Join",
+    "st.confirmed":"Confirmed","st.pending":"Awaiting confirmation",
+    "sec.avail":"When Keren can book","avail.sub":"Change a rule and the booking page on the right updates.",
+    "r.hours":"Working hours","r.hours.v":"Sunday to Thursday, 9:00 to 17:00","r.hours.lead":"Pick the days and hours Keren may offer to leads.","r.hours.days":"Working days","r.hours.from":"From","r.hours.to":"to",
+    "day.sun":"Sun","day.mon":"Mon","day.tue":"Tue","day.wed":"Wed","day.thu":"Thu","day.fri":"Fri","day.sat":"Sat",
+    "r.length":"Meeting length","r.length.v":"30 minutes","r.length.lead":"How long each demo call runs.",
+    "len.15":"15 min","len.30":"30 min","len.45":"45 min","len.60":"60 min",
+    "r.buffer":"Gap between calls","r.buffer.v":"10 minutes","r.buffer.lead":"Free time Keren leaves after every call, so back-to-back demos do not collide.",
+    "buf.0":"None","buf.5":"5 min","buf.10":"10 min","buf.15":"15 min",
+    "r.notice":"Minimum notice","r.notice.v":"At least 2 hours ahead","r.notice.lead":"How much lead time Keren needs before a slot. Sooner than this, she will not offer it.",
+    "not.1":"1 hour","not.2":"2 hours","not.4":"4 hours","not.24":"1 day",
+    "r.cal":"Calendar","r.cal.lead":"Keren reads this calendar to know when you are busy, and writes every booked demo back to it.","r.cal.on":"Connected","r.cal.change":"Change",
+    "r.tz":"Time zone","r.tz.v":"Jerusalem, Israel (GMT+3)","r.tz.lead":"Your working hours are set in this zone. Leads always see times converted to their own.",
+    "tz.jer":"Jerusalem, Israel (GMT+3)","tz.lon":"London, UK (GMT+1)","tz.ny":"New York, USA (GMT-4)",
+    "bk.eyebrow":"What the lead sees","bk.title":"Book a demo","bk.meta":"30 min with Keren · Google Meet",
+    "bk.pickday":"Pick a day","bk.picktime":"Pick a time","bk.tznote":"Times shown in the lead's own time zone",
+    "save.note":"Changes update the booking page right away.","save.discard":"Discard","save.save":"Save changes"
+  },
+  he: {
+    "brand.tag":"מבית ClickScales","presence.prefix":"קרן בשיחה עם",
+    "a11y.notifications":"התראות","a11y.more":"עוד אפשרויות",
+    "page.title":"פגישות","page.sub":"ראו מה קרן קבעה, והגדירו את הכללים למתי מותר לה לקבוע.",
+    "sec.upcoming":"פגישות קרובות","up.count":"3 נקבעו השבוע",
+    "up.today":"היום","up.tomorrow":"מחר","up.sun":"יום ראשון",
+    "up.demo":"שיחת דמו · 30 דקות · Google Meet","up.join":"הצטרפות",
+    "st.confirmed":"מאושרת","st.pending":"ממתינה לאישור",
+    "sec.avail":"מתי קרן יכולה לקבוע","avail.sub":"שנו כלל ודף ההזמנה מצד ימין מתעדכן.",
+    "r.hours":"שעות פעילות","r.hours.v":"ראשון עד חמישי, 9:00 עד 17:00","r.hours.lead":"בחרו את הימים והשעות שקרן יכולה להציע ללידים.","r.hours.days":"ימי פעילות","r.hours.from":"משעה","r.hours.to":"עד",
+    "day.sun":"א׳","day.mon":"ב׳","day.tue":"ג׳","day.wed":"ד׳","day.thu":"ה׳","day.fri":"ו׳","day.sat":"ש׳",
+    "r.length":"אורך הפגישה","r.length.v":"30 דקות","r.length.lead":"כמה זמן נמשכת כל שיחת דמו.",
+    "len.15":"15 דק׳","len.30":"30 דק׳","len.45":"45 דק׳","len.60":"60 דק׳",
+    "r.buffer":"מרווח בין שיחות","r.buffer.v":"10 דקות","r.buffer.lead":"זמן פנוי שקרן משאירה אחרי כל שיחה, כדי ששיחות רצופות לא יתנגשו.",
+    "buf.0":"ללא","buf.5":"5 דק׳","buf.10":"10 דק׳","buf.15":"15 דק׳",
+    "r.notice":"התראה מראש","r.notice.v":"לפחות שעתיים מראש","r.notice.lead":"כמה זמן מראש קרן צריכה לפני משבצת. מוקדם מזה, היא לא תציע אותה.",
+    "not.1":"שעה","not.2":"שעתיים","not.4":"4 שעות","not.24":"יום",
+    "r.cal":"יומן","r.cal.lead":"קרן קוראת את היומן הזה כדי לדעת מתי אתם עסוקים, וכותבת אליו כל דמו שנקבע.","r.cal.on":"מחובר","r.cal.change":"החלפה",
+    "r.tz":"אזור זמן","r.tz.v":"ירושלים, ישראל (GMT+3)","r.tz.lead":"שעות הפעילות שלכם מוגדרות באזור הזה. לידים תמיד רואים את הזמנים מומרים לאזור שלהם.",
+    "tz.jer":"ירושלים, ישראל (GMT+3)","tz.lon":"לונדון, בריטניה (GMT+1)","tz.ny":"ניו יורק, ארה״ב (GMT-4)",
+    "bk.eyebrow":"מה שהליד רואה","bk.title":"קביעת פגישת דמו","bk.meta":"30 דקות עם קרן · Google Meet",
+    "bk.pickday":"בחרו יום","bk.picktime":"בחרו שעה","bk.tznote":"הזמנים מוצגים באזור הזמן של הליד",
+    "save.note":"השינויים מעדכנים את דף ההזמנה מיד.","save.discard":"ביטול","save.save":"שמירת שינויים"
+  }
+};
+
+function applyLang(lang){
+  const dict = I18N[lang], html = document.documentElement;
+  html.lang = lang; html.dir = (lang === "he") ? "rtl" : "ltr";
+  document.querySelectorAll("[data-i18n]").forEach(el=>{ const k=el.getAttribute("data-i18n"); if(dict[k]!=null) el.textContent=dict[k]; });
+  document.querySelectorAll("[data-i18n-aria]").forEach(el=>{ const k=el.getAttribute("data-i18n-aria"); if(dict[k]!=null) el.setAttribute("aria-label",dict[k]); });
+  document.querySelectorAll("#lang-ctl button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.langVal===lang)));
+}
+function applyTheme(theme){
+  document.documentElement.setAttribute("data-theme", theme);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", theme==="dark" ? "#0A0F20" : "#EDF0F6");
+  document.querySelectorAll("#theme-ctl button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.themeVal===theme)));
+}
+document.getElementById("lang-ctl").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b) applyLang(b.dataset.langVal); });
+document.getElementById("theme-ctl").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b) applyTheme(b.dataset.themeVal); });
+
+/* summary-row disclosures */
+document.querySelectorAll(".sumrow-head").forEach(head=>{
+  head.addEventListener("click", ()=>{
+    const open = head.getAttribute("aria-expanded")==="true";
+    head.setAttribute("aria-expanded", String(!open));
+    const body = document.getElementById(head.getAttribute("aria-controls"));
+    if (body) body.hidden = open;
+  });
+});
+/* segmented inline groups (single-select) */
+document.querySelectorAll('.seg-inline').forEach(g=>{
+  g.addEventListener("click", e=>{ const b=e.target.closest("button"); if(!b) return; g.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", String(x===b))); });
+});
+/* day toggles (multi-select) */
+document.querySelectorAll('.daychip').forEach(c=>{
+  c.addEventListener("click", ()=> c.setAttribute("aria-pressed", String(c.getAttribute("aria-pressed")!=="true")));
+});
+/* booking-preview day + slot pickers (single-select) */
+document.querySelectorAll('.bk-days, .bk-slots').forEach(g=>{
+  g.addEventListener("click", e=>{ const b=e.target.closest("button"); if(!b) return; g.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", String(x===b))); });
+});
+
+/* defaults */
+applyLang("en"); applyTheme("light");
+</script>
+</body>
+</html>
