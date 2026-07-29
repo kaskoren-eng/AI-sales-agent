@@ -9,12 +9,18 @@ Built page by page with Koren — each approved before the next starts. Governed
 |---|---|---|---|
 | Overview | `overview.html` | **approved** (2026-07-29, "looks good enough for now") | chart-vs-heatmap (built the D2 bar chart); Overview quality metric has no data source (frontend spec §7.1) → 6th KPI is a designed empty state |
 | Calls (+ detail drawer) | `calls.html` | **approved** (2026-07-29) | modal drawer dims list in a real browser (Playwright doesn't composite the fixed dim) |
-| Leads | `leads.html` | built — awaiting review | lead detail is a **pop-out drawer** (Koren's call, 2026-07-29) folding conversations+messages+meetings into one timeline; status-colour mapping (§1.4.1) + 8-status→4 mapping still undecided (used PROPOSED chips) |
-| The agent | `agent.html` | pending | — |
+| Leads | `leads.html` | **approved** (2026-07-29) | lead detail is a **pop-out drawer** folding conversations+messages+meetings into one timeline; 8-status→4 colour mapping still open (used PROPOSED chips) |
+| The agent | `agent.html` | built — awaiting review | hero pattern = every toggle carries a Hebrew sample sentence; raw prompt read-only behind Advanced view; human vocabulary only |
 | Test Keren (`/simulator`, dark default) | `simulator.html` | pending | emotion tags — LiveKit/Cartesia pipeline unverified (§4.7); render without |
 | Meetings | `meetings.html` | pending | — |
 | Ask Keren (`/chat`) | `chat.html` | pending | — |
 | Settings shell | `settings.html` | pending | — |
+
+**Standing decisions / later pass:**
+- **Platform brand = ClickScales** (decided 2026-07-29, spec v1.2). Agent name is per-tenant
+  `{agentName}` (sample "Keren/קרן"). All preview shells currently show the **KEREN** wordmark;
+  swap wordmark KEREN→**ClickScales** across every page in one later pass. Do NOT rework the
+  approved pages piecemeal — keep the set consistent until the batch swap.
 
 **Standing gates (v5):**
 - Status colours use the §1.4.1 **PROPOSED** set — awaiting sign-off. The 8-lead-status → 4-status

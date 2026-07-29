@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en" dir="ltr" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KEREN — Your agent (v5 preview)</title>
+<meta name="theme-color" content="#EDF0F6">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Rubik:wght@500;600;700&family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* =========================================================================
+   v5 tokens — brand_assets/keren-brand-brief-v5.md §1.1 (light) + §1.2 (dark).
+   The ONLY place colour values live. Everything else references var(--token).
+   ========================================================================= */
+:root {
+  --surface-page:#EDF0F6; --surface-card:#FFFFFF; --surface-sunken:#E4E9F1; --surface-overlay:#FFFFFF;
+  --text-primary:#0C1226; --text-secondary:#5B667E; --text-tertiary:#7A8598; --text-on-accent:#FFFFFF;
+  --border-default:#D9E0EA; --border-strong:#C3CDDB;
+  --accent:#2F35C7; --accent-hover:#252AB3; --accent-tint:#EAEAFB; --accent-fg:#2F35C7;
+  --data-1:#2F35C7; --data-2:#D9861B; --data-2-glow:#F2B24E; --data-2-tint:#FCF0DC;
+  --status-success:#1B7F5A; --status-warning:#9A5D0F; --status-danger:#C0392B; --status-neutral:#5B667E;
+  --r-sm:8px; --r:14px; --r-lg:22px; --r-full:999px; --container-max:1180px;
+  --shadow-card:0 1px 2px rgba(12,18,38,.04), 0 8px 24px rgba(12,18,38,.06);
+  --shadow-overlay:0 2px 4px rgba(12,18,38,.06), 0 24px 60px rgba(12,18,38,.16);
+  --font-display:"Bricolage Grotesque","Rubik",system-ui,sans-serif;
+  --font-body:"Instrument Sans","Assistant",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono","Assistant",ui-monospace,monospace;
+  --dur-fast:150ms; --dur-base:220ms; --ease:cubic-bezier(.4,0,.2,1);
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --surface-page:#0A0F20; --surface-card:#141B31; --surface-sunken:#070B17; --surface-overlay:#1A2240;
+  --text-primary:#EDF0F6; --text-secondary:#A2A9BC; --text-tertiary:#767E93; --text-on-accent:#FFFFFF;
+  --border-default:#232941; --border-strong:#333B57;
+  --accent:#2F35C7; --accent-fg:#8B90F0; --accent-hover:#3A41D8; --accent-tint:#1B2145;
+  --data-1:#6E74E8; --data-2:#F2B24E; --data-2-glow:#F8CC85; --data-2-tint:#2A2113;
+  --status-success:#3FB88C; --status-warning:#E0A64E; --status-danger:#E86A5E; --status-neutral:#A2A9BC;
+  --shadow-card:0 0 0 1px rgba(0,0,0,0), 0 8px 24px rgba(0,0,0,.24);
+  --shadow-overlay:0 2px 4px rgba(0,0,0,.3), 0 24px 60px rgba(0,0,0,.5);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--surface-page); color: var(--text-primary);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
+  padding-block-start: 46px; padding-block-end: 72px; /* room for preview bar + sticky save */
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-tertiary); }
+:lang(he) .eyebrow { text-transform: none; letter-spacing: normal; }
+
+/* ---- Top bar ---- */
+.topbar { position: sticky; top: 46px; z-index: 20; display: flex; align-items: center; gap: 20px; block-size: 60px; padding-inline: 24px; background: var(--surface-card); border-block-end: 1px solid var(--border-default); }
+.brand { display: flex; align-items: baseline; gap: 8px; }
+.brand .mark { font-family: var(--font-display); font-weight: 800; font-size: 20px; letter-spacing: .02em; color: var(--text-primary); }
+.brand .tag { font-size: 12px; color: var(--text-tertiary); }
+.presence { display: inline-flex; align-items: center; gap: 9px; padding: 6px 12px 6px 10px; background: var(--accent-tint); border: 1px solid var(--border-default); border-radius: var(--r-full); font-size: 13px; color: var(--text-secondary); }
+.dot { inline-size: 8px; block-size: 8px; border-radius: 50%; flex-shrink: 0; }
+.presence .dot { background: var(--accent-fg); position: relative; }
+.presence:not(.idle) .dot::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 1px solid var(--accent-fg); opacity: .5; animation: pulse 1.6s var(--ease) infinite; }
+.presence strong { color: var(--text-primary); font-weight: 600; }
+@keyframes pulse { 0%{transform:scale(1);opacity:.5} 70%{transform:scale(2.1);opacity:0} 100%{opacity:0} }
+@media (prefers-reduced-motion: reduce) { .presence .dot::after { animation: none; display: none; } }
+.topbar .spacer { margin-inline-start: auto; }
+.top-actions { display: flex; align-items: center; gap: 8px; }
+.icon-btn { inline-size: 36px; block-size: 36px; display: grid; place-items: center; border: 1px solid var(--border-default); border-radius: 10px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.icon-btn:hover { background: var(--surface-sunken); color: var(--text-primary); }
+.avatar { inline-size: 34px; block-size: 34px; border-radius: 50%; background: var(--accent); color: var(--text-on-accent); display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 13px; cursor: pointer; }
+
+/* ---- Layout ---- */
+.wrap { max-inline-size: 860px; margin-inline: auto; padding: 28px 24px 60px; }
+.page-head { margin-block-end: 20px; }
+.page-title { font-family: var(--font-display); font-weight: 700; font-size: 30px; letter-spacing: -.02em; }
+:lang(he) .page-title { letter-spacing: normal; }
+.page-sub { margin-block-start: 6px; font-size: 13.5px; color: var(--text-secondary); }
+
+.card { background: var(--surface-card); border: 1px solid var(--border-default); border-radius: var(--r); box-shadow: var(--shadow-card); }
+.sec-title { font-family: var(--font-display); font-weight: 600; font-size: 16px; margin-block: 28px 12px; }
+
+/* cost/latency strip */
+.metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border-default); border: 1px solid var(--border-default); border-radius: var(--r); overflow: hidden; }
+.metric { background: var(--surface-card); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+.metric .m-k { font-size: 12px; color: var(--text-tertiary); }
+.metric .m-v { font-family: var(--font-display); font-variant-numeric: tabular-nums; font-weight: 700; font-size: 20px; letter-spacing: -.01em; }
+.metric .m-note { font-size: 11.5px; color: var(--text-tertiary); }
+
+/* identity */
+.identity { padding: 20px; display: flex; flex-direction: column; gap: 18px; }
+.field { display: flex; flex-direction: column; gap: 7px; }
+.field > label { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.field .hint { font-size: 12px; color: var(--text-tertiary); }
+.input { font-family: var(--font-body); font-size: 15px; color: var(--text-primary); padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface-card); max-inline-size: 320px; }
+.input:focus { outline: none; border-color: var(--accent); }
+.seg-inline { display: inline-flex; padding: 3px; background: var(--surface-sunken); border: 1px solid var(--border-default); border-radius: 10px; inline-size: max-content; }
+.seg-inline button { font-family: var(--font-body); font-size: 13px; font-weight: 500; padding: 7px 16px; border: 0; border-radius: 7px; cursor: pointer; background: transparent; color: var(--text-secondary); }
+.seg-inline button[aria-pressed="true"] { background: var(--surface-card); color: var(--text-primary); box-shadow: var(--shadow-card); }
+.voice-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--border-default); border-radius: 12px; background: var(--surface-sunken); max-inline-size: 420px; }
+.voice-play { inline-size: 38px; block-size: 38px; border-radius: 50%; display: grid; place-items: center; border: 0; background: var(--accent); color: var(--text-on-accent); cursor: pointer; flex-shrink: 0; }
+.voice-play svg { inline-size: 15px; block-size: 15px; margin-inline-start: 2px; }
+.voice-meta { flex: 1; min-inline-size: 0; }
+.voice-name { font-weight: 600; font-size: 14px; }
+.voice-desc { font-size: 12px; color: var(--text-tertiary); }
+.voice-change { background: transparent; border: 1px solid var(--border-default); border-radius: 9px; padding: 7px 12px; font-family: var(--font-body); font-size: 12.5px; font-weight: 600; color: var(--text-primary); cursor: pointer; }
+.lang-note { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-tertiary); padding: 10px 12px; border-radius: 10px; background: var(--surface-sunken); }
+.lang-note svg { inline-size: 15px; block-size: 15px; flex-shrink: 0; }
+
+/* handbook tabs */
+.tabs { display: flex; gap: 4px; border-block-end: 1px solid var(--border-default); padding: 0 6px; }
+.tabs button { font-family: var(--font-body); font-size: 13.5px; font-weight: 500; padding: 14px 12px; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; border-block-end: 2px solid transparent; margin-block-end: -1px; }
+.tabs button[aria-selected="true"] { color: var(--text-primary); border-block-end-color: var(--accent); font-weight: 600; }
+.tabpanel { padding: 6px 20px 8px; }
+.tabpanel[hidden] { display: none; }
+
+/* behaviour rows: setting + Hebrew SAMPLE SENTENCE (the hero pattern) */
+.beh { padding: 18px 0; border-block-end: 1px solid var(--border-default); }
+.beh:last-child { border-block-end: 0; }
+.beh-top { display: flex; align-items: flex-start; gap: 14px; }
+.beh-main { flex: 1; min-inline-size: 0; }
+.beh-name { font-size: 14.5px; font-weight: 600; color: var(--text-primary); }
+.beh-desc { font-size: 12.5px; color: var(--text-secondary); margin-block-start: 2px; }
+.beh-ctrl { flex-shrink: 0; }
+
+/* toggle switch */
+.switch { inline-size: 42px; block-size: 24px; border-radius: var(--r-full); background: var(--surface-sunken); border: 1px solid var(--border-strong); position: relative; cursor: pointer; padding: 0; transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
+.switch[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+.switch .knob { position: absolute; inset-block-start: 2px; inset-inline-start: 2px; inline-size: 18px; block-size: 18px; border-radius: 50%; background: var(--text-on-accent); box-shadow: 0 1px 2px rgba(12,18,38,.25); transition: inset-inline-start var(--dur-fast) var(--ease); }
+.switch[aria-checked="true"] .knob { inset-inline-start: calc(100% - 20px); }
+.switch.locked { opacity: .6; cursor: not-allowed; }
+
+/* the sample-sentence bubble */
+.sample { margin-block-start: 12px; display: flex; gap: 10px; align-items: flex-start; }
+.sample-ava { inline-size: 26px; block-size: 26px; border-radius: 50%; background: var(--accent); color: var(--text-on-accent); display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 11px; flex-shrink: 0; }
+.sample-body { flex: 1; min-inline-size: 0; }
+.sample-k { font-size: 11px; color: var(--text-tertiary); margin-block-end: 4px; }
+.sample-bubble { display: inline-block; padding: 9px 13px; background: var(--surface-sunken); border: 1px solid var(--border-default); border-radius: 12px; border-start-start-radius: 3px; font-size: 14px; line-height: 1.55; color: var(--text-primary); }
+
+/* advanced view (read-only generated prompt) */
+.advanced { margin-block-start: 14px; }
+.adv-toggle { display: flex; align-items: center; gap: 8px; width: 100%; background: transparent; border: 1px solid var(--border-default); border-radius: 12px; padding: 12px 14px; cursor: pointer; font-family: var(--font-body); font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
+.adv-toggle .chev { margin-inline-start: auto; transition: transform var(--dur-fast) var(--ease); color: var(--text-tertiary); }
+.adv-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.adv-body { margin-block-start: 10px; border: 1px solid var(--border-default); border-radius: 12px; overflow: hidden; }
+.adv-body[hidden] { display: none; }
+.adv-ro { display: flex; align-items: center; gap: 7px; padding: 9px 14px; background: var(--surface-sunken); border-block-end: 1px solid var(--border-default); font-size: 11.5px; color: var(--text-tertiary); }
+.adv-ro svg { inline-size: 13px; block-size: 13px; }
+.adv-pre { margin: 0; padding: 14px; font-family: var(--font-mono); font-size: 12px; line-height: 1.7; color: var(--text-secondary); white-space: pre-wrap; overflow-x: auto; }
+
+/* sticky save bar */
+.savebar { position: fixed; inset-block-end: 0; inset-inline: 0; z-index: 40; background: var(--surface-card); border-block-start: 1px solid var(--border-default); box-shadow: 0 -8px 24px rgba(12,18,38,.06); }
+.savebar-in { max-inline-size: 860px; margin-inline: auto; padding: 12px 24px; display: flex; align-items: center; gap: 12px; }
+.savebar .sb-note { font-size: 12.5px; color: var(--text-tertiary); }
+.savebar .sb-actions { margin-inline-start: auto; display: flex; gap: 10px; }
+.btn { font-family: var(--font-body); font-size: 13.5px; font-weight: 600; padding: 9px 18px; border-radius: 10px; cursor: pointer; border: 1px solid var(--border-default); background: var(--surface-card); color: var(--text-primary); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
+
+/* ---- Preview-control bar ---- */
+.preview-controls { position: fixed; inset-block-start: 0; inset-inline: 0; z-index: 100; block-size: 46px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-inline: 18px; background: var(--text-primary); color: var(--surface-page); border-block-end: 1px solid var(--border-strong); }
+.preview-controls .pc-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; opacity: .65; }
+.pc-groups { display: flex; align-items: center; gap: 20px; }
+.pc-group { display: flex; align-items: center; gap: 9px; }
+.pc-cap { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; opacity: .55; }
+.seg-ctl { display: inline-flex; gap: 5px; }
+.seg-ctl button { font-family: var(--font-body); font-size: 12px; font-weight: 600; padding: 5px 13px; border: 1px solid currentColor; border-radius: var(--r-full); cursor: pointer; background: transparent; color: inherit; opacity: .55; transition: opacity var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease); }
+.seg-ctl button:hover { opacity: .85; }
+.seg-ctl button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ================= PREVIEW CONTROL BAR ================= -->
+<div class="preview-controls" role="group" aria-label="Preview controls">
+  <span class="pc-label">Preview · not part of the design</span>
+  <div class="pc-groups">
+    <div class="pc-group"><span class="pc-cap">Theme</span>
+      <div class="seg-ctl" id="theme-ctl"><button data-theme-val="light" aria-pressed="true">Light</button><button data-theme-val="dark" aria-pressed="false">Dark</button></div>
+    </div>
+    <div class="pc-group"><span class="pc-cap">Language</span>
+      <div class="seg-ctl" id="lang-ctl"><button data-lang-val="en" aria-pressed="true">EN</button><button data-lang-val="he" aria-pressed="false">עברית</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= TOP BAR ================= -->
+<header class="topbar">
+  <div class="brand"><span class="mark">KEREN</span><span class="tag" data-i18n="brand.tag">by ClickScales</span></div>
+  <div class="presence" id="presence"><span class="dot"></span><span><span data-i18n="presence.prefix">Keren is on a call with</span> <strong dir="auto">דני כהן</strong></span></div>
+  <span class="spacer"></span>
+  <div class="top-actions">
+    <button class="icon-btn" data-i18n-aria="a11y.notifications" aria-label="Notifications"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" width="17" height="17"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+    <div class="avatar" title="ClickScales" aria-hidden="true">CS</div>
+  </div>
+</header>
+
+<!-- ================= CONTENT ================= -->
+<main class="wrap">
+  <div class="page-head">
+    <h1 class="page-title" data-i18n="page.title">Your agent</h1>
+    <p class="page-sub" data-i18n="page.sub">Set who Keren is and how she talks to your leads. Every change is something you can hear before it goes live.</p>
+  </div>
+
+  <!-- COST / LATENCY STRIP -->
+  <div class="metrics">
+    <div class="metric"><span class="m-k" data-i18n="m.cost">Cost per minute</span><span class="m-v mono">$0.08</span><span class="m-note" data-i18n="m.cost.n">about a third of the old setup</span></div>
+    <div class="metric"><span class="m-k" data-i18n="m.latency">Response time</span><span class="m-v mono">1.2s</span><span class="m-note" data-i18n="m.latency.n">time before Keren starts talking</span></div>
+    <div class="metric"><span class="m-k" data-i18n="m.voice">Voice</span><span class="m-v" style="font-size:16px" dir="auto">Sonic · עברית</span><span class="m-note" data-i18n="m.voice.n">natural Hebrew, female</span></div>
+  </div>
+
+  <!-- IDENTITY -->
+  <h2 class="sec-title" data-i18n="sec.identity">Identity</h2>
+  <div class="card identity">
+    <div class="field">
+      <label data-i18n="id.name">Agent name</label>
+      <input class="input" dir="auto" value="קרן" aria-label="Agent name">
+      <span class="hint" data-i18n="id.name.hint">Leads hear this name. Changing it updates it everywhere in the dashboard.</span>
+    </div>
+    <div class="field">
+      <label data-i18n="id.gender">Gender</label>
+      <div class="seg-inline" role="group" data-i18n-aria="id.gender" aria-label="Gender">
+        <button aria-pressed="true" data-i18n="id.female">Female</button>
+        <button aria-pressed="false" data-i18n="id.male">Male</button>
+      </div>
+      <span class="hint" data-i18n="id.gender.hint">Sets the Hebrew grammar Keren uses about herself.</span>
+    </div>
+    <div class="field">
+      <label data-i18n="id.voice">Voice</label>
+      <div class="voice-row">
+        <button class="voice-play" data-i18n-aria="a11y.preview" aria-label="Preview voice"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+        <div class="voice-meta"><div class="voice-name" dir="auto">קרן — Sonic Hebrew</div><div class="voice-desc" data-i18n="id.voice.desc">warm, calm, mid-pace</div></div>
+        <button class="voice-change" data-i18n="id.voice.change">Change voice</button>
+      </div>
+    </div>
+    <div class="lang-note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18"/></svg>
+      <span data-i18n="id.lang">Keren speaks Hebrew first and switches to English when a lead asks. This is set by the voice team.</span>
+    </div>
+  </div>
+
+  <!-- AGENT HANDBOOK -->
+  <h2 class="sec-title" data-i18n="sec.handbook">How Keren talks</h2>
+  <div class="card">
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="tone" data-i18n="tab.tone">Personality &amp; tone</button>
+      <button role="tab" aria-selected="false" data-tab="accuracy" data-i18n="tab.accuracy">Accuracy &amp; format</button>
+      <button role="tab" aria-selected="false" data-tab="trust" data-i18n="tab.trust">Trust &amp; safety</button>
+    </div>
+
+    <!-- Personality & tone -->
+    <div class="tabpanel" id="tab-tone" role="tabpanel">
+      <div class="beh">
+        <div class="beh-top">
+          <div class="beh-main">
+            <div class="beh-name" data-i18n="b.tone">Default tone</div>
+            <div class="beh-desc" data-i18n="b.tone.d">How formal Keren sounds by default.</div>
+          </div>
+          <div class="beh-ctrl">
+            <div class="seg-inline" role="group" aria-label="Tone">
+              <button aria-pressed="false" data-i18n="b.tone.pro">Professional</button>
+              <button aria-pressed="true" data-i18n="b.tone.warm">Warm</button>
+            </div>
+          </div>
+        </div>
+        <div class="sample">
+          <span class="sample-ava">ק</span>
+          <div class="sample-body"><div class="sample-k"><span data-i18n="sample.says">Keren says</span></div><span class="sample-bubble" dir="auto">אין בעיה, אני כבר בודקת את זה בשבילך.</span></div>
+        </div>
+      </div>
+
+      <div class="beh">
+        <div class="beh-top">
+          <div class="beh-main">
+            <div class="beh-name" data-i18n="b.filler">Natural filler words</div>
+            <div class="beh-desc" data-i18n="b.filler.d">Small pauses and fillers so she sounds human, not scripted.</div>
+          </div>
+          <div class="beh-ctrl"><button class="switch" role="switch" aria-checked="true" aria-label="Natural filler words"><span class="knob"></span></button></div>
+        </div>
+        <div class="sample">
+          <span class="sample-ava">ק</span>
+          <div class="sample-body"><div class="sample-k"><span data-i18n="sample.says">Keren says</span></div><span class="sample-bubble" dir="auto">רגע, שנייה, אני רק מסתכלת על היומן.</span></div>
+        </div>
+      </div>
+
+      <div class="beh">
+        <div class="beh-top">
+          <div class="beh-main">
+            <div class="beh-name" data-i18n="b.empathy">Show empathy</div>
+            <div class="beh-desc" data-i18n="b.empathy.d">Acknowledges what the lead feels before moving on.</div>
+          </div>
+          <div class="beh-ctrl"><button class="switch" role="switch" aria-checked="true" aria-label="Show empathy"><span class="knob"></span></button></div>
+        </div>
+        <div class="sample">
+          <span class="sample-ava">ק</span>
+          <div class="sample-body"><div class="sample-k"><span data-i18n="sample.says">Keren says</span></div><span class="sample-bubble" dir="auto">אני מבינה, זה באמת מתסכל כשפניות הולכות לאיבוד.</span></div>
+        </div>
+      </div>
+
+      <div class="beh">
+        <div class="beh-top">
+          <div class="beh-main">
+            <div class="beh-name" data-i18n="b.short">Keep answers short</div>
+            <div class="beh-desc" data-i18n="b.short.d">Off by default. Turn on if leads feel she talks too much.</div>
+          </div>
+          <div class="beh-ctrl"><button class="switch" role="switch" aria-checked="false" aria-label="Keep answers short"><span class="knob"></span></button></div>
+        </div>
+        <div class="sample">
+          <span class="sample-ava">ק</span>
+          <div class="sample-body"><div class="sample-k"><span data-i18n="sample.says">Keren says</span></div><span class="sample-bubble" dir="auto">בקצרה, כן, אנחנו יכולים לעזור עם זה.</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Accuracy & format -->
+    <div class="tabpanel" id="tab-accuracy" role="tabpanel" hidden>
+      <div class="beh">
+        <div class="beh-top">
+          <div class="beh-main">
+            <div class="beh-name" data-i18n="b.confirm">Confirm details back</div>
+            <div class="beh-desc" data-i18n="b.confirm.d">Repeats key facts so nothing gets written down wrong.</div>
+          </div>
+          <div class="beh-ctrl"><button class="switch" role="switch" aria-checked="true" aria-label="Confirm details back"><span class="knob"></span></button></div>
+        </div>
+        <div class="sample">
+          <span class="sample-ava">ק</span>
+          <div class="sample-body"><div class="sample-k"><span data-i18n="sample.says">Keren says</span></div><span class="sample-bubble" dir="auto">רק לוודא, אמרת חמישה עד עשרה לקוחות ביום, נכון?</span></div>
+        </div>
+      </div>
+      <div class="beh">
+        <div class="beh-top">
+          <div class="beh-main">
+            <div class="beh-name" data-i18n="b.numbers">Say numbers simply</div>
+            <div class="beh-desc" data-i18n="b.numbers.d">Prices and quantities in plain speech, not digits.</div>
+          </div>
+          <div class="beh-ctrl"><button class="switch" role="switch" aria-checked="true" aria-label="Say numbers simply"><span class="knob"></span></button></div>
+        </div>
+        <div class="sample">
+          <span class="sample-ava">ק</span>
+          <div class="sample-body"><div class="sample-k"><span data-i18n="sample.says">Keren says</span></div><span class="sample-bubble" dir="auto">זה יוצא בערך שלוש מאות שקל בחודש.</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trust & safety -->
+    <div class="tabpanel" id="tab-trust" role="tabpanel" hidden>
+      <div class="beh">
+        <div class="beh-top">
+          <div class="beh-main">
+            <div class="beh-name" data-i18n="b.disclose">Always say she is an AI</div>
+            <div class="beh-desc" data-i18n="b.disclose.d">Required. Keren makes it clear she is a digital assistant.</div>
+          </div>
+          <div class="beh-ctrl"><button class="switch locked" role="switch" aria-checked="true" aria-disabled="true" aria-label="Always say she is an AI"><span class="knob"></span></button></div>
+        </div>
+        <div class="sample">
+          <span class="sample-ava">ק</span>
+          <div class="sample-body"><div class="sample-k"><span data-i18n="sample.says">Keren says</span></div><span class="sample-bubble" dir="auto">רק שתדע, אני העוזרת הדיגיטלית של קליקסקיילז.</span></div>
+        </div>
+      </div>
+      <div class="beh">
+        <div class="beh-top">
+          <div class="beh-main">
+            <div class="beh-name" data-i18n="b.record">Recording notice</div>
+            <div class="beh-desc" data-i18n="b.record.d">Tells the lead the call is recorded and asks if that is fine.</div>
+          </div>
+          <div class="beh-ctrl"><button class="switch" role="switch" aria-checked="true" aria-label="Recording notice"><span class="knob"></span></button></div>
+        </div>
+        <div class="sample">
+          <span class="sample-ava">ק</span>
+          <div class="sample-body"><div class="sample-k"><span data-i18n="sample.says">Keren says</span></div><span class="sample-bubble" dir="auto">השיחה מוקלטת לצורכי איכות, זה בסדר מבחינתך?</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADVANCED VIEW (read-only generated prompt) -->
+  <div class="advanced">
+    <button class="adv-toggle" id="adv-toggle" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" width="16" height="16"><path d="M12 20V10M6 20v-6M18 20V4"/></svg>
+      <span data-i18n="adv.title">Advanced view</span>
+      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <div class="adv-body" id="adv-body" hidden>
+      <div class="adv-ro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span data-i18n="adv.ro">Read-only. Generated from the settings above and from Ask Keren.</span></div>
+      <pre class="adv-pre" dir="auto">## תפקיד
+את קרן, נציגת מכירות של קליקסקיילז.
+מדברת עברית, טון חם, עם מילות חיבור טבעיות.
+
+## מהלך השיחה
+1. פתיחה קצרה + הודעת הקלטה
+2. שאלת גילוי אחת על העסק
+3. הבנת הכאב המרכזי
+4. קביעת פגישת דמו לליד מתאים</pre>
+    </div>
+  </div>
+</main>
+
+<!-- ================= STICKY SAVE BAR ================= -->
+<div class="savebar">
+  <div class="savebar-in">
+    <span class="sb-note" data-i18n="save.note">Changes go live on the next call.</span>
+    <div class="sb-actions">
+      <button class="btn" data-i18n="save.discard">Discard</button>
+      <button class="btn primary" data-i18n="save.save">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const I18N = {
+  en: {
+    "brand.tag":"by ClickScales","presence.prefix":"Keren is on a call with",
+    "a11y.notifications":"Notifications","a11y.preview":"Preview voice",
+    "page.title":"Your agent","page.sub":"Set who Keren is and how she talks to your leads. Every change is something you can hear before it goes live.",
+    "m.cost":"Cost per minute","m.cost.n":"about a third of the old setup",
+    "m.latency":"Response time","m.latency.n":"time before Keren starts talking",
+    "m.voice":"Voice","m.voice.n":"natural Hebrew, female",
+    "sec.identity":"Identity",
+    "id.name":"Agent name","id.name.hint":"Leads hear this name. Changing it updates it everywhere in the dashboard.",
+    "id.gender":"Gender","id.female":"Female","id.male":"Male","id.gender.hint":"Sets the Hebrew grammar Keren uses about herself.",
+    "id.voice":"Voice","id.voice.desc":"warm, calm, mid-pace","id.voice.change":"Change voice",
+    "id.lang":"Keren speaks Hebrew first and switches to English when a lead asks. This is set by the voice team.",
+    "sec.handbook":"How Keren talks",
+    "tab.tone":"Personality & tone","tab.accuracy":"Accuracy & format","tab.trust":"Trust & safety",
+    "sample.says":"Keren says",
+    "b.tone":"Default tone","b.tone.d":"How formal Keren sounds by default.","b.tone.pro":"Professional","b.tone.warm":"Warm",
+    "b.filler":"Natural filler words","b.filler.d":"Small pauses and fillers so she sounds human, not scripted.",
+    "b.empathy":"Show empathy","b.empathy.d":"Acknowledges what the lead feels before moving on.",
+    "b.short":"Keep answers short","b.short.d":"Off by default. Turn on if leads feel she talks too much.",
+    "b.confirm":"Confirm details back","b.confirm.d":"Repeats key facts so nothing gets written down wrong.",
+    "b.numbers":"Say numbers simply","b.numbers.d":"Prices and quantities in plain speech, not digits.",
+    "b.disclose":"Always say she is an AI","b.disclose.d":"Required. Keren makes it clear she is a digital assistant.",
+    "b.record":"Recording notice","b.record.d":"Tells the lead the call is recorded and asks if that is fine.",
+    "adv.title":"Advanced view","adv.ro":"Read-only. Generated from the settings above and from Ask Keren.",
+    "save.note":"Changes go live on the next call.","save.discard":"Discard","save.save":"Save changes"
+  },
+  he: {
+    "brand.tag":"מבית ClickScales","presence.prefix":"קרן בשיחה עם",
+    "a11y.notifications":"התראות","a11y.preview":"השמעת הקול",
+    "page.title":"הסוכנת שלך","page.sub":"הגדירו מי זו קרן ואיך היא מדברת עם הלידים שלכם. כל שינוי אפשר לשמוע לפני שהוא עולה לאוויר.",
+    "m.cost":"עלות לדקה","m.cost.n":"כשליש מהמערכת הקודמת",
+    "m.latency":"זמן תגובה","m.latency.n":"הזמן עד שקרן מתחילה לדבר",
+    "m.voice":"קול","m.voice.n":"עברית טבעית, נקבה",
+    "sec.identity":"זהות",
+    "id.name":"שם הסוכנת","id.name.hint":"הלידים שומעים את השם הזה. שינוי שלו מעדכן אותו בכל הדשבורד.",
+    "id.gender":"מגדר","id.female":"נקבה","id.male":"זכר","id.gender.hint":"קובע את הדקדוק בעברית שקרן משתמשת בו לגבי עצמה.",
+    "id.voice":"קול","id.voice.desc":"חם, רגוע, קצב בינוני","id.voice.change":"החלפת קול",
+    "id.lang":"קרן מדברת קודם עברית ועוברת לאנגלית כשליד מבקש. זה מוגדר על ידי צוות הקול.",
+    "sec.handbook":"איך קרן מדברת",
+    "tab.tone":"אישיות וטון","tab.accuracy":"דיוק ופורמט","tab.trust":"אמון ובטיחות",
+    "sample.says":"קרן אומרת",
+    "b.tone":"טון ברירת מחדל","b.tone.d":"כמה רשמית קרן נשמעת כברירת מחדל.","b.tone.pro":"מקצועי","b.tone.warm":"חם",
+    "b.filler":"מילות חיבור טבעיות","b.filler.d":"הפסקות ומילות חיבור קטנות כדי שתישמע אנושית, לא מוקראת.",
+    "b.empathy":"הבעת אמפתיה","b.empathy.d":"מכירה במה שהליד מרגיש לפני שממשיכה הלאה.",
+    "b.short":"תשובות קצרות","b.short.d":"כבויה כברירת מחדל. הפעילו אם לידים מרגישים שהיא מדברת יותר מדי.",
+    "b.confirm":"חזרה על פרטים","b.confirm.d":"חוזרת על עובדות מרכזיות כדי ששום דבר לא יירשם שגוי.",
+    "b.numbers":"מספרים בשפה פשוטה","b.numbers.d":"מחירים וכמויות בדיבור פשוט, לא בספרות.",
+    "b.disclose":"תמיד אומרת שהיא AI","b.disclose.d":"חובה. קרן מבהירה שהיא עוזרת דיגיטלית.",
+    "b.record":"הודעת הקלטה","b.record.d":"מיידעת את הליד שהשיחה מוקלטת ושואלת אם זה בסדר.",
+    "adv.title":"תצוגה מתקדמת","adv.ro":"לקריאה בלבד. נוצר מההגדרות שלמעלה ומהצ׳אט עם קרן.",
+    "save.note":"השינויים עולים לאוויר בשיחה הבאה.","save.discard":"ביטול","save.save":"שמירת שינויים"
+  }
+};
+
+function applyLang(lang){
+  const dict = I18N[lang], html = document.documentElement;
+  html.lang = lang; html.dir = (lang === "he") ? "rtl" : "ltr";
+  document.querySelectorAll("[data-i18n]").forEach(el=>{ const k=el.getAttribute("data-i18n"); if(dict[k]!=null) el.textContent=dict[k]; });
+  document.querySelectorAll("[data-i18n-aria]").forEach(el=>{ const k=el.getAttribute("data-i18n-aria"); if(dict[k]!=null) el.setAttribute("aria-label",dict[k]); });
+  document.querySelectorAll("#lang-ctl button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.langVal===lang)));
+}
+function applyTheme(theme){
+  document.documentElement.setAttribute("data-theme", theme);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", theme==="dark" ? "#0A0F20" : "#EDF0F6");
+  document.querySelectorAll("#theme-ctl button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.themeVal===theme)));
+}
+document.getElementById("lang-ctl").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b) applyLang(b.dataset.langVal); });
+document.getElementById("theme-ctl").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b) applyTheme(b.dataset.themeVal); });
+
+/* handbook tabs */
+document.querySelectorAll('.tabs [role="tab"]').forEach(tab=>{
+  tab.addEventListener("click", ()=>{
+    document.querySelectorAll('.tabs [role="tab"]').forEach(t=>t.setAttribute("aria-selected", String(t===tab)));
+    document.querySelectorAll(".tabpanel").forEach(p=>p.hidden = true);
+    document.getElementById("tab-"+tab.dataset.tab).hidden = false;
+  });
+});
+/* switches (skip locked) */
+document.querySelectorAll('.switch:not(.locked)').forEach(sw=>{
+  sw.addEventListener("click", ()=> sw.setAttribute("aria-checked", String(sw.getAttribute("aria-checked")!=="true")));
+});
+/* segmented inline groups */
+document.querySelectorAll('.seg-inline').forEach(g=>{
+  g.addEventListener("click", e=>{ const b=e.target.closest("button"); if(!b) return; g.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", String(x===b))); });
+});
+/* advanced disclosure */
+const advT = document.getElementById("adv-toggle"), advB = document.getElementById("adv-body");
+advT.addEventListener("click", ()=>{ const open = advT.getAttribute("aria-expanded")==="true"; advT.setAttribute("aria-expanded", String(!open)); advB.hidden = open; });
+
+/* defaults */
+applyLang("en"); applyTheme("light");
+</script>
+</body>
+</html>
