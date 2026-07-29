@@ -25,6 +25,16 @@
     "switchToEnglish": "Switch to English",
     "switchToHebrew": "Switch to Hebrew"
   },
+  "presence": {
+    "available": "Keren is available",
+    "onCall": "Keren is on a call"
+  },
+  "theme": {
+    "label": "Appearance",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
   "sidebar": {
     "tagline": "by ClickScales",
     "kerenActive": "Keren is active",

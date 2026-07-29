@@ -74,3 +74,17 @@ Proposed sequence (each page not "done" until reviewed in Hebrew — brief v5 §
 
 **Contract rule:** an approved preview is authoritative — the production page must match it. Diverge
 only with a new decision recorded here and in `STATUS.md`.
+
+## Progress
+
+- **Phase 1 (Foundation + Shell) — DONE 2026-07-30.** `index.css` now carries the v5 token layer
+  (light §1.1 + dark §1.2 under `:root[data-theme="dark"]`) with a **migration bridge** aliasing the
+  old v4 names to v5 equivalents (delete once no page references them — search hint in the CSS
+  comment). Five-family fonts; glass/blur/glow removed (`.glass` kept as a flat-card alias). Theme
+  store `src/lib/theme.ts` (three-state light/dark/system, persisted, pre-paint script in
+  `index.html` to avoid FOUC) + `useTheme` hook + `ThemeToggle`. Shell reworked to v5: `Sidebar`
+  (flat, ClickScales wordmark, v5 rail states), `TopBar` (presence dot = the one animation, CS
+  avatar), `AppLayout`, `LanguageSwitcher`. `tsc -b` + `vite build` clean; verified in EN/HE ×
+  light/dark. Interim IA note: production keeps the **left sidebar as global nav** (previews were
+  topbar-only and didn't depict global nav) — revisit when routes decision (#3) lands.
+- **Next: Phase 3 pages**, in approved order, each replacing its bridge usage with v5 tokens.

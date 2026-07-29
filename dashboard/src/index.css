@@ -1,54 +1,79 @@
-@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;600;700&family=Montserrat:wght@700;800&family=Assistant:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Rubik:wght@500;600;700&family=Assistant:wght@400;600;700&display=swap');
 @import "tailwindcss";
 
+/* =========================================================================
+   v5 "cool technical" tokens — brand_assets/keren-brand-brief-v5.md
+   §1.1 (light) + §1.2 (dark). The ONLY place colour values live. Full
+   light/dark via data-theme on <html>. Replaces the retired v4 cream+glass.
+   ========================================================================= */
 :root {
-  /* v4 CREAM + GLASS palette — brand brief §1. Replaces the retired midnight/cyan theme. */
+  --surface-page:#EDF0F6; --surface-card:#FFFFFF; --surface-sunken:#E4E9F1; --surface-overlay:#FFFFFF;
+  --text-primary:#0C1226; --text-secondary:#5B667E; --text-tertiary:#7A8598; --text-on-accent:#FFFFFF;
+  --border-default:#D9E0EA; --border-strong:#C3CDDB;
+  --accent:#2F35C7; --accent-hover:#252AB3; --accent-tint:#EAEAFB; --accent-fg:#2F35C7;
+  --data-1:#2F35C7; --data-2:#D9861B; --data-2-glow:#F2B24E; --data-2-tint:#FCF0DC;
+  --status-success:#1B7F5A; --status-warning:#9A5D0F; --status-danger:#C0392B; --status-neutral:#5B667E;
 
-  /* Base — warm cream, never pure white */
-  --bg-page:           #F4EFE6;
-  --bg-page-alt:       #EFE9DE;
-  --bg-inset:          #E8E1D4;
+  --r-sm:8px; --r:14px; --r-lg:22px; --r-full:999px; --container-max:1180px;
+  --shadow-card:0 1px 2px rgba(12,18,38,.04), 0 8px 24px rgba(12,18,38,.06);
+  --shadow-overlay:0 2px 4px rgba(12,18,38,.06), 0 24px 60px rgba(12,18,38,.16);
 
-  /* Glass surfaces — the signature material */
-  --glass-bg:          rgba(255, 255, 255, 0.62);
-  --glass-bg-solid:    #FBF9F5;
-  --glass-border:      rgba(38, 37, 36, 0.08);
-  --glass-blur:        10px;
-  --glass-hover:       rgba(255, 255, 255, 0.78);
+  --font-display:"Bricolage Grotesque","Rubik",system-ui,sans-serif;
+  --font-body:"Instrument Sans","Assistant",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono","Assistant",ui-monospace,monospace;
 
-  /* Text — warm charcoal, never cold black */
-  --text-primary:      #262524;
-  --text-secondary:    #6B6A66;
-  --text-muted:        #8B8880;
-  --text-disabled:     #B3AFA6;
-  --text-on-teal:      #FFFFFF;
+  /* Motion (palette-agnostic, unchanged) */
+  --duration-fast:150ms; --duration-base:220ms; --duration-slow:400ms; --glow:1600ms;
+  --ease-standard:cubic-bezier(0.4, 0, 0.2, 1);
+  /* v5 aliases used by new shell code */
+  --dur-fast:var(--duration-fast); --dur-base:var(--duration-base); --ease:var(--ease-standard);
 
-  /* Accents — re-tuned for light backgrounds */
-  --accent-teal:       #0FA3AC;
-  --accent-teal-dim:   #0C8A92;
-  --accent-teal-tint:  rgba(15, 163, 172, 0.10);
-  --accent-violet:     #5B5BD6;
-  --accent-violet-dim: #4A4AC0;
-  --accent-violet-tint: rgba(91, 91, 214, 0.10);
+  color-scheme: light;
+}
 
-  /* Semantic — muted for light bg (AAA against cream) */
-  --success:           #1D9E75;
-  --warning:           #B45309;
-  --error:             #B3261E;
-  --info:              #185FA5;
+:root[data-theme="dark"] {
+  --surface-page:#0A0F20; --surface-card:#141B31; --surface-sunken:#070B17; --surface-overlay:#1A2240;
+  --text-primary:#EDF0F6; --text-secondary:#A2A9BC; --text-tertiary:#767E93; --text-on-accent:#FFFFFF;
+  --border-default:#232941; --border-strong:#333B57;
+  --accent:#2F35C7; --accent-fg:#8B90F0; --accent-hover:#3A41D8; --accent-tint:#1B2145;
+  --data-1:#6E74E8; --data-2:#F2B24E; --data-2-glow:#F8CC85; --data-2-tint:#2A2113;
+  --status-success:#3FB88C; --status-warning:#E0A64E; --status-danger:#E86A5E; --status-neutral:#A2A9BC;
+  --shadow-card:0 0 0 1px rgba(0,0,0,0), 0 8px 24px rgba(0,0,0,.24);
+  --shadow-overlay:0 2px 4px rgba(0,0,0,.3), 0 24px 60px rgba(0,0,0,.5);
+  color-scheme: dark;
+}
 
-  /* Borders & focus */
-  --border-subtle:     rgba(38, 37, 36, 0.06);
-  --border-default:    rgba(38, 37, 36, 0.12);
-  --border-strong:     rgba(38, 37, 36, 0.20);
-  --focus-ring:        #0FA3AC;
-
-  /* Motion (unchanged from v2) */
-  --duration-fast:     150ms;
-  --duration-base:     220ms;
-  --duration-slow:     400ms;
-  --glow:              1600ms;
-  --ease-standard:     cubic-bezier(0.4, 0, 0.2, 1);
+/* -------------------------------------------------------------------------
+   MIGRATION BRIDGE — old v4 token names aliased to their v5 equivalents.
+   Lets not-yet-migrated pages (which reference these names) render on the v5
+   palette, including dark mode, without edits. As each page is migrated to v5
+   tokens in Phase 3, its bridge usage drops out; DELETE this block once no
+   page references an old name. Search: rg "var\(--(bg-page|glass|accent-teal|accent-violet|text-muted|border-subtle|focus-ring)"
+   ------------------------------------------------------------------------- */
+:root {
+  --bg-page: var(--surface-page);
+  --bg-page-alt: var(--surface-sunken);
+  --bg-inset: var(--surface-sunken);
+  --glass-bg: var(--surface-card);
+  --glass-bg-solid: var(--surface-card);
+  --glass-border: var(--border-default);
+  --glass-hover: var(--surface-sunken);
+  --glass-blur: 0px;
+  --text-muted: var(--text-tertiary);
+  --text-disabled: var(--text-tertiary);
+  --text-on-teal: var(--text-on-accent);
+  --accent-teal: var(--accent-fg);
+  --accent-teal-dim: var(--accent-hover);
+  --accent-teal-tint: var(--accent-tint);
+  --accent-violet: var(--data-1);
+  --accent-violet-dim: var(--accent-hover);
+  --accent-violet-tint: var(--accent-tint);
+  --success: var(--status-success);
+  --warning: var(--status-warning);
+  --error: var(--status-danger);
+  --info: var(--data-1);
+  --border-subtle: var(--border-default);
+  --focus-ring: var(--accent);
 }
 
 *, *::before, *::after {
@@ -59,12 +84,13 @@
 
 html, body {
   height: 100%;
-  background-color: var(--bg-primary);
+  background-color: var(--surface-page);
   color: var(--text-primary);
-  font-family: 'Assistant', system-ui, sans-serif;
-  font-size: 16px;
+  font-family: var(--font-body);
+  font-size: 15px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color var(--duration-base) var(--ease-standard), color var(--duration-base) var(--ease-standard);
 }
 
 #root {
@@ -72,32 +98,21 @@ html, body {
   min-height: 100vh;
 }
 
-/* --- Glass material (brief §1). No shadows on glass; depth is border + translucency. --- */
-.glass {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
-  border-radius: 14px;
+/* --- Flat card material (v5). No glass, no blur, no glow: depth is border + a soft shadow.
+   .glass / .glass-solid are kept as aliases so existing consumers render as flat cards. --- */
+.glass, .glass-solid {
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-card);
 }
 
-/* Solid variant — for rows inside scroll containers (never blur inside a scroller: kills 60fps). */
-.glass-solid {
-  background: var(--glass-bg-solid);
-  border: 1px solid var(--glass-border);
-  border-radius: 14px;
-}
-
-/* --- Hebrew typography (brief §1.1) --- */
-/* Heebo is preferred for Hebrew; Assistant also covers Hebrew as a fallback. Body text
-   (no inline font-family) inherits this automatically; components with an inline
-   Montserrat heading font switch to Heebo per-component (see PageHeader / TopBar). */
+/* --- Hebrew typography (brief v5 §4). Rubik/Assistant cover Hebrew; body inherits. --- */
 :lang(he) {
-  font-family: 'Heebo', 'Assistant', system-ui, sans-serif;
+  font-family: 'Rubik', 'Assistant', system-ui, sans-serif;
 }
 
-/* Uppercase + wide tracking are meaningless in Hebrew — neutralize wherever a class sets them.
-   (Inline-styled headings are gated in JS instead, since inline styles beat CSS.) */
+/* Uppercase + wide tracking are meaningless in Hebrew — neutralize wherever set. */
 :lang(he) .display,
 :lang(he) h1,
 :lang(he) h2,
@@ -106,31 +121,29 @@ html, body {
   letter-spacing: normal;
 }
 
-/* --- RTL directional icons (brief §2) --- */
-/* Apply to back-arrows, pagination chevrons, timeline connectors — anything whose meaning
-   is tied to reading direction. Purely decorative icons must NOT get this class. */
+/* --- RTL directional icons (brief §2). Decorative icons must NOT get this class. --- */
 [dir="rtl"] .flip-rtl {
   transform: scaleX(-1);
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-button {
-  font-family: inherit;
-  cursor: pointer;
-}
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; }
 
 :focus-visible {
-  outline: 2px solid var(--focus-ring);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
+}
+
+/* Presence dot — the one animated element in the shell (brief v5). */
+@keyframes presence-pulse {
+  0% { transform: scale(1); opacity: .5; }
+  70% { transform: scale(2.1); opacity: 0; }
+  100% { opacity: 0; }
 }
 
 @keyframes pulse-dot {

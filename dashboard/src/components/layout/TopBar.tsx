@@ -20,9 +20,8 @@ function getTitleKey(pathname: string): string {
 
 export function TopBar() {
   const location = useLocation()
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const title = t(getTitleKey(location.pathname))
-  const isHebrew = i18n.language.startsWith('he')
 
   return (
     <header
@@ -30,8 +29,8 @@ export function TopBar() {
         position: 'sticky',
         top: 0,
         height: '60px',
-        backgroundColor: 'var(--bg-page)',
-        borderBottom: '1px solid var(--border-subtle)',
+        backgroundColor: 'var(--surface-card)',
+        borderBottom: '1px solid var(--border-default)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -40,20 +39,59 @@ export function TopBar() {
         flexShrink: 0,
       }}
     >
-      <h2
+      <h1
+        className="uppercase-track"
         style={{
-          fontFamily: isHebrew ? "'Heebo', sans-serif" : "'Montserrat', sans-serif",
+          fontFamily: 'var(--font-display)',
           fontWeight: 700,
-          fontSize: '15px',
-          letterSpacing: isHebrew ? 'normal' : '0.06em',
-          textTransform: isHebrew ? 'none' : 'uppercase',
+          fontSize: '17px',
+          letterSpacing: '-0.01em',
           color: 'var(--text-primary)',
         }}
       >
         {title}
-      </h2>
+      </h1>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        {/* Presence — the one animated element in the shell (dot pulse). */}
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '9px',
+            padding: '6px 12px 6px 10px',
+            backgroundColor: 'var(--accent-tint)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--r-full)',
+            fontSize: '13px',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          <span
+            style={{
+              position: 'relative',
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: 'var(--accent-fg)',
+              flexShrink: 0,
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                position: 'absolute',
+                inset: '-4px',
+                borderRadius: '50%',
+                border: '1px solid var(--accent-fg)',
+                opacity: 0.5,
+                animation: `presence-pulse 1.6s var(--ease-standard) infinite`,
+              }}
+            />
+          </span>
+          <span>{t('presence.available')}</span>
+        </div>
+
         <button
           aria-label="Notifications"
           style={{
@@ -62,43 +100,44 @@ export function TopBar() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            borderRadius: '8px',
-            border: '1px solid var(--border-subtle)',
+            borderRadius: '10px',
+            border: '1px solid var(--border-default)',
             backgroundColor: 'transparent',
             color: 'var(--text-secondary)',
             cursor: 'pointer',
             transition: `background-color var(--duration-fast) var(--ease-standard)`,
           }}
           onMouseEnter={(e) => {
-            ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--glass-hover)'
+            ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--surface-sunken)'
           }}
           onMouseLeave={(e) => {
             ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'
           }}
         >
-          <Bell size={16} strokeWidth={1.5} />
+          <Bell size={16} strokeWidth={1.6} />
         </button>
 
-        {/* User avatar placeholder */}
+        {/* ClickScales account avatar */}
         <div
-          aria-label="User menu"
+          aria-label="Account"
+          title="ClickScales"
           style={{
-            width: '36px',
-            height: '36px',
+            width: '34px',
+            height: '34px',
             borderRadius: '50%',
-            background: 'linear-gradient(135deg, var(--accent-teal) 0%, var(--accent-violet) 100%)',
+            backgroundColor: 'var(--accent)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             fontSize: '13px',
             fontWeight: 700,
-            color: 'var(--text-on-teal)',
+            color: 'var(--text-on-accent)',
             flexShrink: 0,
             cursor: 'pointer',
-            fontFamily: "'Montserrat', sans-serif",
+            fontFamily: 'var(--font-display)',
           }}
         >
-          D
+          CS
         </div>
       </div>
     </header>

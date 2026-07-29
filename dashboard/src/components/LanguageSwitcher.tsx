@@ -17,8 +17,8 @@ export function LanguageSwitcher() {
         display: 'inline-flex',
         padding: '2px',
         borderRadius: '8px',
-        backgroundColor: 'var(--bg-inset)',
-        border: '1px solid var(--border-subtle)',
+        backgroundColor: 'var(--surface-sunken)',
+        border: '1px solid var(--border-default)',
       }}
     >
       {SUPPORTED_LANGUAGES.map((lng) => {
@@ -40,15 +40,16 @@ export function LanguageSwitcher() {
               fontWeight: 600,
               fontFamily: "'Assistant', sans-serif",
               cursor: active ? 'default' : 'pointer',
-              backgroundColor: active ? 'rgba(15, 163, 172, 0.12)' : 'transparent',
-              color: active ? 'var(--accent-teal)' : 'var(--text-muted)',
+              backgroundColor: active ? 'var(--surface-card)' : 'transparent',
+              boxShadow: active ? 'var(--shadow-card)' : 'none',
+              color: active ? 'var(--accent-fg)' : 'var(--text-tertiary)',
               transition: `background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard)`,
             }}
             onMouseEnter={(e) => {
               if (!active) (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary)'
             }}
             onMouseLeave={(e) => {
-              if (!active) (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)'
+              if (!active) (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-tertiary)'
             }}
           >
             {GLYPH[lng]}

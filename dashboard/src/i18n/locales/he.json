@@ -25,6 +25,16 @@
     "switchToEnglish": "מעבר לאנגלית",
     "switchToHebrew": "מעבר לעברית"
   },
+  "presence": {
+    "available": "קרן זמינה",
+    "onCall": "קרן בשיחה"
+  },
+  "theme": {
+    "label": "מראה",
+    "light": "בהיר",
+    "dark": "כהה",
+    "system": "מערכת"
+  },
   "sidebar": {
     "tagline": "מבית ClickScales",
     "kerenActive": "קרן פעילה",

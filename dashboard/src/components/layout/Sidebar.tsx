@@ -9,8 +9,8 @@ import {
   Plug,
   Settings,
 } from 'lucide-react'
-import { KerenStatusChip } from '../KerenStatusChip.js'
 import { LanguageSwitcher } from '../LanguageSwitcher.js'
+import { ThemeToggle } from '../ThemeToggle.js'
 
 interface NavItem {
   to: string
@@ -20,13 +20,13 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: '/', labelKey: 'nav.overview', icon: <LayoutDashboard size={18} strokeWidth={1.5} />, end: true },
-  { to: '/leads', labelKey: 'nav.leads', icon: <Users size={18} strokeWidth={1.5} /> },
-  { to: '/calls', labelKey: 'nav.calls', icon: <Phone size={18} strokeWidth={1.5} /> },
-  { to: '/voice', labelKey: 'nav.testKeren', icon: <AudioLines size={18} strokeWidth={1.5} /> },
-  { to: '/bookings', labelKey: 'nav.bookings', icon: <CalendarDays size={18} strokeWidth={1.5} /> },
-  { to: '/integrations', labelKey: 'nav.integrations', icon: <Plug size={18} strokeWidth={1.5} /> },
-  { to: '/settings', labelKey: 'nav.settings', icon: <Settings size={18} strokeWidth={1.5} /> },
+  { to: '/', labelKey: 'nav.overview', icon: <LayoutDashboard size={18} strokeWidth={1.6} />, end: true },
+  { to: '/leads', labelKey: 'nav.leads', icon: <Users size={18} strokeWidth={1.6} /> },
+  { to: '/calls', labelKey: 'nav.calls', icon: <Phone size={18} strokeWidth={1.6} /> },
+  { to: '/voice', labelKey: 'nav.testKeren', icon: <AudioLines size={18} strokeWidth={1.6} /> },
+  { to: '/bookings', labelKey: 'nav.bookings', icon: <CalendarDays size={18} strokeWidth={1.6} /> },
+  { to: '/integrations', labelKey: 'nav.integrations', icon: <Plug size={18} strokeWidth={1.6} /> },
+  { to: '/settings', labelKey: 'nav.settings', icon: <Settings size={18} strokeWidth={1.6} /> },
 ]
 
 export function Sidebar() {
@@ -43,63 +43,40 @@ export function Sidebar() {
         top: 0,
         display: 'flex',
         flexDirection: 'column',
-        backgroundColor: 'var(--bg-inset)',
-        borderInlineEnd: '1px solid var(--border-subtle)',
+        backgroundColor: 'var(--surface-card)',
+        borderInlineEnd: '1px solid var(--border-default)',
         zIndex: 40,
         overflow: 'hidden',
       }}
       aria-label={t('nav.mainNavigation')}
     >
-      {/* Logo */}
+      {/* Platform wordmark — ClickScales (flat, no gradient). Agent name is per-tenant elsewhere. */}
       <div
         style={{
-          padding: '20px 20px 16px',
+          height: '60px',
+          paddingInline: '20px',
           display: 'flex',
           alignItems: 'center',
-          gap: '10px',
-          borderBottom: '1px solid var(--border-subtle)',
+          borderBottom: '1px solid var(--border-default)',
           flexShrink: 0,
         }}
       >
-        <img
-          src="/logo.png"
-          alt="KEREN logo"
-          style={{ width: '36px', height: '36px', objectFit: 'contain', flexShrink: 0 }}
-        />
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span
-            style={{
-              fontFamily: "'Montserrat', sans-serif",
-              fontWeight: 800,
-              fontSize: '18px',
-              letterSpacing: '0.12em',
-              textTransform: 'uppercase',
-              lineHeight: 1.2,
-              background: 'linear-gradient(135deg, var(--accent-teal) 0%, var(--accent-violet) 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-            }}
-          >
-            KEREN
-          </span>
-          <span
-            style={{
-              fontSize: '10px',
-              fontWeight: 600,
-              letterSpacing: '0.08em',
-              color: 'var(--text-muted)',
-              fontFamily: "'Assistant', sans-serif",
-            }}
-          >
-            {t('sidebar.tagline')}
-          </span>
-        </div>
+        <span
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontWeight: 800,
+            fontSize: '19px',
+            letterSpacing: '0.01em',
+            color: 'var(--text-primary)',
+          }}
+        >
+          ClickScales
+        </span>
       </div>
 
       {/* Nav */}
       <nav
-        style={{ flex: 1, padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'auto' }}
+        style={{ flex: 1, padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: '3px', overflow: 'auto' }}
       >
         {NAV_ITEMS.map((item) => {
           const isActive = item.end
@@ -114,20 +91,19 @@ export function Sidebar() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '10px',
+                gap: '11px',
                 padding: '9px 12px',
-                borderRadius: '8px',
+                borderRadius: '10px',
                 fontSize: '14px',
-                fontWeight: isActive ? 600 : 400,
-                color: isActive ? 'var(--accent-teal)' : 'var(--text-secondary)',
-                backgroundColor: isActive ? 'rgba(15, 163, 172, 0.07)' : 'transparent',
-                borderInlineStart: isActive ? '2px solid var(--accent-teal)' : '2px solid transparent',
+                fontWeight: isActive ? 600 : 500,
+                color: isActive ? 'var(--accent-fg)' : 'var(--text-secondary)',
+                backgroundColor: isActive ? 'var(--accent-tint)' : 'transparent',
                 transition: `background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard)`,
                 textDecoration: 'none',
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  ;(e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'var(--glass-hover)'
+                  ;(e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'var(--surface-sunken)'
                   ;(e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-primary)'
                 }
               }}
@@ -146,11 +122,11 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Footer: language switcher + status chip */}
+      {/* Footer: interface language + appearance (theme). Canonical control also in Settings. */}
       <div
         style={{
-          padding: '16px 16px 20px',
-          borderTop: '1px solid var(--border-subtle)',
+          padding: '14px 16px 20px',
+          borderTop: '1px solid var(--border-default)',
           flexShrink: 0,
           display: 'flex',
           flexDirection: 'column',
@@ -158,7 +134,7 @@ export function Sidebar() {
         }}
       >
         <LanguageSwitcher />
-        <KerenStatusChip />
+        <ThemeToggle />
       </div>
     </aside>
   )
