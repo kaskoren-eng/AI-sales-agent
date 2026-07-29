@@ -14,8 +14,9 @@ dist
 .git
 .github
 
-# Everything the AGENT does not need. The agent is not the API and not the dashboard.
-dashboard/
+# Everything the AGENT does not need. NOTE: do NOT add `dashboard/` here — this file is ALSO used
+# by the backend image (Railway ./Dockerfile), whose dashboard-builder stage COPYs dashboard/. The
+# agent image carrying dashboard/ source is harmless bloat; excluding it breaks the backend build.
 screenshots/
 voice-samples/
 brand_assets/
