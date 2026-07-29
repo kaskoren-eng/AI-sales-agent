@@ -143,16 +143,26 @@ describe('Keren Phase 4 — tools-mode prompt', () => {
 
   it('collects and confirms details BEFORE calling book_meeting — they are its arguments', () => {
     const details = TOOLS_PROMPT.indexOf('YOU MUST COLLECT HIS DETAILS BEFORE BOOKING');
-    const book = TOOLS_PROMPT.indexOf('Call `book_meeting` with his confirmed name');
+    const book = TOOLS_PROMPT.indexOf('name, phone and email (see above) BEFORE you call `book_meeting`');
     expect(details).toBeGreaterThan(-1);
     expect(book).toBeGreaterThan(-1);
     expect(details).toBeLessThan(book);
   });
 
-  it('anti-hallucination: only offers times the tool returned, slot_datetime passed verbatim', () => {
-    expect(TOOLS_PROMPT).toMatch(/OFFER ONLY TIMES THE TOOL RETURNED/u);
-    expect(TOOLS_PROMPT).toMatch(/NEVER invent, guess, round or adjust a time/u);
+  it('day-first booking flow: offer TOMORROW, then the day, then the free RANGE', () => {
+    // The flow Koren specified 2026-07-29: default to tomorrow, pick a day together if not, then
+    // offer the calendar's free hours as a RANGE ("יש לי פנוי מ-10:00 עד 15:00"), not a slot list.
+    expect(TOOLS_PROMPT).toMatch(/Offer TOMORROW first/u);
+    expect(TOOLS_PROMPT).toMatch(/for THAT DAY ONLY/u);
+    expect(TOOLS_PROMPT).toMatch(/Offer the free RANGE/u);
+    expect(TOOLS_PROMPT).toContain('יש לי פנוי מ-10:00 עד 15:00');
+  });
+
+  it('anti-hallucination survives the range flow: exact slot_datetime, never adjust a time', () => {
     expect(TOOLS_PROMPT).toMatch(/EXACT slot_datetime value/u);
+    expect(TOOLS_PROMPT).toMatch(/never invent, guess, round or adjust a time/u);
+    // She books the slot whose time MATCHES what he said — not a time she made up.
+    expect(TOOLS_PROMPT).toMatch(/whose time MATCHES what he said/u);
   });
 
   it('קבעתי לך is allowed ONLY after book_meeting succeeded — and failure is never papered over', () => {

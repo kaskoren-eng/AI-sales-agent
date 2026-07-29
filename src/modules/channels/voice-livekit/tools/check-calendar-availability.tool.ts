@@ -5,9 +5,10 @@ import {
   BOOKING_TIMEZONE,
   DEFAULT_MEETING_MINUTES,
   filterBusinessHours,
-  formatSlotHe,
-  pickSpread,
+  groupAvailability,
+  slotClock,
 } from './israel-time.js';
+import type { TimeSlot } from '../../../scheduling/providers/provider.interface.js';
 import { timedTool, type ToolRuntimeContext } from './tool-context.js';
 
 /**
@@ -22,8 +23,9 @@ import { timedTool, type ToolRuntimeContext } from './tool-context.js';
 /** She must not offer a slot that starts in ten minutes — the lead just got off the phone. */
 export const MIN_NOTICE_MINUTES = 60;
 
-/** How many options she offers out loud. Three is a conversation; five is a menu. */
-const MAX_OFFERED_SLOTS = 3;
+/** Cap on discrete slot_datetimes returned to the model (she speaks RANGES, not this list). Bounds
+ * the result size on a wide multi-day search; a single day is well under it. */
+const MAX_SLOTS_LISTED = 40;
 
 export const checkAvailabilitySchema = z.object({
   from_date: z
@@ -104,15 +106,31 @@ export async function executeCheckAvailability(
     );
   }
 
-  const offered = pickSpread(usable, MAX_OFFERED_SLOTS);
-  const lines = offered.map(
-    (s, i) => `${i + 1}. ${formatSlotHe(s.start, now)}  [slot_datetime: ${s.start}]`,
-  );
+  // Present availability as RANGES per day ("יש לי פנוי מ-10:00 עד 15:00"), not a list of times.
+  // The discrete slots (with slot_datetimes) are still returned, indented under each day, so when
+  // the lead names a time she books THAT exact slot — the anti-hallucination guard is unchanged.
+  const step = duration + BOOKING_BUFFER_MINUTES;
+  const days = groupAvailability(usable, step, now);
+  let remaining = MAX_SLOTS_LISTED;
+
+  const blocks = days.map((d) => {
+    const ranges = d.windows.map((w) => (w.from === w.to ? w.from : `${w.from}–${w.to}`)).join(', ');
+    const shown = d.slots.slice(0, Math.max(0, remaining));
+    remaining -= shown.length;
+    const lines = shown.map((s) => `  ${slotClock(s.start)} [slot_datetime: ${s.start}]`);
+    return `${d.dayLabel} — פנוי ${ranges}:\n${lines.join('\n')}`;
+  });
+  const truncated =
+    usable.length > MAX_SLOTS_LISTED
+      ? `\n(+${usable.length - MAX_SLOTS_LISTED} more times not listed — narrow to one day.)`
+      : '';
+
   return (
-    `Found ${offered.length} free ${duration}-minute slots (Israel time):\n` +
-    `${lines.join('\n')}\n` +
-    'Offer these verbally in Hebrew, exactly as written. When the lead picks one, pass its ' +
-    'slot_datetime value to book_meeting VERBATIM — never construct or adjust a time yourself.'
+    `Availability for ${duration}-minute demos (Israel time). Offer the free RANGE(s) out loud — ` +
+    `e.g. "יש לי פנוי מ-10:00 עד 15:00, איזו שעה מתאימה לך?" — do NOT read out every time. When he ` +
+    `names a time, book the MATCHING slot below by passing its slot_datetime to book_meeting VERBATIM. ` +
+    `If his time is not listed, tell him the nearest available times. Never invent a time.\n\n` +
+    `${blocks.join('\n\n')}${truncated}`
   );
 }
 
@@ -123,9 +141,10 @@ export function checkCalendarAvailabilityTool(rt: ToolRuntimeContext) {
   return llm.tool({
     name: 'check_calendar_availability',
     description:
-      "Check Koren's calendar for free demo slots. ALWAYS call this before offering any meeting time. " +
-      'Returns up to 3 free slots with Hebrew labels and exact slot_datetime values. ' +
-      'Only offer times returned by this tool — NEVER invent or guess a time.',
+      "Check Koren's calendar for free demo times on a given day (or range). ALWAYS call this before " +
+      'offering any meeting time — ideally for ONE day at a time (from_date = to_date). Returns the ' +
+      "free time RANGES per day (offer these out loud as a range) plus each day's exact slot_datetime " +
+      'values (use the one matching the time the lead picks). NEVER invent or guess a time.',
     parameters: checkAvailabilitySchema,
     execute: (args, { ctx }) =>
       ctx.filler(CHECKING_FILLER_HE, { delay: 500 }, () =>

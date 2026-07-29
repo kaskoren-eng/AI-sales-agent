@@ -144,6 +144,69 @@ export function formatSlotHe(iso: string, now: Date = new Date()): string {
   return relative ? `${relative}, ${datePart}, בשעה ${timePart}` : `${datePart}, בשעה ${timePart}`;
 }
 
+/** The day only — "מחר, יום חמישי, 30 ביולי" — no time. Same relative-day rule as formatSlotHe. */
+export function formatDayHe(iso: string, now: Date = new Date()): string {
+  const instant = new Date(iso);
+  const dayDiff = Math.round((israelDayStamp(instant) - israelDayStamp(now)) / 86_400_000);
+  const relative = dayDiff === 0 ? 'היום' : dayDiff === 1 ? 'מחר' : dayDiff === 2 ? 'מחרתיים' : null;
+  const datePart = DATE_HE.format(instant);
+  return relative ? `${relative}, ${datePart}` : datePart;
+}
+
+/** Israel HH:MM for a slot start. */
+export function slotClock(iso: string): string {
+  return TIME_HE.format(new Date(iso));
+}
+
+export interface DayAvailability {
+  /** Israel calendar day as UTC-midnight ms — stable key, sorts chronologically. */
+  dayStamp: number;
+  /** "מחר, יום חמישי, 30 ביולי" — what she says out loud. */
+  dayLabel: string;
+  /** Contiguous free ranges of START times, e.g. [{from:'10:00', to:'15:00'}]. A gap (a busy block)
+   * splits one window into two. `to` is the LAST bookable start in the run, not the day end. */
+  windows: Array<{ from: string; to: string }>;
+  /** This day's bookable slots, chronological — the slot_datetimes book_meeting needs. */
+  slots: TimeSlot[];
+}
+
+/**
+ * Groups usable slots into the free RANGES the agent offers out loud — "יש לי פנוי מ-10:00 עד 15:00"
+ * beats reading twelve discrete times. Per Israel day, a run of slots exactly `stepMinutes` apart is
+ * one window; any larger gap (a booked block) starts a new one. Slots must already be filtered to
+ * business hours + min-notice; this only shapes the presentation. Pure — `now` drives the day label.
+ */
+export function groupAvailability(slots: TimeSlot[], stepMinutes: number, now: Date): DayAvailability[] {
+  const sorted = [...slots].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+  const byDay = new Map<number, TimeSlot[]>();
+  for (const s of sorted) {
+    const day = israelDayStamp(new Date(s.start));
+    const bucket = byDay.get(day);
+    if (bucket) bucket.push(s);
+    else byDay.set(day, [s]);
+  }
+
+  const out: DayAvailability[] = [];
+  for (const day of [...byDay.keys()].sort((a, b) => a - b)) {
+    const daySlots = byDay.get(day)!;
+    const windows: Array<{ from: string; to: string }> = [];
+    let windowStart = daySlots[0]!;
+    let prev = daySlots[0]!;
+    for (let i = 1; i < daySlots.length; i++) {
+      const cur = daySlots[i]!;
+      const gapMin = (new Date(cur.start).getTime() - new Date(prev.start).getTime()) / 60_000;
+      if (gapMin > stepMinutes + 0.5) {
+        windows.push({ from: slotClock(windowStart.start), to: slotClock(prev.start) });
+        windowStart = cur;
+      }
+      prev = cur;
+    }
+    windows.push({ from: slotClock(windowStart.start), to: slotClock(prev.start) });
+    out.push({ dayStamp: day, dayLabel: formatDayHe(daySlots[0]!.start, now), windows, slots: daySlots });
+  }
+  return out;
+}
+
 /** True iff the meeting fits entirely inside Sun–Thu 09:00–17:00 Israel local time. */
 export function isBusinessHours(startIso: string, durationMinutes: number): boolean {
   const p = israelParts(new Date(startIso));

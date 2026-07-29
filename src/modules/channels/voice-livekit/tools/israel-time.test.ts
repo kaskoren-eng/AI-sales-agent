@@ -3,6 +3,7 @@ import {
   DEFAULT_MEETING_MINUTES,
   filterBusinessHours,
   formatSlotHe,
+  groupAvailability,
   isBusinessHours,
   pickSpread,
 } from './israel-time.js';
@@ -148,5 +149,58 @@ describe('pickSpread', () => {
       '2026-07-19T07:00:00.000Z',
       '2026-07-21T07:00:00.000Z',
     ]);
+  });
+});
+
+describe('groupAvailability — the free RANGES the agent offers out loud', () => {
+  const mk = (start: string) => ({ start, end: start });
+  const NOW = new Date('2026-07-16T08:00:00.000Z'); // Thursday
+
+  it('collapses a contiguous 30-min run into one range (from first to last START)', () => {
+    const days = groupAvailability(
+      [
+        mk('2026-07-19T07:00:00.000Z'), // Sun 10:00
+        mk('2026-07-19T07:30:00.000Z'), // Sun 10:30
+        mk('2026-07-19T08:00:00.000Z'), // Sun 11:00
+      ],
+      30,
+      NOW,
+    );
+    expect(days).toHaveLength(1);
+    expect(days[0]!.windows).toEqual([{ from: '10:00', to: '11:00' }]);
+    expect(days[0]!.slots).toHaveLength(3); // all times kept for booking
+    expect(days[0]!.dayLabel).toContain('יום ראשון, 19 ביולי');
+  });
+
+  it('splits a busy gap into two windows', () => {
+    const days = groupAvailability(
+      [
+        mk('2026-07-19T06:00:00.000Z'), // Sun 09:00
+        mk('2026-07-19T06:30:00.000Z'), // Sun 09:30  ← then a booked block (no 10:00/10:30)
+        mk('2026-07-19T08:00:00.000Z'), // Sun 11:00
+        mk('2026-07-19T08:30:00.000Z'), // Sun 11:30
+      ],
+      30,
+      NOW,
+    );
+    expect(days[0]!.windows).toEqual([
+      { from: '09:00', to: '09:30' },
+      { from: '11:00', to: '11:30' },
+    ]);
+  });
+
+  it('keeps distinct days separate and chronological', () => {
+    const days = groupAvailability(
+      [mk('2026-07-20T07:00:00.000Z'), mk('2026-07-19T07:00:00.000Z')],
+      30,
+      NOW,
+    );
+    expect(days.map((d) => d.dayStamp)).toEqual([...days.map((d) => d.dayStamp)].sort((a, b) => a - b));
+    expect(days).toHaveLength(2);
+  });
+
+  it('labels tomorrow relatively', () => {
+    const days = groupAvailability([mk('2026-07-17T06:00:00.000Z')], 30, NOW); // Fri, but label is date-only
+    expect(days[0]!.dayLabel).toContain('מחר');
   });
 });

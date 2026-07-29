@@ -46,25 +46,30 @@ describe('executeCheckAvailability', () => {
     expect(rt.lastCheckedDurationMinutes).toBe(30);
   });
 
-  it('drops Friday/Saturday from the provider grid and offers 3 slots across distinct days', async () => {
+  it('drops Fri/Sat and presents each day as a free RANGE, with every time returned for booking', async () => {
     const { rt } = fakeRt([
       mk('2026-07-17T07:00:00.000Z'), // Friday — must die here
       mk('2026-07-18T07:00:00.000Z'), // Saturday — must die here
-      mk('2026-07-19T07:00:00.000Z'), // Sunday 10:00
-      mk('2026-07-19T08:00:00.000Z'), // Sunday 11:00 — same day, spread prefers other days
-      mk('2026-07-20T07:00:00.000Z'), // Monday 10:00
-      mk('2026-07-21T08:00:00.000Z'), // Tuesday 11:00
+      mk('2026-07-19T07:00:00.000Z'), // Sunday 10:00  ┐
+      mk('2026-07-19T07:30:00.000Z'), // Sunday 10:30  ├ contiguous 30-min grid → one range 10:00–11:00
+      mk('2026-07-19T08:00:00.000Z'), // Sunday 11:00  ┘
+      mk('2026-07-20T07:00:00.000Z'), // Monday 10:00 (single time)
     ]);
     const out = await executeCheckAvailability(rt, args(), NOW);
 
-    expect(out).toContain('[slot_datetime: 2026-07-19T07:00:00.000Z]');
-    expect(out).toContain('[slot_datetime: 2026-07-20T07:00:00.000Z]');
-    expect(out).toContain('[slot_datetime: 2026-07-21T08:00:00.000Z]');
+    // Fri/Sat gone.
     expect(out).not.toContain('2026-07-17');
     expect(out).not.toContain('2026-07-18');
-    expect(out).not.toContain('2026-07-19T08:00'); // spread picked days, not same-day seconds
-    // The Hebrew the agent will actually speak:
-    expect(out).toContain('יום ראשון, 19 ביולי, בשעה 10:00');
+    // Sunday reads as a RANGE she can speak — not one time, not a list.
+    expect(out).toContain('יום ראשון, 19 ביולי — פנוי 10:00–11:00');
+    // …but EVERY Sunday slot_datetime is still returned so she can book the exact time he picks.
+    expect(out).toContain('[slot_datetime: 2026-07-19T07:00:00.000Z]');
+    expect(out).toContain('[slot_datetime: 2026-07-19T07:30:00.000Z]');
+    expect(out).toContain('[slot_datetime: 2026-07-19T08:00:00.000Z]');
+    // A single-time day shows that time as its own "range".
+    expect(out).toContain('יום שני, 20 ביולי — פנוי 10:00');
+    // The offer-a-range instruction + the anti-hallucination rule.
+    expect(out).toMatch(/Offer the free RANGE/u);
     expect(out).toContain('VERBATIM');
   });
 
