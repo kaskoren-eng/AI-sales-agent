@@ -14,7 +14,7 @@ Built page by page with Koren — each approved before the next starts. Governed
 | Test Keren (`/simulator`, dark default) | `simulator.html` | **approved** (2026-07-29) | emotion tags OMITTED (pipeline gate unverified §4.7); orb is the signature animation (flat, no gradient/glow); opens dark by default |
 | Meetings | `meetings.html` | **approved** (2026-07-29) | config-left / booking-preview-right; Calendly summary-row pattern for availability; upcoming-meetings strip on top; status chips PROPOSED (confirmed/pending) |
 | Ask Keren (`/chat`) | `chat.html` | in review (2026-07-29) | Grok-style centered hero (big composer + Skills/mic/send, suggestion pills); never-empty (today-state pill + real-state prompts); confirm-before-apply diff card; preview-only View toggle Empty↔In conversation |
-| Settings shell | `settings.html` | pending | — |
+| Settings shell | `settings.html` | in review (2026-07-30) | folk rail (My account / The business); panes Profile / Notifications / Business details / Integrations (Midday grid) / Billing (Cursor meters + spend cap); every row has one-sentence explanation; Profile carries interface-language (firewall callout) + three-state theme, both drive the page |
 
 **Standing decisions / later pass:**
 - **Platform brand = ClickScales** (decided 2026-07-29, spec v1.2). Agent name is per-tenant

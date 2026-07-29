@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en" dir="ltr" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KEREN — Settings (v5 preview)</title>
+<meta name="theme-color" content="#EDF0F6">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Rubik:wght@500;600;700&family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* =========================================================================
+   v5 tokens — brand_assets/keren-brand-brief-v5.md §1.1 (light) + §1.2 (dark).
+   The ONLY place colour values live. Everything else references var(--token).
+   ========================================================================= */
+:root {
+  --surface-page:#EDF0F6; --surface-card:#FFFFFF; --surface-sunken:#E4E9F1; --surface-overlay:#FFFFFF;
+  --text-primary:#0C1226; --text-secondary:#5B667E; --text-tertiary:#7A8598; --text-on-accent:#FFFFFF;
+  --border-default:#D9E0EA; --border-strong:#C3CDDB;
+  --accent:#2F35C7; --accent-hover:#252AB3; --accent-tint:#EAEAFB; --accent-fg:#2F35C7;
+  --data-1:#2F35C7; --data-2:#D9861B; --data-2-glow:#F2B24E; --data-2-tint:#FCF0DC;
+  --status-success:#1B7F5A; --status-warning:#9A5D0F; --status-danger:#C0392B; --status-neutral:#5B667E;
+  --r-sm:8px; --r:14px; --r-lg:22px; --r-full:999px; --container-max:1180px;
+  --shadow-card:0 1px 2px rgba(12,18,38,.04), 0 8px 24px rgba(12,18,38,.06);
+  --shadow-overlay:0 2px 4px rgba(12,18,38,.06), 0 24px 60px rgba(12,18,38,.16);
+  --font-display:"Bricolage Grotesque","Rubik",system-ui,sans-serif;
+  --font-body:"Instrument Sans","Assistant",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono","Assistant",ui-monospace,monospace;
+  --dur-fast:150ms; --dur-base:220ms; --ease:cubic-bezier(.4,0,.2,1);
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --surface-page:#0A0F20; --surface-card:#141B31; --surface-sunken:#070B17; --surface-overlay:#1A2240;
+  --text-primary:#EDF0F6; --text-secondary:#A2A9BC; --text-tertiary:#767E93; --text-on-accent:#FFFFFF;
+  --border-default:#232941; --border-strong:#333B57;
+  --accent:#2F35C7; --accent-fg:#8B90F0; --accent-hover:#3A41D8; --accent-tint:#1B2145;
+  --data-1:#6E74E8; --data-2:#F2B24E; --data-2-glow:#F8CC85; --data-2-tint:#2A2113;
+  --status-success:#3FB88C; --status-warning:#E0A64E; --status-danger:#E86A5E; --status-neutral:#A2A9BC;
+  --shadow-card:0 0 0 1px rgba(0,0,0,0), 0 8px 24px rgba(0,0,0,.24);
+  --shadow-overlay:0 2px 4px rgba(0,0,0,.3), 0 24px 60px rgba(0,0,0,.5);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--surface-page); color: var(--text-primary);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
+  padding-block-start: 46px; padding-block-end: 72px;
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-tertiary); }
+:lang(he) .eyebrow { text-transform: none; letter-spacing: normal; }
+
+/* ---- Top bar ---- */
+.topbar { position: sticky; top: 46px; z-index: 20; display: flex; align-items: center; gap: 20px; block-size: 60px; padding-inline: 24px; background: var(--surface-card); border-block-end: 1px solid var(--border-default); }
+.brand { display: flex; align-items: baseline; gap: 8px; }
+.brand .mark { font-family: var(--font-display); font-weight: 800; font-size: 20px; letter-spacing: .02em; color: var(--text-primary); }
+.brand .tag { font-size: 12px; color: var(--text-tertiary); }
+.presence { display: inline-flex; align-items: center; gap: 9px; padding: 6px 12px 6px 10px; background: var(--accent-tint); border: 1px solid var(--border-default); border-radius: var(--r-full); font-size: 13px; color: var(--text-secondary); }
+.dot { inline-size: 8px; block-size: 8px; border-radius: 50%; flex-shrink: 0; }
+.presence .dot { background: var(--accent-fg); position: relative; }
+.presence:not(.idle) .dot::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 1px solid var(--accent-fg); opacity: .5; animation: pulse 1.6s var(--ease) infinite; }
+.presence strong { color: var(--text-primary); font-weight: 600; }
+@keyframes pulse { 0%{transform:scale(1);opacity:.5} 70%{transform:scale(2.1);opacity:0} 100%{opacity:0} }
+@media (prefers-reduced-motion: reduce) { .presence .dot::after { animation: none; display: none; } }
+.topbar .spacer { margin-inline-start: auto; }
+.top-actions { display: flex; align-items: center; gap: 8px; }
+.icon-btn { inline-size: 36px; block-size: 36px; display: grid; place-items: center; border: 1px solid var(--border-default); border-radius: 10px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.icon-btn:hover { background: var(--surface-sunken); color: var(--text-primary); }
+.avatar { inline-size: 34px; block-size: 34px; border-radius: 50%; background: var(--accent); color: var(--text-on-accent); display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 13px; cursor: pointer; }
+
+/* ---- Layout ---- */
+.wrap { max-inline-size: 1080px; margin-inline: auto; padding: 28px 24px 40px; }
+.page-title { font-family: var(--font-display); font-weight: 700; font-size: 30px; letter-spacing: -.02em; margin-block-end: 22px; }
+:lang(he) .page-title { letter-spacing: normal; }
+.settings { display: grid; grid-template-columns: 244px 1fr; gap: 22px; align-items: start; }
+@media (max-width: 860px) { .settings { grid-template-columns: 1fr; } }
+
+/* ---- Left rail ---- */
+.rail { position: sticky; top: 118px; background: var(--surface-card); border: 1px solid var(--border-default); border-radius: var(--r); box-shadow: var(--shadow-card); padding: 10px; }
+.rail-group + .rail-group { margin-block-start: 6px; }
+.rail-cap { padding: 10px 10px 6px; }
+.rail-item { display: flex; align-items: center; gap: 11px; inline-size: 100%; padding: 9px 11px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); font-family: var(--font-body); font-size: 14px; font-weight: 500; cursor: pointer; text-align: start; }
+.rail-item svg { inline-size: 17px; block-size: 17px; flex-shrink: 0; }
+.rail-item:hover { background: var(--surface-sunken); color: var(--text-primary); }
+.rail-item[aria-current="true"] { background: var(--accent-tint); color: var(--accent-fg); font-weight: 600; }
+
+/* ---- Pane ---- */
+.pane { display: none; }
+.settings[data-pane="profile"] #pane-profile,
+.settings[data-pane="notifications"] #pane-notifications,
+.settings[data-pane="business"] #pane-business,
+.settings[data-pane="integrations"] #pane-integrations,
+.settings[data-pane="billing"] #pane-billing { display: block; }
+.card { background: var(--surface-card); border: 1px solid var(--border-default); border-radius: var(--r); box-shadow: var(--shadow-card); }
+.pane-head { margin-block-end: 16px; }
+.pane-title { font-family: var(--font-display); font-weight: 600; font-size: 20px; }
+.pane-sub { margin-block-start: 4px; font-size: 13px; color: var(--text-secondary); }
+.sec-cap { font-family: var(--font-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-tertiary); margin-block: 26px 10px; }
+:lang(he) .sec-cap { text-transform: none; letter-spacing: normal; font-family: var(--font-body); font-weight: 600; }
+
+/* folk-style row: control + one-sentence explanation underneath */
+.row { display: flex; align-items: flex-start; gap: 18px; padding: 17px 20px; border-block-end: 1px solid var(--border-default); }
+.row:last-child { border-block-end: 0; }
+.row-main { flex: 1; min-inline-size: 0; }
+.row-label { font-size: 14.5px; font-weight: 600; color: var(--text-primary); }
+.row-desc { font-size: 12.5px; color: var(--text-secondary); margin-block-start: 3px; }
+.row-ctrl { flex-shrink: 0; display: flex; align-items: center; }
+
+.input { font-family: var(--font-body); font-size: 14.5px; color: var(--text-primary); padding: 9px 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface-card); inline-size: 240px; max-inline-size: 100%; }
+.input:focus { outline: none; border-color: var(--accent); }
+.input.mono { font-family: var(--font-mono); }
+.seg-inline { display: inline-flex; padding: 3px; background: var(--surface-sunken); border: 1px solid var(--border-default); border-radius: 10px; inline-size: max-content; }
+.seg-inline button { font-family: var(--font-body); font-size: 13px; font-weight: 500; padding: 7px 15px; border: 0; border-radius: 7px; cursor: pointer; background: transparent; color: var(--text-secondary); }
+.seg-inline button[aria-pressed="true"] { background: var(--surface-card); color: var(--text-primary); box-shadow: var(--shadow-card); }
+.linkbtn { background: transparent; border: 0; color: var(--accent-fg); font-family: var(--font-body); font-size: 13.5px; font-weight: 600; cursor: pointer; padding: 0; }
+
+/* switch (reused) */
+.switch { inline-size: 42px; block-size: 24px; border-radius: var(--r-full); background: var(--surface-sunken); border: 1px solid var(--border-strong); position: relative; cursor: pointer; padding: 0; transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
+.switch[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+.switch .knob { position: absolute; inset-block-start: 2px; inset-inline-start: 2px; inline-size: 18px; block-size: 18px; border-radius: 50%; background: var(--text-on-accent); box-shadow: 0 1px 2px rgba(12,18,38,.25); transition: inset-inline-start var(--dur-fast) var(--ease); }
+.switch[aria-checked="true"] .knob { inset-inline-start: calc(100% - 20px); }
+
+/* profile avatar row */
+.pf-avatar { display: flex; align-items: center; gap: 16px; padding: 20px; }
+.pf-ava { inline-size: 60px; block-size: 60px; border-radius: 50%; background: var(--accent); color: var(--text-on-accent); display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 22px; flex-shrink: 0; }
+.pf-ava-actions { display: flex; flex-direction: column; gap: 4px; }
+.pf-ava-actions .r2 { display: flex; gap: 12px; }
+.btn { font-family: var(--font-body); font-size: 13px; font-weight: 600; padding: 8px 15px; border-radius: 10px; cursor: pointer; border: 1px solid var(--border-default); background: var(--surface-card); color: var(--text-primary); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
+.btn.sm { padding: 7px 13px; font-size: 12.5px; }
+.btn.danger { color: var(--status-danger); border-color: color-mix(in srgb, var(--status-danger) 30%, transparent); }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 18px 20px; border-block-end: 1px solid var(--border-default); }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.field .hint { font-size: 12px; color: var(--text-tertiary); }
+
+/* firewall callout in language row */
+.callout { display: flex; gap: 9px; align-items: flex-start; margin: 4px 20px 0; padding: 12px 14px; background: var(--surface-sunken); border: 1px solid var(--border-default); border-radius: 12px; font-size: 12.5px; color: var(--text-secondary); }
+.callout svg { inline-size: 16px; block-size: 16px; color: var(--accent-fg); flex-shrink: 0; margin-block-start: 1px; }
+
+/* integrations */
+.int-bar { display: flex; align-items: center; gap: 12px; margin-block-end: 16px; flex-wrap: wrap; }
+.filter { display: inline-flex; padding: 3px; background: var(--surface-sunken); border: 1px solid var(--border-default); border-radius: 10px; }
+.filter button { font-family: var(--font-body); font-size: 13px; font-weight: 500; padding: 6px 14px; border: 0; border-radius: 7px; cursor: pointer; background: transparent; color: var(--text-secondary); }
+.filter button[aria-pressed="true"] { background: var(--surface-card); color: var(--text-primary); box-shadow: var(--shadow-card); }
+.search { flex: 1; min-inline-size: 160px; display: flex; align-items: center; gap: 8px; padding: 8px 13px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface-card); }
+.search svg { inline-size: 15px; block-size: 15px; color: var(--text-tertiary); }
+.search input { flex: 1; border: 0; outline: none; background: transparent; font-family: var(--font-body); font-size: 14px; color: var(--text-primary); }
+.int-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+@media (max-width: 760px) { .int-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 520px) { .int-grid { grid-template-columns: 1fr; } }
+.int-card { border: 1px solid var(--border-default); border-radius: var(--r); background: var(--surface-card); box-shadow: var(--shadow-card); padding: 16px; display: flex; flex-direction: column; gap: 10px; min-block-size: 156px; }
+.int-top { display: flex; align-items: center; gap: 11px; }
+.int-logo { inline-size: 38px; block-size: 38px; border-radius: 10px; background: var(--surface-sunken); border: 1px solid var(--border-default); display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 14px; color: var(--text-primary); flex-shrink: 0; }
+.int-name { font-weight: 600; font-size: 14.5px; }
+.int-pill { display: inline-flex; align-items: center; gap: 5px; margin-inline-start: auto; font-size: 11.5px; font-weight: 600; color: var(--status-success); }
+.int-pill .cdot { inline-size: 6px; block-size: 6px; border-radius: 50%; background: var(--status-success); }
+.int-desc { font-size: 12.5px; color: var(--text-secondary); flex: 1; }
+.int-actions { display: flex; align-items: center; gap: 12px; }
+
+/* billing */
+.bill-plans { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 640px) { .bill-plans { grid-template-columns: 1fr; } }
+.plan { border: 1px solid var(--border-default); border-radius: var(--r); background: var(--surface-card); box-shadow: var(--shadow-card); padding: 18px; }
+.plan.up { border-color: var(--accent); }
+.plan-cap { font-size: 12px; color: var(--text-tertiary); }
+.plan-name { font-family: var(--font-display); font-weight: 700; font-size: 20px; margin-block: 3px 2px; }
+.plan-price { font-size: 13px; color: var(--text-secondary); }
+.plan-price .n { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-primary); }
+.plan-list { list-style: none; margin-block: 12px; display: flex; flex-direction: column; gap: 7px; }
+.plan-list li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--text-secondary); }
+.plan-list svg { inline-size: 14px; block-size: 14px; color: var(--status-success); flex-shrink: 0; margin-block-start: 3px; }
+.usage { padding: 18px 20px; }
+.meter-row { margin-block-end: 18px; }
+.meter-row:last-child { margin-block-end: 0; }
+.meter-top { display: flex; align-items: baseline; justify-content: space-between; margin-block-end: 7px; }
+.meter-k { font-size: 13.5px; font-weight: 600; }
+.meter-v { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 13px; color: var(--text-secondary); }
+.meter { block-size: 8px; border-radius: var(--r-full); background: var(--surface-sunken); overflow: hidden; }
+.meter-fill { block-size: 100%; border-radius: var(--r-full); background: var(--data-1); }
+.meter-note { font-size: 12px; color: var(--text-tertiary); margin-block-start: 6px; }
+.cap-row { display: flex; align-items: center; gap: 12px; }
+.cap-input { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface-card); }
+.cap-input .cur { color: var(--text-tertiary); font-size: 14px; }
+.cap-input input { border: 0; outline: none; background: transparent; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 14px; color: var(--text-primary); inline-size: 70px; }
+
+/* sticky save bar */
+.savebar { position: fixed; inset-block-end: 0; inset-inline: 0; z-index: 40; background: var(--surface-card); border-block-start: 1px solid var(--border-default); box-shadow: 0 -8px 24px rgba(12,18,38,.06); }
+.savebar-in { max-inline-size: 1080px; margin-inline: auto; padding: 12px 24px; display: flex; align-items: center; gap: 12px; }
+.savebar .sb-note { font-size: 12.5px; color: var(--text-tertiary); }
+.savebar .sb-actions { margin-inline-start: auto; display: flex; gap: 10px; }
+.settings[data-pane="integrations"] ~ .savebar, .settings[data-pane="billing"] ~ .savebar { display: none; }
+
+/* ---- Preview-control bar ---- */
+.preview-controls { position: fixed; inset-block-start: 0; inset-inline: 0; z-index: 100; block-size: 46px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-inline: 18px; background: var(--text-primary); color: var(--surface-page); border-block-end: 1px solid var(--border-strong); }
+.preview-controls .pc-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; opacity: .65; }
+.pc-groups { display: flex; align-items: center; gap: 20px; }
+.pc-group { display: flex; align-items: center; gap: 9px; }
+.pc-cap { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; opacity: .55; }
+.seg-ctl { display: inline-flex; gap: 5px; }
+.seg-ctl button { font-family: var(--font-body); font-size: 12px; font-weight: 600; padding: 5px 13px; border: 1px solid currentColor; border-radius: var(--r-full); cursor: pointer; background: transparent; color: inherit; opacity: .55; transition: opacity var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease); }
+.seg-ctl button:hover { opacity: .85; }
+.seg-ctl button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); opacity: 1; }
+@media (max-width: 720px) { .preview-controls .pc-label { display: none; } }
+</style>
+</head>
+<body>
+
+<!-- ================= PREVIEW CONTROL BAR ================= -->
+<div class="preview-controls" role="group" aria-label="Preview controls">
+  <span class="pc-label">Preview · not part of the design</span>
+  <div class="pc-groups">
+    <div class="pc-group"><span class="pc-cap">Theme</span>
+      <div class="seg-ctl" id="theme-ctl"><button data-theme-val="light" aria-pressed="true">Light</button><button data-theme-val="dark" aria-pressed="false">Dark</button></div>
+    </div>
+    <div class="pc-group"><span class="pc-cap">Language</span>
+      <div class="seg-ctl" id="lang-ctl"><button data-lang-val="en" aria-pressed="true">EN</button><button data-lang-val="he" aria-pressed="false">עברית</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= TOP BAR ================= -->
+<header class="topbar">
+  <div class="brand"><span class="mark">KEREN</span><span class="tag" data-i18n="brand.tag">by ClickScales</span></div>
+  <div class="presence idle" id="presence"><span class="dot"></span><span data-i18n="presence.idle">Keren is available</span></div>
+  <span class="spacer"></span>
+  <div class="top-actions">
+    <button class="icon-btn" data-i18n-aria="a11y.notifications" aria-label="Notifications"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" width="17" height="17"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+    <div class="avatar" title="ClickScales" aria-hidden="true">CS</div>
+  </div>
+</header>
+
+<!-- ================= CONTENT ================= -->
+<main class="wrap">
+  <h1 class="page-title" data-i18n="page.title">Settings</h1>
+
+  <div class="settings" data-pane="profile" id="settings">
+    <!-- LEFT RAIL -->
+    <nav class="rail" aria-label="Settings sections">
+      <div class="rail-group">
+        <div class="rail-cap eyebrow" data-i18n="grp.account">My account</div>
+        <button class="rail-item" data-pane-val="profile" aria-current="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          <span data-i18n="nav.profile">Profile</span>
+        </button>
+        <button class="rail-item" data-pane-val="notifications" aria-current="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+          <span data-i18n="nav.notifications">Notifications</span>
+        </button>
+      </div>
+      <div class="rail-group">
+        <div class="rail-cap eyebrow" data-i18n="grp.business">The business</div>
+        <button class="rail-item" data-pane-val="business" aria-current="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 21V6a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v15M15 21V10h4a1 1 0 0 1 1 1v10M8 9h3M8 13h3M8 17h3"/></svg>
+          <span data-i18n="nav.business">Business details</span>
+        </button>
+        <button class="rail-item" data-pane-val="integrations" aria-current="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 2v6M15 2v6M8 8h8v3a4 4 0 0 1-8 0zM12 15v7"/></svg>
+          <span data-i18n="nav.integrations">Integrations</span>
+        </button>
+        <button class="rail-item" data-pane-val="billing" aria-current="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>
+          <span data-i18n="nav.billing">Billing</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- CONTENT PANES -->
+    <div>
+      <!-- ===== PROFILE ===== -->
+      <section class="pane" id="pane-profile">
+        <div class="pane-head">
+          <h2 class="pane-title" data-i18n="pf.title">Profile</h2>
+          <p class="pane-sub" data-i18n="pf.sub">Your personal details and how this dashboard looks and reads.</p>
+        </div>
+        <div class="card">
+          <div class="pf-avatar">
+            <div class="pf-ava">CS</div>
+            <div class="pf-ava-actions">
+              <div class="r2"><button class="btn sm" data-i18n="pf.upload">Upload photo</button><button class="linkbtn" data-i18n="pf.remove">Remove</button></div>
+              <span class="hint" data-i18n="pf.upload.hint">JPG or PNG, up to 2 MB.</span>
+            </div>
+          </div>
+          <div class="two">
+            <div class="field"><label data-i18n="pf.first">First name</label><input class="input" dir="auto" value="Koren"></div>
+            <div class="field"><label data-i18n="pf.last">Last name</label><input class="input" dir="auto" value="Katz"></div>
+          </div>
+          <div class="row">
+            <div class="row-main">
+              <div class="row-label" data-i18n="pf.email">Email</div>
+              <div class="row-desc" data-i18n="pf.email.desc">Used to sign in and to send you summaries. Changing it needs confirmation from both addresses.</div>
+            </div>
+            <div class="row-ctrl" style="gap:12px"><span class="mono" style="font-size:13.5px;color:var(--text-secondary)">koren@clickscales.com</span><button class="btn sm" data-i18n="pf.change">Change</button></div>
+          </div>
+        </div>
+
+        <div class="sec-cap" data-i18n="pf.prefs">App preferences</div>
+        <div class="card">
+          <div class="row">
+            <div class="row-main">
+              <div class="row-label" data-i18n="pf.lang">Interface language</div>
+              <div class="row-desc" data-i18n="pf.lang.desc">The language of this dashboard, for you. It does not change the language Keren speaks to your leads.</div>
+            </div>
+            <div class="row-ctrl">
+              <div class="seg-inline" id="pref-lang" role="group" aria-label="Interface language">
+                <button data-pref-lang="en" aria-pressed="true">English</button>
+                <button data-pref-lang="he" aria-pressed="false">עברית</button>
+              </div>
+            </div>
+          </div>
+          <div class="callout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3a9 9 0 1 0 9 9M12 3v9l6-3"/><path d="M3 12h9"/></svg>
+            <span dir="auto" data-i18n="pf.lang.note">Keren always speaks Hebrew first to your leads and switches to English on request. That is set on the Your agent page, by the voice side, not here.</span>
+          </div>
+          <div class="row" style="border-block-start:1px solid var(--border-default)">
+            <div class="row-main">
+              <div class="row-label" data-i18n="pf.theme">Appearance</div>
+              <div class="row-desc" data-i18n="pf.theme.desc">Light, dark, or follow your device. System switches with your device through the day.</div>
+            </div>
+            <div class="row-ctrl">
+              <div class="seg-inline" id="pref-theme" role="group" aria-label="Appearance">
+                <button data-pref-theme="light" aria-pressed="true" data-i18n="pf.theme.light">Light</button>
+                <button data-pref-theme="dark" aria-pressed="false" data-i18n="pf.theme.dark">Dark</button>
+                <button data-pref-theme="system" aria-pressed="false" data-i18n="pf.theme.system">System</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== NOTIFICATIONS ===== -->
+      <section class="pane" id="pane-notifications">
+        <div class="pane-head">
+          <h2 class="pane-title" data-i18n="nt.title">Notifications</h2>
+          <p class="pane-sub" data-i18n="nt.sub">Choose what Keren tells you about, and how often.</p>
+        </div>
+        <div class="card">
+          <div class="row">
+            <div class="row-main"><div class="row-label" data-i18n="nt.booked">A meeting is booked</div><div class="row-desc" data-i18n="nt.booked.desc">Get an email the moment Keren books a demo with a lead.</div></div>
+            <div class="row-ctrl"><button class="switch" role="switch" aria-checked="true" aria-label="A meeting is booked"><span class="knob"></span></button></div>
+          </div>
+          <div class="row">
+            <div class="row-main"><div class="row-label" data-i18n="nt.reply">A lead replies</div><div class="row-desc" data-i18n="nt.reply.desc">Get notified when a lead answers on WhatsApp or email.</div></div>
+            <div class="row-ctrl"><button class="switch" role="switch" aria-checked="true" aria-label="A lead replies"><span class="knob"></span></button></div>
+          </div>
+          <div class="row">
+            <div class="row-main"><div class="row-label" data-i18n="nt.daily">Daily summary</div><div class="row-desc" data-i18n="nt.daily.desc">One email each evening with the day's calls, meetings and new leads.</div></div>
+            <div class="row-ctrl"><button class="switch" role="switch" aria-checked="true" aria-label="Daily summary"><span class="knob"></span></button></div>
+          </div>
+          <div class="row">
+            <div class="row-main"><div class="row-label" data-i18n="nt.weekly">Weekly performance report</div><div class="row-desc" data-i18n="nt.weekly.desc">A short read on how Keren did last week, sent Sunday morning.</div></div>
+            <div class="row-ctrl"><button class="switch" role="switch" aria-checked="false" aria-label="Weekly performance report"><span class="knob"></span></button></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== BUSINESS DETAILS ===== -->
+      <section class="pane" id="pane-business">
+        <div class="pane-head">
+          <h2 class="pane-title" data-i18n="bd.title">Business details</h2>
+          <p class="pane-sub" data-i18n="bd.sub">What Keren knows about your business. She uses this on every call.</p>
+        </div>
+        <div class="card">
+          <div class="two" style="grid-template-columns:1fr 1fr">
+            <div class="field"><label data-i18n="bd.name">Business name</label><input class="input" dir="auto" value="קליקסקיילז" style="inline-size:100%"><span class="hint" data-i18n="bd.name.hint">The name Keren says when she introduces herself.</span></div>
+            <div class="field"><label data-i18n="bd.cat">What you do</label><input class="input" dir="auto" value="שיווק ואוטומציה לעסקים" style="inline-size:100%"><span class="hint" data-i18n="bd.cat.hint">One line, so Keren can explain you to a new lead.</span></div>
+          </div>
+          <div class="row">
+            <div class="row-main"><div class="row-label" data-i18n="bd.site">Website</div><div class="row-desc" data-i18n="bd.site.desc">Keren shares this when a lead asks to see more before a call.</div></div>
+            <div class="row-ctrl"><input class="input mono" dir="ltr" value="clickscales.com"></div>
+          </div>
+          <div class="row">
+            <div class="row-main"><div class="row-label" data-i18n="bd.phone">Callback number</div><div class="row-desc" data-i18n="bd.phone.desc">Where a lead is transferred if they ask to speak to a person.</div></div>
+            <div class="row-ctrl"><input class="input mono" dir="ltr" value="+972 3-556-0192"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== INTEGRATIONS (Midday card grid) ===== -->
+      <section class="pane" id="pane-integrations">
+        <div class="pane-head">
+          <h2 class="pane-title" data-i18n="in.title">Integrations</h2>
+          <p class="pane-sub" data-i18n="in.sub">The tools Keren works with. Connect the ones your business already uses.</p>
+        </div>
+        <div class="int-bar">
+          <div class="filter" role="group" aria-label="Filter integrations">
+            <button aria-pressed="true" data-i18n="in.all">All</button>
+            <button aria-pressed="false" data-i18n="in.connected">Connected</button>
+          </div>
+          <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" dir="auto" data-i18n-ph="in.search" placeholder="Search integrations" aria-label="Search integrations"></div>
+        </div>
+        <div class="int-grid">
+          <div class="int-card">
+            <div class="int-top"><span class="int-logo">G</span><span class="int-name">Google Calendar</span><span class="int-pill"><span class="cdot"></span><span data-i18n="in.on">Connected</span></span></div>
+            <div class="int-desc" data-i18n="in.cal.desc">So Keren can see your free slots and book demos straight into your calendar.</div>
+            <div class="int-actions"><button class="linkbtn" data-i18n="in.details">Details</button><button class="linkbtn" style="color:var(--status-danger)" data-i18n="in.disconnect">Disconnect</button></div>
+          </div>
+          <div class="int-card">
+            <div class="int-top"><span class="int-logo">OA</span><span class="int-name">OpenAI</span><span class="int-pill"><span class="cdot"></span><span data-i18n="in.on">Connected</span></span></div>
+            <div class="int-desc" data-i18n="in.llm.desc">The brain behind Keren's answers on calls and in chat. Your own key, your own usage.</div>
+            <div class="int-actions"><button class="linkbtn" data-i18n="in.details">Details</button><button class="linkbtn" style="color:var(--status-danger)" data-i18n="in.disconnect">Disconnect</button></div>
+          </div>
+          <div class="int-card">
+            <div class="int-top"><span class="int-logo">Z</span><span class="int-name">Zadarma</span><span class="int-pill"><span class="cdot"></span><span data-i18n="in.on">Connected</span></span></div>
+            <div class="int-desc" data-i18n="in.phone.desc">The phone number Keren calls from, so leads see a real Israeli line.</div>
+            <div class="int-actions"><button class="linkbtn" data-i18n="in.details">Details</button><button class="linkbtn" style="color:var(--status-danger)" data-i18n="in.disconnect">Disconnect</button></div>
+          </div>
+          <div class="int-card">
+            <div class="int-top"><span class="int-logo">W</span><span class="int-name">WhatsApp</span></div>
+            <div class="int-desc" data-i18n="in.wa.desc">Let Keren follow up with leads on WhatsApp between calls.</div>
+            <div class="int-actions"><button class="btn sm primary" data-i18n="in.connect">Connect</button></div>
+          </div>
+          <div class="int-card">
+            <div class="int-top"><span class="int-logo">@</span><span class="int-name">Email (Resend)</span><span class="int-pill"><span class="cdot"></span><span data-i18n="in.on">Connected</span></span></div>
+            <div class="int-desc" data-i18n="in.mail.desc">The address Keren sends confirmations and summaries from.</div>
+            <div class="int-actions"><button class="linkbtn" data-i18n="in.details">Details</button><button class="linkbtn" style="color:var(--status-danger)" data-i18n="in.disconnect">Disconnect</button></div>
+          </div>
+          <div class="int-card">
+            <div class="int-top"><span class="int-logo">M</span><span class="int-name">Monday.com</span></div>
+            <div class="int-desc" data-i18n="in.crm.desc">Push every new lead and its status into your Monday board.</div>
+            <div class="int-actions"><button class="btn sm primary" data-i18n="in.connect">Connect</button></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== BILLING (Cursor: usage meters + spend cap) ===== -->
+      <section class="pane" id="pane-billing">
+        <div class="pane-head">
+          <h2 class="pane-title" data-i18n="bl.title">Billing</h2>
+          <p class="pane-sub" data-i18n="bl.sub">You pay for the minutes Keren spends on calls. Nothing per seat.</p>
+        </div>
+        <div class="bill-plans">
+          <div class="plan">
+            <div class="plan-cap" data-i18n="bl.current">Current plan</div>
+            <div class="plan-name">Growth</div>
+            <div class="plan-price"><span class="n">₪490</span> <span data-i18n="bl.permo">/ month</span></div>
+            <ul class="plan-list">
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m5 13 4 4L19 7"/></svg><span data-i18n="bl.f1">500 call minutes included</span></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m5 13 4 4L19 7"/></svg><span data-i18n="bl.f2">WhatsApp and email follow-ups</span></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m5 13 4 4L19 7"/></svg><span data-i18n="bl.f3">Ask Keren, on the house</span></li>
+            </ul>
+            <button class="btn sm" data-i18n="bl.manage">Manage plan</button>
+          </div>
+          <div class="plan up">
+            <div class="plan-cap" data-i18n="bl.upgrade">Upgrade</div>
+            <div class="plan-name">Scale</div>
+            <div class="plan-price"><span class="n">₪990</span> <span data-i18n="bl.permo">/ month</span></div>
+            <ul class="plan-list">
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m5 13 4 4L19 7"/></svg><span data-i18n="bl.f4">1,500 call minutes included</span></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m5 13 4 4L19 7"/></svg><span data-i18n="bl.f5">Priority calling on busy hours</span></li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m5 13 4 4L19 7"/></svg><span data-i18n="bl.f6">Team seats and shared inbox</span></li>
+            </ul>
+            <button class="btn sm primary" data-i18n="bl.upgradebtn">Upgrade to Scale</button>
+          </div>
+        </div>
+
+        <div class="sec-cap" data-i18n="bl.usage">This month's usage</div>
+        <div class="card usage">
+          <div class="meter-row">
+            <div class="meter-top"><span class="meter-k" data-i18n="bl.min">Call minutes</span><span class="meter-v">320 / 500</span></div>
+            <div class="meter"><div class="meter-fill" style="inline-size:64%"></div></div>
+            <div class="meter-note" data-i18n="bl.min.note">64% of your included minutes used. 8 days left in the cycle.</div>
+          </div>
+          <div class="meter-row">
+            <div class="meter-top"><span class="meter-k" data-i18n="bl.extra">On-demand minutes</span><span class="meter-v">40 · ₪36</span></div>
+            <div class="meter"><div class="meter-fill" style="inline-size:12%"></div></div>
+            <div class="meter-note" data-i18n="bl.extra.note">Minutes beyond your plan, billed at ₪0.90 each. Shown separately so there are no surprises.</div>
+          </div>
+        </div>
+
+        <div class="sec-cap" data-i18n="bl.cap">Monthly spend limit</div>
+        <div class="card">
+          <div class="row">
+            <div class="row-main">
+              <div class="row-label" data-i18n="bl.cap.label">Stop calling at</div>
+              <div class="row-desc" data-i18n="bl.cap.desc">Keren pauses outbound calls once the month's spend reaches this. A safety cap, set it where you are comfortable.</div>
+            </div>
+            <div class="row-ctrl"><div class="cap-input"><span class="cur">₪</span><input type="text" value="800" inputmode="numeric" aria-label="Monthly spend limit"></div></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<!-- ================= STICKY SAVE BAR ================= -->
+<div class="savebar">
+  <div class="savebar-in">
+    <span class="sb-note" data-i18n="save.note">Changes apply to your account right away.</span>
+    <div class="sb-actions">
+      <button class="btn" data-i18n="save.discard">Discard</button>
+      <button class="btn primary" data-i18n="save.save">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const I18N = {
+  en: {
+    "brand.tag":"by ClickScales","presence.idle":"Keren is available","a11y.notifications":"Notifications",
+    "page.title":"Settings",
+    "grp.account":"My account","grp.business":"The business",
+    "nav.profile":"Profile","nav.notifications":"Notifications","nav.business":"Business details","nav.integrations":"Integrations","nav.billing":"Billing",
+    "pf.title":"Profile","pf.sub":"Your personal details and how this dashboard looks and reads.",
+    "pf.upload":"Upload photo","pf.remove":"Remove","pf.upload.hint":"JPG or PNG, up to 2 MB.",
+    "pf.first":"First name","pf.last":"Last name",
+    "pf.email":"Email","pf.email.desc":"Used to sign in and to send you summaries. Changing it needs confirmation from both addresses.","pf.change":"Change",
+    "pf.prefs":"App preferences",
+    "pf.lang":"Interface language","pf.lang.desc":"The language of this dashboard, for you. It does not change the language Keren speaks to your leads.",
+    "pf.lang.note":"Keren always speaks Hebrew first to your leads and switches to English on request. That is set on the Your agent page, by the voice side, not here.",
+    "pf.theme":"Appearance","pf.theme.desc":"Light, dark, or follow your device. System switches with your device through the day.","pf.theme.light":"Light","pf.theme.dark":"Dark","pf.theme.system":"System",
+    "nt.title":"Notifications","nt.sub":"Choose what Keren tells you about, and how often.",
+    "nt.booked":"A meeting is booked","nt.booked.desc":"Get an email the moment Keren books a demo with a lead.",
+    "nt.reply":"A lead replies","nt.reply.desc":"Get notified when a lead answers on WhatsApp or email.",
+    "nt.daily":"Daily summary","nt.daily.desc":"One email each evening with the day's calls, meetings and new leads.",
+    "nt.weekly":"Weekly performance report","nt.weekly.desc":"A short read on how Keren did last week, sent Sunday morning.",
+    "bd.title":"Business details","bd.sub":"What Keren knows about your business. She uses this on every call.",
+    "bd.name":"Business name","bd.name.hint":"The name Keren says when she introduces herself.",
+    "bd.cat":"What you do","bd.cat.hint":"One line, so Keren can explain you to a new lead.",
+    "bd.site":"Website","bd.site.desc":"Keren shares this when a lead asks to see more before a call.",
+    "bd.phone":"Callback number","bd.phone.desc":"Where a lead is transferred if they ask to speak to a person.",
+    "in.title":"Integrations","in.sub":"The tools Keren works with. Connect the ones your business already uses.",
+    "in.all":"All","in.connected":"Connected","in.search":"Search integrations","in.on":"Connected","in.details":"Details","in.disconnect":"Disconnect","in.connect":"Connect",
+    "in.cal.desc":"So Keren can see your free slots and book demos straight into your calendar.",
+    "in.llm.desc":"The brain behind Keren's answers on calls and in chat. Your own key, your own usage.",
+    "in.phone.desc":"The phone number Keren calls from, so leads see a real Israeli line.",
+    "in.wa.desc":"Let Keren follow up with leads on WhatsApp between calls.",
+    "in.mail.desc":"The address Keren sends confirmations and summaries from.",
+    "in.crm.desc":"Push every new lead and its status into your Monday board.",
+    "bl.title":"Billing","bl.sub":"You pay for the minutes Keren spends on calls. Nothing per seat.",
+    "bl.current":"Current plan","bl.upgrade":"Upgrade","bl.permo":"/ month",
+    "bl.f1":"500 call minutes included","bl.f2":"WhatsApp and email follow-ups","bl.f3":"Ask Keren, on the house",
+    "bl.f4":"1,500 call minutes included","bl.f5":"Priority calling on busy hours","bl.f6":"Team seats and shared inbox",
+    "bl.manage":"Manage plan","bl.upgradebtn":"Upgrade to Scale",
+    "bl.usage":"This month's usage","bl.min":"Call minutes","bl.min.note":"64% of your included minutes used. 8 days left in the cycle.",
+    "bl.extra":"On-demand minutes","bl.extra.note":"Minutes beyond your plan, billed at ₪0.90 each. Shown separately so there are no surprises.",
+    "bl.cap":"Monthly spend limit","bl.cap.label":"Stop calling at","bl.cap.desc":"Keren pauses outbound calls once the month's spend reaches this. A safety cap, set it where you are comfortable.",
+    "save.note":"Changes apply to your account right away.","save.discard":"Discard","save.save":"Save changes"
+  },
+  he: {
+    "brand.tag":"מבית ClickScales","presence.idle":"קרן זמינה","a11y.notifications":"התראות",
+    "page.title":"הגדרות",
+    "grp.account":"החשבון שלי","grp.business":"העסק",
+    "nav.profile":"פרופיל","nav.notifications":"התראות","nav.business":"פרטי העסק","nav.integrations":"חיבורים","nav.billing":"חיוב",
+    "pf.title":"פרופיל","pf.sub":"הפרטים האישיים שלכם ואיך הדשבורד הזה נראה ונקרא.",
+    "pf.upload":"העלאת תמונה","pf.remove":"הסרה","pf.upload.hint":"JPG או PNG, עד 2 MB.",
+    "pf.first":"שם פרטי","pf.last":"שם משפחה",
+    "pf.email":"אימייל","pf.email.desc":"משמש לכניסה ולשליחת הסיכומים אליכם. שינוי מחייב אישור משתי הכתובות.","pf.change":"שינוי",
+    "pf.prefs":"העדפות",
+    "pf.lang":"שפת הממשק","pf.lang.desc":"שפת הדשבורד הזה, בשבילכם. היא לא משנה את השפה שקרן מדברת עם הלידים שלכם.",
+    "pf.lang.note":"קרן תמיד מדברת קודם עברית עם הלידים ועוברת לאנגלית לפי בקשה. זה מוגדר בעמוד הסוכנת, על ידי צוות הקול, לא כאן.",
+    "pf.theme":"מראה","pf.theme.desc":"בהיר, כהה, או לפי המכשיר. מצב מערכת מתחלף יחד עם המכשיר שלכם לאורך היום.","pf.theme.light":"בהיר","pf.theme.dark":"כהה","pf.theme.system":"מערכת",
+    "nt.title":"התראות","nt.sub":"בחרו על מה קרן מעדכנת אתכם, וכל כמה זמן.",
+    "nt.booked":"נקבעה פגישה","nt.booked.desc":"קבלו אימייל ברגע שקרן קובעת דמו עם ליד.",
+    "nt.reply":"ליד הגיב","nt.reply.desc":"קבלו התראה כשליד עונה בוואטסאפ או במייל.",
+    "nt.daily":"סיכום יומי","nt.daily.desc":"מייל אחד בכל ערב עם השיחות, הפגישות והלידים החדשים של היום.",
+    "nt.weekly":"דוח ביצועים שבועי","nt.weekly.desc":"קריאה קצרה על איך קרן הצליחה בשבוע שעבר, נשלח ראשון בבוקר.",
+    "bd.title":"פרטי העסק","bd.sub":"מה שקרן יודעת על העסק שלכם. היא משתמשת בזה בכל שיחה.",
+    "bd.name":"שם העסק","bd.name.hint":"השם שקרן אומרת כשהיא מציגה את עצמה.",
+    "bd.cat":"מה אתם עושים","bd.cat.hint":"שורה אחת, כדי שקרן תוכל להסביר אתכם לליד חדש.",
+    "bd.site":"אתר","bd.site.desc":"קרן משתפת את זה כשליד מבקש לראות עוד לפני שיחה.",
+    "bd.phone":"מספר לחזרה","bd.phone.desc":"לאן ליד מועבר אם הוא מבקש לדבר עם בן אדם.",
+    "in.title":"חיבורים","in.sub":"הכלים שקרן עובדת איתם. חברו את אלה שהעסק שלכם כבר משתמש בהם.",
+    "in.all":"הכל","in.connected":"מחוברים","in.search":"חיפוש חיבורים","in.on":"מחובר","in.details":"פרטים","in.disconnect":"ניתוק","in.connect":"חיבור",
+    "in.cal.desc":"כדי שקרן תראה את הזמנים הפנויים שלכם ותקבע דמו ישר ליומן.",
+    "in.llm.desc":"המוח שמאחורי התשובות של קרן בשיחות ובצ׳אט. המפתח שלכם, השימוש שלכם.",
+    "in.phone.desc":"מספר הטלפון שקרן מתקשרת ממנו, כדי שלידים יראו קו ישראלי אמיתי.",
+    "in.wa.desc":"אפשרו לקרן לעשות מעקב עם לידים בוואטסאפ בין שיחות.",
+    "in.mail.desc":"הכתובת שקרן שולחת ממנה אישורים וסיכומים.",
+    "in.crm.desc":"דחפו כל ליד חדש והסטטוס שלו ללוח ה־Monday שלכם.",
+    "bl.title":"חיוב","bl.sub":"אתם משלמים על הדקות שקרן מבלה בשיחות. שום דבר לפי משתמש.",
+    "bl.current":"התוכנית הנוכחית","bl.upgrade":"שדרוג","bl.permo":"לחודש",
+    "bl.f1":"500 דקות שיחה כלולות","bl.f2":"מעקבים בוואטסאפ ובמייל","bl.f3":"שיחה עם קרן, על חשבוננו",
+    "bl.f4":"1,500 דקות שיחה כלולות","bl.f5":"עדיפות בחיוג בשעות עמוסות","bl.f6":"מושבים לצוות ותיבה משותפת",
+    "bl.manage":"ניהול התוכנית","bl.upgradebtn":"שדרוג ל־Scale",
+    "bl.usage":"השימוש החודש","bl.min":"דקות שיחה","bl.min.note":"64% מהדקות הכלולות נוצלו. נותרו 8 ימים במחזור.",
+    "bl.extra":"דקות מעבר לתוכנית","bl.extra.note":"דקות מעבר לתוכנית, בחיוב ₪0.90 כל אחת. מוצג בנפרד כדי שלא יהיו הפתעות.",
+    "bl.cap":"תקרת הוצאה חודשית","bl.cap.label":"עצירת שיחות ב־","bl.cap.desc":"קרן עוצרת שיחות יוצאות ברגע שההוצאה החודשית מגיעה לזה. תקרת ביטחון, קבעו אותה איפה שנוח לכם.",
+    "save.note":"השינויים חלים על החשבון שלכם מיד.","save.discard":"ביטול","save.save":"שמירת שינויים"
+  }
+};
+
+function applyLang(lang){
+  const dict = I18N[lang], html = document.documentElement;
+  html.lang = lang; html.dir = (lang === "he") ? "rtl" : "ltr";
+  document.querySelectorAll("[data-i18n]").forEach(el=>{ const k=el.getAttribute("data-i18n"); if(dict[k]!=null) el.textContent=dict[k]; });
+  document.querySelectorAll("[data-i18n-aria]").forEach(el=>{ const k=el.getAttribute("data-i18n-aria"); if(dict[k]!=null) el.setAttribute("aria-label",dict[k]); });
+  document.querySelectorAll("[data-i18n-ph]").forEach(el=>{ const k=el.getAttribute("data-i18n-ph"); if(dict[k]!=null) el.setAttribute("placeholder",dict[k]); });
+  document.querySelectorAll("#lang-ctl button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.langVal===lang)));
+  // keep the in-page Interface-language control in sync with the real state
+  document.querySelectorAll("#pref-lang button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.prefLang===lang)));
+}
+function applyTheme(theme){
+  document.documentElement.setAttribute("data-theme", theme);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", theme==="dark" ? "#0A0F20" : "#EDF0F6");
+  document.querySelectorAll("#theme-ctl button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.themeVal===theme)));
+}
+function applyThemePref(pref){
+  const resolved = pref==="system"
+    ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+    : pref;
+  applyTheme(resolved);
+  document.querySelectorAll("#pref-theme button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.prefTheme===pref)));
+}
+document.getElementById("lang-ctl").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b) applyLang(b.dataset.langVal); });
+document.getElementById("theme-ctl").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b){ applyTheme(b.dataset.themeVal); document.querySelectorAll("#pref-theme button").forEach(x=>x.setAttribute("aria-pressed", String(x.dataset.prefTheme===b.dataset.themeVal))); } });
+
+/* in-page preference controls actually drive the page */
+document.getElementById("pref-lang").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b) applyLang(b.dataset.prefLang); });
+document.getElementById("pref-theme").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b) applyThemePref(b.dataset.prefTheme); });
+
+/* rail navigation */
+const settings = document.getElementById("settings");
+document.querySelectorAll(".rail-item").forEach(item=>{
+  item.addEventListener("click", ()=>{
+    settings.setAttribute("data-pane", item.dataset.paneVal);
+    document.querySelectorAll(".rail-item").forEach(x=>x.setAttribute("aria-current", String(x===item)));
+  });
+});
+/* switches + filter + seg groups (non-preference) */
+document.querySelectorAll('.switch').forEach(sw=>{ sw.addEventListener("click", ()=> sw.setAttribute("aria-checked", String(sw.getAttribute("aria-checked")!=="true"))); });
+document.querySelectorAll('.filter').forEach(g=>{ g.addEventListener("click", e=>{ const b=e.target.closest("button"); if(!b) return; g.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", String(x===b))); }); });
+
+/* defaults */
+applyLang("en"); applyTheme("light");
+</script>
+</body>
+</html>
