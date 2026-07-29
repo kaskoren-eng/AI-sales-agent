@@ -25,23 +25,32 @@ const QUALIFICATION_SCORE_FLOOR: Record<'hot' | 'warm' | 'cold', number> = {
 
 // NOTE: must stay a PLAIN z.object — LiveKit's llm.tool() rejects ZodEffects, so the
 // "at least one field" rule is enforced in the handler, not with .refine().
+//
+// EVERY field is .nullable().optional(), not just .optional(). gpt-5.4 fills a tool call's UNKNOWN
+// fields with explicit `null`, not by omitting them — and a bare `.optional()` accepts `undefined`
+// but REJECTS `null`. On a real call this made capture_lead_info fail Zod validation over and over
+// ("Expected string, received null"), the model retried the same null-laden call, and Keren went
+// SILENT for 20-44s at a stretch while it looped. Accepting null makes the first call succeed. The
+// handler treats null exactly like "not provided" (falsy checks below).
 export const captureLeadInfoSchema = z.object({
-  name: z.string().min(2).optional().describe('Full name exactly as the lead stated it'),
-  email: z.string().min(5).optional().describe('Email address if the lead gave one'),
+  name: z.string().min(2).nullable().optional().describe('Full name exactly as the lead stated it'),
+  email: z.string().min(5).nullable().optional().describe('Email address if the lead gave one'),
   phone: z
     .string()
     .min(7)
+    .nullable()
     .optional()
     .describe('Phone number ONLY if the lead gave one different from the number he is calling from'),
-  business_type: z.string().optional().describe("The lead's business, in his own words"),
-  pain_point: z.string().optional().describe('The concrete problem he wants solved'),
-  budget: z.string().optional().describe('Budget indication, verbatim as stated'),
-  timeline: z.string().optional().describe('When he wants to start'),
+  business_type: z.string().nullable().optional().describe("The lead's business, in his own words"),
+  pain_point: z.string().nullable().optional().describe('The concrete problem he wants solved'),
+  budget: z.string().nullable().optional().describe('Budget indication, verbatim as stated'),
+  timeline: z.string().nullable().optional().describe('When he wants to start'),
   qualification: z
     .enum(['hot', 'warm', 'cold'])
+    .nullable()
     .optional()
     .describe('Your current read: hot = ready to book now, warm = interested, cold = weak fit'),
-  notes: z.string().optional().describe('Short Hebrew free-text observation worth keeping'),
+  notes: z.string().nullable().optional().describe('Short Hebrew free-text observation worth keeping'),
 });
 
 export type CaptureLeadInfoArgs = z.infer<typeof captureLeadInfoSchema>;
@@ -50,14 +59,16 @@ export async function executeCaptureLeadInfo(
   rt: ToolRuntimeContext,
   args: CaptureLeadInfoArgs,
 ): Promise<string> {
-  if (!Object.values(args).some((v) => v !== undefined)) {
+  // `!= null` catches BOTH undefined (omitted) and null (the model's "no value here") — an all-empty
+  // call is nothing to save, whichever way the field came in.
+  if (!Object.values(args).some((v) => v != null)) {
     throw new llm.ToolError('Nothing to save — call this only with at least one learned fact.');
   }
   const leadId = await upsertLead(
     rt.db,
     rt.tenantId,
     { leadId: rt.leadId, callerPhone: rt.callerPhone },
-    { name: args.name?.trim(), email: args.email?.trim().toLowerCase(), phone: args.phone },
+    { name: args.name?.trim(), email: args.email?.trim().toLowerCase(), phone: args.phone ?? undefined },
   );
   if (!leadId) {
     throw new llm.ToolError('Could not save right now. Continue the call normally; nothing was lost from the conversation.');

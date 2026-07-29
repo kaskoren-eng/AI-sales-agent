@@ -44,6 +44,7 @@ export const bookMeetingSchema = z.object({
     ),
   notes: z
     .string()
+    .nullable()
     .optional()
     .describe('Short Hebrew summary for Koren: business type, pain point, budget, timeline'),
 });
@@ -116,7 +117,7 @@ export async function executeBookMeeting(
     start: slotStart.toISOString(),
     serviceId: rt.env.GOOGLE_CALENDAR_ID!,
     attendee: { name: args.name.trim(), email, phone: args.phone, timezone: BOOKING_TIMEZONE },
-    notes: args.notes,
+    notes: args.notes ?? undefined,
   });
 
   // ---- Invariant 2: from here on, nothing is allowed to fail the tool ----
@@ -152,7 +153,7 @@ export async function executeBookMeeting(
         duration,
         status: 'scheduled',
         attendees: [{ name: args.name.trim(), email, phone: args.phone }],
-        notes: args.notes,
+        notes: args.notes ?? undefined,
       })
       .returning({ id: scheduledCalls.id });
     scheduledCallId = insertedCalls[0]?.id ?? null;

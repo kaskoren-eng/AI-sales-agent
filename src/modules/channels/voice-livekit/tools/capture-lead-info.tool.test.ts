@@ -60,6 +60,33 @@ describe('captureLeadInfoSchema', () => {
   it('rejects unknown qualification values', () => {
     expect(captureLeadInfoSchema.safeParse({ qualification: 'boiling' }).success).toBe(false);
   });
+
+  it('ACCEPTS null in every field — gpt-5.4 fills unknowns with null, not by omitting (the vanish bug)', () => {
+    // A bare .optional() rejected null → the model looped on a failing call and Keren went silent.
+    const allNull = {
+      name: null, email: null, phone: null, business_type: null,
+      pain_point: null, budget: null, timeline: null, qualification: null, notes: null,
+    };
+    expect(captureLeadInfoSchema.safeParse(allNull).success).toBe(true);
+    // A realistic mixed call (some real values, the rest null) must parse in ONE shot.
+    expect(
+      captureLeadInfoSchema.safeParse({ name: 'יוסי נאמן', business_type: 'הוצאת ספרים', qualification: 'warm', email: null, phone: null, budget: null }).success,
+    ).toBe(true);
+  });
+
+  it('an all-null call is still "nothing to save" — null counts as absent in the handler', async () => {
+    const { rt } = fakeRt({ leadId: 'lead-1' });
+    await expect(
+      executeCaptureLeadInfo(rt, args({ name: null, email: null, business_type: null, qualification: null })),
+    ).rejects.toThrow('Nothing to save');
+  });
+
+  it('null contact fields do not blank the lead — a name with null email/phone still saves', async () => {
+    const { rt } = fakeRt({ leadId: 'lead-1' });
+    await expect(
+      executeCaptureLeadInfo(rt, args({ name: 'יוסי נאמן', email: null, phone: null })),
+    ).resolves.toContain('Saved');
+  });
 });
 
 describe('executeCaptureLeadInfo', () => {
