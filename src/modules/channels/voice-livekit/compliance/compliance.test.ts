@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CallReport } from '../call-report.js';
 import { hasAiDisclosure } from './ai-disclosure.js';
-import { parseWavPcm16 } from './recording-notice.js';
+import { parseWavPcm16, pcmFrames } from './recording-notice.js';
 
 describe('hasAiDisclosure — what counts as telling the caller she is an AI', () => {
   it('matches every phrasing the prompt or a natural goodbye would use', () => {
@@ -125,5 +125,33 @@ describe('parseWavPcm16 — the pre-roll asset parser', () => {
 
   it('refuses garbage instead of playing it into a call', () => {
     expect(() => parseWavPcm16(Buffer.from('not audio at all'))).toThrow();
+  });
+});
+
+describe('pcmFrames — the framing that was choppy on the phone', () => {
+  it('emits fixed-size frames with a short final frame, losing no samples', () => {
+    const pcm = Int16Array.from({ length: 25 }, (_, i) => i);
+    const frames = [...pcmFrames(pcm, 10)];
+    expect(frames.map((f) => f.length)).toEqual([10, 10, 5]); // last frame is the remainder
+    expect(frames.flatMap((f) => [...f])).toEqual([...pcm]); // concatenation is loss-free
+  });
+
+  it('handles an exact multiple (no empty trailing frame)', () => {
+    expect([...pcmFrames(new Int16Array(20), 10)].length).toBe(2);
+  });
+
+  it('rejects a non-positive frame size instead of looping forever', () => {
+    expect(() => [...pcmFrames(new Int16Array(4), 0)]).toThrow();
+  });
+
+  it('the REAL asset now frames at 10ms — telephony-friendly (aligns with 20ms packets), not 100ms', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const wav = parseWavPcm16(await readFile('assets/recording-notice.wav'));
+    const samplesPer10ms = Math.floor((wav.sampleRate * 10) / 1000); // 240 @ 24kHz
+    const frames = [...pcmFrames(wav.pcm, samplesPer10ms)];
+    // Every full frame is 240 samples = exactly 10ms, a clean divisor of the 20ms SIP packet.
+    expect(frames.slice(0, -1).every((f) => f.length === samplesPer10ms)).toBe(true);
+    // ~2s of audio → ~200 small frames, not ~20 oversized 100ms ones. Smooth, not stuttering.
+    expect(frames.length).toBeGreaterThan(150);
   });
 });

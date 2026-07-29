@@ -69,8 +69,29 @@ export function parseWavPcm16(buf: Buffer): ParsedWav {
   throw new Error('WAV has no data chunk');
 }
 
-/** 100ms per captured frame — the granularity LiveKit's jitter buffer is happiest with. */
-const FRAME_MS = 100;
+/**
+ * Frame size for capturing the notice PCM into the room.
+ *
+ * WAS 100ms — and that was the choppiness Koren heard on the PHONE (not the browser). A 100ms frame
+ * does not divide the telephony packet cadence: the SIP leg packetizes at 20ms (PCMU/Opus), so each
+ * oversized frame straddles ~5 packets and the resampler/packetizer emits unevenly — audible as a
+ * fragmented, stuttering "this call is recorded". 10ms frames align cleanly (a whole number per
+ * 20ms packet) and match the granularity the rtc-node AudioSource jitter buffer actually wants, so
+ * the notice plays smoothly on both the browser and the PSTN leg. The two audio paths differ, so
+ * this must be verified on a real phone call, not only the simulator.
+ */
+const FRAME_MS = 10;
+
+/**
+ * Splits the notice PCM into fixed-size frames (the last one short). Pure + exported so the framing
+ * is unit-tested independently of the room/audio I/O — the thing that was actually wrong.
+ */
+export function* pcmFrames(pcm: Int16Array, samplesPerFrame: number): Generator<Int16Array> {
+  if (samplesPerFrame <= 0) throw new Error('samplesPerFrame must be positive');
+  for (let off = 0; off < pcm.length; off += samplesPerFrame) {
+    yield pcm.subarray(off, Math.min(off + samplesPerFrame, pcm.length));
+  }
+}
 
 /**
  * How long to wait for the caller to actually SUBSCRIBE to the notice track before playing.
@@ -139,8 +160,7 @@ export async function playRecordingNotice(
 
     const startedAt = new Date().toISOString();
     const samplesPerFrame = Math.floor((sampleRate * FRAME_MS) / 1000);
-    for (let off = 0; off < pcm.length; off += samplesPerFrame) {
-      const chunk = pcm.subarray(off, Math.min(off + samplesPerFrame, pcm.length));
+    for (const chunk of pcmFrames(pcm, samplesPerFrame)) {
       await source.captureFrame(new AudioFrame(chunk, sampleRate, 1, chunk.length));
     }
     await source.waitForPlayout();
