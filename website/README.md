@@ -64,15 +64,20 @@ netlify deploy --dir=website --prod     # publish
 
 ---
 
-## The language split, and how to reverse it
+## The language split
 
-English is at `/`, Hebrew at `/he`, per your decision. Both pages are complete and
-independent; `hreflang` tags on both point at each other, with `x-default` → `/`.
+**Decision (Koren, 2026-07-29): English is the primary language, Hebrew is the secondary
+option.** English at `/`, Hebrew at `/he`. Both pages are complete and independent — neither
+is a translation layer over the other — and `hreflang` tags on both point at each other, with
+`x-default` → `/`.
 
-**Worth knowing:** the previous site was Hebrew-only at `/`, and the brand brief
-(`brand_assets/keren-brand-brief-v5.md` §4.4) states that marketing copy stays Hebrew-primary
-because the target market is Israeli SMBs. Existing Hebrew organic traffic will now land on an
-English page. If rankings or conversion dip, flipping is a five-minute job:
+Note that this supersedes `brand_assets/keren-brand-brief-v5.md` §4.4, which still says
+marketing copy stays Hebrew-primary. The brief is DASHBOARD-owned territory so it is not
+edited here; it needs that one line reconciled to match.
+
+The previous site was Hebrew-only at `/`, so existing Hebrew organic traffic now lands on the
+English page. Watch Search Console for a couple of weeks after the cutover. Reversing the
+primary language, if it ever comes up, is a five-minute job:
 
 1. Swap the two files: `index.html` ↔ `he/index.html` (and the same for `thanks/`).
 2. In each file, update `<html lang dir>`, `<link rel="canonical">`, and the `hreflang` block.
