@@ -8,8 +8,8 @@ Built page by page with Koren — each approved before the next starts. Governed
 | Page | File | State | Open questions |
 |---|---|---|---|
 | Overview | `overview.html` | **approved** (2026-07-29, "looks good enough for now") | chart-vs-heatmap (built the D2 bar chart); Overview quality metric has no data source (frontend spec §7.1) → 6th KPI is a designed empty state |
-| Calls (+ detail drawer) | `calls.html` | outline proposed — awaiting ok | Retell refs in `dashboard/dist/refereneces/Retell AI screens/` |
-| Leads | `leads.html` | pending | status-colour mapping (§1.4.1) |
+| Calls (+ detail drawer) | `calls.html` | **approved** (2026-07-29) | modal drawer dims list in a real browser (Playwright doesn't composite the fixed dim) |
+| Leads | `leads.html` | built — awaiting review | lead detail is a **pop-out drawer** (Koren's call, 2026-07-29) folding conversations+messages+meetings into one timeline; status-colour mapping (§1.4.1) + 8-status→4 mapping still undecided (used PROPOSED chips) |
 | The agent | `agent.html` | pending | — |
 | Test Keren (`/simulator`, dark default) | `simulator.html` | pending | emotion tags — LiveKit/Cartesia pipeline unverified (§4.7); render without |
 | Meetings | `meetings.html` | pending | — |
