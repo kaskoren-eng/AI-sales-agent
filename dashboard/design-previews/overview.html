@@ -96,6 +96,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
+  padding-block-start: 46px; /* room for the fixed preview bar */
 }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 
@@ -113,7 +114,7 @@ body {
 
 /* ---- Top bar (global shell) ---- */
 .topbar {
-  position: sticky; top: 0; z-index: 20;
+  position: sticky; top: 46px; z-index: 20;
   display: flex; align-items: center; gap: 20px;
   block-size: 60px;
   padding-inline: 24px;
@@ -268,24 +269,52 @@ body {
 .p-foot { margin-block-start: 14px; }
 .linkbtn { background: transparent; border: 0; cursor: pointer; font-family: var(--font-body); font-size: 13px; font-weight: 600; color: var(--accent-fg); padding: 0; }
 
-/* ---- Preview-control strip (a tool, not part of the design) ---- */
+/* ---- Preview-control bar: a TOOL, not part of the design. Pinned across the top,
+       inverted colours so it reads as chrome, never as a dashboard surface. ---- */
 .preview-controls {
-  position: fixed; inset-block-end: 16px; inset-inline-end: 16px; z-index: 50;
-  display: flex; gap: 8px; padding: 7px;
-  background: var(--surface-overlay); border: 1px solid var(--border-strong);
-  border-radius: var(--r-full); box-shadow: var(--shadow-overlay);
+  position: fixed; inset-block-start: 0; inset-inline: 0; z-index: 100;
+  block-size: 46px; display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding-inline: 18px;
+  background: var(--text-primary); color: var(--surface-page);
+  border-block-end: 1px solid var(--border-strong);
 }
-.seg-ctl { display: inline-flex; background: var(--surface-sunken); border-radius: var(--r-full); padding: 2px; }
+.preview-controls .pc-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; opacity: .65; }
+.pc-groups { display: flex; align-items: center; gap: 20px; }
+.pc-group { display: flex; align-items: center; gap: 9px; }
+.pc-cap { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; opacity: .55; }
+.seg-ctl { display: inline-flex; gap: 5px; }
 .seg-ctl button {
-  font-family: var(--font-mono); font-size: 11px; letter-spacing: .04em;
-  padding: 5px 11px; border: 0; border-radius: var(--r-full); cursor: pointer;
-  background: transparent; color: var(--text-secondary);
+  font-family: var(--font-body); font-size: 12px; font-weight: 600;
+  padding: 5px 13px; border: 1px solid currentColor; border-radius: var(--r-full);
+  cursor: pointer; background: transparent; color: inherit; opacity: .55;
+  transition: opacity var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
-.seg-ctl button[aria-pressed="true"] { background: var(--accent); color: var(--text-on-accent); }
-.preview-controls .cap { font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-tertiary); align-self: center; padding-inline: 4px; }
+.seg-ctl button:hover { opacity: .85; }
+.seg-ctl button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); opacity: 1; }
 </style>
 </head>
 <body>
+
+<!-- ================= PREVIEW CONTROL BAR (tool, not design) ================= -->
+<div class="preview-controls" role="group" aria-label="Preview controls">
+  <span class="pc-label">Preview · not part of the design</span>
+  <div class="pc-groups">
+    <div class="pc-group">
+      <span class="pc-cap">Theme</span>
+      <div class="seg-ctl" id="theme-ctl">
+        <button data-theme-val="light" aria-pressed="true">Light</button>
+        <button data-theme-val="dark"  aria-pressed="false">Dark</button>
+      </div>
+    </div>
+    <div class="pc-group">
+      <span class="pc-cap">Language</span>
+      <div class="seg-ctl" id="lang-ctl">
+        <button data-lang-val="en" aria-pressed="true">EN</button>
+        <button data-lang-val="he" aria-pressed="false">עברית</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ================= TOP BAR (shell) ================= -->
 <header class="topbar">
@@ -451,19 +480,6 @@ body {
 
   </div>
 </main>
-
-<!-- ================= PREVIEW CONTROLS (tool, not design) ================= -->
-<div class="preview-controls" role="group" aria-label="Preview controls">
-  <span class="cap">preview</span>
-  <div class="seg-ctl" id="theme-ctl">
-    <button data-theme-val="light" aria-pressed="true">LIGHT</button>
-    <button data-theme-val="dark"  aria-pressed="false">DARK</button>
-  </div>
-  <div class="seg-ctl" id="lang-ctl">
-    <button data-lang-val="en" aria-pressed="true">EN</button>
-    <button data-lang-val="he" aria-pressed="false">עב</button>
-  </div>
-</div>
 
 <script>
 /* ---- strings: English is the source; Hebrew is a full, native translation ---- */
