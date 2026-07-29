@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { Database } from '../../../db/client.js';
 import { conversations, leads } from '../../../db/schema/index.js';
+import { upsertLead } from './tools/lead-store.js';
 
 /**
  * Task 0 — make LiveKit calls VISIBLE in the dashboard.
@@ -64,4 +65,31 @@ export async function createVoiceConversation(
     })
     .returning({ id: conversations.id });
   return row!.id;
+}
+
+/**
+ * Agent-side Task 0, for calls with NO dispatcher-created conversation row: inbound SIP phone calls
+ * (which have no dialer/web-call route to make the row), and — as a fallback — any outbound/web-call
+ * where the dispatcher insert failed. Resolves the caller's lead (given id → phone match → fresh
+ * insert, via upsertLead) and opens the voice conversation so the call shows up in the dashboard
+ * list exactly like a simulator or outbound call.
+ *
+ * Returns the resolved ids, or null when no lead could be resolved (then no row is made and the call
+ * simply isn't listed — never a broken call). The phone-based upsert means this and a later
+ * book_meeting/capture converge on the SAME lead even if they race.
+ */
+export async function ensureAgentSideConversation(
+  db: Database,
+  params: { tenantId: string; leadId: string | null; callerPhone: string | null; roomName: string },
+): Promise<{ leadId: string; conversationId: string } | null> {
+  const leadId =
+    params.leadId ??
+    (await upsertLead(db, params.tenantId, { leadId: null, callerPhone: params.callerPhone }, {}));
+  if (!leadId) return null;
+  const conversationId = await createVoiceConversation(db, {
+    tenantId: params.tenantId,
+    leadId,
+    roomName: params.roomName,
+  });
+  return { leadId, conversationId };
 }

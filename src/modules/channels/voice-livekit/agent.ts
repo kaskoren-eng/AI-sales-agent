@@ -29,6 +29,7 @@ import { DeepdubTTS } from './tts/deepdub.tts.js';
 import { buildAgentTools } from './tools/index.js';
 import { buildToolRuntime, type ToolRuntimeContext } from './tools/tool-context.js';
 import { enqueueLiveKitCallAnalysis } from '../../../queues/call-analysis.queue.js';
+import { ensureAgentSideConversation } from './call-record.js';
 
 /** Where every call's report lands. Repo-root relative, gitignored — these contain caller PII. */
 const CALL_REPORTS_DIR = 'call-reports';
@@ -281,6 +282,32 @@ export default defineAgent({
         ? `tools_enabled ${JSON.stringify({ tenantId: runtime.tenantId, leadId: runtime.leadId })}`
         : `tools_disabled reason=${disabledReason}`,
     );
+
+    // Task 0 for calls the dispatcher didn't create a row for — inbound SIP phone calls (no dialer /
+    // web-call route), plus a fallback if an outbound/web-call insert failed. The agent opens the
+    // conversation itself so phone calls appear in the dashboard list, not only simulator/outbound.
+    // Fire-and-forget: never delay the greeting; a failed insert just leaves the call unlisted. The
+    // phone-based lead upsert converges with any later book_meeting/capture on the same lead, so the
+    // race with an early tool call is harmless. conversationId is only read at shutdown, by which
+    // time this has long since resolved.
+    if (runtime && !runtime.conversationId) {
+      void ensureAgentSideConversation(runtime.db, {
+        tenantId: runtime.tenantId,
+        leadId: runtime.leadId,
+        callerPhone: runtime.callerPhone,
+        roomName: runtime.callId,
+      })
+        .then((rec) => {
+          if (rec) {
+            runtime.leadId = rec.leadId;
+            runtime.conversationId = rec.conversationId;
+            console.log('agent_conversation_created', JSON.stringify({ conversationId: rec.conversationId }));
+          }
+        })
+        .catch((err) => {
+          console.error('agent_conversation_create_failed', err instanceof Error ? err.message : String(err));
+        });
+    }
 
     // Per-turn latency baseline. LiveKit already measures each stage; we just surface it.
     // Wall-clock timestamps are useless here — the gap between turns is the human thinking,
