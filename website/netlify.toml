@@ -6,13 +6,11 @@
   publish = "."
   command = ""
 
-# Hebrew lives at /he. Netlify serves he/index.html there automatically;
-# this only normalises the trailing-slash form so both URLs resolve.
-[[redirects]]
-  from = "/he/"
-  to = "/he"
-  status = 301
-  force = false
+# Hebrew lives at /he/. Netlify serves he/index.html there and 301s the
+# slashless /he to it, so the canonical form is the trailing-slash one —
+# which is what canonical, hreflang and sitemap.xml all point at. No
+# redirect rule here: adding one that points the other way would fight
+# Netlify's own behaviour.
 
 [[headers]]
   for = "/*"
