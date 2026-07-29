@@ -177,6 +177,20 @@ export class MondayService {
     );
   }
 
+  /**
+   * Post a note onto an item's activity feed (Monday's `create_update`). Used to drop the call
+   * summary onto the lead's card without touching any structured column. Inherits the circuit
+   * breaker via gql().
+   */
+  async addUpdate(itemId: string, body: string): Promise<void> {
+    await this.gql(
+      `mutation($itemId: ID!, $body: String!) {
+        create_update(item_id: $itemId, body: $body) { id }
+      }`,
+      { itemId, body },
+    );
+  }
+
   /** Build Monday column values object from a lead record */
   buildColumnValues(lead: {
     email?: string | null;

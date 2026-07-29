@@ -51,7 +51,8 @@ export interface CrmSyncInput {
 export interface CrmChannelResult {
   attempted: boolean;
   ok: boolean;
-  action?: 'updated' | 'created' | 'skipped';
+  statusPushed?: boolean;
+  summaryPushed?: boolean;
   error?: string;
 }
 
@@ -208,57 +209,62 @@ export async function syncCallToCrm(deps: CrmSyncDeps, input: CrmSyncInput): Pro
       return { skipped: 'no_lead' };
     }
 
+    const result: CrmSyncResult = { localStatusUpdated: false };
+
     // 4. B1 — outcome → canonical status. `null` means "no status change for this outcome".
+    //    Update OUR lead first, respecting the shared transition guard, and decide what status (if
+    //    any) to reflect on the CRM board. A blocked transition (e.g. opted_out → qualified) is
+    //    never pushed; a lead already at the target (book_meeting set it live) is pushed but not
+    //    re-written locally.
     const target = resolveLeadStatusForOutcome(input.endReason, settings);
-    if (!target) {
-      log.info({ event: 'crm_sync_no_status', tenantId, leadId: lead.id, endReason: input.endReason });
-      return { skipped: 'no_status_change' };
+    let statusToPush: string | null = null;
+    let effectiveStatus = lead.status;
+    if (target) {
+      result.status = target;
+      if (canTransition(lead.status, target)) {
+        const meta = (lead.metadata as Record<string, any>) ?? {};
+        const nextMeta: Record<string, any> = { ...meta, lastCallOutcome: input.endReason };
+        if (target === 'disqualified') nextMeta.disqualifyReason = input.endReason;
+        await deps.db
+          .update(leads)
+          .set({ status: target, metadata: nextMeta, updatedAt: new Date() })
+          .where(and(eq(leads.tenantId, tenantId), eq(leads.id, lead.id)));
+        effectiveStatus = target;
+        result.localStatusUpdated = true;
+        statusToPush = target;
+      } else if (lead.status === target) {
+        statusToPush = target;
+      } else {
+        log.warn({ event: 'crm_sync_transition_blocked', tenantId, leadId: lead.id, from: lead.status, to: target });
+      }
     }
 
-    const result: CrmSyncResult = { status: target, localStatusUpdated: false };
+    // 5. B2 — the GPT call summary as a CRM note/field (opt-out via settings.pushSummary).
+    const summaryNote =
+      settings.pushSummary && input.summary ? buildSummaryNote(input, lead, deps.dashboardBaseUrl) : null;
 
-    // 4a. Update OUR lead first, respecting the shared transition guard. If it's already at the
-    // target (e.g. book_meeting set 'qualified' live), that's not a transition — skip the local
-    // write but still push to the CRM so the external board reflects the outcome.
-    let effectiveStatus = lead.status;
-    if (canTransition(lead.status, target)) {
-      const meta = (lead.metadata as Record<string, any>) ?? {};
-      const nextMeta: Record<string, any> = { ...meta, lastCallOutcome: input.endReason };
-      if (target === 'disqualified') nextMeta.disqualifyReason = input.endReason;
-      await deps.db
-        .update(leads)
-        .set({ status: target, metadata: nextMeta, updatedAt: new Date() })
-        .where(and(eq(leads.tenantId, tenantId), eq(leads.id, lead.id)));
-      effectiveStatus = target;
-      result.localStatusUpdated = true;
-    } else if (lead.status !== target) {
-      // A blocked transition (e.g. opted_out → qualified) — never push a status the guard rejects.
-      log.warn({
-        event: 'crm_sync_transition_blocked',
-        tenantId,
-        leadId: lead.id,
-        from: lead.status,
-        to: target,
-      });
+    if (!statusToPush && !summaryNote) {
+      log.info({ event: 'crm_sync_no_op', tenantId, leadId: lead.id, endReason: input.endReason });
       return { ...result, skipped: 'no_status_change' };
     }
 
+    // 6. Push status + summary to each connected CRM in ONE pass (resolve the item/record once),
+    //    isolated — one CRM's failure never blocks the other.
     const leadForPush: LeadRow = { ...lead, status: effectiveStatus };
-
-    // 4b. Push the status to each connected CRM, isolated — one CRM's failure never blocks the other.
     if (monday) {
-      result.monday = await pushMondayStatus(deps, monday, settings, tenantId, leadForPush, target);
+      result.monday = await syncMonday(deps, monday, settings, tenantId, leadForPush, statusToPush, summaryNote);
     }
     if (airtable) {
-      result.airtable = await pushAirtableStatus(deps, airtable, settings, tenantId, leadForPush, target);
+      result.airtable = await syncAirtable(deps, airtable, settings, tenantId, leadForPush, statusToPush, summaryNote);
     }
 
     log.info({
       event: 'crm_sync_done',
       tenantId,
       leadId: lead.id,
-      status: target,
+      status: result.status,
       localStatusUpdated: result.localStatusUpdated,
+      summary: Boolean(summaryNote),
       monday: result.monday?.ok,
       airtable: result.airtable?.ok,
     });
@@ -273,49 +279,93 @@ export async function syncCallToCrm(deps: CrmSyncDeps, input: CrmSyncInput): Pro
   }
 }
 
-async function pushMondayStatus(
+/**
+ * The call summary as a plain-text CRM note: the GPT recap, the structured facts Keren captured
+ * (business/pain/budget/timeline/qualification live in lead.metadata.qualification), the outcome,
+ * and a back-link to the call in our dashboard (omitted if no dashboard URL is configured).
+ */
+function buildSummaryNote(input: CrmSyncInput, lead: LeadRow, dashboardBaseUrl?: string): string {
+  const meta = (lead.metadata as Record<string, any>) ?? {};
+  const q = (meta.qualification as Record<string, any>) ?? {};
+  const lines: string[] = ['📞 סיכום שיחה — קרן'];
+  if (input.summary) lines.push('', input.summary);
+
+  const facts: string[] = [];
+  if (q.business_type) facts.push(`עסק: ${q.business_type}`);
+  if (q.pain_point) facts.push(`כאב: ${q.pain_point}`);
+  if (q.budget) facts.push(`תקציב: ${q.budget}`);
+  if (q.timeline) facts.push(`לו"ז: ${q.timeline}`);
+  if (q.qualification) facts.push(`סיווג: ${q.qualification}`);
+  if (input.endReason) facts.push(`תוצאה: ${input.endReason}`);
+  if (facts.length) lines.push('', ...facts);
+
+  if (dashboardBaseUrl && input.conversationId) {
+    lines.push('', `צפייה בשיחה: ${dashboardBaseUrl.replace(/\/+$/, '')}/calls/${input.conversationId}`);
+  }
+  return lines.join('\n');
+}
+
+/** Push status (mapped label) and/or the summary note to Monday, resolving the item once. */
+async function syncMonday(
   deps: CrmSyncDeps,
   monday: { svc: MondayService; boardId: string; statusCol?: string },
   settings: CrmSyncSettings,
   tenantId: string,
   lead: LeadRow,
-  canonicalStatus: string,
+  statusToPush: string | null,
+  summaryNote: string | null,
 ): Promise<CrmChannelResult> {
-  if (!monday.statusCol) {
-    // No status column mapped — nothing to write for B1 (email/phone/score still sync on push).
-    return { attempted: true, ok: true, action: 'skipped' };
-  }
   try {
     const itemId = await resolveMondayItemId(deps, monday, tenantId, lead);
-    const label = settings.monday.statusLabels[canonicalStatus] ?? canonicalStatus;
-    const cols = monday.svc.buildColumnValues(lead);
-    cols[monday.statusCol] = label; // the tenant's own label wins over our canonical string
-    await monday.svc.updateItem(monday.boardId, itemId, cols);
-    return { attempted: true, ok: true, action: 'updated' };
+    let statusPushed = false;
+    let summaryPushed = false;
+
+    if (statusToPush && monday.statusCol) {
+      const label = settings.monday.statusLabels[statusToPush] ?? statusToPush;
+      const cols = monday.svc.buildColumnValues(lead);
+      cols[monday.statusCol] = label; // the tenant's own label wins over our canonical string
+      await monday.svc.updateItem(monday.boardId, itemId, cols);
+      statusPushed = true;
+    }
+    if (summaryNote) {
+      await monday.svc.addUpdate(itemId, summaryNote);
+      summaryPushed = true;
+    }
+    return { attempted: true, ok: true, statusPushed, summaryPushed };
   } catch (err) {
     deps.logger?.error?.({ event: 'crm_sync_monday_failed', tenantId, error: String(err) });
     return { attempted: true, ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
-async function pushAirtableStatus(
+/** Push status (mapped value) and/or the summary field to Airtable in ONE PATCH, record resolved once. */
+async function syncAirtable(
   deps: CrmSyncDeps,
   svc: AirtableService,
   settings: CrmSyncSettings,
   tenantId: string,
   lead: LeadRow,
-  canonicalStatus: string,
+  statusToPush: string | null,
+  summaryNote: string | null,
 ): Promise<CrmChannelResult> {
-  const field = settings.airtable.statusFieldName;
-  if (!field) {
-    // Tenant hasn't told us which Airtable field holds status — can't write it safely.
-    return { attempted: true, ok: true, action: 'skipped' };
+  const { statusFieldName, summaryFieldName, statusValues } = settings.airtable;
+  const fields: Record<string, unknown> = {};
+  if (statusToPush && statusFieldName) fields[statusFieldName] = statusValues[statusToPush] ?? statusToPush;
+  if (summaryNote && summaryFieldName) fields[summaryFieldName] = summaryNote;
+
+  if (Object.keys(fields).length === 0) {
+    // Nothing the tenant has told us where to write (no status field / no summary field mapped).
+    return { attempted: true, ok: true, statusPushed: false, summaryPushed: false };
   }
   try {
     const recordId = await resolveAirtableRecordId(deps, svc, tenantId, lead);
-    const value = settings.airtable.statusValues[canonicalStatus] ?? canonicalStatus;
-    await svc.updateRecord(recordId, { [field]: value });
-    return { attempted: true, ok: true, action: 'updated' };
+    await svc.updateRecord(recordId, fields);
+    return {
+      attempted: true,
+      ok: true,
+      statusPushed: Boolean(statusToPush && statusFieldName),
+      summaryPushed: Boolean(summaryNote && summaryFieldName),
+    };
   } catch (err) {
     deps.logger?.error?.({ event: 'crm_sync_airtable_failed', tenantId, error: String(err) });
     return { attempted: true, ok: false, error: err instanceof Error ? err.message : String(err) };

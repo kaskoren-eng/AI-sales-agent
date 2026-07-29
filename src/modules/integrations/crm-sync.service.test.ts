@@ -265,3 +265,99 @@ describe('syncCallToCrm — failure isolation', () => {
     expect(res).toEqual({});
   });
 });
+
+describe('syncCallToCrm — B2 summary push', () => {
+  const depsD = (db: Database, dash?: string) => ({ db, encryptionKey: 'k', dashboardBaseUrl: dash, logger: silent });
+  const withSummary = {
+    ...BASE_INPUT,
+    summary: 'הלקוח מנהל מכון כושר, מעוניין באוטומציה של לידים. נקבעה פגישה.',
+  };
+  const qualifiedLead = (over: any = {}) =>
+    lead({ metadata: { mondayItemId: 'item1', qualification: { business_type: 'מכון כושר', budget: '5000₪', qualification: 'hot' } }, ...over });
+
+  it('posts the summary as a Monday update, with facts and the dashboard link', async () => {
+    const log = stubFetch();
+    const { db } = fakeDb({
+      tenants: [{ settings: mondaySettings() }],
+      conversations: [{ leadId: 'lead1' }],
+      leads: [qualifiedLead()],
+    });
+
+    const res = await syncCallToCrm(depsD(db, 'https://dash.clickscales.com/'), withSummary);
+
+    expect(res.monday?.summaryPushed).toBe(true);
+    const update = log.monday.find((m) => m.query.includes('create_update'))!;
+    expect(update.variables.itemId).toBe('item1');
+    expect(update.variables.body).toContain('הלקוח מנהל מכון כושר');
+    expect(update.variables.body).toContain('עסק: מכון כושר');
+    expect(update.variables.body).toContain('סיווג: hot');
+    // trailing slash normalized, no double slash
+    expect(update.variables.body).toContain('צפייה בשיחה: https://dash.clickscales.com/calls/c1');
+    // status still pushed in the same sync
+    expect(res.monday?.statusPushed).toBe(true);
+  });
+
+  it('writes status + summary to Airtable in a single PATCH', async () => {
+    const log = stubFetch();
+    const { db } = fakeDb({
+      tenants: [{ settings: airtableSettings({ airtable: { statusFieldName: 'Stage', summaryFieldName: 'Call Notes', statusValues: { qualified: 'Won' } } }) }],
+      conversations: [{ leadId: 'lead1' }],
+      leads: [lead({ metadata: { airtableRecordId: 'rec1', qualification: { business_type: 'מכון כושר' } } })],
+    });
+
+    const res = await syncCallToCrm(depsD(db), withSummary);
+
+    const patches = log.airtable.filter((a) => a.method === 'PATCH');
+    expect(patches).toHaveLength(1); // one round-trip, both fields
+    expect(patches[0].body.fields.Stage).toBe('Won');
+    expect(patches[0].body.fields['Call Notes']).toContain('הלקוח מנהל מכון כושר');
+    expect(res.airtable?.statusPushed).toBe(true);
+    expect(res.airtable?.summaryPushed).toBe(true);
+  });
+
+  it('does not push a summary when pushSummary is disabled', async () => {
+    const log = stubFetch();
+    const { db } = fakeDb({
+      tenants: [{ settings: { ...mondaySettings(), crm_sync: { pushSummary: false, monday: { statusLabels: { qualified: 'Hot Lead' } } } } }],
+      conversations: [{ leadId: 'lead1' }],
+      leads: [qualifiedLead()],
+    });
+
+    const res = await syncCallToCrm(depsD(db, 'https://dash.co'), withSummary);
+
+    expect(res.monday?.summaryPushed).toBe(false);
+    expect(log.monday.some((m) => m.query.includes('create_update'))).toBe(false);
+    expect(res.monday?.statusPushed).toBe(true); // status still syncs
+  });
+
+  it('pushes the summary even when the outcome does not move the status', async () => {
+    const log = stubFetch();
+    const { db, updates } = fakeDb({
+      tenants: [{ settings: mondaySettings() }],
+      conversations: [{ leadId: 'lead1' }],
+      leads: [qualifiedLead()],
+    });
+
+    const res = await syncCallToCrm(depsD(db), { ...withSummary, endReason: 'other' });
+
+    expect(res.skipped).toBeUndefined(); // not a no-op — the note still has value
+    expect(updates.find((u) => u.table === leads)).toBeFalsy(); // no status change locally
+    expect(log.monday.some((m) => m.query.includes('create_update'))).toBe(true);
+    expect(res.monday?.statusPushed).toBe(false);
+    expect(res.monday?.summaryPushed).toBe(true);
+  });
+
+  it('omits the dashboard link when no dashboard URL is configured', async () => {
+    const log = stubFetch();
+    const { db } = fakeDb({
+      tenants: [{ settings: mondaySettings() }],
+      conversations: [{ leadId: 'lead1' }],
+      leads: [qualifiedLead()],
+    });
+
+    await syncCallToCrm(depsD(db /* no dashboard url */), withSummary);
+
+    const update = log.monday.find((m) => m.query.includes('create_update'))!;
+    expect(update.variables.body).not.toContain('צפייה בשיחה');
+  });
+});
