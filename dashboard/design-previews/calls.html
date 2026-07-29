@@ -1,0 +1,794 @@
+<!doctype html>
+<html lang="en" dir="ltr" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KEREN — Calls (v5 preview)</title>
+<meta name="theme-color" content="#EDF0F6">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Rubik:wght@500;600;700&family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* =========================================================================
+   v5 tokens — brand_assets/keren-brand-brief-v5.md §1.1 (light) + §1.2 (dark).
+   The ONLY place colour values live. Everything else references var(--token).
+   ========================================================================= */
+:root {
+  /* Surfaces */
+  --surface-page:      #EDF0F6;
+  --surface-card:      #FFFFFF;
+  --surface-sunken:    #E4E9F1;
+  --surface-overlay:   #FFFFFF;
+  /* Text */
+  --text-primary:      #0C1226;
+  --text-secondary:    #5B667E;
+  --text-tertiary:     #7A8598;
+  --text-on-accent:    #FFFFFF;
+  /* Lines */
+  --border-default:    #D9E0EA;
+  --border-strong:     #C3CDDB;
+  /* Accent */
+  --accent:            #2F35C7;
+  --accent-hover:      #252AB3;
+  --accent-tint:       #EAEAFB;
+  --accent-fg:         #2F35C7;   /* accent-as-text; separates from fill on dark (§1.2) */
+  /* Data — charts, dots, borders. NEVER a text colour on light (§1.4). */
+  --data-1:            #2F35C7;
+  --data-2:            #D9861B;
+  --data-2-glow:       #F2B24E;
+  --data-2-tint:       #FCF0DC;
+  /* Status — §1.4.1 PROPOSED, awaiting sign-off. 8-status→4 mapping undecided. */
+  --status-success:    #1B7F5A;
+  --status-warning:    #9A5D0F;   /* text-safe amber; --data-2 carries the dot */
+  --status-danger:     #C0392B;
+  --status-neutral:    #5B667E;
+  /* Scrim behind the detail drawer */
+  --scrim:             rgba(12,18,38,.42);
+  /* Radii */
+  --r-sm:  8px;  --r: 14px;  --r-lg: 22px;  --r-full: 999px;
+  --container-max: 1180px;
+  /* Elevation (§1.3) — borders + these two shadows only, never glow */
+  --shadow-card:    0 1px 2px rgba(12,18,38,.04), 0 8px 24px rgba(12,18,38,.06);
+  --shadow-overlay: 0 2px 4px rgba(12,18,38,.06), 0 24px 60px rgba(12,18,38,.16);
+  /* Type (§3) — Latin leads, Hebrew fallback in the same stack */
+  --font-display: "Bricolage Grotesque", "Rubik", system-ui, sans-serif;
+  --font-body:    "Instrument Sans", "Assistant", system-ui, sans-serif;
+  --font-mono:    "JetBrains Mono", "Assistant", ui-monospace, monospace;
+  /* Motion */
+  --dur-fast: 150ms; --dur-base: 220ms; --ease: cubic-bezier(.4,0,.2,1);
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --surface-page:      #0A0F20;
+  --surface-card:      #141B31;
+  --surface-sunken:    #070B17;
+  --surface-overlay:   #1A2240;
+  --text-primary:      #EDF0F6;
+  --text-secondary:    #A2A9BC;
+  --text-tertiary:     #767E93;
+  --text-on-accent:    #FFFFFF;
+  --border-default:    #232941;
+  --border-strong:     #333B57;
+  --accent:            #2F35C7;   /* as a FILL */
+  --accent-fg:         #8B90F0;   /* accent AS TEXT on dark — light value fails here */
+  --accent-hover:      #3A41D8;
+  --accent-tint:       #1B2145;
+  --data-1:            #6E74E8;
+  --data-2:            #F2B24E;
+  --data-2-glow:       #F8CC85;
+  --data-2-tint:       #2A2113;
+  --status-success:    #3FB88C;
+  --status-warning:    #E0A64E;
+  --status-danger:     #E86A5E;
+  --status-neutral:    #A2A9BC;
+  --scrim:             rgba(2,5,14,.62);
+  --shadow-card:    0 0 0 1px rgba(0,0,0,0), 0 8px 24px rgba(0,0,0,.24);
+  --shadow-overlay: 0 2px 4px rgba(0,0,0,.3), 0 24px 60px rgba(0,0,0,.5);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--surface-page);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
+  padding-block-start: 46px; /* room for the fixed preview bar */
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.eyebrow {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--text-tertiary);
+}
+:lang(he) .eyebrow { text-transform: none; letter-spacing: normal; }
+
+/* ---- Top bar (global shell) ---- */
+.topbar {
+  position: sticky; top: 46px; z-index: 20;
+  display: flex; align-items: center; gap: 20px;
+  block-size: 60px; padding-inline: 24px;
+  background: var(--surface-card); border-block-end: 1px solid var(--border-default);
+}
+.brand { display: flex; align-items: baseline; gap: 8px; }
+.brand .mark { font-family: var(--font-display); font-weight: 800; font-size: 20px; letter-spacing: .02em; color: var(--text-primary); }
+.brand .tag { font-size: 12px; color: var(--text-tertiary); }
+.presence {
+  display: inline-flex; align-items: center; gap: 9px; padding: 6px 12px 6px 10px;
+  background: var(--accent-tint); border: 1px solid var(--border-default);
+  border-radius: var(--r-full); font-size: 13px; color: var(--text-secondary);
+}
+.dot { inline-size: 8px; block-size: 8px; border-radius: 50%; flex-shrink: 0; }
+.presence .dot { background: var(--accent-fg); position: relative; }
+/* the ONE animated element on the screen */
+.presence:not(.idle) .dot::after {
+  content: ""; position: absolute; inset: -4px; border-radius: 50%;
+  border: 1px solid var(--accent-fg); opacity: .5; animation: pulse 1.6s var(--ease) infinite;
+}
+.presence strong { color: var(--text-primary); font-weight: 600; }
+@keyframes pulse { 0%{transform:scale(1);opacity:.5} 70%{transform:scale(2.1);opacity:0} 100%{opacity:0} }
+@media (prefers-reduced-motion: reduce) { .presence .dot::after { animation: none; display: none; } }
+
+.topbar .spacer { margin-inline-start: auto; }
+.top-actions { display: flex; align-items: center; gap: 8px; }
+.icon-btn {
+  inline-size: 36px; block-size: 36px; display: grid; place-items: center;
+  border: 1px solid var(--border-default); border-radius: 10px;
+  background: transparent; color: var(--text-secondary); cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.icon-btn:hover { background: var(--surface-sunken); color: var(--text-primary); }
+.avatar {
+  inline-size: 34px; block-size: 34px; border-radius: 50%;
+  background: var(--accent); color: var(--text-on-accent); display: grid; place-items: center;
+  font-family: var(--font-display); font-weight: 700; font-size: 13px; cursor: pointer;
+}
+
+/* ---- Layout ---- */
+.wrap { max-inline-size: var(--container-max); margin-inline: auto; padding: 28px 24px 96px; }
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-block-end: 20px; }
+.page-title { font-family: var(--font-display); font-weight: 700; font-size: 30px; letter-spacing: -.02em; }
+:lang(he) .page-title { letter-spacing: normal; }
+.freshness { display: inline-flex; align-items: center; gap: 7px; margin-block-start: 6px; font-size: 12px; color: var(--text-tertiary); }
+.freshness .fdot { inline-size: 6px; block-size: 6px; border-radius: 50%; background: var(--status-success); }
+.range { display: inline-flex; padding: 3px; background: var(--surface-sunken); border-radius: 10px; border: 1px solid var(--border-default); }
+.range button { font-family: var(--font-body); font-size: 13px; font-weight: 500; padding: 6px 12px; border: 0; border-radius: 7px; cursor: pointer; background: transparent; color: var(--text-secondary); }
+.range button[aria-pressed="true"] { background: var(--surface-card); color: var(--text-primary); box-shadow: var(--shadow-card); }
+
+/* ---- Filter bar ---- */
+.filters { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-block-end: 16px; }
+.search {
+  display: inline-flex; align-items: center; gap: 8px; flex: 1; min-inline-size: 220px;
+  padding: 8px 12px; background: var(--surface-card); border: 1px solid var(--border-default);
+  border-radius: 10px; color: var(--text-tertiary);
+}
+.search svg { inline-size: 16px; block-size: 16px; flex-shrink: 0; }
+.search input { border: 0; background: transparent; flex: 1; font-family: var(--font-body); font-size: 14px; color: var(--text-primary); outline: none; min-inline-size: 0; }
+.search input::placeholder { color: var(--text-tertiary); }
+.segset { display: inline-flex; gap: 4px; padding: 3px; background: var(--surface-sunken); border: 1px solid var(--border-default); border-radius: 10px; }
+.segset button { font-family: var(--font-body); font-size: 13px; font-weight: 500; padding: 6px 11px; border: 0; border-radius: 7px; cursor: pointer; background: transparent; color: var(--text-secondary); white-space: nowrap; }
+.segset button[aria-pressed="true"] { background: var(--surface-card); color: var(--text-primary); box-shadow: var(--shadow-card); }
+.filter-cap { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-tertiary); margin-inline-end: 2px; }
+:lang(he) .filter-cap { letter-spacing: normal; text-transform: none; }
+
+/* ---- Calls table ---- */
+.table-card { background: var(--surface-card); border: 1px solid var(--border-default); border-radius: var(--r); box-shadow: var(--shadow-card); overflow: hidden; }
+.calls { inline-size: 100%; border-collapse: collapse; }
+.calls thead th {
+  text-align: start; font-family: var(--font-mono); font-size: 10.5px; font-weight: 500;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--text-tertiary);
+  padding: 13px 16px; border-block-end: 1px solid var(--border-default); background: var(--surface-sunken); white-space: nowrap;
+}
+:lang(he) .calls thead th { letter-spacing: normal; text-transform: none; }
+.calls thead th.num, .calls tbody td.num { text-align: end; }
+.calls tbody tr { border-block-end: 1px solid var(--border-default); cursor: pointer; transition: background var(--dur-fast) var(--ease); }
+.calls tbody tr:last-child { border-block-end: 0; }
+.calls tbody tr:hover { background: var(--surface-sunken); }
+.calls tbody tr[aria-selected="true"] { background: var(--accent-tint); }
+.calls tbody td { padding: 13px 16px; font-size: 13.5px; vertical-align: middle; }
+.lead-cell { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
+.lead-name { font-weight: 600; color: var(--text-primary); }
+.lead-biz { font-size: 12px; color: var(--text-tertiary); }
+td.mono, .calls td .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.t-time { color: var(--text-secondary); }
+.dir { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12.5px; }
+.dir svg { inline-size: 14px; block-size: 14px; }
+.dir.in svg { color: var(--status-success); }
+.dir.out svg { color: var(--accent-fg); }
+
+/* status/outcome chips — §1.4.1 PROPOSED palette, sign-off pending */
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: var(--r-full); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.chip .cdot { inline-size: 6px; block-size: 6px; border-radius: 50%; background: currentColor; }
+.chip.won { color: var(--status-success); background: color-mix(in srgb, var(--status-success) 13%, transparent); }
+.chip.lost { color: var(--status-danger); background: color-mix(in srgb, var(--status-danger) 13%, transparent); }
+.chip.neutral { color: var(--status-neutral); background: color-mix(in srgb, var(--status-neutral) 13%, transparent); }
+.chip.analyzing { color: var(--text-tertiary); background: transparent; font-weight: 500; font-style: italic; }
+.chip.analyzing .cdot { background: var(--data-2); }
+
+/* qualification score */
+.score { display: inline-flex; align-items: center; gap: 7px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 13px; color: var(--text-primary); }
+.score .sdot { inline-size: 7px; block-size: 7px; border-radius: 50%; }
+.score.hi .sdot { background: var(--status-success); }
+.score.mid .sdot { background: var(--data-2); }
+.score.lo .sdot { background: var(--status-danger); }
+.score.none { color: var(--text-tertiary); }
+.end-reason { color: var(--text-secondary); font-size: 12.5px; }
+.engine { font-family: var(--font-mono); font-size: 10px; letter-spacing: .04em; padding: 2px 7px; border-radius: var(--r-full); border: 1px solid var(--border-default); color: var(--text-secondary); }
+.engine.lk { color: var(--accent-fg); border-color: color-mix(in srgb, var(--accent-fg) 40%, var(--border-default)); }
+
+/* pagination footer */
+.pager { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-block-start: 1px solid var(--border-default); background: var(--surface-card); }
+.pager .count { font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+.pager .pg { display: inline-flex; gap: 4px; }
+.pager .pg button { inline-size: 30px; block-size: 30px; display: grid; place-items: center; border: 1px solid var(--border-default); background: var(--surface-card); border-radius: 8px; cursor: pointer; color: var(--text-secondary); font-family: var(--font-mono); font-size: 12px; }
+.pager .pg button[aria-current="true"] { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
+
+/* ================= DETAIL DRAWER ================= */
+.scrim { position: fixed; inset-block: 46px 0; inset-inline: 0; z-index: 55; background: var(--scrim); opacity: 0; pointer-events: none; transition: opacity var(--dur-base) var(--ease); }
+.drawer {
+  position: fixed; inset-block: 46px 0; inset-inline-end: 0; z-index: 60;
+  inline-size: min(560px, 100%); background: var(--surface-overlay);
+  border-inline-start: 1px solid var(--border-default); box-shadow: var(--shadow-overlay);
+  overflow-y: auto; transform: translateX(102%); transition: transform var(--dur-base) var(--ease);
+}
+:root[dir="rtl"] .drawer { transform: translateX(-102%); }
+body.drawer-open .scrim { opacity: 1; pointer-events: auto; }
+body.drawer-open .drawer { transform: translateX(0); }
+@media (prefers-reduced-motion: reduce) { .drawer, .scrim { transition: none; } }
+.dwr-pad { padding: 20px 22px 40px; }
+.dwr-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.dwr-close { inline-size: 32px; block-size: 32px; display: grid; place-items: center; border: 1px solid var(--border-default); border-radius: 9px; background: transparent; color: var(--text-secondary); cursor: pointer; flex-shrink: 0; }
+.dwr-close:hover { background: var(--surface-sunken); color: var(--text-primary); }
+.dwr-lead { font-family: var(--font-display); font-weight: 700; font-size: 21px; letter-spacing: -.01em; }
+:lang(he) .dwr-lead { letter-spacing: normal; }
+.dwr-biz { font-size: 13px; color: var(--text-tertiary); margin-block-start: 2px; }
+.dwr-meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px 18px; margin-block: 18px; padding-block: 16px; border-block: 1px solid var(--border-default); }
+.mrow .m-k { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-tertiary); }
+:lang(he) .mrow .m-k { letter-spacing: normal; text-transform: none; }
+.mrow .m-v { font-size: 13.5px; color: var(--text-primary); margin-block-start: 3px; }
+.mrow .m-v.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+audio { inline-size: 100%; block-size: 40px; margin-block: 4px 20px; border-radius: 10px; }
+
+.dwr-sec-h { font-family: var(--font-display); font-weight: 600; font-size: 14px; margin-block: 20px 12px; }
+.analysis { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.an-item { display: flex; flex-direction: column; gap: 4px; }
+.an-k { font-size: 12px; color: var(--text-tertiary); }
+.an-v { font-size: 13.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.an-v .cdot { inline-size: 6px; block-size: 6px; border-radius: 50%; }
+.an-v.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 500; }
+.pos { color: var(--status-success); }
+.sales { display: flex; flex-direction: column; gap: 12px; margin-block-start: 4px; }
+.sale-block .sb-k { font-size: 12px; color: var(--text-tertiary); margin-block-end: 5px; }
+.sale-block .sb-v { font-size: 13.5px; color: var(--text-primary); }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag-pill { font-size: 12.5px; padding: 4px 10px; border-radius: var(--r-full); background: var(--surface-sunken); border: 1px solid var(--border-default); color: var(--text-secondary); }
+
+/* compliance strip */
+.compliance { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--border-default); border-radius: var(--r); background: var(--surface-card); }
+.cmp-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.cmp-row .cmp-ico { inline-size: 18px; block-size: 18px; color: var(--status-success); flex-shrink: 0; }
+.cmp-row .cmp-k { color: var(--text-secondary); }
+.cmp-row .cmp-v { margin-inline-start: auto; font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); }
+
+/* tabs */
+.tabs { display: flex; gap: 4px; border-block-end: 1px solid var(--border-default); margin-block: 22px 0; }
+.tabs button { font-family: var(--font-body); font-size: 13.5px; font-weight: 500; padding: 10px 12px; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; border-block-end: 2px solid transparent; margin-block-end: -1px; }
+.tabs button[aria-selected="true"] { color: var(--text-primary); border-block-end-color: var(--accent); font-weight: 600; }
+.tabpanel { padding-block-start: 16px; }
+.tabpanel[hidden] { display: none; }
+
+/* transcript */
+.turn { padding-block: 11px; border-block-end: 1px solid var(--border-default); }
+.turn:last-child { border-block-end: 0; }
+.t-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-block-end: 5px; }
+.t-role { font-size: 12px; font-weight: 600; }
+.t-role.agent { color: var(--accent-fg); }
+.t-role.user { color: var(--text-secondary); }
+.t-stamp { font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text-tertiary); flex-shrink: 0; }
+.t-text { font-size: 14px; line-height: 1.55; color: var(--text-primary); }
+
+/* data tab (extracted fields) */
+.kv { display: flex; flex-direction: column; }
+.kv-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-block: 11px; border-block-end: 1px solid var(--border-default); }
+.kv-row:last-child { border-block-end: 0; }
+.kv-k { font-family: var(--font-mono); font-size: 12.5px; color: var(--text-secondary); }
+.kv-v { font-size: 13.5px; font-weight: 600; color: var(--text-primary); text-align: end; }
+.kv-v.empty { color: var(--text-tertiary); font-weight: 400; font-style: italic; }
+.kv-v.bool-true { color: var(--status-success); }
+
+/* detail logs (tool-call timeline) */
+.log { display: flex; flex-direction: column; }
+.log-row { display: grid; grid-template-columns: auto 1fr auto auto; gap: 12px; align-items: center; padding-block: 11px; border-block-end: 1px solid var(--border-default); }
+.log-row:last-child { border-block-end: 0; }
+.log-t { font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+.log-name { font-family: var(--font-mono); font-size: 12.5px; color: var(--text-primary); }
+.log-dur { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-secondary); }
+.log-ok { inline-size: 16px; block-size: 16px; color: var(--status-success); }
+
+/* ---- Preview-control bar: a TOOL, not part of the design ---- */
+.preview-controls {
+  position: fixed; inset-block-start: 0; inset-inline: 0; z-index: 100;
+  block-size: 46px; display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding-inline: 18px; background: var(--text-primary); color: var(--surface-page);
+  border-block-end: 1px solid var(--border-strong);
+}
+.preview-controls .pc-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; opacity: .65; }
+.pc-groups { display: flex; align-items: center; gap: 20px; }
+.pc-group { display: flex; align-items: center; gap: 9px; }
+.pc-cap { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; opacity: .55; }
+.seg-ctl { display: inline-flex; gap: 5px; }
+.seg-ctl button {
+  font-family: var(--font-body); font-size: 12px; font-weight: 600; padding: 5px 13px;
+  border: 1px solid currentColor; border-radius: var(--r-full); cursor: pointer;
+  background: transparent; color: inherit; opacity: .55;
+  transition: opacity var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.seg-ctl button:hover { opacity: .85; }
+.seg-ctl button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ================= PREVIEW CONTROL BAR (tool, not design) ================= -->
+<div class="preview-controls" role="group" aria-label="Preview controls">
+  <span class="pc-label">Preview · not part of the design</span>
+  <div class="pc-groups">
+    <div class="pc-group">
+      <span class="pc-cap">Theme</span>
+      <div class="seg-ctl" id="theme-ctl">
+        <button data-theme-val="light" aria-pressed="true">Light</button>
+        <button data-theme-val="dark"  aria-pressed="false">Dark</button>
+      </div>
+    </div>
+    <div class="pc-group">
+      <span class="pc-cap">Language</span>
+      <div class="seg-ctl" id="lang-ctl">
+        <button data-lang-val="en" aria-pressed="true">EN</button>
+        <button data-lang-val="he" aria-pressed="false">עברית</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= TOP BAR (shell) ================= -->
+<header class="topbar">
+  <div class="brand">
+    <span class="mark">KEREN</span>
+    <span class="tag" data-i18n="brand.tag">by ClickScales</span>
+  </div>
+  <div class="presence" id="presence">
+    <span class="dot"></span>
+    <span><span data-i18n="presence.prefix">Keren is on a call with</span> <strong dir="auto">דני כהן</strong></span>
+  </div>
+  <span class="spacer"></span>
+  <div class="top-actions">
+    <button class="icon-btn" data-i18n-aria="a11y.notifications" aria-label="Notifications">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" width="17" height="17"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+    </button>
+    <div class="avatar" title="ClickScales" aria-hidden="true">CS</div>
+  </div>
+</header>
+
+<!-- ================= CONTENT ================= -->
+<main class="wrap">
+
+  <div class="page-head">
+    <div>
+      <h1 class="page-title" data-i18n="page.title">Calls</h1>
+      <div class="freshness"><span class="fdot"></span><span data-i18n="page.fresh">82 calls in the selected range</span></div>
+    </div>
+    <div class="range" role="group" data-i18n-aria="a11y.range" aria-label="Date range">
+      <button aria-pressed="false" data-i18n="range.today">Today</button>
+      <button aria-pressed="true"  data-i18n="range.7d">7 days</button>
+      <button aria-pressed="false" data-i18n="range.30d">30 days</button>
+    </div>
+  </div>
+
+  <!-- FILTER BAR -->
+  <div class="filters">
+    <label class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" data-i18n-ph="filter.search" placeholder="Search by lead or number">
+    </label>
+    <div class="segset" role="group" data-i18n-aria="filter.direction" aria-label="Direction">
+      <button aria-pressed="true"  data-i18n="filter.all">All</button>
+      <button aria-pressed="false" data-i18n="filter.inbound">Inbound</button>
+      <button aria-pressed="false" data-i18n="filter.outbound">Outbound</button>
+    </div>
+    <div class="segset" role="group" data-i18n-aria="filter.outcome" aria-label="Outcome">
+      <button aria-pressed="true"  data-i18n="filter.all">All</button>
+      <button aria-pressed="false" data-i18n="outcome.won">Won</button>
+      <button aria-pressed="false" data-i18n="outcome.lost">Lost</button>
+      <button aria-pressed="false" data-i18n="outcome.neutral">Neutral</button>
+    </div>
+  </div>
+
+  <!-- CALLS TABLE -->
+  <div class="table-card">
+    <table class="calls">
+      <thead>
+        <tr>
+          <th data-i18n="col.lead">Lead</th>
+          <th data-i18n="col.time">Time</th>
+          <th data-i18n="col.direction">Direction</th>
+          <th class="num" data-i18n="col.duration">Duration</th>
+          <th data-i18n="col.outcome">Outcome</th>
+          <th data-i18n="col.qualified">Qualified</th>
+          <th data-i18n="col.end">End reason</th>
+        </tr>
+      </thead>
+      <tbody id="calls-body">
+        <!-- 1 -->
+        <tr tabindex="0" aria-selected="true" data-open="1">
+          <td><div class="lead-cell"><span class="lead-name" dir="auto">דני כהן</span><span class="lead-biz" dir="auto">שיפוצים כהן</span></div></td>
+          <td class="mono t-time">Jul 15 · 00:39</td>
+          <td><span class="dir out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 17 17 7M9 7h8v8"/></svg><span data-i18n="filter.outbound">Outbound</span></span></td>
+          <td class="num mono">4:46</td>
+          <td><span class="chip won"><span class="cdot"></span><span data-i18n="outcome.won">Won</span></span></td>
+          <td><span class="score hi"><span class="sdot"></span>82</span></td>
+          <td class="end-reason" data-i18n="end.agent">Agent hung up</td>
+        </tr>
+        <!-- 2 -->
+        <tr tabindex="0" data-open="2">
+          <td><div class="lead-cell"><span class="lead-name" dir="auto">מיכל לוי</span><span class="lead-biz" dir="auto">מספרת מיכל</span></div></td>
+          <td class="mono t-time">Jul 14 · 16:22</td>
+          <td><span class="dir in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 7 7 17M15 17H7V9"/></svg><span data-i18n="filter.inbound">Inbound</span></span></td>
+          <td class="num mono">3:12</td>
+          <td><span class="chip won"><span class="cdot"></span><span data-i18n="outcome.won">Won</span></span></td>
+          <td><span class="score hi"><span class="sdot"></span>88</span></td>
+          <td class="end-reason" data-i18n="end.user">Lead hung up</td>
+        </tr>
+        <!-- 3 -->
+        <tr tabindex="0" data-open="3">
+          <td><div class="lead-cell"><span class="lead-name" dir="auto">יוסי אברהם</span><span class="lead-biz" dir="auto">מוסך אברהם</span></div></td>
+          <td class="mono t-time">Jul 14 · 11:05</td>
+          <td><span class="dir out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 17 17 7M9 7h8v8"/></svg><span data-i18n="filter.outbound">Outbound</span></span></td>
+          <td class="num mono">5:08</td>
+          <td><span class="chip neutral"><span class="cdot"></span><span data-i18n="outcome.neutral">Neutral</span></span></td>
+          <td><span class="score mid"><span class="sdot"></span>64</span></td>
+          <td class="end-reason" data-i18n="end.agent">Agent hung up</td>
+        </tr>
+        <!-- 4 -->
+        <tr tabindex="0" data-open="4">
+          <td><div class="lead-cell"><span class="lead-name" dir="auto">נועה פרידמן</span><span class="lead-biz" dir="auto">קליניקת נועה</span></div></td>
+          <td class="mono t-time">Jul 13 · 09:48</td>
+          <td><span class="dir out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 17 17 7M9 7h8v8"/></svg><span data-i18n="filter.outbound">Outbound</span></span></td>
+          <td class="num mono">0:47</td>
+          <td><span class="chip lost"><span class="cdot"></span><span data-i18n="outcome.lost">Lost</span></span></td>
+          <td><span class="score lo"><span class="sdot"></span>31</span></td>
+          <td class="end-reason" data-i18n="end.user">Lead hung up</td>
+        </tr>
+        <!-- 5 -->
+        <tr tabindex="0" data-open="5">
+          <td><div class="lead-cell"><span class="lead-name" dir="auto">אבי מזרחי</span><span class="lead-biz" dir="auto">מזרחי הובלות</span></div></td>
+          <td class="mono t-time">Jul 13 · 08:31</td>
+          <td><span class="dir in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 7 7 17M15 17H7V9"/></svg><span data-i18n="filter.inbound">Inbound</span></span></td>
+          <td class="num mono">1:03</td>
+          <td><span class="chip won"><span class="cdot"></span><span data-i18n="outcome.won">Won</span></span></td>
+          <td><span class="score hi"><span class="sdot"></span>79</span></td>
+          <td class="end-reason" data-i18n="end.user">Lead hung up</td>
+        </tr>
+        <!-- 6 — web call, no lead, still analyzing -->
+        <tr tabindex="0" data-open="6">
+          <td><div class="lead-cell"><span class="lead-name" data-i18n="lead.web">Web call</span><span class="lead-biz mono">web-call-7fd8</span></div></td>
+          <td class="mono t-time">Jul 12 · 20:14</td>
+          <td><span class="dir in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 7 7 17M15 17H7V9"/></svg><span data-i18n="dir.web">Web</span></span></td>
+          <td class="num mono">2:14</td>
+          <td><span class="chip analyzing"><span class="cdot"></span><span data-i18n="outcome.analyzing">Analyzing</span></span></td>
+          <td><span class="score none">—</span></td>
+          <td class="end-reason" data-i18n="end.user">Lead hung up</td>
+        </tr>
+        <!-- 7 -->
+        <tr tabindex="0" data-open="7">
+          <td><div class="lead-cell"><span class="lead-name" dir="auto">רות שפירא</span><span class="lead-biz" dir="auto">סטודיו רות</span></div></td>
+          <td class="mono t-time">Jul 12 · 14:57</td>
+          <td><span class="dir out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 17 17 7M9 7h8v8"/></svg><span data-i18n="filter.outbound">Outbound</span></span></td>
+          <td class="num mono">0:34</td>
+          <td><span class="chip lost"><span class="cdot"></span><span data-i18n="outcome.lost">Lost</span></span></td>
+          <td><span class="score lo"><span class="sdot"></span>22</span></td>
+          <td class="end-reason" data-i18n="end.voicemail">Voicemail</td>
+        </tr>
+        <!-- 8 -->
+        <tr tabindex="0" data-open="8">
+          <td><div class="lead-cell"><span class="lead-name" dir="auto">עומר בן דוד</span><span class="lead-biz" dir="auto">בן דוד נדל״ן</span></div></td>
+          <td class="mono t-time">Jul 11 · 17:40</td>
+          <td><span class="dir out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 17 17 7M9 7h8v8"/></svg><span data-i18n="filter.outbound">Outbound</span></span></td>
+          <td class="num mono">4:21</td>
+          <td><span class="chip neutral"><span class="cdot"></span><span data-i18n="outcome.neutral">Neutral</span></span></td>
+          <td><span class="score mid"><span class="sdot"></span>58</span></td>
+          <td class="end-reason" data-i18n="end.agent">Agent hung up</td>
+        </tr>
+        <!-- 9 -->
+        <tr tabindex="0" data-open="9">
+          <td><div class="lead-cell"><span class="lead-name" dir="auto">תמר גולן</span><span class="lead-biz" dir="auto">גולן ייעוץ מס</span></div></td>
+          <td class="mono t-time">Jul 11 · 10:12</td>
+          <td><span class="dir in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 7 7 17M15 17H7V9"/></svg><span data-i18n="filter.inbound">Inbound</span></span></td>
+          <td class="num mono">2:58</td>
+          <td><span class="chip won"><span class="cdot"></span><span data-i18n="outcome.won">Won</span></span></td>
+          <td><span class="score hi"><span class="sdot"></span>84</span></td>
+          <td class="end-reason" data-i18n="end.user">Lead hung up</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="pager">
+      <span class="count" data-i18n="pager.count">Page 1 of 2 · 82 calls</span>
+      <div class="pg">
+        <button aria-current="true">1</button>
+        <button>2</button>
+        <button aria-label="Next">›</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ================= DETAIL DRAWER ================= -->
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="Call detail" aria-hidden="false">
+  <div class="dwr-pad">
+    <div class="dwr-top">
+      <div>
+        <div class="dwr-lead" dir="auto">דני כהן</div>
+        <div class="dwr-biz"><span dir="auto">שיפוצים כהן</span> · <bdi dir="ltr" class="mono">+972 52-418-9032</bdi></div>
+      </div>
+      <button class="dwr-close" id="dwr-close" data-i18n-aria="a11y.close" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="dwr-meta">
+      <div class="mrow"><div class="m-k" data-i18n="m.when">When</div><div class="m-v mono">Jul 15, 2026 · 00:39</div></div>
+      <div class="mrow"><div class="m-k" data-i18n="m.duration">Duration</div><div class="m-v mono">4:46</div></div>
+      <div class="mrow"><div class="m-k" data-i18n="m.direction">Direction</div><div class="m-v" data-i18n="filter.outbound">Outbound</div></div>
+      <div class="mrow"><div class="m-k" data-i18n="m.engine">Engine</div><div class="m-v"><span class="engine lk">LiveKit</span></div></div>
+      <div class="mrow"><div class="m-k" data-i18n="m.cost">Cost</div><div class="m-v mono">$0.38</div></div>
+      <div class="mrow"><div class="m-k" data-i18n="m.callid">Call ID</div><div class="m-v mono">call-out-5f8fc0</div></div>
+    </div>
+
+    <audio controls preload="none" data-i18n-aria="a11y.audio" aria-label="Call recording"></audio>
+
+    <div class="dwr-sec-h" data-i18n="sec.analysis">Outcome &amp; analysis</div>
+    <div class="analysis">
+      <div class="an-item"><span class="an-k" data-i18n="an.result">Result</span><span class="an-v pos"><span class="cdot" style="background:var(--status-success)"></span><span data-i18n="an.won">Won</span></span></div>
+      <div class="an-item"><span class="an-k" data-i18n="an.sentiment">Sentiment</span><span class="an-v pos"><span class="cdot" style="background:var(--status-success)"></span><span data-i18n="an.positive">Positive</span></span></div>
+      <div class="an-item"><span class="an-k" data-i18n="an.disc">Disconnection</span><span class="an-v" data-i18n="end.agent">Agent hung up</span></div>
+      <div class="an-item"><span class="an-k" data-i18n="an.latency">End-to-end latency</span><span class="an-v mono">2174 ms</span></div>
+      <div class="an-item"><span class="an-k" data-i18n="an.score">Qualification score</span><span class="an-v mono">82 / 100</span></div>
+      <div class="an-item"><span class="an-k" data-i18n="an.demo">Demo booked</span><span class="an-v pos"><span class="cdot" style="background:var(--status-success)"></span><span data-i18n="bool.yes">Yes</span></span></div>
+    </div>
+
+    <div class="dwr-sec-h" data-i18n="sec.sales">Sales analysis</div>
+    <div class="sales">
+      <div class="sale-block">
+        <div class="sb-k" data-i18n="sb.worked">What worked</div>
+        <div class="tags">
+          <span class="tag-pill" dir="auto">פתיחה קצרה שלא נשמעת מוקלטת</span>
+          <span class="tag-pill" dir="auto">שאלת גילוי אחת ממוקדת</span>
+          <span class="tag-pill" dir="auto">הצעת ערך בזמן העומס</span>
+        </div>
+      </div>
+      <div class="sale-block">
+        <div class="sb-k" data-i18n="sb.pain">Pain points uncovered</div>
+        <div class="sb-v" dir="auto">פניות שנכנסות בשעות העומס ולא נענות כי הבעלים בשטח.</div>
+      </div>
+      <div class="sale-block">
+        <div class="sb-k" data-i18n="sb.obj">Objections</div>
+        <div class="tags">
+          <span class="tag-pill" dir="auto">מחיר, טופל בשיחה</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="dwr-sec-h" data-i18n="sec.compliance">Compliance</div>
+    <div class="compliance">
+      <div class="cmp-row">
+        <svg class="cmp-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m5 13 4 4L19 7"/></svg>
+        <span class="cmp-k" data-i18n="cmp.rec">Recording notice played</span>
+        <span class="cmp-v">00:03</span>
+      </div>
+      <div class="cmp-row">
+        <svg class="cmp-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m5 13 4 4L19 7"/></svg>
+        <span class="cmp-k" data-i18n="cmp.ai">AI disclosure</span>
+        <span class="cmp-v" data-i18n="cmp.during">During call</span>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="transcript" data-i18n="tab.transcript">Transcript</button>
+      <button role="tab" aria-selected="false" data-tab="data" data-i18n="tab.data">Data</button>
+      <button role="tab" aria-selected="false" data-tab="logs" data-i18n="tab.logs">Tool calls</button>
+    </div>
+
+    <div class="tabpanel" id="tab-transcript" role="tabpanel">
+      <div class="turn">
+        <div class="t-head"><span class="t-role agent" data-i18n="role.agent">Keren</span><span class="t-stamp">0:00</span></div>
+        <div class="t-text" dir="auto">היי, מדברת קרן מקליקסקיילז. תפסתי אותך בזמן טוב לדבר רגע?</div>
+      </div>
+      <div class="turn">
+        <div class="t-head"><span class="t-role user" dir="auto">דני</span><span class="t-stamp">0:07</span></div>
+        <div class="t-text" dir="auto">כן, מה נשמע.</div>
+      </div>
+      <div class="turn">
+        <div class="t-head"><span class="t-role agent" data-i18n="role.agent">Keren</span><span class="t-stamp">0:09</span></div>
+        <div class="t-text" dir="auto">מעולה. תגיד לי רגע, כדי שאבין איך אפשר לעזור, איזה עסק יש לך ומה אתה מוכר בדיוק?</div>
+      </div>
+      <div class="turn">
+        <div class="t-head"><span class="t-role user" dir="auto">דני</span><span class="t-stamp">0:18</span></div>
+        <div class="t-text" dir="auto">אני עושה שיפוצים לבתים פרטיים.</div>
+      </div>
+      <div class="turn">
+        <div class="t-head"><span class="t-role agent" data-i18n="role.agent">Keren</span><span class="t-stamp">0:23</span></div>
+        <div class="t-text" dir="auto">יופי. וכמה פניות חדשות אתה מקבל ביום בערך?</div>
+      </div>
+      <div class="turn">
+        <div class="t-head"><span class="t-role user" dir="auto">דני</span><span class="t-stamp">0:28</span></div>
+        <div class="t-text" dir="auto">תלוי, בין עשר לחמש עשרה.</div>
+      </div>
+      <div class="turn">
+        <div class="t-head"><span class="t-role agent" data-i18n="role.agent">Keren</span><span class="t-stamp">0:33</span></div>
+        <div class="t-text" dir="auto">הבנתי. וכשמתקשרים אליך, אתה מספיק לענות לכולם או שחלק הולך לאיבוד?</div>
+      </div>
+      <div class="turn">
+        <div class="t-head"><span class="t-role user" dir="auto">דני</span><span class="t-stamp">0:41</span></div>
+        <div class="t-text" dir="auto">האמת שחלק הולך לאיבוד, אני בשטח רוב היום.</div>
+      </div>
+      <div class="turn">
+        <div class="t-head"><span class="t-role agent" data-i18n="role.agent">Keren</span><span class="t-stamp">0:48</span></div>
+        <div class="t-text" dir="auto">זה בדיוק המקום שבו אנחנו יכולים לעזור. יש לך דקה שאסביר איך זה עובד?</div>
+      </div>
+    </div>
+
+    <div class="tabpanel" id="tab-data" role="tabpanel" hidden>
+      <div class="kv">
+        <div class="kv-row"><span class="kv-k">lead_qualified</span><span class="kv-v bool-true" data-i18n="bool.true">true</span></div>
+        <div class="kv-row"><span class="kv-k">demo_scheduled</span><span class="kv-v bool-true" data-i18n="bool.true">true</span></div>
+        <div class="kv-row"><span class="kv-k">daily_inquiry_volume</span><span class="kv-v mono">10–15</span></div>
+        <div class="kv-row"><span class="kv-k">pain_point</span><span class="kv-v" dir="auto">פניות שהולכות לאיבוד</span></div>
+        <div class="kv-row"><span class="kv-k">pricing_expectation</span><span class="kv-v empty" data-i18n="data.none">not captured</span></div>
+      </div>
+    </div>
+
+    <div class="tabpanel" id="tab-logs" role="tabpanel" hidden>
+      <div class="log">
+        <div class="log-row">
+          <span class="log-t">0:52</span>
+          <span class="log-name">check_calendar_availability</span>
+          <span class="log-dur">420 ms</span>
+          <svg class="log-ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="m5 13 4 4L19 7"/></svg>
+        </div>
+        <div class="log-row">
+          <span class="log-t">3:41</span>
+          <span class="log-name">book_meeting</span>
+          <span class="log-dur">780 ms</span>
+          <svg class="log-ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="m5 13 4 4L19 7"/></svg>
+        </div>
+        <div class="log-row">
+          <span class="log-t">4:38</span>
+          <span class="log-name">send_whatsapp_confirmation</span>
+          <span class="log-dur">610 ms</span>
+          <svg class="log-ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="m5 13 4 4L19 7"/></svg>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</aside>
+
+<script>
+/* ---- strings: English is the source; Hebrew is a full, native translation ----
+   Note: call CONTENT (transcript, lead + business names, extracted Hebrew values)
+   is the agent's own Hebrew and is NOT translated — dir="auto" handles it. Only the
+   dashboard chrome around it flips with the interface language. */
+const I18N = {
+  en: {
+    "brand.tag":"by ClickScales",
+    "presence.prefix":"Keren is on a call with",
+    "a11y.notifications":"Notifications","a11y.range":"Date range","a11y.close":"Close","a11y.audio":"Call recording",
+    "page.title":"Calls","page.fresh":"82 calls in the selected range",
+    "range.today":"Today","range.7d":"7 days","range.30d":"30 days",
+    "filter.search":"Search by lead or number",
+    "filter.direction":"Direction","filter.outcome":"Outcome",
+    "filter.all":"All","filter.inbound":"Inbound","filter.outbound":"Outbound",
+    "outcome.won":"Won","outcome.lost":"Lost","outcome.neutral":"Neutral","outcome.analyzing":"Analyzing",
+    "col.lead":"Lead","col.time":"Time","col.direction":"Direction","col.duration":"Duration","col.outcome":"Outcome","col.qualified":"Qualified","col.end":"End reason",
+    "lead.web":"Web call","dir.web":"Web",
+    "end.agent":"Agent hung up","end.user":"Lead hung up","end.voicemail":"Voicemail",
+    "pager.count":"Page 1 of 2 · 82 calls",
+    "m.when":"When","m.duration":"Duration","m.direction":"Direction","m.engine":"Engine","m.cost":"Cost","m.callid":"Call ID",
+    "sec.analysis":"Outcome & analysis","sec.sales":"Sales analysis","sec.compliance":"Compliance",
+    "an.result":"Result","an.won":"Won","an.sentiment":"Sentiment","an.positive":"Positive","an.disc":"Disconnection","an.latency":"End-to-end latency","an.score":"Qualification score","an.demo":"Demo booked",
+    "bool.yes":"Yes","bool.true":"true",
+    "sb.worked":"What worked","sb.pain":"Pain points uncovered","sb.obj":"Objections",
+    "cmp.rec":"Recording notice played","cmp.ai":"AI disclosure","cmp.during":"During call",
+    "tab.transcript":"Transcript","tab.data":"Data","tab.logs":"Tool calls",
+    "role.agent":"Keren",
+    "data.none":"not captured"
+  },
+  he: {
+    "brand.tag":"מבית ClickScales",
+    "presence.prefix":"קרן בשיחה עם",
+    "a11y.notifications":"התראות","a11y.range":"טווח תאריכים","a11y.close":"סגירה","a11y.audio":"הקלטת השיחה",
+    "page.title":"שיחות","page.fresh":"82 שיחות בטווח הנבחר",
+    "range.today":"היום","range.7d":"7 ימים","range.30d":"30 יום",
+    "filter.search":"חיפוש לפי ליד או מספר",
+    "filter.direction":"כיוון","filter.outcome":"תוצאה",
+    "filter.all":"הכל","filter.inbound":"נכנסות","filter.outbound":"יוצאות",
+    "outcome.won":"נסגר","outcome.lost":"אבוד","outcome.neutral":"ניטרלי","outcome.analyzing":"בניתוח",
+    "col.lead":"ליד","col.time":"זמן","col.direction":"כיוון","col.duration":"משך","col.outcome":"תוצאה","col.qualified":"כשירות","col.end":"סיבת סיום",
+    "lead.web":"שיחת ווב","dir.web":"ווב",
+    "end.agent":"הסוכן ניתק","end.user":"הליד ניתק","end.voicemail":"תא קולי",
+    "pager.count":"עמוד 1 מתוך 2 · 82 שיחות",
+    "m.when":"מתי","m.duration":"משך","m.direction":"כיוון","m.engine":"מנוע","m.cost":"עלות","m.callid":"מזהה שיחה",
+    "sec.analysis":"תוצאה וניתוח","sec.sales":"ניתוח מכירה","sec.compliance":"עמידה בדרישות",
+    "an.result":"תוצאה","an.won":"נסגר","an.sentiment":"סנטימנט","an.positive":"חיובי","an.disc":"ניתוק","an.latency":"זמן תגובה מקצה לקצה","an.score":"ציון כשירות","an.demo":"פגישה נקבעה",
+    "bool.yes":"כן","bool.true":"true",
+    "sb.worked":"מה עבד","sb.pain":"כאבים שנחשפו","sb.obj":"התנגדויות",
+    "cmp.rec":"הודעת הקלטה הושמעה","cmp.ai":"גילוי שמדובר ב-AI","cmp.during":"במהלך השיחה",
+    "tab.transcript":"תמלול","tab.data":"נתונים","tab.logs":"קריאות כלים",
+    "role.agent":"קרן",
+    "data.none":"לא נקלט"
+  }
+};
+
+function applyLang(lang){
+  const dict = I18N[lang], html = document.documentElement;
+  html.lang = lang; html.dir = (lang === "he") ? "rtl" : "ltr";
+  document.querySelectorAll("[data-i18n]").forEach(el=>{
+    const k = el.getAttribute("data-i18n"); if (dict[k] != null) el.textContent = dict[k];
+  });
+  document.querySelectorAll("[data-i18n-aria]").forEach(el=>{
+    const k = el.getAttribute("data-i18n-aria"); if (dict[k] != null) el.setAttribute("aria-label", dict[k]);
+  });
+  document.querySelectorAll("[data-i18n-ph]").forEach(el=>{
+    const k = el.getAttribute("data-i18n-ph"); if (dict[k] != null) el.setAttribute("placeholder", dict[k]);
+  });
+  document.querySelectorAll("#lang-ctl button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.langVal===lang)));
+}
+function applyTheme(theme){
+  document.documentElement.setAttribute("data-theme", theme);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", theme === "dark" ? "#0A0F20" : "#EDF0F6");
+  document.querySelectorAll("#theme-ctl button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.themeVal===theme)));
+}
+document.getElementById("lang-ctl").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b) applyLang(b.dataset.langVal); });
+document.getElementById("theme-ctl").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b) applyTheme(b.dataset.themeVal); });
+
+/* ---- drawer open/close (overlay on the same page — not a route) ---- */
+const body = document.body, scrim = document.getElementById("scrim");
+function openDrawer(){ body.classList.add("drawer-open"); }
+function closeDrawer(){
+  body.classList.remove("drawer-open");
+  document.querySelectorAll("#calls-body tr[aria-selected]").forEach(tr=>tr.removeAttribute("aria-selected"));
+}
+document.querySelectorAll("#calls-body tr").forEach(tr=>{
+  tr.addEventListener("click", ()=>{
+    document.querySelectorAll("#calls-body tr[aria-selected]").forEach(x=>x.removeAttribute("aria-selected"));
+    tr.setAttribute("aria-selected","true"); openDrawer();
+  });
+  tr.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); tr.click(); } });
+});
+document.getElementById("dwr-close").addEventListener("click", closeDrawer);
+scrim.addEventListener("click", closeDrawer);
+document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeDrawer(); });
+
+/* ---- drawer tabs ---- */
+document.querySelectorAll('.tabs [role="tab"]').forEach(tab=>{
+  tab.addEventListener("click", ()=>{
+    document.querySelectorAll('.tabs [role="tab"]').forEach(t=>t.setAttribute("aria-selected", String(t===tab)));
+    document.querySelectorAll(".tabpanel").forEach(p=>p.hidden = true);
+    document.getElementById("tab-"+tab.dataset.tab).hidden = false;
+  });
+});
+
+/* defaults: English, light, drawer open on the first call so the preview shows both */
+applyLang("en"); applyTheme("light"); openDrawer();
+</script>
+</body>
+</html>
