@@ -1,5 +1,11 @@
 # Dashboard handoff — D2 Phase A (cream/glass migration)
 
+> ⚠️ **SUPERSEDED (2026-07-29).** The cream/glass palette this handoff describes is **dead** —
+> replaced by the cool-technical system in `brand_assets/keren-brand-brief-v5.md`. Every colour
+> named below (`#F4EFE6`, teal `#0FA3AC`, violet `#5B5BD6`, "v4 brief") refers to that dead
+> palette and is a migration target, not a reference. Kept as a historical record only. See
+> `docs/handoffs/2026-07-29-dashboard-v5-reconciliation.md`.
+
 **Workstream:** Dashboard · **Branch:** `feature/dashboard-d2-cream` (off `feature/dashboard-d1-i18n`) · **Pushed.**
 **Spec:** `docs/sprint-d2-cream-migration-and-overview-spec.md` · **Governing:** brand brief v4 §1.
 

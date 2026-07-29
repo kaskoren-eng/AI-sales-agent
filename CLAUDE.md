@@ -4,9 +4,29 @@ Multi-channel AI sales agent (WhatsApp, Email, Voice) that qualifies leads and b
 
 ## Brand — KEREN by ClickScales
 
-- **Company:** ClickScales · **Product:** KEREN (the agent persona is "קרן", female, Hebrew-first)
-- **"Danie" is deprecated.** `brand_assets/brand_identity` (v2) is superseded by `brand_assets/keren-brand-brief-v3.md` — the single source of truth for all dashboard design work (tokens, typography, i18n/RTL rules, component DoD, Danie→KEREN migration checklist).
-- Dashboard is **bilingual (HE+EN) from day one**: react-i18next, all UI strings via `t('...')`, CSS logical properties only, `dir="auto"` on all user content. See brief §2 + §7.
+- **Company:** ClickScales · **Product:** KEREN (the agent persona is "קרן", female)
+- **Two language settings, never collapsed into one:**
+  - **Agent spoken language (VOICE-owned): Hebrew first.** Keren speaks Hebrew to leads by
+    default, English on switch. This is the product — the entire Retell→LiveKit migration
+    exists because Retell's human-sounding features are unavailable in Hebrew. Nothing in
+    the dashboard changes this.
+  - **Dashboard interface language (DASHBOARD-owned): English default**, Hebrew available
+    via toggle. `<html lang="en" dir="ltr">`, English is the i18n source, `he.json` is the
+    translation. Never derive one setting from the other. If a `tenants.settings` key is
+    ever needed for interface language it is `ui_locale` — never `language` — and it must
+    be claimed in this file's key-claims list before use.
+- **"Danie" is deprecated.** `brand_assets/brand_identity` (v2) and brief v3 are superseded
+  by `brand_assets/keren-brand-brief-v5.md` — the single source of truth for all dashboard
+  design work (tokens, typography, light/dark theming, i18n/RTL rules, component DoD).
+  v3 stays in git history; v5 §12 defines exactly what changed and why the number skips
+  ("v4" internally meant the dead cream palette — never reuse it).
+- Palette is the **cool technical** system derived from the ClickScales landing page —
+  flat cool surfaces, indigo accent, mono for data, zero gradients, full light/dark toggle
+  (`data-theme` on `<html>`). The cream/glass direction is dead; do not reintroduce it.
+- Dashboard is **bilingual (HE+EN) from day one**: react-i18next, all UI strings via
+  `t('...')`, CSS logical properties only, `dir="auto"` on all user content. English
+  primary must not become Hebrew broken — no page is done until reviewed in Hebrew.
+  See brief v5 §4.
 
 ## Parallel workstreams — see ⚠️ TERRITORY RULES below (single source of truth)
 
@@ -19,6 +39,11 @@ An earlier version of this section contradicted the TERRITORY RULES on `src/modu
 - Ports: API `:3000` and dashboard `:3001` belong to the **voice session**; the **dashboard session** runs its own dashboard instance on `:3002` (`npm run dev -- --port 3002`).
 - **Never kill or restart a dev server you didn't start** — the other session may be mid-test. If a server looks stale, say so in your summary and let Koren decide.
 - The vite proxy default is the LOCAL backend (`http://localhost:3000`). Pointing a dev dashboard at production requires an explicit `VITE_PROXY_TARGET=` — never make prod the default (dev clicks mutate real data: lead status PATCH, booking cancel, API-key regeneration).
+
+### Session handoffs (inter-agent communication)
+
+- At the END of every session, write a short summary to `docs/handoffs/YYYY-MM-DD-<workstream>.md`: what shipped (commits), what's blocked, open questions. The architect session (Cowork) reads these directly — Koren should not need to copy-paste.
+- If you're blocked on a DECISION (not a bug), write it under an "Questions for architect" heading in your handoff file and move on to unblocked work. Don't guess on cross-workstream contracts.
 
 ## Stack
 

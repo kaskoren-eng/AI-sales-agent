@@ -18,6 +18,7 @@
     "voice:tts:smoke": "tsx --env-file=.env scripts/deepdub-tts-smoke.ts",
     "voice:start": "node dist/modules/channels/voice-livekit/agent.js start",
     "screenshot": "node scripts/screenshot.mjs",
+    "screenshot:dash": "BASE_URL=http://localhost:3002 node scripts/screenshot.mjs",
     "screenshot:dev": "cd dashboard && npm run dev &amp; sleep 4 &amp;&amp; node ../scripts/screenshot.mjs",
     "stt:corpus": "tsx --env-file=.env scripts/generate-stt-test-corpus.ts",
     "stt:ab": "tsx --env-file=.env tests/stt-ab-test.ts",
