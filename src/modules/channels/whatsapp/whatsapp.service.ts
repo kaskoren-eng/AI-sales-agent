@@ -4,6 +4,24 @@ import type { FastifyInstance } from 'fastify';
 const UCHAT_API_BASE = 'https://www.uchat.com.au/api';
 const TWILIO_API_BASE = 'https://api.twilio.com/2010-04-01/Accounts';
 
+/**
+ * Israeli phone → E.164 for WhatsApp. "050-111-1111" → "+972501111111".
+ *
+ * Twilio rejects anything that is not E.164 with error 21211 ("not a valid phone number") — and a
+ * voice lead reads his number out as a LOCAL Israeli number ("אפס חמש אפס..."), i.e. 05X-XXXXXXX
+ * with a leading zero and no country code. A real confirmation silently failed on exactly this.
+ * Idempotent for numbers already in +972 / 972 form. Anything unrecognized is returned untouched —
+ * better to let Twilio's error surface than to mangle a foreign number into a wrong one.
+ */
+export function toWhatsAppE164(raw: string): string {
+  const cleaned = raw.replace(/[^\d+]/g, '');
+  if (cleaned.startsWith('+')) return cleaned;
+  if (cleaned.startsWith('972')) return `+${cleaned}`;
+  if (cleaned.startsWith('0')) return `+972${cleaned.slice(1)}`;
+  if (/^5\d{8}$/.test(cleaned)) return `+972${cleaned}`; // bare 9-digit Israeli mobile
+  return raw;
+}
+
 export class WhatsAppService {
   constructor(private app: FastifyInstance) {}
 
@@ -33,7 +51,7 @@ export class WhatsAppService {
 
     const params = new URLSearchParams({
       From: `whatsapp:${TWILIO_WHATSAPP_NUMBER}`,
-      To: `whatsapp:${to}`,
+      To: `whatsapp:${toWhatsAppE164(to)}`, // 05X… → +9725X… (E.164) for the template path too
       ContentSid: contentSid,
       ContentVariables: JSON.stringify(variables),
     });
@@ -82,7 +100,7 @@ export class WhatsAppService {
 
     const params = new URLSearchParams({
       From: `whatsapp:${TWILIO_WHATSAPP_NUMBER}`,
-      To: `whatsapp:${to}`,
+      To: `whatsapp:${toWhatsAppE164(to)}`, // 05X… → +9725X…, or Twilio 21211-rejects it
       Body: body,
     });
     if (mediaUrl) params.set('MediaUrl', mediaUrl);
