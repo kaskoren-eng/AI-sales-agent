@@ -9,6 +9,7 @@ import { callLearnings } from '../../db/schema/call-learnings.js';
 import type { SalesCallAnalysis, TranscriptSegment } from '../../db/schema/call-learnings.js';
 import { conversations } from '../../db/schema/index.js';
 import { CallAnalysisService } from '../../modules/calls/call-analysis.service.js';
+import { syncCallToCrm } from '../../modules/integrations/crm-sync.service.js';
 import { handleDeadLetter } from '../dead-letter.js';
 
 interface WorkerDeps {
@@ -29,7 +30,28 @@ export function createCallAnalysisWorker(deps: WorkerDeps) {
       // end) — no recording to download, no Whisper. Analyze in place and finalize the dashboard
       // conversation. See enqueueLiveKitCallAnalysis.
       if (job.data.source === 'livekit') {
-        return analyzeLiveKitCall(deps, analysisService, job.data);
+        const outcome = await analyzeLiveKitCall(deps, analysisService, job.data);
+        // Workstream B — reflect the outcome in the tenant's CRM. Best-effort by contract
+        // (syncCallToCrm never throws), wrapped again here so a CRM failure can never fail the
+        // analysis job that already persisted the transcript + summary.
+        try {
+          await syncCallToCrm(
+            {
+              db,
+              encryptionKey: env.ENCRYPTION_KEY,
+              dashboardBaseUrl: env.DASHBOARD_BASE_URL,
+            },
+            {
+              tenantId: job.data.tenantId,
+              conversationId: job.data.conversationId,
+              endReason: outcome.endReason,
+              summary: outcome.summary,
+            },
+          );
+        } catch (err) {
+          console.error('crm_sync_failed', err instanceof Error ? err.message : String(err));
+        }
+        return { learningId: outcome.learningId, transcriptSegments: outcome.transcriptSegments };
       }
 
       const { tenantId, learningId, recordingUrl, durationSecs } = job.data;
@@ -96,7 +118,7 @@ export async function analyzeLiveKitCall(
   deps: Pick<WorkerDeps, 'db'>,
   analysisService: Pick<CallAnalysisService, 'analyzeTranscript'>,
   data: CallAnalysisJob,
-): Promise<{ learningId: string; transcriptSegments: number }> {
+): Promise<{ learningId: string; transcriptSegments: number; endReason?: string; summary?: string }> {
   const { db } = deps;
   const { tenantId, learningId, conversationId } = data;
 
@@ -135,5 +157,10 @@ export async function analyzeLiveKitCall(
       .where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, tenantId)));
   }
 
-  return { learningId, transcriptSegments: transcript.length };
+  return {
+    learningId,
+    transcriptSegments: transcript.length,
+    endReason: merged.end_reason,
+    summary: merged.summary,
+  };
 }

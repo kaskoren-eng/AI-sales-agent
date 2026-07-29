@@ -14,6 +14,9 @@ import type { Redis } from 'ioredis';
 import type { Queue } from 'bullmq';
 import { handleDeadLetter } from '../dead-letter.js';
 import type { FastifyBaseLogger } from 'fastify';
+// The status-transition guard is shared with the voice CRM-sync path — one source of truth.
+// The chat qualifier only ever attempts the original stepwise edges, all still allowed there.
+import { canTransition } from '../../modules/leads/lead-status.js';
 
 interface WorkerDeps {
   db: Database;
@@ -23,19 +26,6 @@ interface WorkerDeps {
   flowExecutorQueue: Queue;
   deadLetterQueue: Queue;
   logger?: FastifyBaseLogger;
-}
-
-// Valid forward-only status transitions
-const ALLOWED_TRANSITIONS: Record<string, string[]> = {
-  new: ['contacted'],
-  contacted: ['qualifying'],
-  qualifying: ['qualified', 'disqualified'],
-  qualified: [],
-  disqualified: [],
-};
-
-function canTransition(from: string, to: string): boolean {
-  return ALLOWED_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
 export function createMessageProcessorWorker(deps: WorkerDeps) {

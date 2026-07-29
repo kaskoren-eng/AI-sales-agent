@@ -8,6 +8,7 @@ import {
   type WhatsappTemplatesConfig,
 } from '../channels/whatsapp/whatsapp-window.js';
 import { resolveTollFraudSettings, type TollFraudSettings } from '../calls/spend-guard.js';
+import { resolveCrmSyncSettings, type CrmSyncSettings } from '../integrations/crm-sync.settings.js';
 
 export interface BusinessProfile {
   companyName: string;
@@ -101,6 +102,36 @@ export class SettingsService {
       .where(eq(tenants.id, tenantId));
 
     return resolveTollFraudSettings(settings);
+  }
+
+  /** After-call CRM sync behavior (outcome→status map, per-CRM label maps). Resolver fills defaults. */
+  async getCrmSyncSettings(tenantId: string): Promise<CrmSyncSettings> {
+    const [tenant] = await this.db
+      .select({ settings: tenants.settings })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    if (!tenant) throw new NotFoundError('Tenant', tenantId);
+    return resolveCrmSyncSettings(tenant.settings);
+  }
+
+  async saveCrmSyncSettings(tenantId: string, input: Partial<CrmSyncSettings>): Promise<CrmSyncSettings> {
+    const [tenant] = await this.db
+      .select({ settings: tenants.settings })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    if (!tenant) throw new NotFoundError('Tenant', tenantId);
+
+    const settings = getTenantSettings(tenant.settings);
+    settings.crm_sync = { ...(settings.crm_sync as object | undefined), ...input };
+
+    await this.db
+      .update(tenants)
+      .set({ settings, updatedAt: new Date() })
+      .where(eq(tenants.id, tenantId));
+
+    return resolveCrmSyncSettings(settings);
   }
 
   /** The tenant's approved WhatsApp template SIDs — see whatsapp-window.ts for the slot keys. */

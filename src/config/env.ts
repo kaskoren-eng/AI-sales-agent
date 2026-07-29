@@ -59,6 +59,9 @@ const envSchema = z.object({
 
   // App base URL (for callback URLs)
   BASE_URL: z.string().url().optional(),
+  // Dashboard base URL — used to build "view this call" back-links pushed into the CRM (Workstream
+  // B). Optional: if unset, the link is simply omitted from CRM notes (never a broken URL).
+  DASHBOARD_BASE_URL: z.string().url().optional(),
 
   // Channels - WhatsApp (UChat)
   UCHAT_WEBHOOK_SECRET: z.string().min(1).optional(),
