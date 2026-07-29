@@ -12,8 +12,8 @@ Built page by page with Koren — each approved before the next starts. Governed
 | Leads | `leads.html` | **approved** (2026-07-29) | lead detail is a **pop-out drawer** folding conversations+messages+meetings into one timeline; 8-status→4 colour mapping still open (used PROPOSED chips) |
 | The agent | `agent.html` | **approved** (2026-07-29) | hero pattern = every toggle carries a Hebrew sample sentence; raw prompt read-only behind Advanced view |
 | Test Keren (`/simulator`, dark default) | `simulator.html` | **approved** (2026-07-29) | emotion tags OMITTED (pipeline gate unverified §4.7); orb is the signature animation (flat, no gradient/glow); opens dark by default |
-| Meetings | `meetings.html` | in review (2026-07-29) | config-left / booking-preview-right; Calendly summary-row pattern for availability; upcoming-meetings strip on top; status chips PROPOSED (confirmed/pending) |
-| Ask Keren (`/chat`) | `chat.html` | pending | — |
+| Meetings | `meetings.html` | **approved** (2026-07-29) | config-left / booking-preview-right; Calendly summary-row pattern for availability; upcoming-meetings strip on top; status chips PROPOSED (confirmed/pending) |
+| Ask Keren (`/chat`) | `chat.html` | in review (2026-07-29) | Grok-style centered hero (big composer + Skills/mic/send, suggestion pills); never-empty (today-state pill + real-state prompts); confirm-before-apply diff card; preview-only View toggle Empty↔In conversation |
 | Settings shell | `settings.html` | pending | — |
 
 **Standing decisions / later pass:**
