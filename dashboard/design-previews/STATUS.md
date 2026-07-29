@@ -13,14 +13,15 @@ Built page by page with Koren — each approved before the next starts. Governed
 | The agent | `agent.html` | **approved** (2026-07-29) | hero pattern = every toggle carries a Hebrew sample sentence; raw prompt read-only behind Advanced view |
 | Test Keren (`/simulator`, dark default) | `simulator.html` | **approved** (2026-07-29) | emotion tags OMITTED (pipeline gate unverified §4.7); orb is the signature animation (flat, no gradient/glow); opens dark by default |
 | Meetings | `meetings.html` | **approved** (2026-07-29) | config-left / booking-preview-right; Calendly summary-row pattern for availability; upcoming-meetings strip on top; status chips PROPOSED (confirmed/pending) |
-| Ask Keren (`/chat`) | `chat.html` | in review (2026-07-29) | Grok-style centered hero (big composer + Skills/mic/send, suggestion pills); never-empty (today-state pill + real-state prompts); confirm-before-apply diff card; preview-only View toggle Empty↔In conversation |
-| Settings shell | `settings.html` | in review (2026-07-30) | folk rail (My account / The business); panes Profile / Notifications / Business details / Integrations (Midday grid) / Billing (Cursor meters + spend cap); every row has one-sentence explanation; Profile carries interface-language (firewall callout) + three-state theme, both drive the page |
+| Ask Keren (`/chat`) | `chat.html` | **approved** (2026-07-30) | Grok-style centered hero (big composer + Skills/mic/send, suggestion pills); never-empty (today-state pill + real-state prompts); confirm-before-apply diff card; preview-only View toggle Empty↔In conversation; persona genericized to "the agent" / "הסוכנת" on this page (per-tenant name) |
+| Settings shell | `settings.html` | **approved** (2026-07-30) | folk rail (My account / The business); panes Profile / Notifications / Business details / Integrations (Midday grid) / Billing (Cursor meters + spend cap); every row has one-sentence explanation; Profile carries interface-language (firewall callout) + three-state theme, both drive the page |
 
-**Standing decisions / later pass:**
+**Standing decisions / done:**
 - **Platform brand = ClickScales** (decided 2026-07-29, spec v1.2). Agent name is per-tenant
-  `{agentName}` (sample "Keren/קרן"). All preview shells currently show the **KEREN** wordmark;
-  swap wordmark KEREN→**ClickScales** across every page in one later pass. Do NOT rework the
-  approved pages piecemeal — keep the set consistent until the batch swap.
+  `{agentName}` (sample "Keren/קרן"). **DONE 2026-07-30:** shell wordmark swapped KEREN→**ClickScales**
+  across all 8 previews (redundant "by ClickScales" tag dropped; avatar stays **CS**). The **Ask Keren**
+  page persona is genericized to "the agent" / "הסוכנת". Other pages keep the sample agent name
+  Keren/קרן (that is the agent persona, per brand, not the platform wordmark).
 
 **Standing gates (v5):**
 - Status colours use the §1.4.1 **PROPOSED** set — awaiting sign-off. The 8-lead-status → 4-status

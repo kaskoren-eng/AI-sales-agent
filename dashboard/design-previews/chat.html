@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KEREN — Ask Keren (v5 preview)</title>
+<title>ClickScales — Ask the agent (v5 preview)</title>
 <meta name="theme-color" content="#EDF0F6">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -185,8 +185,8 @@ body[data-view="chat"] .hero { display: none; }
 
 <!-- ================= TOP BAR ================= -->
 <header class="topbar">
-  <div class="brand"><span class="mark">KEREN</span><span class="tag" data-i18n="brand.tag">by ClickScales</span></div>
-  <div class="presence" id="presence"><span class="dot"></span><span><span data-i18n="presence.prefix">Keren is on a call with</span> <strong dir="auto">דני כהן</strong></span></div>
+  <div class="brand"><span class="mark">ClickScales</span></div>
+  <div class="presence" id="presence"><span class="dot"></span><span><span data-i18n="presence.prefix">The agent is on a call with</span> <strong dir="auto">דני כהן</strong></span></div>
   <span class="spacer"></span>
   <div class="top-actions">
     <button class="icon-btn" data-i18n-aria="a11y.notifications" aria-label="Notifications"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" width="17" height="17"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
@@ -199,11 +199,11 @@ body[data-view="chat"] .hero { display: none; }
   <div class="hero-top">
     <div class="hero-ava">ק</div>
     <h1 class="hero-ttl" data-i18n="hero.ttl">What would you like to know?</h1>
-    <div class="hero-today"><span class="tdot"></span><span dir="auto"><span data-i18n="today.pre">Today</span> <b data-i18n="today.name">Keren</b> <span data-i18n="today.body">answered 9 calls and booked 2 meetings.</span></span></div>
+    <div class="hero-today"><span class="tdot"></span><span dir="auto"><span data-i18n="today.pre">Today</span> <b data-i18n="today.name">your agent</b> <span data-i18n="today.body">answered 9 calls and booked 2 meetings.</span></span></div>
   </div>
 
   <div class="gcomposer">
-    <input class="gc-input" type="text" dir="auto" data-i18n-ph="composer.ph" placeholder="Ask about your leads and calls, or tell Keren what to change" aria-label="Message Keren">
+    <input class="gc-input" type="text" dir="auto" data-i18n-ph="composer.ph" placeholder="Ask about your leads and calls, or tell the agent what to change" aria-label="Message the agent">
     <div class="gc-tools">
       <button class="gc-tool gc-plus" data-i18n-aria="a11y.attach" aria-label="Attach"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg></button>
       <button class="gc-tool"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span data-i18n="composer.tools">Skills</span></button>
@@ -272,9 +272,9 @@ body[data-view="chat"] .hero { display: none; }
 <!-- docked composer for conversation view -->
 <div class="dock">
   <div class="dock-in">
-    <div class="dock-today"><span class="tdot"></span><span dir="auto"><span data-i18n="today.pre">Today</span> <b data-i18n="today.name">Keren</b> <span data-i18n="today.body">answered 9 calls and booked 2 meetings.</span></span></div>
+    <div class="dock-today"><span class="tdot"></span><span dir="auto"><span data-i18n="today.pre">Today</span> <b data-i18n="today.name">your agent</b> <span data-i18n="today.body">answered 9 calls and booked 2 meetings.</span></span></div>
     <div class="gcomposer">
-      <input class="gc-input" type="text" dir="auto" data-i18n-ph="composer.ph" placeholder="Ask about your leads and calls, or tell Keren what to change" aria-label="Message Keren">
+      <input class="gc-input" type="text" dir="auto" data-i18n-ph="composer.ph" placeholder="Ask about your leads and calls, or tell the agent what to change" aria-label="Message the agent">
       <div class="gc-tools">
         <button class="gc-tool gc-plus" data-i18n-aria="a11y.attach" aria-label="Attach"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg></button>
         <button class="gc-tool"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span data-i18n="composer.tools">Skills</span></button>
@@ -293,11 +293,11 @@ body[data-view="chat"] .hero { display: none; }
 <script>
 const I18N = {
   en: {
-    "brand.tag":"by ClickScales","presence.prefix":"Keren is on a call with",
+    "brand.tag":"by ClickScales","presence.prefix":"The agent is on a call with",
     "a11y.notifications":"Notifications","a11y.send":"Send","a11y.voice":"Voice","a11y.attach":"Attach","suggest.label":"Suggested questions",
     "hero.ttl":"What would you like to know?",
-    "today.pre":"Today","today.name":"Keren","today.body":"answered 9 calls and booked 2 meetings.",
-    "composer.ph":"Ask about your leads and calls, or tell Keren what to change","composer.tools":"Skills",
+    "today.pre":"Today","today.name":"your agent","today.body":"answered 9 calls and booked 2 meetings.",
+    "composer.ph":"Ask about your leads and calls, or tell the agent what to change","composer.tools":"Skills",
     "s1":"How many new leads this week?","s2":"Summarize today's calls","s3":"Be a little less formal","s4":"Which leads are waiting for follow-up?",
     "dock.note":"On the house from ClickScales. This chat does not use your call minutes.",
     "m1":"Hi. Ask me anything about your leads and calls, or just tell me to work differently.",
@@ -309,11 +309,11 @@ const I18N = {
     "cf.note":"Takes effect on the next call. Nothing else changes.","cf.cancel":"Cancel","cf.apply":"Apply change"
   },
   he: {
-    "brand.tag":"מבית ClickScales","presence.prefix":"קרן בשיחה עם",
+    "brand.tag":"מבית ClickScales","presence.prefix":"הסוכנת בשיחה עם",
     "a11y.notifications":"התראות","a11y.send":"שליחה","a11y.voice":"דיבור","a11y.attach":"צירוף","suggest.label":"שאלות מוצעות",
     "hero.ttl":"מה תרצו לדעת?",
-    "today.pre":"היום","today.name":"קרן","today.body":"ענתה ל־9 שיחות וקבעה 2 פגישות.",
-    "composer.ph":"שאלו על הלידים והשיחות, או הגידו לקרן מה לשנות","composer.tools":"כלים",
+    "today.pre":"היום","today.name":"הסוכנת","today.body":"ענתה ל־9 שיחות וקבעה 2 פגישות.",
+    "composer.ph":"שאלו על הלידים והשיחות, או הגידו לסוכנת מה לשנות","composer.tools":"כלים",
     "s1":"כמה לידים חדשים נכנסו השבוע?","s2":"סכמי את השיחות של היום","s3":"תהיי קצת פחות רשמית","s4":"אילו לידים מחכים למעקב?",
     "dock.note":"על חשבון ClickScales. הצ׳אט הזה לא מנצל את דקות השיחה שלכם.",
     "m1":"היי. אפשר לשאול אותי כל דבר על הלידים והשיחות, או פשוט להגיד לי לעבוד אחרת.",
