@@ -3,13 +3,17 @@ import { useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 const PAGE_TITLE_KEYS: Record<string, string> = {
-  '/': 'nav.overview',
+  '/': 'nav.analytics',
+  '/chat': 'nav.copilot',
   '/leads': 'nav.leads',
   '/calls': 'nav.calls',
+  '/bookings': 'nav.calendar',
+  '/agent': 'nav.personality',
+  '/simulator': 'nav.simulator',
   '/voice': 'nav.testKeren',
-  '/bookings': 'nav.bookings',
   '/integrations': 'nav.integrations',
   '/settings': 'nav.settings',
+  '/billing': 'nav.billing',
 }
 
 function getTitleKey(pathname: string): string {

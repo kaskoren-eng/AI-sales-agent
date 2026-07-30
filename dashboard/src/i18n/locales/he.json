@@ -7,13 +7,29 @@
   },
   "nav": {
     "overview": "סקירה",
+    "analytics": "דאשבורד",
+    "copilot": "עוזר אישי",
     "leads": "לידים",
     "calls": "שיחות",
+    "calendar": "יומן",
+    "personality": "אישיות",
+    "simulator": "סימולטור",
     "testKeren": "בדיקת קרן",
     "bookings": "פגישות",
     "integrations": "אינטגרציות",
     "settings": "הגדרות",
+    "billing": "חיוב ומנוי",
     "mainNavigation": "ניווט ראשי"
+  },
+  "navgroup": {
+    "monitor": "מעקב נתונים",
+    "activity": "פעילות",
+    "setup": "סט-אפ",
+    "general": "כללי",
+    "soon": "בקרוב"
+  },
+  "placeholder": {
+    "body": "העמוד הזה נבנה כעת לפי התצוגה המאושרת ב־v5, כחלק ממעבר הדשבורד."
   },
   "topbar": {
     "callDetail": "פרטי שיחה",

@@ -7,13 +7,29 @@
   },
   "nav": {
     "overview": "Overview",
+    "analytics": "Analytics",
+    "copilot": "Copilot",
     "leads": "Leads",
     "calls": "Calls",
+    "calendar": "Calendar",
+    "personality": "Personality",
+    "simulator": "Simulator",
     "testKeren": "Test Keren",
     "bookings": "Bookings",
     "integrations": "Integrations",
     "settings": "Settings",
+    "billing": "Billing & Subscription",
     "mainNavigation": "Main navigation"
+  },
+  "navgroup": {
+    "monitor": "Monitor",
+    "activity": "Activity",
+    "setup": "Setup",
+    "general": "General",
+    "soon": "Soon"
+  },
+  "placeholder": {
+    "body": "This page is being built to its approved v5 preview as part of the dashboard migration."
   },
   "topbar": {
     "callDetail": "Call Detail",

@@ -87,4 +87,13 @@ only with a new decision recorded here and in `STATUS.md`.
   avatar), `AppLayout`, `LanguageSwitcher`. `tsc -b` + `vite build` clean; verified in EN/HE ×
   light/dark. Interim IA note: production keeps the **left sidebar as global nav** (previews were
   topbar-only and didn't depict global nav) — revisit when routes decision (#3) lands.
+- **Navigation IA restructured (2026-07-30, per Koren)** into Retell-style grouped rail:
+  **Monitor** (Analytics `/`, Copilot `/chat`) · **Activity** (Leads, Calls, Calendar `/bookings`) ·
+  **Setup** (Personality `/agent`, Simulator `/simulator`) · **General** (Settings, Integrations,
+  Billing & Subscription — disabled "Soon"). Overview label/title is now **Analytics / דאשבורד**;
+  Meetings renamed **Calendar / יומן**; Ask-the-agent is **Copilot / עוזר אישי**; The-agent is
+  **Personality / אישיות**. New routes `/chat`, `/agent`, `/simulator` render an interim
+  `Placeholder` page (names its target preview) until Phase 3 builds them. Billing HE rendered as
+  **חיוב ומנוי** (Koren's note read "הגדרות ומנוי", adjusted to avoid duplicating הגדרות/Settings —
+  confirm). `/billing` intentionally has no route yet (item disabled).
 - **Next: Phase 3 pages**, in approved order, each replacing its bridge usage with v5 tokens.
