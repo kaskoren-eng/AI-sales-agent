@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Plus, SlidersHorizontal, Mic, ArrowUp, Info, UserPlus, Phone, Clock } from 'lucide-react'
+import { Plus, SlidersHorizontal, Mic, ArrowUp, Info, UserPlus, Phone, Clock, Sparkles } from 'lucide-react'
 
 /** Copilot — the Grok-style landing. Never-empty composer with real-state suggestions.
  *  Conversation + confirm-before-apply flow lands in a follow-up step. */
@@ -16,8 +16,8 @@ export function Copilot() {
   return (
     <div style={{ minBlockSize: 'calc(100vh - 60px - 56px)', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'stretch', maxInlineSize: '720px', marginInline: 'auto', gap: '20px', paddingBlock: '24px' }}>
       <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-        <div style={{ inlineSize: '52px', blockSize: '52px', borderRadius: '50%', background: 'var(--accent)', color: 'var(--text-on-accent)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '22px' }}>
-          ק
+        <div style={{ inlineSize: '52px', blockSize: '52px', borderRadius: '50%', background: 'var(--accent)', color: 'var(--text-on-accent)', display: 'grid', placeItems: 'center' }}>
+          <Sparkles size={24} strokeWidth={1.8} />
         </div>
         <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '30px', letterSpacing: '-0.02em', color: 'var(--text-primary)' }} className="uppercase-track">
           {t('copilot.title')}
