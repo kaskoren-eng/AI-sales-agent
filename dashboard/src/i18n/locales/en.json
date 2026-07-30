@@ -31,6 +31,43 @@
   "placeholder": {
     "body": "This page is being built to its approved v5 preview as part of the dashboard migration."
   },
+  "calls": {
+    "filters": { "statusAll": "All outcomes", "from": "From", "to": "To" },
+    "count_one": "{{count}} call",
+    "count_other": "{{count}} calls",
+    "cols": { "lead": "Lead", "when": "When", "duration": "Duration", "outcome": "Outcome", "qualified": "Qualified" },
+    "outcome": { "won": "Won", "lost": "Lost", "neutral": "Neutral", "analyzing": "Analyzing", "in_progress": "In progress", "done": "Done", "failed": "Failed" },
+    "qualified": { "qualified": "Qualified", "not_qualified": "Not qualified", "unknown": "—" },
+    "empty": { "title": "No calls yet", "body": "Calls appear here once the voice channel is connected." },
+    "error": "Could not load calls.",
+    "page": "Page {{page}} of {{total}}",
+    "prev": "Prev",
+    "next": "Next",
+    "drawer": {
+      "close": "Close",
+      "when": "When",
+      "duration": "Duration",
+      "phone": "Phone",
+      "audio": "Recording",
+      "noAudio": "No recording available",
+      "outcomeTitle": "Outcome & analysis",
+      "summary": "Summary",
+      "noSummary": "No summary yet.",
+      "analysisTitle": "Sales analysis",
+      "noAnalysis": "Sales analysis appears once the call is analyzed.",
+      "score": "Effectiveness",
+      "qualification": "Qualification",
+      "company": "Company",
+      "challenge": "Main challenge",
+      "followup": "Follow-up scheduled",
+      "yes": "Yes",
+      "no": "No",
+      "tabs": { "transcript": "Transcript", "data": "Data" },
+      "noTranscript": "No transcript available.",
+      "agent": "Agent",
+      "loadError": "Could not load this call."
+    }
+  },
   "overview": {
     "live": "Live",
     "range": { "today": "Today", "d7": "7 days", "d30": "30 days", "label": "Date range" },

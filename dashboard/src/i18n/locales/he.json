@@ -31,6 +31,43 @@
   "placeholder": {
     "body": "העמוד הזה נבנה כעת לפי התצוגה המאושרת ב־v5, כחלק ממעבר הדשבורד."
   },
+  "calls": {
+    "filters": { "statusAll": "כל התוצאות", "from": "מתאריך", "to": "עד" },
+    "count_one": "שיחה אחת",
+    "count_other": "{{count}} שיחות",
+    "cols": { "lead": "ליד", "when": "מתי", "duration": "משך", "outcome": "תוצאה", "qualified": "כשירות" },
+    "outcome": { "won": "נסגר", "lost": "אבוד", "neutral": "ניטרלי", "analyzing": "בניתוח", "in_progress": "בתהליך", "done": "הסתיימה", "failed": "נכשלה" },
+    "qualified": { "qualified": "כשיר", "not_qualified": "לא כשיר", "unknown": "—" },
+    "empty": { "title": "אין עדיין שיחות", "body": "שיחות יופיעו כאן ברגע שערוץ הקול יחובר." },
+    "error": "לא ניתן לטעון את השיחות.",
+    "page": "עמוד {{page}} מתוך {{total}}",
+    "prev": "הקודם",
+    "next": "הבא",
+    "drawer": {
+      "close": "סגירה",
+      "when": "מתי",
+      "duration": "משך",
+      "phone": "טלפון",
+      "audio": "הקלטה",
+      "noAudio": "אין הקלטה זמינה",
+      "outcomeTitle": "תוצאה וניתוח",
+      "summary": "סיכום",
+      "noSummary": "אין עדיין סיכום.",
+      "analysisTitle": "ניתוח מכירתי",
+      "noAnalysis": "הניתוח המכירתי יופיע לאחר שהשיחה תנותח.",
+      "score": "אפקטיביות",
+      "qualification": "כשירות",
+      "company": "חברה",
+      "challenge": "האתגר המרכזי",
+      "followup": "נקבע מעקב",
+      "yes": "כן",
+      "no": "לא",
+      "tabs": { "transcript": "תמלול", "data": "נתונים" },
+      "noTranscript": "אין תמלול זמין.",
+      "agent": "הסוכנת",
+      "loadError": "לא ניתן לטעון את השיחה."
+    }
+  },
   "overview": {
     "live": "חי",
     "range": { "today": "היום", "d7": "7 ימים", "d30": "30 יום", "label": "טווח תאריכים" },
