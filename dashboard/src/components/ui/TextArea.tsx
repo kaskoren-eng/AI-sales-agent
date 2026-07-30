@@ -20,8 +20,8 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function 
       style={{
         width: '100%',
         padding: '10px 12px',
-        backgroundColor: 'var(--bg-inset)',
-        border: `1px solid ${invalid ? 'var(--error)' : 'var(--border-default)'}`,
+        backgroundColor: 'var(--surface-sunken)',
+        border: `1px solid ${invalid ? 'var(--status-danger)' : 'var(--border-default)'}`,
         borderRadius: '8px',
         color: 'var(--text-primary)',
         fontSize: '14px',

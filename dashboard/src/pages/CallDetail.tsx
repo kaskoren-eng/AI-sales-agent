@@ -20,9 +20,9 @@ function scoreVariant(score: number): 'success' | 'warning' | 'error' {
 }
 
 const SCORE_COLOR: Record<'success' | 'warning' | 'error', string> = {
-  success: 'var(--success)',
-  warning: 'var(--warning)',
-  error: 'var(--error)',
+  success: 'var(--status-success)',
+  warning: 'var(--status-warning)',
+  error: 'var(--status-danger)',
 }
 
 // -------------------------------------------------------------------------
@@ -90,7 +90,7 @@ function ToolCallStrip({ toolCalls }: { toolCalls: CallLearnings['tool_calls'] }
         gap: '6px',
         paddingInline: '20px',
         paddingBlock: '12px',
-        borderBottom: '1px solid var(--border-subtle)',
+        borderBottom: '1px solid var(--border-default)',
       }}
       aria-label="Tool calls during this call"
     >
@@ -106,10 +106,10 @@ function ToolCallPill({ tc }: { tc: CallLearnings['tool_calls'][number] }) {
   // The agent's tool budget is <500ms (voice-agent-development-methodology) — flag breaches
   const slow = tc.ok && tc.durationMs > 500
   const tint: React.CSSProperties = failed
-    ? { backgroundColor: 'rgba(239, 68, 68, 0.10)', border: '1px solid rgba(239, 68, 68, 0.30)', color: 'var(--error)' }
+    ? { backgroundColor: 'rgba(239, 68, 68, 0.10)', border: '1px solid rgba(239, 68, 68, 0.30)', color: 'var(--status-danger)' }
     : slow
-      ? { backgroundColor: 'rgba(245, 158, 11, 0.10)', border: '1px solid rgba(245, 158, 11, 0.30)', color: 'var(--warning)' }
-      : { backgroundColor: 'var(--bg-inset)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }
+      ? { backgroundColor: 'rgba(245, 158, 11, 0.10)', border: '1px solid rgba(245, 158, 11, 0.30)', color: 'var(--status-warning)' }
+      : { backgroundColor: 'var(--surface-sunken)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }
 
   return (
     <span
@@ -128,12 +128,12 @@ function ToolCallPill({ tc }: { tc: CallLearnings['tool_calls'][number] }) {
         ...tint,
       }}
     >
-      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', fontWeight: 400, color: 'var(--text-muted)' }}>
+      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', fontWeight: 400, color: 'var(--text-tertiary)' }}>
         {formatDuration(Math.floor(tc.atMs / 1000))}
       </span>
       {tc.name}
       {tc.ok ? <CheckCircle size={11} strokeWidth={1.5} /> : <XCircle size={11} strokeWidth={1.5} />}
-      <span style={{ fontSize: '10px', fontWeight: 400, color: slow ? 'var(--warning)' : 'var(--text-muted)' }}>
+      <span style={{ fontSize: '10px', fontWeight: 400, color: slow ? 'var(--status-warning)' : 'var(--text-tertiary)' }}>
         {tc.durationMs}ms
       </span>
     </span>
@@ -153,7 +153,7 @@ function ListBlock({ label, items }: { label: string; items: string[] }) {
           fontWeight: 600,
           letterSpacing: '0.05em',
           textTransform: 'uppercase',
-          color: 'var(--text-muted)',
+          color: 'var(--text-tertiary)',
           margin: 0,
           marginBlockEnd: '6px',
         }}
@@ -192,7 +192,7 @@ function SalesAnalysisCard({ analysis }: { analysis: NonNullable<CallLearnings['
           fontSize: '11px',
           letterSpacing: '0.08em',
           textTransform: 'uppercase',
-          color: 'var(--text-muted)',
+          color: 'var(--text-tertiary)',
           marginBottom: '16px',
         }}
       >
@@ -212,7 +212,7 @@ function SalesAnalysisCard({ analysis }: { analysis: NonNullable<CallLearnings['
           >
             {score}
           </span>
-          <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>/10 effectiveness</span>
+          <span style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>/10 effectiveness</span>
         </div>
       )}
 
@@ -226,7 +226,7 @@ function SalesAnalysisCard({ analysis }: { analysis: NonNullable<CallLearnings['
               fontWeight: 600,
               letterSpacing: '0.05em',
               textTransform: 'uppercase',
-              color: 'var(--text-muted)',
+              color: 'var(--text-tertiary)',
               margin: 0,
               marginBlockEnd: '6px',
             }}
@@ -240,24 +240,24 @@ function SalesAnalysisCard({ analysis }: { analysis: NonNullable<CallLearnings['
                 style={{
                   paddingInline: '10px',
                   paddingBlock: '8px',
-                  backgroundColor: 'var(--bg-inset)',
+                  backgroundColor: 'var(--surface-sunken)',
                   borderRadius: '6px',
-                  border: '1px solid var(--border-subtle)',
+                  border: '1px solid var(--border-default)',
                   display: 'flex',
                   alignItems: 'flex-start',
                   gap: '7px',
                 }}
               >
                 {o.handled_well ? (
-                  <CheckCircle size={13} strokeWidth={1.5} style={{ color: 'var(--success)', flexShrink: 0, marginBlockStart: '2px' }} />
+                  <CheckCircle size={13} strokeWidth={1.5} style={{ color: 'var(--status-success)', flexShrink: 0, marginBlockStart: '2px' }} />
                 ) : (
-                  <XCircle size={13} strokeWidth={1.5} style={{ color: 'var(--error)', flexShrink: 0, marginBlockStart: '2px' }} />
+                  <XCircle size={13} strokeWidth={1.5} style={{ color: 'var(--status-danger)', flexShrink: 0, marginBlockStart: '2px' }} />
                 )}
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <p dir="auto" style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.5 }}>
                     {o.objection}
                   </p>
-                  <p dir="auto" style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  <p dir="auto" style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
                     {o.response}
                   </p>
                 </div>
@@ -283,7 +283,7 @@ function SalesAnalysisCard({ analysis }: { analysis: NonNullable<CallLearnings['
 
       {hasCoachingNotes && (
         <details>
-          <summary style={{ cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>
+          <summary style={{ cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: 'var(--text-tertiary)' }}>
             Coaching notes
           </summary>
           <div style={{ marginBlockStart: '10px' }}>
@@ -321,9 +321,9 @@ function TranscriptBubble({ turn }: { turn: TranscriptTurn }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: isAgent ? 'rgba(15, 163, 172, 0.1)' : 'var(--glass-hover)',
+          backgroundColor: isAgent ? 'rgba(15, 163, 172, 0.1)' : 'var(--surface-sunken)',
           border: `1px solid ${isAgent ? 'rgba(15, 163, 172, 0.25)' : 'var(--border-default)'}`,
-          color: isAgent ? 'var(--accent-teal)' : 'var(--text-secondary)',
+          color: isAgent ? 'var(--accent-fg)' : 'var(--text-secondary)',
         }}
       >
         {isAgent ? <Bot size={14} strokeWidth={1.5} /> : <User size={14} strokeWidth={1.5} />}
@@ -335,8 +335,8 @@ function TranscriptBubble({ turn }: { turn: TranscriptTurn }) {
           maxWidth: '72%',
           padding: '10px 14px',
           borderRadius: isAgent ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
-          backgroundColor: isAgent ? 'rgba(15, 163, 172, 0.08)' : 'var(--glass-hover)',
-          border: `1px solid ${isAgent ? 'rgba(15, 163, 172, 0.15)' : 'var(--border-subtle)'}`,
+          backgroundColor: isAgent ? 'rgba(15, 163, 172, 0.08)' : 'var(--surface-sunken)',
+          border: `1px solid ${isAgent ? 'rgba(15, 163, 172, 0.15)' : 'var(--border-default)'}`,
           fontSize: '13px',
           lineHeight: 1.6,
           color: 'var(--text-primary)',
@@ -347,7 +347,7 @@ function TranscriptBubble({ turn }: { turn: TranscriptTurn }) {
           <p
             style={{
               fontSize: '10px',
-              color: 'var(--text-muted)',
+              color: 'var(--text-tertiary)',
               marginTop: '4px',
               textAlign: isAgent ? 'left' : 'right',
             }}
@@ -364,12 +364,12 @@ function AnalysisIcon({ value }: { value: string | null }) {
   if (!value) return null
   const lower = value.toLowerCase()
   if (lower === 'yes' || lower === 'true' || lower === 'successful') {
-    return <CheckCircle size={14} strokeWidth={1.5} style={{ color: 'var(--success)' }} />
+    return <CheckCircle size={14} strokeWidth={1.5} style={{ color: 'var(--status-success)' }} />
   }
   if (lower === 'no' || lower === 'false' || lower === 'unsuccessful') {
-    return <XCircle size={14} strokeWidth={1.5} style={{ color: 'var(--error)' }} />
+    return <XCircle size={14} strokeWidth={1.5} style={{ color: 'var(--status-danger)' }} />
   }
-  return <AlertCircle size={14} strokeWidth={1.5} style={{ color: 'var(--warning)' }} />
+  return <AlertCircle size={14} strokeWidth={1.5} style={{ color: 'var(--status-warning)' }} />
 }
 
 export function CallDetail() {
@@ -405,11 +405,11 @@ export function CallDetail() {
     const is404 = (error as { status?: number })?.status === 404
     return (
       <div style={{ textAlign: 'center', padding: '64px 0' }}>
-        <Phone size={36} strokeWidth={1} style={{ color: 'var(--text-disabled)', display: 'block', margin: '0 auto 16px' }} />
+        <Phone size={36} strokeWidth={1} style={{ color: 'var(--text-tertiary)', display: 'block', margin: '0 auto 16px' }} />
         <p style={{ fontSize: '16px', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '8px' }}>
           {is404 ? 'Call not found' : 'Failed to load call'}
         </p>
-        <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' }}>
+        <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '20px' }}>
           {is404
             ? 'This call record does not exist or has been removed.'
             : 'Something went wrong. Please try again.'}
@@ -472,7 +472,7 @@ export function CallDetail() {
           <div
             style={{
               padding: '16px 20px',
-              borderBottom: '1px solid var(--border-subtle)',
+              borderBottom: '1px solid var(--border-default)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -490,7 +490,7 @@ export function CallDetail() {
             >
               Transcript
             </h3>
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
               {call.transcript.length} {call.transcript.length === 1 ? 'turn' : 'turns'}
             </span>
           </div>
@@ -509,7 +509,7 @@ export function CallDetail() {
             aria-live="off"
           >
             {call.transcript.length === 0 ? (
-              <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px', padding: '32px 0' }}>
+              <p style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '13px', padding: '32px 0' }}>
                 No transcript available for this call.
               </p>
             ) : (
@@ -531,7 +531,7 @@ export function CallDetail() {
                 fontSize: '11px',
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
-                color: 'var(--text-muted)',
+                color: 'var(--text-tertiary)',
                 marginBottom: '16px',
               }}
             >
@@ -543,7 +543,7 @@ export function CallDetail() {
               {call.lead?.phone && <MetaRow label="Phone" value={call.lead.phone} />}
               {call.lead?.status && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Status</span>
+                  <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>Status</span>
                   <Badge variant={statusToBadgeVariant(call.lead.status)}>{call.lead.status}</Badge>
                 </div>
               )}
@@ -562,7 +562,7 @@ export function CallDetail() {
                 fontSize: '11px',
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
-                color: 'var(--text-muted)',
+                color: 'var(--text-tertiary)',
                 marginBottom: '16px',
               }}
             >
@@ -570,14 +570,14 @@ export function CallDetail() {
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Status</span>
+                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>Status</span>
                 <Badge variant={statusToBadgeVariant(call.status)}>{call.status}</Badge>
               </div>
               <MetaRow
                 label="Duration"
                 value={
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                    <Clock size={12} strokeWidth={1.5} style={{ color: 'var(--text-muted)' }} />
+                    <Clock size={12} strokeWidth={1.5} style={{ color: 'var(--text-tertiary)' }} />
                     {formatDuration(call.duration_secs)}
                   </span>
                 }
@@ -596,7 +596,7 @@ export function CallDetail() {
                   fontSize: '11px',
                   letterSpacing: '0.08em',
                   textTransform: 'uppercase',
-                  color: 'var(--text-muted)',
+                  color: 'var(--text-tertiary)',
                   marginBottom: '16px',
                 }}
               >
@@ -605,7 +605,7 @@ export function CallDetail() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {call.qualification.status && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Result</span>
+                    <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>Result</span>
                     <Badge variant={statusToBadgeVariant(call.qualification.status)}>
                       {call.qualification.status}
                     </Badge>
@@ -618,7 +618,7 @@ export function CallDetail() {
                   <MetaRow label="Challenge" value={call.qualification.lead_primary_challenge} />
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Follow-up</span>
+                  <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>Follow-up</span>
                   <Badge variant={call.qualification.follow_up_scheduled ? 'success' : 'default'}>
                     {call.qualification.follow_up_scheduled ? 'Scheduled' : 'Not scheduled'}
                   </Badge>
@@ -637,7 +637,7 @@ export function CallDetail() {
                   fontSize: '11px',
                   letterSpacing: '0.08em',
                   textTransform: 'uppercase',
-                  color: 'var(--text-muted)',
+                  color: 'var(--text-tertiary)',
                   marginBottom: '16px',
                 }}
               >
@@ -652,7 +652,7 @@ export function CallDetail() {
                     marginBottom: '12px',
                     padding: '8px 10px',
                     borderRadius: '6px',
-                    backgroundColor: 'var(--bg-inset)',
+                    backgroundColor: 'var(--surface-sunken)',
                   }}
                 >
                   <AnalysisIcon value={call.analysis.call_successful} />
@@ -689,7 +689,7 @@ export function CallDetail() {
           style={{
             position: 'sticky',
             bottom: '0',
-            backgroundColor: 'var(--glass-bg-solid)',
+            backgroundColor: 'var(--surface-card)',
             borderTop: '1px solid var(--border-default)',
             padding: '12px 20px',
             display: 'flex',
@@ -698,7 +698,7 @@ export function CallDetail() {
             borderRadius: '12px',
           }}
         >
-          <Phone size={16} strokeWidth={1.5} style={{ color: 'var(--accent-teal)', flexShrink: 0 }} />
+          <Phone size={16} strokeWidth={1.5} style={{ color: 'var(--accent-fg)', flexShrink: 0 }} />
           <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 600 }}>
             Call Recording
           </span>
@@ -725,7 +725,7 @@ function MetaRow({
 }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-      <span style={{ fontSize: '12px', color: 'var(--text-muted)', flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', flexShrink: 0 }}>{label}</span>
       <span style={{ fontSize: '13px', color: 'var(--text-secondary)', textAlign: 'right', wordBreak: 'break-word' }}>
         {value}
       </span>

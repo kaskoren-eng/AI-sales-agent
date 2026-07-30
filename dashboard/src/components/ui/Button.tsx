@@ -35,11 +35,11 @@ const sizeStyles: Record<ButtonSize, React.CSSProperties> = {
 
 const variantStyles: Record<ButtonVariant, React.CSSProperties> = {
   primary: {
-    backgroundColor: 'var(--accent-teal)',
-    color: 'var(--text-on-teal)',
+    backgroundColor: 'var(--accent-fg)',
+    color: 'var(--text-on-accent)',
   },
   secondary: {
-    backgroundColor: 'var(--glass-bg-solid)',
+    backgroundColor: 'var(--surface-card)',
     color: 'var(--text-primary)',
     border: '1px solid var(--border-default)',
   },
@@ -50,7 +50,7 @@ const variantStyles: Record<ButtonVariant, React.CSSProperties> = {
   },
   danger: {
     backgroundColor: 'rgba(179, 38, 30, 0.10)',
-    color: 'var(--error)',
+    color: 'var(--status-danger)',
     border: '1px solid rgba(179, 38, 30, 0.25)',
   },
 }

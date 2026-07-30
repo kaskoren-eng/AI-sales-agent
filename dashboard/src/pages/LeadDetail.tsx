@@ -76,11 +76,11 @@ export function LeadDetail() {
     const is404 = (error as { status?: number })?.status === 404
     return (
       <div style={{ textAlign: 'center', padding: '64px 0' }}>
-        <User size={36} strokeWidth={1} style={{ color: 'var(--text-disabled)', display: 'block', margin: '0 auto 16px' }} />
+        <User size={36} strokeWidth={1} style={{ color: 'var(--text-tertiary)', display: 'block', margin: '0 auto 16px' }} />
         <p style={{ fontSize: '16px', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '8px' }}>
           {is404 ? t('leadDetail.notFound') : t('leadDetail.loadError')}
         </p>
-        <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' }}>
+        <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '20px' }}>
           {is404 ? t('leadDetail.notFoundDesc') : t('leadDetail.loadErrorDesc')}
         </p>
         <Link to="/leads">
@@ -155,7 +155,7 @@ function LeadDetailContent({ data }: { data: LeadTimelineResponse }) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: 'var(--accent-teal)',
+              color: 'var(--accent-fg)',
               flexShrink: 0,
             }}
           >
@@ -179,7 +179,7 @@ function LeadDetailContent({ data }: { data: LeadTimelineResponse }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
               <Badge variant={statusToBadgeVariant(lead.status)}>{t(`status.${lead.status}`, { defaultValue: lead.status })}</Badge>
               {lead.source && (
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
                   {t('leadDetail.via', { source: t(`sources.${lead.source}`, { defaultValue: lead.source }) })}
                 </span>
               )}
@@ -188,7 +188,7 @@ function LeadDetailContent({ data }: { data: LeadTimelineResponse }) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
             {t('leadDetail.updatedLabel')} <Bidi>{formatDate(lead.updatedAt)}</Bidi>
           </span>
         </div>
@@ -238,7 +238,7 @@ function LeadIdentityCard({ lead }: { lead: LeadTimelineResponse['lead'] }) {
           value={
             lead.email ? (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <Mail size={12} strokeWidth={1.5} style={{ color: 'var(--text-muted)' }} />
+                <Mail size={12} strokeWidth={1.5} style={{ color: 'var(--text-tertiary)' }} />
                 <Bidi>{lead.email}</Bidi>
               </span>
             ) : (
@@ -251,7 +251,7 @@ function LeadIdentityCard({ lead }: { lead: LeadTimelineResponse['lead'] }) {
           value={
             lead.phone ? (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <Phone size={12} strokeWidth={1.5} style={{ color: 'var(--text-muted)' }} />
+                <Phone size={12} strokeWidth={1.5} style={{ color: 'var(--text-tertiary)' }} />
                 <Bidi>{lead.phone}</Bidi>
               </span>
             ) : (
@@ -301,7 +301,7 @@ function StatusEditor({ leadId, currentStatus }: { leadId: string; currentStatus
           {mutation.isPending ? t('leadDetail.saving') : dirty ? t('leadDetail.saveChange') : t('leadDetail.saved')}
         </Button>
         {mutation.isError && (
-          <p style={{ fontSize: '12px', color: 'var(--error)', margin: 0 }}>
+          <p style={{ fontSize: '12px', color: 'var(--status-danger)', margin: 0 }}>
             {t('leadDetail.saveError')}
           </p>
         )}
@@ -338,7 +338,7 @@ function LeadMetadataCard({ lead }: { lead: LeadTimelineResponse['lead'] }) {
               style={{
                 cursor: 'pointer',
                 fontSize: '12px',
-                color: 'var(--text-muted)',
+                color: 'var(--text-tertiary)',
                 fontWeight: 600,
               }}
             >
@@ -366,7 +366,7 @@ function TimelineFeed({ events }: { events: TimelineEvent[] }) {
       <div
         style={{
           padding: '16px 20px',
-          borderBottom: '1px solid var(--border-subtle)',
+          borderBottom: '1px solid var(--border-default)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -385,7 +385,7 @@ function TimelineFeed({ events }: { events: TimelineEvent[] }) {
         >
           {t('leadDetail.activityTimeline')}
         </h3>
-        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+        <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
           {t('leadDetail.events', { count: events.length })}
         </span>
       </div>
@@ -396,9 +396,9 @@ function TimelineFeed({ events }: { events: TimelineEvent[] }) {
             <Inbox
               size={28}
               strokeWidth={1}
-              style={{ color: 'var(--text-disabled)', margin: '0 auto 12px', display: 'block' }}
+              style={{ color: 'var(--text-tertiary)', margin: '0 auto 12px', display: 'block' }}
             />
-            <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+            <p style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>
               {t('leadDetail.emptyTimeline')}
             </p>
           </div>
@@ -434,7 +434,7 @@ function TimelineItem({ event, isLast }: { event: TimelineEvent; isLast: boolean
             top: '24px',
             bottom: '0',
             width: '1px',
-            backgroundColor: 'var(--border-subtle)',
+            backgroundColor: 'var(--border-default)',
           }}
         />
       )}
@@ -479,12 +479,12 @@ function TimelineItem({ event, isLast }: { event: TimelineEvent; isLast: boolean
           >
             {title}
           </p>
-          <Bidi as="span" style={{ fontSize: '11px', color: 'var(--text-muted)', flexShrink: 0 }}>
+          <Bidi as="span" style={{ fontSize: '11px', color: 'var(--text-tertiary)', flexShrink: 0 }}>
             {formatDate(event.at)}
           </Bidi>
         </div>
         {subtitle && (
-          <Bidi as="p" style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+          <Bidi as="p" style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--text-tertiary)' }}>
             {subtitle}
           </Bidi>
         )}
@@ -509,7 +509,7 @@ function ConversationsSummary({
     return (
       <Card>
         <CardHeader label={t('leadDetail.conversations')} />
-        <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>
+        <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', margin: 0 }}>
           {t('leadDetail.noConversations')}
         </p>
       </Card>
@@ -529,8 +529,8 @@ function ConversationsSummary({
               style={{
                 padding: '10px 12px',
                 borderRadius: '8px',
-                backgroundColor: 'var(--bg-inset)',
-                border: '1px solid var(--border-subtle)',
+                backgroundColor: 'var(--surface-sunken)',
+                border: '1px solid var(--border-default)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '10px',
@@ -559,7 +559,7 @@ function ConversationsSummary({
                   </span>
                   <Badge variant={statusToBadgeVariant(c.status)}>{t(`status.${c.status}`, { defaultValue: c.status })}</Badge>
                 </div>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
                   {t('leadDetail.messages', { count })} · <Bidi>{formatDate(c.updatedAt)}</Bidi>
                 </span>
               </div>
@@ -589,7 +589,7 @@ function BookingsCard({ bookings }: { bookings: LeadScheduledCall[] }) {
     return (
       <Card>
         <CardHeader label={t('leadDetail.meetings')} />
-        <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>
+        <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', margin: 0 }}>
           {t('leadDetail.noMeetings')}
         </p>
       </Card>
@@ -608,8 +608,8 @@ function BookingsCard({ bookings }: { bookings: LeadScheduledCall[] }) {
               style={{
                 padding: '10px 12px',
                 borderRadius: '8px',
-                backgroundColor: 'var(--bg-inset)',
-                border: '1px solid var(--border-subtle)',
+                backgroundColor: 'var(--surface-sunken)',
+                border: '1px solid var(--border-default)',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '4px',
@@ -635,13 +635,13 @@ function BookingsCard({ bookings }: { bookings: LeadScheduledCall[] }) {
                   <CalendarIcon
                     size={12}
                     strokeWidth={1.5}
-                    style={{ color: 'var(--accent-violet)' }}
+                    style={{ color: 'var(--data-1)' }}
                   />
                   <Bidi>{formatDate(b.scheduledAt)}</Bidi>
                 </span>
                 <Badge variant={statusToBadgeVariant(b.status)}>{t(`status.${b.status}`, { defaultValue: b.status })}</Badge>
               </div>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
                 {t('leadDetail.minutes', { count: b.duration ?? 30 })} · {t(`providers.${b.provider}`, { defaultValue: b.provider })}
                 {isFuture ? ` · ${t('leadDetail.upcoming')}` : ` · ${t('leadDetail.past')}`}
               </span>
@@ -679,7 +679,7 @@ function CardHeader({ label }: { label: string }) {
         fontSize: '11px',
         letterSpacing: '0.08em',
         textTransform: 'uppercase',
-        color: 'var(--text-muted)',
+        color: 'var(--text-tertiary)',
         marginBottom: '14px',
         marginTop: 0,
       }}
@@ -694,7 +694,7 @@ function MetaRow({ label, value }: { label: string; value: React.ReactNode }) {
     <div
       style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}
     >
-      <span style={{ fontSize: '12px', color: 'var(--text-muted)', flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', flexShrink: 0 }}>{label}</span>
       <span
         style={{
           fontSize: '13px',
@@ -824,7 +824,7 @@ function channelVisual(channel: string): {
   switch (channel) {
     case 'voice':
       return {
-        color: 'var(--accent-teal)',
+        color: 'var(--accent-fg)',
         bg: 'rgba(15, 163, 172, 0.10)',
         border: 'rgba(15, 163, 172, 0.30)',
         Icon: Mic,
@@ -838,15 +838,15 @@ function channelVisual(channel: string): {
       }
     case 'email':
       return {
-        color: 'var(--info)',
+        color: 'var(--data-1)',
         bg: 'rgba(59, 130, 246, 0.12)',
         border: 'rgba(59, 130, 246, 0.30)',
         Icon: Mail,
       }
     default:
       return {
-        color: 'var(--text-muted)',
-        bg: 'var(--bg-inset)',
+        color: 'var(--text-tertiary)',
+        bg: 'var(--surface-sunken)',
         border: 'var(--border-default)',
         Icon: MessageCircle,
       }
@@ -871,7 +871,7 @@ function describeEvent(
         icon: <UserPlus size={12} strokeWidth={1.5} />,
         iconBg: 'rgba(91, 91, 214, 0.12)',
         iconBorder: 'rgba(91, 91, 214, 0.30)',
-        iconColor: 'var(--accent-violet)',
+        iconColor: 'var(--data-1)',
         title: t('leadDetail.timeline.leadCreated'),
         subtitle: t('leadDetail.timeline.enteredSystem'),
         body: null,
@@ -913,9 +913,9 @@ function describeEvent(
               color: 'var(--text-secondary)',
               lineHeight: 1.55,
               padding: '8px 10px',
-              backgroundColor: 'var(--bg-inset)',
+              backgroundColor: 'var(--surface-sunken)',
               borderRadius: '6px',
-              border: '1px solid var(--border-subtle)',
+              border: '1px solid var(--border-default)',
               whiteSpace: 'pre-wrap',
             }}
           >
@@ -930,7 +930,7 @@ function describeEvent(
         icon: <Sparkles size={12} strokeWidth={1.5} />,
         iconBg: 'rgba(91, 91, 214, 0.12)',
         iconBorder: 'rgba(91, 91, 214, 0.30)',
-        iconColor: 'var(--accent-violet)',
+        iconColor: 'var(--data-1)',
         title: t('leadDetail.timeline.meetingBooked'),
         subtitle: t('leadDetail.timeline.scheduledFor', { date: formatDate(b.scheduledAt), duration: b.duration ?? 30 }),
         body: null,
@@ -947,7 +947,7 @@ function describeEvent(
         ),
         iconBg: 'rgba(15, 163, 172, 0.10)',
         iconBorder: 'rgba(15, 163, 172, 0.30)',
-        iconColor: 'var(--accent-teal)',
+        iconColor: 'var(--accent-fg)',
         title: isPast ? t('leadDetail.timeline.meetingPast') : t('leadDetail.timeline.meetingUpcoming'),
         subtitle: t('leadDetail.timeline.providerDuration', { provider: b.provider, duration: b.duration ?? 30 }),
         body: null,

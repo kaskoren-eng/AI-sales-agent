@@ -44,7 +44,7 @@ export function Modal({
             transform: 'translate(-50%, -50%)',
             width,
             maxWidth: 'calc(100vw - 32px)',
-            backgroundColor: 'var(--glass-bg-solid)',
+            backgroundColor: 'var(--surface-card)',
             border: '1px solid var(--border-default)',
             borderRadius: '14px',
             boxShadow: '0 16px 48px rgba(38, 37, 36, 0.20)',
@@ -78,7 +78,7 @@ export function Modal({
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: 'var(--text-muted)',
+                  color: 'var(--text-tertiary)',
                   cursor: 'pointer',
                   padding: '2px',
                   display: 'inline-flex',

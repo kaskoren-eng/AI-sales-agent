@@ -30,7 +30,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
           fontWeight: 700,
           letterSpacing: '0.08em',
           textTransform: 'uppercase',
-          color: 'var(--text-muted)',
+          color: 'var(--text-tertiary)',
           marginBottom: '12px',
         }}
       >
@@ -214,7 +214,7 @@ function Inventory() {
         <div style={{ width: '100%', height: '80px' }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={[{ v: 3 }, { v: 7 }, { v: 5 }, { v: 9 }, { v: 6 }, { v: 11 }]}>
-              <Line type="monotone" dataKey="v" stroke="var(--accent-teal)" strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="v" stroke="var(--accent-fg)" strokeWidth={2} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -231,7 +231,7 @@ export function Styleguide() {
           <h1 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 700, fontSize: '20px', color: 'var(--text-primary)', margin: 0 }}>
             Primitives Styleguide
           </h1>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
+          <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
             Dev-only inventory · every primitive, both directions. Toggle language to see strings + portaled components flip.
           </p>
         </div>

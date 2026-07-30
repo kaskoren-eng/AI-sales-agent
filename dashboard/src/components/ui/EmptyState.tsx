@@ -19,7 +19,7 @@ export function EmptyState({ icon, title, description, action, style }: EmptySta
       <div
         aria-hidden="true"
         style={{
-          color: 'var(--text-disabled)',
+          color: 'var(--text-tertiary)',
           marginBottom: '12px',
           display: 'flex',
           justifyContent: 'center',
@@ -38,7 +38,7 @@ export function EmptyState({ icon, title, description, action, style }: EmptySta
         {title}
       </p>
       {description && (
-        <p style={{ fontSize: '13px', color: 'var(--text-muted)', maxWidth: '360px', marginInline: 'auto' }}>
+        <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', maxWidth: '360px', marginInline: 'auto' }}>
           {description}
         </p>
       )}

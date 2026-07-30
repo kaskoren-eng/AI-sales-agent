@@ -52,17 +52,17 @@ const variantInlineStyles: Record<BadgeVariant, React.CSSProperties> = {
   },
   warning: {
     backgroundColor: 'rgba(180, 83, 9, 0.12)',
-    color: 'var(--warning)',
+    color: 'var(--status-warning)',
     border: '1px solid rgba(180, 83, 9, 0.28)',
   },
   error: {
     backgroundColor: 'rgba(179, 38, 30, 0.12)',
-    color: 'var(--error)',
+    color: 'var(--status-danger)',
     border: '1px solid rgba(179, 38, 30, 0.28)',
   },
   info: {
     backgroundColor: 'rgba(24, 95, 165, 0.12)',
-    color: 'var(--info)',
+    color: 'var(--data-1)',
     border: '1px solid rgba(24, 95, 165, 0.28)',
   },
   default: {
@@ -72,7 +72,7 @@ const variantInlineStyles: Record<BadgeVariant, React.CSSProperties> = {
   },
   violet: {
     backgroundColor: 'rgba(91, 91, 214, 0.12)',
-    color: 'var(--accent-violet)',
+    color: 'var(--data-1)',
     border: '1px solid rgba(91, 91, 214, 0.28)',
   },
 }

@@ -26,9 +26,9 @@ const typeIcon: Record<ActivityEntry['type'], React.ReactNode> = {
 }
 
 const typeColor: Record<ActivityEntry['type'], string> = {
-  call: 'var(--accent-teal)',
-  lead: 'var(--accent-violet)',
-  booking: 'var(--success)',
+  call: 'var(--accent-fg)',
+  lead: 'var(--data-1)',
+  booking: 'var(--status-success)',
 }
 
 export function KerenStatusChip() {
@@ -65,7 +65,7 @@ export function KerenStatusChip() {
               width: '8px',
               height: '8px',
               borderRadius: '50%',
-              backgroundColor: 'var(--accent-teal)',
+              backgroundColor: 'var(--accent-fg)',
               flexShrink: 0,
               animation: 'pulse-dot 2s ease-in-out infinite',
             }}
@@ -75,7 +75,7 @@ export function KerenStatusChip() {
             style={{
               fontSize: '12px',
               fontWeight: 600,
-              color: 'var(--accent-teal)',
+              color: 'var(--accent-fg)',
               fontFamily: "'Assistant', sans-serif",
             }}
           >
@@ -99,7 +99,7 @@ export function KerenStatusChip() {
             insetInlineStart: '248px',
             bottom: '20px',
             width: '320px',
-            backgroundColor: 'var(--glass-bg-solid)',
+            backgroundColor: 'var(--surface-card)',
             border: '1px solid var(--border-default)',
             borderRadius: '12px',
             boxShadow: '0 8px 32px rgba(38, 37, 36, 0.18)',
@@ -111,7 +111,7 @@ export function KerenStatusChip() {
           <div
             style={{
               padding: '16px 16px 12px',
-              borderBottom: '1px solid var(--border-subtle)',
+              borderBottom: '1px solid var(--border-default)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -141,7 +141,7 @@ export function KerenStatusChip() {
                   borderRadius: '6px',
                   border: 'none',
                   backgroundColor: 'transparent',
-                  color: 'var(--text-muted)',
+                  color: 'var(--text-tertiary)',
                   cursor: 'pointer',
                 }}
               >
@@ -166,7 +166,7 @@ export function KerenStatusChip() {
                   display: 'flex',
                   alignItems: 'flex-start',
                   gap: '10px',
-                  borderBottom: '1px solid var(--border-subtle)',
+                  borderBottom: '1px solid var(--border-default)',
                 }}
               >
                 <span
@@ -190,7 +190,7 @@ export function KerenStatusChip() {
                   <p style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.4 }}>
                     {entry.text}
                   </p>
-                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
                     {entry.time}
                   </p>
                 </div>

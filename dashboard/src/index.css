@@ -43,39 +43,6 @@
   color-scheme: dark;
 }
 
-/* -------------------------------------------------------------------------
-   MIGRATION BRIDGE — old v4 token names aliased to their v5 equivalents.
-   Lets not-yet-migrated pages (which reference these names) render on the v5
-   palette, including dark mode, without edits. As each page is migrated to v5
-   tokens in Phase 3, its bridge usage drops out; DELETE this block once no
-   page references an old name. Search: rg "var\(--(bg-page|glass|accent-teal|accent-violet|text-muted|border-subtle|focus-ring)"
-   ------------------------------------------------------------------------- */
-:root {
-  --bg-page: var(--surface-page);
-  --bg-page-alt: var(--surface-sunken);
-  --bg-inset: var(--surface-sunken);
-  --glass-bg: var(--surface-card);
-  --glass-bg-solid: var(--surface-card);
-  --glass-border: var(--border-default);
-  --glass-hover: var(--surface-sunken);
-  --glass-blur: 0px;
-  --text-muted: var(--text-tertiary);
-  --text-disabled: var(--text-tertiary);
-  --text-on-teal: var(--text-on-accent);
-  --accent-teal: var(--accent-fg);
-  --accent-teal-dim: var(--accent-hover);
-  --accent-teal-tint: var(--accent-tint);
-  --accent-violet: var(--data-1);
-  --accent-violet-dim: var(--accent-hover);
-  --accent-violet-tint: var(--accent-tint);
-  --success: var(--status-success);
-  --warning: var(--status-warning);
-  --error: var(--status-danger);
-  --info: var(--data-1);
-  --border-subtle: var(--border-default);
-  --focus-ring: var(--accent);
-}
-
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;

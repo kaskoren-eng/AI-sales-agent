@@ -60,7 +60,7 @@ function GeneralTab() {
             fontSize: '12px',
             letterSpacing: '0.08em',
             textTransform: 'uppercase',
-            color: 'var(--text-muted)',
+            color: 'var(--text-tertiary)',
             marginBottom: '16px',
           }}
         >
@@ -86,7 +86,7 @@ function GeneralTab() {
                 style={{
                   width: '100%',
                   height: '36px',
-                  backgroundColor: 'var(--bg-inset)',
+                  backgroundColor: 'var(--surface-sunken)',
                   border: '1px solid var(--border-default)',
                   borderRadius: '8px',
                   padding: '0 12px',
@@ -109,10 +109,10 @@ function GeneralTab() {
               <Save size={14} strokeWidth={1.5} /> Save Changes
             </Button>
             {saved && (
-              <span style={{ fontSize: '12px', color: 'var(--success)' }}>Saved</span>
+              <span style={{ fontSize: '12px', color: 'var(--status-success)' }}>Saved</span>
             )}
             {mutation.isError && (
-              <span role="alert" style={{ fontSize: '12px', color: 'var(--error)' }}>
+              <span role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)' }}>
                 Save failed
               </span>
             )}
@@ -173,13 +173,13 @@ function FlowsTab() {
             fontSize: '12px',
             letterSpacing: '0.08em',
             textTransform: 'uppercase',
-            color: 'var(--text-muted)',
+            color: 'var(--text-tertiary)',
             marginBottom: '8px',
           }}
         >
           Flow Configuration
         </h3>
-        <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px', lineHeight: 1.5 }}>
+        <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '16px', lineHeight: 1.5 }}>
           Define automation flows in JSON. Changes are applied on the next lead qualification cycle.
         </p>
         {isLoading ? (
@@ -195,8 +195,8 @@ function FlowsTab() {
             style={{
               width: '100%',
               height: '280px',
-              backgroundColor: 'var(--bg-inset)',
-              border: `1px solid ${jsonError ? 'var(--error)' : 'var(--border-default)'}`,
+              backgroundColor: 'var(--surface-sunken)',
+              border: `1px solid ${jsonError ? 'var(--status-danger)' : 'var(--border-default)'}`,
               borderRadius: '8px',
               padding: '12px',
               color: 'var(--text-primary)',
@@ -210,7 +210,7 @@ function FlowsTab() {
           />
         )}
         {jsonError && (
-          <p id="json-error" role="alert" style={{ fontSize: '12px', color: 'var(--error)', marginBottom: '8px' }}>
+          <p id="json-error" role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)', marginBottom: '8px' }}>
             {jsonError}
           </p>
         )}
@@ -224,9 +224,9 @@ function FlowsTab() {
           >
             <Save size={14} strokeWidth={1.5} /> Save Flow Config
           </Button>
-          {saved && <span style={{ fontSize: '12px', color: 'var(--success)' }}>Saved</span>}
+          {saved && <span style={{ fontSize: '12px', color: 'var(--status-success)' }}>Saved</span>}
           {mutation.isError && (
-            <span role="alert" style={{ fontSize: '12px', color: 'var(--error)' }}>
+            <span role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)' }}>
               Save failed
             </span>
           )}
@@ -262,13 +262,13 @@ function ApiTab() {
             fontSize: '12px',
             letterSpacing: '0.08em',
             textTransform: 'uppercase',
-            color: 'var(--text-muted)',
+            color: 'var(--text-tertiary)',
             marginBottom: '16px',
           }}
         >
           API Key
         </h3>
-        <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px', lineHeight: 1.5 }}>
+        <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '16px', lineHeight: 1.5 }}>
           Use this key to authenticate API requests. Keep it secret — it grants full access to your tenant.
         </p>
 
@@ -278,7 +278,7 @@ function ApiTab() {
             alignItems: 'center',
             gap: '8px',
             padding: '10px 12px',
-            backgroundColor: 'var(--bg-inset)',
+            backgroundColor: 'var(--surface-sunken)',
             border: '1px solid var(--border-default)',
             borderRadius: '8px',
             marginBottom: '16px',
@@ -302,7 +302,7 @@ function ApiTab() {
             style={{
               background: 'none',
               border: 'none',
-              color: 'var(--text-muted)',
+              color: 'var(--text-tertiary)',
               cursor: 'pointer',
               padding: '4px',
               display: 'flex',
@@ -323,7 +323,7 @@ function ApiTab() {
               border: '1px solid rgba(16, 185, 129, 0.25)',
               borderRadius: '8px',
               fontSize: '13px',
-              color: 'var(--success)',
+              color: 'var(--status-success)',
               marginBottom: '16px',
               lineHeight: 1.5,
             }}
@@ -360,7 +360,7 @@ function ApiTab() {
               left: '50%',
               transform: 'translate(-50%, -50%)',
               width: '400px',
-              backgroundColor: 'var(--glass-bg-solid)',
+              backgroundColor: 'var(--surface-card)',
               border: '1px solid var(--border-default)',
               borderRadius: '12px',
               boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
@@ -383,7 +383,7 @@ function ApiTab() {
               <Dialog.Close asChild>
                 <button
                   aria-label="Close dialog"
-                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px' }}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px' }}
                 >
                   <X size={16} strokeWidth={1.5} />
                 </button>
@@ -409,7 +409,7 @@ function ApiTab() {
               </Button>
             </div>
             {mutation.isError && (
-              <p role="alert" style={{ fontSize: '12px', color: 'var(--error)', marginTop: '12px' }}>
+              <p role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)', marginTop: '12px' }}>
                 Failed to regenerate key. Please try again.
               </p>
             )}
@@ -433,7 +433,7 @@ function FieldGroup({ label, children }: { label: string; children: React.ReactN
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  backgroundColor: 'var(--bg-inset)',
+  backgroundColor: 'var(--surface-sunken)',
   border: '1px solid var(--border-default)',
   borderRadius: '8px',
   padding: '8px 12px',
@@ -495,10 +495,10 @@ function AgentTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '560px' }}>
       <Card>
-        <h3 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 700, fontSize: '12px', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '4px' }}>
+        <h3 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 700, fontSize: '12px', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
           Agent Business Profile
         </h3>
-        <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px', lineHeight: 1.5 }}>
+        <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '20px', lineHeight: 1.5 }}>
           This information is injected into every call so your agent speaks as your brand — not a generic bot.
         </p>
 
@@ -550,8 +550,8 @@ function AgentTab() {
           >
             <Save size={14} strokeWidth={1.5} /> Save Profile
           </Button>
-          {saved && <span style={{ fontSize: '12px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={13} /> Saved</span>}
-          {mutation.isError && <span role="alert" style={{ fontSize: '12px', color: 'var(--error)' }}>Save failed — try again</span>}
+          {saved && <span style={{ fontSize: '12px', color: 'var(--status-success)', display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={13} /> Saved</span>}
+          {mutation.isError && <span role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)' }}>Save failed — try again</span>}
         </div>
       </Card>
     </div>
@@ -595,12 +595,12 @@ function TwilioTab() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '560px' }}>
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-          <Phone size={16} strokeWidth={1.5} color="var(--accent-teal)" />
-          <h3 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 700, fontSize: '12px', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+          <Phone size={16} strokeWidth={1.5} color="var(--accent-fg)" />
+          <h3 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 700, fontSize: '12px', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
             Twilio Account
           </h3>
         </div>
-        <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px', lineHeight: 1.5 }}>
+        <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '20px', lineHeight: 1.5 }}>
           Connect your own Twilio account. Your agent will make and receive calls using your number — billed directly by Twilio.
         </p>
 
@@ -610,14 +610,14 @@ function TwilioTab() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div style={{ padding: '12px 14px', backgroundColor: 'rgba(16, 185, 129, 0.07)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                <CheckCircle2 size={14} color="var(--success)" />
-                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--success)' }}>Connected</span>
+                <CheckCircle2 size={14} color="var(--status-success)" />
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--status-success)' }}>Connected</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Account SID: <code style={{ color: 'var(--text-secondary)' }}>{status.accountSid}</code></span>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Phone: <code style={{ color: 'var(--text-secondary)' }}>{status.phoneNumber}</code></span>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Auth Token: <code style={{ color: 'var(--text-secondary)' }}>{status.authTokenMasked}</code></span>
-                {status.configuredAt && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Configured {new Date(status.configuredAt).toLocaleDateString()}</span>}
+                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>Account SID: <code style={{ color: 'var(--text-secondary)' }}>{status.accountSid}</code></span>
+                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>Phone: <code style={{ color: 'var(--text-secondary)' }}>{status.phoneNumber}</code></span>
+                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>Auth Token: <code style={{ color: 'var(--text-secondary)' }}>{status.authTokenMasked}</code></span>
+                {status.configuredAt && <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Configured {new Date(status.configuredAt).toLocaleDateString()}</span>}
               </div>
             </div>
             <Button variant="danger" size="sm" onClick={() => setConfirmDisconnect(true)}>
@@ -649,7 +649,7 @@ function TwilioTab() {
                 <button
                   onClick={() => setShowToken((v) => !v)}
                   aria-label={showToken ? 'Hide token' : 'Show token'}
-                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
                 >
                   {showToken ? <EyeOff size={14} strokeWidth={1.5} /> : <Eye size={14} strokeWidth={1.5} />}
                 </button>
@@ -676,13 +676,13 @@ function TwilioTab() {
               >
                 <Save size={14} strokeWidth={1.5} /> Connect Twilio
               </Button>
-              {saved && <span style={{ fontSize: '12px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={13} /> Connected</span>}
-              {saveMutation.isError && <span role="alert" style={{ fontSize: '12px', color: 'var(--error)' }}>Save failed — check credentials</span>}
+              {saved && <span style={{ fontSize: '12px', color: 'var(--status-success)', display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={13} /> Connected</span>}
+              {saveMutation.isError && <span role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)' }}>Save failed — check credentials</span>}
             </div>
 
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px', lineHeight: 1.5 }}>
+            <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px', lineHeight: 1.5 }}>
               Find your Account SID and Auth Token in the{' '}
-              <span style={{ color: 'var(--accent-teal)' }}>Twilio Console → Dashboard</span>.
+              <span style={{ color: 'var(--accent-fg)' }}>Twilio Console → Dashboard</span>.
               Your auth token is encrypted before storage.
             </p>
           </div>
@@ -694,7 +694,7 @@ function TwilioTab() {
         <Dialog.Portal>
           <Dialog.Overlay style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 50 }} />
           <Dialog.Content
-            style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '400px', backgroundColor: 'var(--glass-bg-solid)', border: '1px solid var(--border-default)', borderRadius: '12px', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', padding: '24px', zIndex: 51 }}
+            style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '400px', backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: '12px', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', padding: '24px', zIndex: 51 }}
             aria-describedby="disconnect-desc"
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
@@ -702,7 +702,7 @@ function TwilioTab() {
                 Disconnect Twilio?
               </Dialog.Title>
               <Dialog.Close asChild>
-                <button aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px' }}>
+                <button aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px' }}>
                   <X size={16} strokeWidth={1.5} />
                 </button>
               </Dialog.Close>

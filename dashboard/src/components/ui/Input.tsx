@@ -25,8 +25,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         // Icon sits in the inline-start gutter — padding is logical so it flips under RTL.
         paddingInlineStart: hasIcon ? '36px' : '12px',
         paddingInlineEnd: '12px',
-        backgroundColor: 'var(--bg-inset)',
-        border: `1px solid ${invalid ? 'var(--error)' : 'var(--border-default)'}`,
+        backgroundColor: 'var(--surface-sunken)',
+        border: `1px solid ${invalid ? 'var(--status-danger)' : 'var(--border-default)'}`,
         borderRadius: '8px',
         color: 'var(--text-primary)',
         fontSize: FONT[size],
@@ -51,7 +51,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           top: '50%',
           transform: 'translateY(-50%)',
           display: 'inline-flex',
-          color: 'var(--text-muted)',
+          color: 'var(--text-tertiary)',
           pointerEvents: 'none',
         }}
       >

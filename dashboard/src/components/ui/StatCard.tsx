@@ -21,7 +21,7 @@ export function StatCard({
   value,
   delta,
   loading = false,
-  accentColor = 'var(--accent-violet)',
+  accentColor = 'var(--data-1)',
 }: StatCardProps) {
   const isPositive = delta && delta.value > 0
   const isNegative = delta && delta.value < 0
@@ -61,7 +61,7 @@ export function StatCard({
               gap: '3px',
               fontSize: '12px',
               fontWeight: 600,
-              color: isPositive ? 'var(--success)' : isNegative ? 'var(--error)' : 'var(--text-muted)',
+              color: isPositive ? 'var(--status-success)' : isNegative ? 'var(--status-danger)' : 'var(--text-tertiary)',
             }}
             aria-label={`${isPositive ? 'Up' : isNegative ? 'Down' : 'No change'} ${Math.abs(delta.value)}${delta.label ?? ''}`}
           >

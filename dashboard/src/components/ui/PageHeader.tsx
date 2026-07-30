@@ -41,7 +41,7 @@ export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
           {title}
         </h1>
         {subtitle && (
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>{subtitle}</p>
+          <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginTop: '4px' }}>{subtitle}</p>
         )}
       </div>
       {actions && <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>{actions}</div>}

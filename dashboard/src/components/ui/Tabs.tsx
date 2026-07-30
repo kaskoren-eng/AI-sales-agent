@@ -28,7 +28,7 @@ export function Tabs({ items, defaultValue, ariaLabel }: TabsProps) {
         style={{
           display: 'flex',
           gap: '4px',
-          borderBottom: '1px solid var(--border-subtle)',
+          borderBottom: '1px solid var(--border-default)',
           marginBottom: '20px',
         }}
       >
@@ -49,8 +49,8 @@ export function Tabs({ items, defaultValue, ariaLabel }: TabsProps) {
                 fontWeight: 600,
                 fontFamily: "'Assistant', sans-serif",
                 cursor: 'pointer',
-                color: active ? 'var(--accent-teal)' : 'var(--text-muted)',
-                borderBottom: `2px solid ${active ? 'var(--accent-teal)' : 'transparent'}`,
+                color: active ? 'var(--accent-fg)' : 'var(--text-tertiary)',
+                borderBottom: `2px solid ${active ? 'var(--accent-fg)' : 'transparent'}`,
                 marginBottom: '-1px',
                 transition: `color var(--duration-fast) var(--ease-standard)`,
               }}

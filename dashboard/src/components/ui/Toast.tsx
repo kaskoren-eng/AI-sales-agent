@@ -34,9 +34,9 @@ const ICON: Record<ToastVariant, typeof CheckCircle> = {
   info: Info,
 }
 const ACCENT: Record<ToastVariant, string> = {
-  success: 'var(--success)',
-  error: 'var(--error)',
-  info: 'var(--info)',
+  success: 'var(--status-success)',
+  error: 'var(--status-danger)',
+  info: 'var(--data-1)',
 }
 
 let nextId = 0
@@ -73,7 +73,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 alignItems: 'flex-start',
                 gap: '10px',
                 padding: '12px 14px',
-                backgroundColor: 'var(--glass-bg-solid)',
+                backgroundColor: 'var(--surface-card)',
                 border: '1px solid var(--border-default)',
                 borderRadius: '10px',
                 boxShadow: '0 8px 32px rgba(38, 37, 36, 0.18)',
@@ -94,7 +94,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 {item.description && (
                   <RadixToast.Description
                     dir="auto"
-                    style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}
+                    style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '2px' }}
                   >
                     {item.description}
                   </RadixToast.Description>
@@ -105,7 +105,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: 'var(--text-muted)',
+                  color: 'var(--text-tertiary)',
                   cursor: 'pointer',
                   padding: '2px',
                   display: 'inline-flex',
