@@ -12,6 +12,7 @@ import { Integrations } from './pages/Integrations.js'
 import { Settings } from './pages/Settings.js'
 import { Placeholder } from './pages/Placeholder.js'
 import { AgentPersonality } from './pages/AgentPersonality.js'
+import { Copilot } from './pages/Copilot.js'
 
 // Dev-only primitives inventory. Lazy + DEV-guarded so it never enters the prod bundle.
 const Styleguide = import.meta.env.DEV ? lazy(() => import('./pages/Styleguide.js').then((m) => ({ default: m.Styleguide }))) : null
@@ -31,7 +32,7 @@ export default function App() {
           <Route path="/integrations" element={<Integrations />} />
           <Route path="/settings" element={<Settings />} />
           {/* Phase 3 targets — interim placeholders until each page is migrated to its v5 preview. */}
-          <Route path="/chat" element={<Placeholder titleKey="nav.copilot" previewFile="chat.html" />} />
+          <Route path="/chat" element={<Copilot />} />
           <Route path="/agent" element={<AgentPersonality />} />
           <Route path="/simulator" element={<Placeholder titleKey="nav.simulator" previewFile="simulator.html" />} />
           {Styleguide && (

@@ -31,6 +31,17 @@
   "placeholder": {
     "body": "This page is being built to its approved v5 preview as part of the dashboard migration."
   },
+  "copilot": {
+    "title": "What would you like to know?",
+    "subtitle": "Ask about your leads and calls, or tell the agent to work differently.",
+    "placeholder": "Ask about your leads and calls, or tell the agent what to change",
+    "skills": "Skills",
+    "s1": "How many new leads this week?",
+    "s2": "Summarize today's calls",
+    "s3": "Be a little less formal",
+    "s4": "Which leads are waiting for follow-up?",
+    "note": "On the house from ClickScales. This chat does not use your call minutes."
+  },
   "agent": {
     "sub": "Set who your agent is and how it talks to your leads. Every change is something you can hear before it goes live.",
     "metrics": { "cost": "Cost per minute", "costNote": "about a third of the old setup", "latency": "Response time", "latencyNote": "time before the agent starts talking", "voice": "Voice", "voiceNote": "natural Hebrew, female" },
