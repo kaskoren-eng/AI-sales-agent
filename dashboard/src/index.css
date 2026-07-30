@@ -164,6 +164,11 @@ button { font-family: inherit; cursor: pointer; }
   to { transform: rotate(360deg); }
 }
 
+/* Simulator orb — the page's signature animation, only while a test call is active. */
+@keyframes orb-breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+.sim-orb-active { animation: orb-breathe 2.4s var(--ease-standard) infinite; }
+@media (prefers-reduced-motion: reduce) { .sim-orb-active { animation: none; } }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

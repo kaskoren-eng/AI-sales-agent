@@ -31,6 +31,21 @@
   "placeholder": {
     "body": "This page is being built to its approved v5 preview as part of the dashboard migration."
   },
+  "simulator": {
+    "idle": "Ready to test",
+    "connecting": "Connecting…",
+    "listening": "Listening…",
+    "speaking": "The agent is speaking",
+    "start": "Start test call",
+    "end": "End",
+    "mute": "Mute",
+    "transcript": "Live transcript",
+    "started": "Call started",
+    "you": "You",
+    "agent": "Agent",
+    "type": "Type to test the agent",
+    "note": "A private call with your agent. Nothing here reaches a real lead."
+  },
   "calendar": {
     "upcoming": "Upcoming meetings",
     "empty": "No meetings booked yet",
