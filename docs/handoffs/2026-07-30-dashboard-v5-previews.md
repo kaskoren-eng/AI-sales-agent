@@ -133,3 +133,50 @@ only with a new decision recorded here and in `STATUS.md`.
 - **Follow-ups queued:** Simulator live-wiring · Copilot conversation + confirm-card · Calendar cancel
   action · Settings inner-tab v5 polish · backend metrics endpoint (Overview chart + richer KPIs) · retire
   the token bridge.
+
+## Cleanup pass — 2026-07-30 (bridge retired, v5 polish, HE+dark QA)
+
+- **Token bridge RETIRED (`f174dc2`).** Migrated all 19 remaining files (12 UI primitives + 7
+  pages/components) off the aliased v4 names to their v5 equivalents (200 mechanical `var()` renames,
+  zero visual change — each alias mapped to the value the bridge resolved to), then deleted the bridge
+  block from `index.css`. `rg` confirms no old token name remains in `src/`. tsc + build clean.
+- **Legacy fonts swept + Settings polish (`bf081be`).** Killed the last hardcoded font literals
+  (`'Montserrat'`/`'Assistant'`/`'Heebo'`/`'Courier New'`) across the UI primitives + CallDetail/
+  LeadDetail/Integrations/KerenStatusChip → v5 font vars (`--font-display`/`-body`/`-mono`). Because
+  migrated v5 pages consume these primitives, this fixed wrong-font bleed on already-"done" pages.
+  Settings inner tabs restyled to v5: shared `SectionCap` (mono caption, auto-neutralized in Hebrew),
+  theme-safe success tints via `color-mix`, overlay dialogs on `--shadow-overlay`/`--surface-overlay`,
+  logical `insetInlineEnd`. **No functional change** — all business-profile / Twilio / API-key / flows
+  behavior preserved.
+- **Copilot avatar genericized (`8950bd6`).** The Grok hero rendered a hardcoded `ק` (Keren's initial —
+  the very persona the page was genericized away from; a Latin-first stack rendered it as a stray "P").
+  Replaced with a neutral Sparkles icon (persona-agnostic, locale-safe).
+- **Hebrew + dark QA sweep PASSED** for every migrated page (Overview, Leads, Calls, Personality,
+  Copilot, Simulator, Settings): sidebar/folk-rail correctly flip to inline-start, group caps neutralized
+  (not mono-uppercase) in Hebrew, metric values stay LTR (mono data), media-play icons correctly NOT
+  flipped, honest empty/loading states throughout. Only defect found was the Copilot avatar (fixed above).
+
+### ⚠️ Blocker surfaced — Calendar cancel action needs VOICE-owned backend
+
+Re-adding the cancel-booking row action is **blocked**, not skipped:
+1. **There is no `GET /scheduling/bookings` list endpoint.** `dashboard/src/lib/api.ts:fetchBookings()`
+   calls `/scheduling/bookings`, but `src/modules/scheduling/scheduling.routes.ts` registers only
+   `/slots`, `/book`, and `/cancel/:bookingUid` — nothing serves the list. So the Calendar page's
+   "upcoming meetings" section is currently wired to a **404 endpoint** (renders its error/empty state
+   in prod). This predates this pass.
+2. **The cancel endpoint keys on `scheduledCalls.providerRef` (as `bookingUid`), which the frontend
+   `Booking` type never exposes** (`types.ts` has `id`, `leadId`, `calendarEventId`, … but no
+   `providerRef`). Even with a list endpoint, the UI has no value to pass to `/cancel/:bookingUid`.
+
+Both fixes live in `src/modules/scheduling/**` — **VOICE territory** (per CLAUDE.md TERRITORY RULES),
+so this session did not touch them and did **not** ship a button that calls a dead/underspecified route.
+**Ask for VOICE session:** add `GET /scheduling/bookings` returning the scheduled-call rows **including
+`providerRef`**; then the dashboard wires cancel additively (client fn + row action) with zero backend
+edits from this side.
+
+### Still deferred (unchanged)
+- **Settings inner-tab i18n.** Bodies are still hardcoded English. Full i18n needs **native Hebrew
+  marketing copy** (placeholders, helper text, objection examples) → genuinely needs Koren's review per
+  the "no page done until reviewed in Hebrew" DoD, so not auto-translated this pass.
+- Simulator live LiveKit/mic wiring · Copilot conversation + confirm-before-apply card · Overview
+  chart + richer KPIs (backend metrics endpoint).
