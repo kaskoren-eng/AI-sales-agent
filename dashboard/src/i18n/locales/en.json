@@ -32,8 +32,17 @@
     "body": "This page is being built to its approved v5 preview as part of the dashboard migration."
   },
   "settings": {
-    "groups": { "account": "My account", "business": "The business" },
-    "nav": { "account": "Account", "api": "API key", "profile": "Business profile", "voice": "Voice", "flows": "Flows" },
+    "groups": {
+      "account": "My account",
+      "business": "The business"
+    },
+    "nav": {
+      "account": "Account",
+      "api": "API key",
+      "profile": "Business profile",
+      "voice": "Voice",
+      "flows": "Flows"
+    },
     "appearanceTitle": "App preferences",
     "appearance": "Appearance",
     "appearanceDesc": "Light, dark, or follow your device.",
@@ -53,7 +62,17 @@
     "you": "You",
     "agent": "Agent",
     "type": "Type to test the agent",
-    "note": "A private call with your agent. Nothing here reaches a real lead."
+    "note": "A private call with your agent. Nothing here reaches a real lead.",
+    "waiting": "Waiting for the agent…",
+    "ended": "Call ended",
+    "callAgain": "Call again",
+    "unmute": "Unmute",
+    "hangUp": "Hang up",
+    "micBlocked": "Microphone is blocked. Allow it in your browser, then try again.",
+    "audioBlocked": "The browser muted the call — tap to hear the agent",
+    "notAuthorized": "This dashboard is not authorized against its backend. Check the API key.",
+    "genericError": "Could not start the call",
+    "realNote": "This runs the full agent pipeline over a real room — recording notice, Hebrew speech, calendar tools — everything except the phone line. Requires the agent worker to be running."
   },
   "calendar": {
     "upcoming": "Upcoming meetings",
@@ -63,14 +82,27 @@
     "availTitle": "When the agent can book",
     "availSub": "Change a rule and the booking page updates.",
     "rows": {
-      "hours": "Working hours", "hoursV": "Sunday to Thursday, 9:00 to 17:00",
-      "length": "Meeting length", "lengthV": "30 minutes",
-      "buffer": "Gap between calls", "bufferV": "10 minutes",
-      "notice": "Minimum notice", "noticeV": "At least 2 hours ahead",
-      "calendar": "Calendar", "calendarV": "Google Calendar",
-      "tz": "Time zone", "tzV": "Jerusalem, Israel (GMT+3)"
+      "hours": "Working hours",
+      "hoursV": "Sunday to Thursday, 9:00 to 17:00",
+      "length": "Meeting length",
+      "lengthV": "30 minutes",
+      "buffer": "Gap between calls",
+      "bufferV": "10 minutes",
+      "notice": "Minimum notice",
+      "noticeV": "At least 2 hours ahead",
+      "calendar": "Calendar",
+      "calendarV": "Google Calendar",
+      "tz": "Time zone",
+      "tzV": "Jerusalem, Israel (GMT+3)"
     },
-    "preview": { "eyebrow": "What the lead sees", "title": "Book a demo", "meta": "30 min · Google Meet", "pickDay": "Pick a day", "pickTime": "Pick a time", "tznote": "Times shown in the lead's time zone" },
+    "preview": {
+      "eyebrow": "What the lead sees",
+      "title": "Book a demo",
+      "meta": "30 min · Google Meet",
+      "pickDay": "Pick a day",
+      "pickTime": "Pick a time",
+      "tznote": "Times shown in the lead's time zone"
+    },
     "error": "Could not load meetings."
   },
   "copilot": {
@@ -86,7 +118,14 @@
   },
   "agent": {
     "sub": "Set who your agent is and how it talks to your leads. Every change is something you can hear before it goes live.",
-    "metrics": { "cost": "Cost per minute", "costNote": "about a third of the old setup", "latency": "Response time", "latencyNote": "time before the agent starts talking", "voice": "Voice", "voiceNote": "natural Hebrew, female" },
+    "metrics": {
+      "cost": "Cost per minute",
+      "costNote": "about a third of the old setup",
+      "latency": "Response time",
+      "latencyNote": "time before the agent starts talking",
+      "voice": "Voice",
+      "voiceNote": "natural Hebrew, female"
+    },
     "identity": "Identity",
     "name": "Agent name",
     "nameHint": "Leads hear this name. Changing it updates it everywhere in the dashboard.",
@@ -100,16 +139,30 @@
     "langNote": "The agent speaks Hebrew first and switches to English when a lead asks. This is set by the voice team.",
     "handbook": "How the agent talks",
     "says": "The agent says",
-    "tabs": { "tone": "Personality & tone", "accuracy": "Accuracy & format", "trust": "Trust & safety" },
+    "tabs": {
+      "tone": "Personality & tone",
+      "accuracy": "Accuracy & format",
+      "trust": "Trust & safety"
+    },
     "b": {
-      "tone": "Default tone", "toneD": "How formal the agent sounds by default.", "pro": "Professional", "warm": "Warm",
-      "filler": "Natural filler words", "fillerD": "Small pauses and fillers so it sounds human, not scripted.",
-      "empathy": "Show empathy", "empathyD": "Acknowledges what the lead feels before moving on.",
-      "short": "Keep answers short", "shortD": "Off by default. Turn on if leads feel it talks too much.",
-      "confirm": "Confirm details back", "confirmD": "Repeats key facts so nothing gets written down wrong.",
-      "numbers": "Say numbers simply", "numbersD": "Prices and quantities in plain speech, not digits.",
-      "disclose": "Always say it is an AI", "discloseD": "Required. The agent makes it clear it is a digital assistant.",
-      "record": "Recording notice", "recordD": "Tells the lead the call is recorded and asks if that is fine."
+      "tone": "Default tone",
+      "toneD": "How formal the agent sounds by default.",
+      "pro": "Professional",
+      "warm": "Warm",
+      "filler": "Natural filler words",
+      "fillerD": "Small pauses and fillers so it sounds human, not scripted.",
+      "empathy": "Show empathy",
+      "empathyD": "Acknowledges what the lead feels before moving on.",
+      "short": "Keep answers short",
+      "shortD": "Off by default. Turn on if leads feel it talks too much.",
+      "confirm": "Confirm details back",
+      "confirmD": "Repeats key facts so nothing gets written down wrong.",
+      "numbers": "Say numbers simply",
+      "numbersD": "Prices and quantities in plain speech, not digits.",
+      "disclose": "Always say it is an AI",
+      "discloseD": "Required. The agent makes it clear it is a digital assistant.",
+      "record": "Recording notice",
+      "recordD": "Tells the lead the call is recorded and asks if that is fine."
     },
     "sample": {
       "warm": "אין בעיה, אני כבר בודקת את זה בשבילך.",
@@ -128,13 +181,38 @@
     "saveNote": "Changes go live on the next call."
   },
   "calls": {
-    "filters": { "statusAll": "All outcomes", "from": "From", "to": "To" },
+    "filters": {
+      "statusAll": "All outcomes",
+      "from": "From",
+      "to": "To"
+    },
     "count_one": "{{count}} call",
     "count_other": "{{count}} calls",
-    "cols": { "lead": "Lead", "when": "When", "duration": "Duration", "outcome": "Outcome", "qualified": "Qualified" },
-    "outcome": { "won": "Won", "lost": "Lost", "neutral": "Neutral", "analyzing": "Analyzing", "in_progress": "In progress", "done": "Done", "failed": "Failed" },
-    "qualified": { "qualified": "Qualified", "not_qualified": "Not qualified", "unknown": "—" },
-    "empty": { "title": "No calls yet", "body": "Calls appear here once the voice channel is connected." },
+    "cols": {
+      "lead": "Lead",
+      "when": "When",
+      "duration": "Duration",
+      "outcome": "Outcome",
+      "qualified": "Qualified"
+    },
+    "outcome": {
+      "won": "Won",
+      "lost": "Lost",
+      "neutral": "Neutral",
+      "analyzing": "Analyzing",
+      "in_progress": "In progress",
+      "done": "Done",
+      "failed": "Failed"
+    },
+    "qualified": {
+      "qualified": "Qualified",
+      "not_qualified": "Not qualified",
+      "unknown": "—"
+    },
+    "empty": {
+      "title": "No calls yet",
+      "body": "Calls appear here once the voice channel is connected."
+    },
     "error": "Could not load calls.",
     "page": "Page {{page}} of {{total}}",
     "prev": "Prev",
@@ -158,7 +236,10 @@
       "followup": "Follow-up scheduled",
       "yes": "Yes",
       "no": "No",
-      "tabs": { "transcript": "Transcript", "data": "Data" },
+      "tabs": {
+        "transcript": "Transcript",
+        "data": "Data"
+      },
       "noTranscript": "No transcript available.",
       "agent": "Agent",
       "loadError": "Could not load this call."
@@ -166,7 +247,12 @@
   },
   "overview": {
     "live": "Live",
-    "range": { "today": "Today", "d7": "7 days", "d30": "30 days", "label": "Date range" },
+    "range": {
+      "today": "Today",
+      "d7": "7 days",
+      "d30": "30 days",
+      "label": "Date range"
+    },
     "kpi": {
       "callsToday": "Calls today",
       "callsRange": "Calls, last {{n}} days",
