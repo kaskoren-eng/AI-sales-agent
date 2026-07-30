@@ -31,6 +31,45 @@
   "placeholder": {
     "body": "This page is being built to its approved v5 preview as part of the dashboard migration."
   },
+  "overview": {
+    "live": "Live",
+    "range": { "today": "Today", "d7": "7 days", "d30": "30 days", "label": "Date range" },
+    "kpi": {
+      "callsToday": "Calls today",
+      "callsRange": "Calls, last {{n}} days",
+      "meetings": "Meetings booked",
+      "leads": "Total leads",
+      "qualified": "Qualified leads",
+      "totalCalls": "Total calls",
+      "quality": "Quality metric",
+      "soon": "Coming soon",
+      "qualityNote": "Waiting on a data source"
+    },
+    "pipeline": {
+      "title": "Pipeline",
+      "hint": "Select a stage to filter leads",
+      "new": "New",
+      "contacted": "Contacted",
+      "qualifying": "Qualifying",
+      "qualified": "Qualified",
+      "booked": "Booked"
+    },
+    "chart": {
+      "title": "Calls this week",
+      "empty": "Waiting on a data source",
+      "emptyNote": "Daily call volume will show here once the metrics endpoint is wired."
+    },
+    "activity": {
+      "title": "Recent activity",
+      "empty": "No calls yet",
+      "call": "Call",
+      "viewAll": "View all calls"
+    },
+    "errors": {
+      "leads": "Could not load lead metrics.",
+      "calls": "Could not load recent activity."
+    }
+  },
   "topbar": {
     "callDetail": "Call Detail",
     "leadDetail": "Lead Detail",

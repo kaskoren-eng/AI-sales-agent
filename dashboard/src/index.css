@@ -126,6 +126,14 @@ html, body {
   transform: scaleX(-1);
 }
 
+/* Overview KPI row: 3-up on narrow, 6-up on wide (matches the v5 preview). */
+.kpi-grid { grid-template-columns: repeat(3, 1fr); }
+@media (min-width: 1000px) { .kpi-grid { grid-template-columns: repeat(6, 1fr); } }
+
+/* Overview bottom row: chart + activity side by side on wide screens, stacked on narrow. */
+.ov-bottom { grid-template-columns: 1fr; }
+@media (min-width: 900px) { .ov-bottom { grid-template-columns: 1.5fr 1fr; } }
+
 a { color: inherit; text-decoration: none; }
 button { font-family: inherit; cursor: pointer; }
 

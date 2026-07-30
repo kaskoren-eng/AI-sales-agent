@@ -96,4 +96,15 @@ only with a new decision recorded here and in `STATUS.md`.
   `Placeholder` page (names its target preview) until Phase 3 builds them. Billing HE rendered as
   **חיוב ומנוי** (Koren's note read "הגדרות ומנוי", adjusted to avoid duplicating הגדרות/Settings —
   confirm). `/billing` intentionally has no route yet (item disabled).
-- **Next: Phase 3 pages**, in approved order, each replacing its bridge usage with v5 tokens.
+- **Phase 3 — Analytics/Overview page migrated (2026-07-30).** Rebuilt `pages/Overview.tsx` to the
+  approved `overview.html` on v5 tokens: header (Live + Today/7d/30d range), 6-up KPI grid (5 real +
+  1 designed-empty Quality card), pipeline strip (stage → `/leads?status=`), bottom chart + recent
+  activity. **Data wired honestly, no invented metrics:** windowed calls count (range → `from/to`),
+  total calls, total/qualified/booked leads and pipeline stage counts (from a single leads fetch,
+  exact ≤1000 leads), recent activity from recent calls. **Backend gap flagged:** the weekly chart
+  (per-day series) and richer KPIs (answer rate, follow-ups, time-to-first-contact, quality) need a
+  metrics/summary endpoint that does not exist — those render designed-empty until
+  dashboard-backend adds it. i18n `overview.*` added (en + he). tsc + build clean; verified
+  EN/HE × light/dark.
+- **Next Phase-3 pages:** Calls (+ drawer) → Leads (+ drawer) → Personality → Simulator → Calendar →
+  Copilot → Settings, each replacing its bridge usage with v5 tokens.
