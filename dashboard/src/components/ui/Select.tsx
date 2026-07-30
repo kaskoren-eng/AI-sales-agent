@@ -37,7 +37,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
           borderRadius: '8px',
           color: 'var(--text-primary)',
           fontSize: size === 'sm' ? '12px' : '14px',
-          fontFamily: "'Assistant', sans-serif",
+          fontFamily: 'var(--font-body)',
           outline: 'none',
           cursor: 'pointer',
           ...style,

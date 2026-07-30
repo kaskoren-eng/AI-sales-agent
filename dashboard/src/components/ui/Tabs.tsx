@@ -47,7 +47,7 @@ export function Tabs({ items, defaultValue, ariaLabel }: TabsProps) {
                 marginInlineEnd: '12px',
                 fontSize: '13px',
                 fontWeight: 600,
-                fontFamily: "'Assistant', sans-serif",
+                fontFamily: 'var(--font-body)',
                 cursor: 'pointer',
                 color: active ? 'var(--accent-fg)' : 'var(--text-tertiary)',
                 borderBottom: `2px solid ${active ? 'var(--accent-fg)' : 'transparent'}`,

@@ -25,7 +25,7 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function 
         borderRadius: '8px',
         color: 'var(--text-primary)',
         fontSize: '14px',
-        fontFamily: "'Assistant', sans-serif",
+        fontFamily: 'var(--font-body)',
         lineHeight: 1.5,
         outline: 'none',
         resize: 'vertical',

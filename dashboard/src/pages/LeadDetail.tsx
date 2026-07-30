@@ -165,7 +165,7 @@ function LeadDetailContent({ data }: { data: LeadTimelineResponse }) {
             <Bidi
               as="h1"
               style={{
-                fontFamily: "'Montserrat', sans-serif",
+                fontFamily: 'var(--font-display)',
                 fontWeight: 700,
                 fontSize: '18px',
                 color: 'var(--text-primary)',
@@ -374,7 +374,7 @@ function TimelineFeed({ events }: { events: TimelineEvent[] }) {
       >
         <h3
           style={{
-            fontFamily: "'Montserrat', sans-serif",
+            fontFamily: 'var(--font-display)',
             fontWeight: 700,
             fontSize: '12px',
             letterSpacing: '0.08em',
@@ -674,7 +674,7 @@ function CardHeader({ label }: { label: string }) {
     <h3
       className="uppercase-track"
       style={{
-        fontFamily: "'Montserrat', sans-serif",
+        fontFamily: 'var(--font-display)',
         fontWeight: 700,
         fontSize: '11px',
         letterSpacing: '0.08em',

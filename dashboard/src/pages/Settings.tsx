@@ -25,6 +25,38 @@ function maskApiKey(key: string): string {
   return key.slice(0, 4) + '•'.repeat(Math.max(0, key.length - 8)) + key.slice(-4)
 }
 
+// v5 section caption — mono uppercase, auto-neutralized in Hebrew via `.uppercase-track`.
+const capStyle: React.CSSProperties = {
+  fontFamily: 'var(--font-mono)',
+  fontWeight: 600,
+  fontSize: '11px',
+  letterSpacing: '0.1em',
+  textTransform: 'uppercase',
+  color: 'var(--text-tertiary)',
+}
+function SectionCap({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <h3 className="uppercase-track" style={{ ...capStyle, ...style }}>
+      {children}
+    </h3>
+  )
+}
+
+// v5 overlay dialog surface (shared by the two confirm dialogs below).
+const dialogContentStyle: React.CSSProperties = {
+  position: 'fixed',
+  top: '50%',
+  left: '50%',
+  transform: 'translate(-50%, -50%)',
+  width: 'min(400px, calc(100vw - 32px))',
+  backgroundColor: 'var(--surface-overlay)',
+  border: '1px solid var(--border-default)',
+  borderRadius: 'var(--r)',
+  boxShadow: 'var(--shadow-overlay)',
+  padding: '24px',
+  zIndex: 51,
+}
+
 function GeneralTab() {
   const nameId = useId()
   const queryClient = useQueryClient()
@@ -53,19 +85,7 @@ function GeneralTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '480px' }}>
       <Card>
-        <h3
-          style={{
-            fontFamily: "'Montserrat', sans-serif",
-            fontWeight: 700,
-            fontSize: '12px',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: 'var(--text-tertiary)',
-            marginBottom: '16px',
-          }}
-        >
-          Account
-        </h3>
+        <SectionCap style={{ marginBottom: '16px' }}>Account</SectionCap>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div>
             <label
@@ -92,7 +112,7 @@ function GeneralTab() {
                   padding: '0 12px',
                   color: 'var(--text-primary)',
                   fontSize: '14px',
-                  fontFamily: "'Assistant', sans-serif",
+                  fontFamily: 'var(--font-body)',
                   outline: 'none',
                 }}
               />
@@ -166,19 +186,7 @@ function FlowsTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '680px' }}>
       <Card>
-        <h3
-          style={{
-            fontFamily: "'Montserrat', sans-serif",
-            fontWeight: 700,
-            fontSize: '12px',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: 'var(--text-tertiary)',
-            marginBottom: '8px',
-          }}
-        >
-          Flow Configuration
-        </h3>
+        <SectionCap style={{ marginBottom: '8px' }}>Flow Configuration</SectionCap>
         <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '16px', lineHeight: 1.5 }}>
           Define automation flows in JSON. Changes are applied on the next lead qualification cycle.
         </p>
@@ -201,7 +209,7 @@ function FlowsTab() {
               padding: '12px',
               color: 'var(--text-primary)',
               fontSize: '13px',
-              fontFamily: "'Courier New', monospace",
+              fontFamily: 'var(--font-mono)',
               lineHeight: 1.6,
               outline: 'none',
               resize: 'vertical',
@@ -255,19 +263,7 @@ function ApiTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '540px' }}>
       <Card>
-        <h3
-          style={{
-            fontFamily: "'Montserrat', sans-serif",
-            fontWeight: 700,
-            fontSize: '12px',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: 'var(--text-tertiary)',
-            marginBottom: '16px',
-          }}
-        >
-          API Key
-        </h3>
+        <SectionCap style={{ marginBottom: '16px' }}>API Key</SectionCap>
         <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '16px', lineHeight: 1.5 }}>
           Use this key to authenticate API requests. Keep it secret — it grants full access to your tenant.
         </p>
@@ -288,7 +284,7 @@ function ApiTab() {
             style={{
               flex: 1,
               fontSize: '13px',
-              fontFamily: "'Courier New', monospace",
+              fontFamily: 'var(--font-mono)',
               color: 'var(--text-secondary)',
               wordBreak: 'break-all',
             }}
@@ -319,8 +315,8 @@ function ApiTab() {
             role="alert"
             style={{
               padding: '10px 12px',
-              backgroundColor: 'rgba(16, 185, 129, 0.08)',
-              border: '1px solid rgba(16, 185, 129, 0.25)',
+              backgroundColor: 'color-mix(in srgb, var(--status-success) 10%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--status-success) 28%, transparent)',
               borderRadius: '8px',
               fontSize: '13px',
               color: 'var(--status-success)',
@@ -353,28 +349,13 @@ function ApiTab() {
               zIndex: 50,
             }}
           />
-          <Dialog.Content
-            style={{
-              position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              width: '400px',
-              backgroundColor: 'var(--surface-card)',
-              border: '1px solid var(--border-default)',
-              borderRadius: '12px',
-              boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
-              padding: '24px',
-              zIndex: 51,
-            }}
-            aria-describedby="regen-key-desc"
-          >
+          <Dialog.Content style={dialogContentStyle} aria-describedby="regen-key-desc">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
               <Dialog.Title
                 style={{
-                  fontFamily: "'Montserrat', sans-serif",
+                  fontFamily: 'var(--font-display)',
                   fontWeight: 700,
-                  fontSize: '15px',
+                  fontSize: '16px',
                   color: 'var(--text-primary)',
                 }}
               >
@@ -439,7 +420,7 @@ const inputStyle: React.CSSProperties = {
   padding: '8px 12px',
   color: 'var(--text-primary)',
   fontSize: '14px',
-  fontFamily: "'Assistant', sans-serif",
+  fontFamily: 'var(--font-body)',
   outline: 'none',
   boxSizing: 'border-box',
 }
@@ -495,9 +476,7 @@ function AgentTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '560px' }}>
       <Card>
-        <h3 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 700, fontSize: '12px', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
-          Agent Business Profile
-        </h3>
+        <SectionCap style={{ marginBottom: '4px' }}>Agent Business Profile</SectionCap>
         <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '20px', lineHeight: 1.5 }}>
           This information is injected into every call so your agent speaks as your brand — not a generic bot.
         </p>
@@ -596,9 +575,7 @@ function TwilioTab() {
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
           <Phone size={16} strokeWidth={1.5} color="var(--accent-fg)" />
-          <h3 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 700, fontSize: '12px', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
-            Twilio Account
-          </h3>
+          <SectionCap>Twilio Account</SectionCap>
         </div>
         <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '20px', lineHeight: 1.5 }}>
           Connect your own Twilio account. Your agent will make and receive calls using your number — billed directly by Twilio.
@@ -608,7 +585,7 @@ function TwilioTab() {
           <Skeleton height="120px" />
         ) : status?.configured ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ padding: '12px 14px', backgroundColor: 'rgba(16, 185, 129, 0.07)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '8px' }}>
+            <div style={{ padding: '12px 14px', backgroundColor: 'color-mix(in srgb, var(--status-success) 9%, transparent)', border: '1px solid color-mix(in srgb, var(--status-success) 24%, transparent)', borderRadius: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                 <CheckCircle2 size={14} color="var(--status-success)" />
                 <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--status-success)' }}>Connected</span>
@@ -639,7 +616,7 @@ function TwilioTab() {
             <FieldGroup label="Auth Token">
               <div style={{ position: 'relative' }}>
                 <input
-                  style={{ ...inputStyle, paddingRight: '40px' }}
+                  style={{ ...inputStyle, paddingInlineEnd: '40px' }}
                   type={showToken ? 'text' : 'password'}
                   value={form.authToken}
                   onChange={(e) => setForm((p) => ({ ...p, authToken: e.target.value.trim() }))}
@@ -649,7 +626,7 @@ function TwilioTab() {
                 <button
                   onClick={() => setShowToken((v) => !v)}
                   aria-label={showToken ? 'Hide token' : 'Show token'}
-                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                  style={{ position: 'absolute', insetInlineEnd: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
                 >
                   {showToken ? <EyeOff size={14} strokeWidth={1.5} /> : <Eye size={14} strokeWidth={1.5} />}
                 </button>
@@ -693,12 +670,9 @@ function TwilioTab() {
       <Dialog.Root open={confirmDisconnect} onOpenChange={setConfirmDisconnect}>
         <Dialog.Portal>
           <Dialog.Overlay style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 50 }} />
-          <Dialog.Content
-            style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '400px', backgroundColor: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: '12px', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', padding: '24px', zIndex: 51 }}
-            aria-describedby="disconnect-desc"
-          >
+          <Dialog.Content style={dialogContentStyle} aria-describedby="disconnect-desc">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <Dialog.Title style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 700, fontSize: '15px', color: 'var(--text-primary)' }}>
+              <Dialog.Title style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '16px', color: 'var(--text-primary)' }}>
                 Disconnect Twilio?
               </Dialog.Title>
               <Dialog.Close asChild>

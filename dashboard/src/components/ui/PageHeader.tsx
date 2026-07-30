@@ -8,9 +8,10 @@ interface PageHeaderProps {
 }
 
 /**
- * In-page header. Applies the display treatment (Montserrat, uppercase, wide tracking)
- * only in Latin — Hebrew gets Heebo with normal case and tracking (brief §1.1), decided
- * here so no page has to special-case it.
+ * In-page header. Applies the v5 display treatment (Bricolage Grotesque, uppercase, wide
+ * tracking) only in Latin — Hebrew keeps the same display var (which resolves to Rubik via
+ * the :lang(he) rule) with normal case and tracking (brief v5 §4), decided here so no page
+ * has to special-case it.
  */
 export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
   const { i18n } = useTranslation()
@@ -29,7 +30,7 @@ export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
       <div>
         <h1
           style={{
-            fontFamily: isHebrew ? "'Heebo', sans-serif" : "'Montserrat', sans-serif",
+            fontFamily: 'var(--font-display)',
             fontWeight: 700,
             fontSize: '20px',
             letterSpacing: isHebrew ? 'normal' : '0.04em',

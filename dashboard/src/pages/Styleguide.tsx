@@ -228,7 +228,7 @@ export function Styleguide() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
         <div>
-          <h1 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 700, fontSize: '20px', color: 'var(--text-primary)', margin: 0 }}>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '20px', color: 'var(--text-primary)', margin: 0 }}>
             Primitives Styleguide
           </h1>
           <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginTop: '4px' }}>

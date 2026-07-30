@@ -38,7 +38,7 @@ export function LanguageSwitcher() {
               border: 'none',
               fontSize: '12px',
               fontWeight: 600,
-              fontFamily: "'Assistant', sans-serif",
+              fontFamily: 'var(--font-body)',
               cursor: active ? 'default' : 'pointer',
               backgroundColor: active ? 'var(--surface-card)' : 'transparent',
               boxShadow: active ? 'var(--shadow-card)' : 'none',

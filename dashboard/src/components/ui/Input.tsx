@@ -30,7 +30,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         borderRadius: '8px',
         color: 'var(--text-primary)',
         fontSize: FONT[size],
-        fontFamily: "'Assistant', sans-serif",
+        fontFamily: 'var(--font-body)',
         outline: 'none',
         transition: `border-color var(--duration-fast) var(--ease-standard)`,
         ...style,

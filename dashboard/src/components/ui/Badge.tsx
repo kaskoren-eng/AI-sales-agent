@@ -32,7 +32,7 @@ export function Badge({ variant = 'default', children, className = '' }: BadgePr
         fontWeight: 600,
         letterSpacing: '0.03em',
         whiteSpace: 'nowrap',
-        fontFamily: "'Assistant', sans-serif",
+        fontFamily: 'var(--font-body)',
         ...variantInlineStyles[variant],
       }}
     >

@@ -76,7 +76,7 @@ export function KerenStatusChip() {
               fontSize: '12px',
               fontWeight: 600,
               color: 'var(--accent-fg)',
-              fontFamily: "'Assistant', sans-serif",
+              fontFamily: 'var(--font-body)',
             }}
           >
             {t('sidebar.kerenActive')}
@@ -119,7 +119,7 @@ export function KerenStatusChip() {
           >
             <Dialog.Title
               style={{
-                fontFamily: "'Montserrat', sans-serif",
+                fontFamily: 'var(--font-display)',
                 fontWeight: 700,
                 fontSize: '13px',
                 letterSpacing: '0.06em',

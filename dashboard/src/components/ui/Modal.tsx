@@ -63,7 +63,7 @@ export function Modal({
           >
             <Dialog.Title
               style={{
-                fontFamily: "'Montserrat', sans-serif",
+                fontFamily: 'var(--font-display)',
                 fontWeight: 700,
                 fontSize: '15px',
                 color: 'var(--text-primary)',

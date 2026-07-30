@@ -123,7 +123,7 @@ function ToolCallPill({ tc }: { tc: CallLearnings['tool_calls'][number] }) {
         borderRadius: '9999px',
         fontSize: '11px',
         fontWeight: 600,
-        fontFamily: "'Assistant', sans-serif",
+        fontFamily: 'var(--font-body)',
         whiteSpace: 'nowrap',
         ...tint,
       }}
@@ -187,7 +187,7 @@ function SalesAnalysisCard({ analysis }: { analysis: NonNullable<CallLearnings['
     <Card>
       <h3
         style={{
-          fontFamily: "'Montserrat', sans-serif",
+          fontFamily: 'var(--font-display)',
           fontWeight: 700,
           fontSize: '11px',
           letterSpacing: '0.08em',
@@ -203,7 +203,7 @@ function SalesAnalysisCard({ analysis }: { analysis: NonNullable<CallLearnings['
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px', marginBlockEnd: '14px' }}>
           <span
             style={{
-              fontFamily: "'Montserrat', sans-serif",
+              fontFamily: 'var(--font-display)',
               fontWeight: 800,
               fontSize: '32px',
               lineHeight: 1,
@@ -480,7 +480,7 @@ export function CallDetail() {
           >
             <h3
               style={{
-                fontFamily: "'Montserrat', sans-serif",
+                fontFamily: 'var(--font-display)',
                 fontWeight: 700,
                 fontSize: '12px',
                 letterSpacing: '0.08em',
@@ -526,7 +526,7 @@ export function CallDetail() {
           <Card>
             <h3
               style={{
-                fontFamily: "'Montserrat', sans-serif",
+                fontFamily: 'var(--font-display)',
                 fontWeight: 700,
                 fontSize: '11px',
                 letterSpacing: '0.08em',
@@ -557,7 +557,7 @@ export function CallDetail() {
           <Card>
             <h3
               style={{
-                fontFamily: "'Montserrat', sans-serif",
+                fontFamily: 'var(--font-display)',
                 fontWeight: 700,
                 fontSize: '11px',
                 letterSpacing: '0.08em',
@@ -591,7 +591,7 @@ export function CallDetail() {
             <Card>
               <h3
                 style={{
-                  fontFamily: "'Montserrat', sans-serif",
+                  fontFamily: 'var(--font-display)',
                   fontWeight: 700,
                   fontSize: '11px',
                   letterSpacing: '0.08em',
@@ -632,7 +632,7 @@ export function CallDetail() {
             <Card>
               <h3
                 style={{
-                  fontFamily: "'Montserrat', sans-serif",
+                  fontFamily: 'var(--font-display)',
                   fontWeight: 700,
                   fontSize: '11px',
                   letterSpacing: '0.08em',

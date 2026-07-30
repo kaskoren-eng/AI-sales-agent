@@ -136,7 +136,7 @@ export function Integrations() {
               <div style={{ flex: 1 }}>
                 <h3
                   style={{
-                    fontFamily: "'Montserrat', sans-serif",
+                    fontFamily: 'var(--font-display)',
                     fontWeight: 700,
                     fontSize: '14px',
                     color: 'var(--text-primary)',

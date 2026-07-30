@@ -89,7 +89,7 @@ export function StatCard({
               fontSize: '28px',
               fontWeight: 700,
               color: 'var(--text-primary)',
-              fontFamily: "'Montserrat', sans-serif",
+              fontFamily: 'var(--font-display)',
               lineHeight: 1.1,
             }}
           >
