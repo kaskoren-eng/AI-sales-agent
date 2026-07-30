@@ -12,9 +12,6 @@ import {
   Plug,
   CreditCard,
 } from 'lucide-react'
-import { LanguageSwitcher } from '../LanguageSwitcher.js'
-import { ThemeToggle } from '../ThemeToggle.js'
-
 interface NavItem {
   to: string
   labelKey: string
@@ -168,21 +165,7 @@ export function Sidebar() {
           </div>
         ))}
       </nav>
-
-      {/* Footer: interface language + appearance (theme). Canonical control also in Settings. */}
-      <div
-        style={{
-          padding: '14px 16px 20px',
-          borderTop: '1px solid var(--border-default)',
-          flexShrink: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-        }}
-      >
-        <LanguageSwitcher />
-        <ThemeToggle />
-      </div>
+      {/* Language + appearance live in Settings › Preferences (not pinned to the shell). */}
     </aside>
   )
 }

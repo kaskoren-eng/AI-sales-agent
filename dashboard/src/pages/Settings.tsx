@@ -2,9 +2,11 @@ import { useState, useEffect, useId } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import * as Dialog from '@radix-ui/react-dialog'
-import { Eye, EyeOff, RefreshCw, X, Save, CheckCircle2, Phone, Trash2 } from 'lucide-react'
-import { ThemeToggle } from '../components/ThemeToggle.js'
-import { LanguageSwitcher } from '../components/LanguageSwitcher.js'
+import { Eye, EyeOff, RefreshCw, X, Save, CheckCircle2, Phone, Trash2, Sun, Moon, Monitor } from 'lucide-react'
+import { PrefSelect } from '../components/ui/PrefSelect.js'
+import { useTheme } from '../hooks/useTheme.js'
+import type { ThemePref } from '../lib/theme.js'
+import type { Language } from '../i18n/index.js'
 import {
   fetchTenantMe,
   updateTenantMe,
@@ -699,10 +701,25 @@ function TwilioTab() {
   )
 }
 
-/** Appearance + interface-language, plus the account display-name (folk Profile pane). */
+/** Appearance + interface-language, plus the account display-name (folk Profile pane).
+ *  The language + theme pickers live here (Settings › Preferences), not pinned to the shell. */
 function AccountPane() {
-  const { t } = useTranslation()
-  const row: React.CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: '18px', padding: '17px 20px', borderBlockEnd: '1px solid var(--border-default)' }
+  const { t, i18n } = useTranslation()
+  const { pref, setPref } = useTheme()
+  const lang: Language = i18n.language.startsWith('he') ? 'he' : 'en'
+
+  // Languages are labelled in their own script — a picker names options by what they are.
+  const langOptions = [
+    { value: 'en' as Language, label: 'English' },
+    { value: 'he' as Language, label: 'עברית' },
+  ]
+  const themeOptions = [
+    { value: 'light' as ThemePref, label: t('theme.light'), icon: <Sun size={15} strokeWidth={1.7} /> },
+    { value: 'dark' as ThemePref, label: t('theme.dark'), icon: <Moon size={15} strokeWidth={1.7} /> },
+    { value: 'system' as ThemePref, label: t('theme.system'), icon: <Monitor size={15} strokeWidth={1.7} /> },
+  ]
+
+  const row: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '18px', padding: '15px 20px', borderBlockEnd: '1px solid var(--border-default)' }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '620px' }}>
       <GeneralTab />
@@ -716,14 +733,14 @@ function AccountPane() {
               <div style={{ fontSize: '14.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{t('settings.language')}</div>
               <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBlockStart: '3px' }}>{t('settings.languageDesc')}</div>
             </div>
-            <LanguageSwitcher />
+            <PrefSelect ariaLabel={t('settings.language')} value={lang} options={langOptions} onChange={(v) => void i18n.changeLanguage(v)} />
           </div>
           <div style={{ ...row, borderBlockEnd: '0' }}>
             <div style={{ flex: 1, minInlineSize: 0 }}>
               <div style={{ fontSize: '14.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{t('settings.appearance')}</div>
               <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBlockStart: '3px' }}>{t('settings.appearanceDesc')}</div>
             </div>
-            <ThemeToggle />
+            <PrefSelect ariaLabel={t('settings.appearance')} value={pref} options={themeOptions} onChange={setPref} />
           </div>
         </div>
       </div>
