@@ -31,6 +31,49 @@
   "placeholder": {
     "body": "This page is being built to its approved v5 preview as part of the dashboard migration."
   },
+  "agent": {
+    "sub": "Set who your agent is and how it talks to your leads. Every change is something you can hear before it goes live.",
+    "metrics": { "cost": "Cost per minute", "costNote": "about a third of the old setup", "latency": "Response time", "latencyNote": "time before the agent starts talking", "voice": "Voice", "voiceNote": "natural Hebrew, female" },
+    "identity": "Identity",
+    "name": "Agent name",
+    "nameHint": "Leads hear this name. Changing it updates it everywhere in the dashboard.",
+    "gender": "Gender",
+    "female": "Female",
+    "male": "Male",
+    "genderHint": "Sets the Hebrew grammar the agent uses about itself.",
+    "voice": "Voice",
+    "voiceDesc": "warm, calm, mid-pace",
+    "voiceChange": "Change voice",
+    "langNote": "The agent speaks Hebrew first and switches to English when a lead asks. This is set by the voice team.",
+    "handbook": "How the agent talks",
+    "says": "The agent says",
+    "tabs": { "tone": "Personality & tone", "accuracy": "Accuracy & format", "trust": "Trust & safety" },
+    "b": {
+      "tone": "Default tone", "toneD": "How formal the agent sounds by default.", "pro": "Professional", "warm": "Warm",
+      "filler": "Natural filler words", "fillerD": "Small pauses and fillers so it sounds human, not scripted.",
+      "empathy": "Show empathy", "empathyD": "Acknowledges what the lead feels before moving on.",
+      "short": "Keep answers short", "shortD": "Off by default. Turn on if leads feel it talks too much.",
+      "confirm": "Confirm details back", "confirmD": "Repeats key facts so nothing gets written down wrong.",
+      "numbers": "Say numbers simply", "numbersD": "Prices and quantities in plain speech, not digits.",
+      "disclose": "Always say it is an AI", "discloseD": "Required. The agent makes it clear it is a digital assistant.",
+      "record": "Recording notice", "recordD": "Tells the lead the call is recorded and asks if that is fine."
+    },
+    "sample": {
+      "warm": "אין בעיה, אני כבר בודקת את זה בשבילך.",
+      "filler": "רגע, שנייה, אני רק מסתכלת על היומן.",
+      "empathy": "אני מבינה, זה באמת מתסכל כשפניות הולכות לאיבוד.",
+      "short": "בקצרה, כן, אנחנו יכולים לעזור עם זה.",
+      "confirm": "רק לוודא, אמרת חמישה עד עשרה לקוחות ביום, נכון?",
+      "numbers": "זה יוצא בערך שלוש מאות שקל בחודש.",
+      "disclose": "רק שתדע, אני העוזרת הדיגיטלית של קליקסקיילז.",
+      "record": "השיחה מוקלטת לצורכי איכות, זה בסדר מבחינתך?"
+    },
+    "advanced": "Advanced view",
+    "advancedRo": "Read-only. Generated from the settings above and from Copilot.",
+    "save": "Save changes",
+    "discard": "Discard",
+    "saveNote": "Changes go live on the next call."
+  },
   "calls": {
     "filters": { "statusAll": "All outcomes", "from": "From", "to": "To" },
     "count_one": "{{count}} call",
