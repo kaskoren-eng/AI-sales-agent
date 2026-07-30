@@ -1,8 +1,10 @@
 import { useState, useEffect, useId } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import * as Tabs from '@radix-ui/react-tabs'
+import { useTranslation } from 'react-i18next'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Eye, EyeOff, RefreshCw, X, Save, CheckCircle2, Phone, Trash2 } from 'lucide-react'
+import { ThemeToggle } from '../components/ThemeToggle.js'
+import { LanguageSwitcher } from '../components/LanguageSwitcher.js'
 import {
   fetchTenantMe,
   updateTenantMe,
@@ -723,68 +725,105 @@ function TwilioTab() {
   )
 }
 
-const tabTriggerStyle = (active: boolean): React.CSSProperties => ({
-  padding: '8px 16px',
-  backgroundColor: 'transparent',
-  border: 'none',
-  borderBottom: active ? '2px solid var(--accent-teal)' : '2px solid transparent',
-  color: active ? 'var(--accent-teal)' : 'var(--text-secondary)',
-  fontFamily: "'Assistant', sans-serif",
-  fontWeight: 600,
-  fontSize: '14px',
-  cursor: 'pointer',
-  transition: `color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard)`,
-  whiteSpace: 'nowrap',
-})
+/** Appearance + interface-language, plus the account display-name (folk Profile pane). */
+function AccountPane() {
+  const { t } = useTranslation()
+  const row: React.CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: '18px', padding: '17px 20px', borderBlockEnd: '1px solid var(--border-default)' }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '620px' }}>
+      <GeneralTab />
+      <div>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBlockEnd: '10px' }} className="uppercase-track">
+          {t('settings.appearanceTitle')}
+        </div>
+        <div style={{ background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--r)', boxShadow: 'var(--shadow-card)' }}>
+          <div style={row}>
+            <div style={{ flex: 1, minInlineSize: 0 }}>
+              <div style={{ fontSize: '14.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{t('settings.language')}</div>
+              <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBlockStart: '3px' }}>{t('settings.languageDesc')}</div>
+            </div>
+            <LanguageSwitcher />
+          </div>
+          <div style={{ ...row, borderBlockEnd: '0' }}>
+            <div style={{ flex: 1, minInlineSize: 0 }}>
+              <div style={{ fontSize: '14.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{t('settings.appearance')}</div>
+              <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBlockStart: '3px' }}>{t('settings.appearanceDesc')}</div>
+            </div>
+            <ThemeToggle />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+type Pane = 'account' | 'api' | 'profile' | 'voice' | 'flows'
+const NAV_GROUPS: { groupKey: string; items: Pane[] }[] = [
+  { groupKey: 'settings.groups.account', items: ['account', 'api'] },
+  { groupKey: 'settings.groups.business', items: ['profile', 'voice', 'flows'] },
+]
 
 export function Settings() {
-  const [activeTab, setActiveTab] = useState('agent')
+  const { t, i18n } = useTranslation()
+  const isHebrew = i18n.language.startsWith('he')
+  const [pane, setPane] = useState<Pane>('profile')
+
+  const railCap: React.CSSProperties = {
+    paddingInline: '10px',
+    paddingBlock: '10px 6px',
+    fontFamily: isHebrew ? 'var(--font-body)' : 'var(--font-mono)',
+    fontSize: isHebrew ? '12px' : '10.5px',
+    fontWeight: 600,
+    letterSpacing: isHebrew ? 'normal' : '0.1em',
+    textTransform: isHebrew ? 'none' : 'uppercase',
+    color: 'var(--text-tertiary)',
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
-        {/* Tab list */}
-        <Tabs.List
-          aria-label="Settings sections"
-          style={{
-            display: 'flex',
-            borderBottom: '1px solid var(--border-subtle)',
-            marginBottom: '24px',
-          }}
-        >
-          {[
-            { value: 'agent', label: 'Agent' },
-            { value: 'twilio', label: 'Twilio' },
-            { value: 'general', label: 'General' },
-            { value: 'flows', label: 'Flows' },
-            { value: 'api', label: 'API' },
-          ].map((tab) => (
-            <Tabs.Trigger
-              key={tab.value}
-              value={tab.value}
-              style={tabTriggerStyle(activeTab === tab.value)}
-            >
-              {tab.label}
-            </Tabs.Trigger>
-          ))}
-        </Tabs.List>
+    <div style={{ maxInlineSize: 'var(--container-max)', marginInline: 'auto', display: 'grid', gap: '22px', alignItems: 'start' }} className="set-grid">
+      <nav aria-label="Settings sections" style={{ background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--r)', boxShadow: 'var(--shadow-card)', padding: '10px', position: 'sticky', top: '84px' }}>
+        {NAV_GROUPS.map((g) => (
+          <div key={g.groupKey} style={{ marginBlockStart: '4px' }}>
+            <div style={railCap} className="uppercase-track">{t(g.groupKey)}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {g.items.map((p) => {
+                const active = pane === p
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setPane(p)}
+                    aria-current={active ? 'page' : undefined}
+                    style={{
+                      display: 'flex',
+                      inlineSize: '100%',
+                      padding: '9px 12px',
+                      borderRadius: '10px',
+                      border: 0,
+                      textAlign: 'start',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '14px',
+                      fontWeight: active ? 600 : 500,
+                      color: active ? 'var(--accent-fg)' : 'var(--text-secondary)',
+                      background: active ? 'var(--accent-tint)' : 'transparent',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {t(`settings.nav.${p}`)}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
 
-        <Tabs.Content value="agent">
-          <AgentTab />
-        </Tabs.Content>
-        <Tabs.Content value="twilio">
-          <TwilioTab />
-        </Tabs.Content>
-        <Tabs.Content value="general">
-          <GeneralTab />
-        </Tabs.Content>
-        <Tabs.Content value="flows">
-          <FlowsTab />
-        </Tabs.Content>
-        <Tabs.Content value="api">
-          <ApiTab />
-        </Tabs.Content>
-      </Tabs.Root>
+      <div>
+        {pane === 'account' && <AccountPane />}
+        {pane === 'api' && <ApiTab />}
+        {pane === 'profile' && <AgentTab />}
+        {pane === 'voice' && <TwilioTab />}
+        {pane === 'flows' && <FlowsTab />}
+      </div>
     </div>
   )
 }

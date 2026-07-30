@@ -31,6 +31,15 @@
   "placeholder": {
     "body": "This page is being built to its approved v5 preview as part of the dashboard migration."
   },
+  "settings": {
+    "groups": { "account": "My account", "business": "The business" },
+    "nav": { "account": "Account", "api": "API key", "profile": "Business profile", "voice": "Voice", "flows": "Flows" },
+    "appearanceTitle": "App preferences",
+    "appearance": "Appearance",
+    "appearanceDesc": "Light, dark, or follow your device.",
+    "language": "Interface language",
+    "languageDesc": "The language of this dashboard, for you. It does not change the language the agent speaks to your leads."
+  },
   "simulator": {
     "idle": "Ready to test",
     "connecting": "Connecting…",

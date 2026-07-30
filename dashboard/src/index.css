@@ -134,6 +134,10 @@ html, body {
 .ov-bottom { grid-template-columns: 1fr; }
 @media (min-width: 900px) { .ov-bottom { grid-template-columns: 1.5fr 1fr; } }
 
+/* Settings: folk left rail + content pane, stacked on narrow. */
+.set-grid { grid-template-columns: 1fr; }
+@media (min-width: 860px) { .set-grid { grid-template-columns: 244px 1fr; } }
+
 a { color: inherit; text-decoration: none; }
 button { font-family: inherit; cursor: pointer; }
 

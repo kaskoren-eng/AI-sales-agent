@@ -31,6 +31,15 @@
   "placeholder": {
     "body": "העמוד הזה נבנה כעת לפי התצוגה המאושרת ב־v5, כחלק ממעבר הדשבורד."
   },
+  "settings": {
+    "groups": { "account": "החשבון שלי", "business": "העסק" },
+    "nav": { "account": "חשבון", "api": "מפתח API", "profile": "פרופיל העסק", "voice": "קול", "flows": "פלואים" },
+    "appearanceTitle": "העדפות",
+    "appearance": "מראה",
+    "appearanceDesc": "בהיר, כהה, או לפי המכשיר.",
+    "language": "שפת הממשק",
+    "languageDesc": "שפת הדשבורד הזה, בשבילכם. היא לא משנה את השפה שהסוכנת מדברת עם הלידים."
+  },
   "simulator": {
     "idle": "מוכן לבדיקה",
     "connecting": "מתחבר…",
