@@ -31,6 +31,24 @@
   "placeholder": {
     "body": "This page is being built to its approved v5 preview as part of the dashboard migration."
   },
+  "calendar": {
+    "upcoming": "Upcoming meetings",
+    "empty": "No meetings booked yet",
+    "join": "Join",
+    "demo": "Demo call · 30 min",
+    "availTitle": "When the agent can book",
+    "availSub": "Change a rule and the booking page updates.",
+    "rows": {
+      "hours": "Working hours", "hoursV": "Sunday to Thursday, 9:00 to 17:00",
+      "length": "Meeting length", "lengthV": "30 minutes",
+      "buffer": "Gap between calls", "bufferV": "10 minutes",
+      "notice": "Minimum notice", "noticeV": "At least 2 hours ahead",
+      "calendar": "Calendar", "calendarV": "Google Calendar",
+      "tz": "Time zone", "tzV": "Jerusalem, Israel (GMT+3)"
+    },
+    "preview": { "eyebrow": "What the lead sees", "title": "Book a demo", "meta": "30 min · Google Meet", "pickDay": "Pick a day", "pickTime": "Pick a time", "tznote": "Times shown in the lead's time zone" },
+    "error": "Could not load meetings."
+  },
   "copilot": {
     "title": "What would you like to know?",
     "subtitle": "Ask about your leads and calls, or tell the agent to work differently.",
