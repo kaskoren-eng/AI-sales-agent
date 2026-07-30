@@ -178,5 +178,38 @@ edits from this side.
 - **Settings inner-tab i18n.** Bodies are still hardcoded English. Full i18n needs **native Hebrew
   marketing copy** (placeholders, helper text, objection examples) → genuinely needs Koren's review per
   the "no page done until reviewed in Hebrew" DoD, so not auto-translated this pass.
-- Simulator live LiveKit/mic wiring · Copilot conversation + confirm-before-apply card · Overview
-  chart + richer KPIs (backend metrics endpoint).
+- Copilot conversation + confirm-before-apply card · Overview chart + richer KPIs (backend metrics
+  endpoint). **Copilot note:** there is no assistant/chat backend endpoint (`rg` found none), so the
+  conversation can't be built without one — not faked.
+
+## Interaction pass — theme/lang preferences + Simulator wiring
+
+- **Theme + language moved into Settings › Preferences (Notion-style)** (`17b58d7`). Removed the
+  always-on `ThemeToggle` + `LanguageSwitcher` from the sidebar footer (they were the only always-on
+  placement — the top bar never had them). New `components/ui/PrefSelect.tsx`: a Notion-style dropdown
+  (trigger shows the current choice with icon + chevron; menu marks the selected option with a check),
+  flat v5 surfaces, logical properties so it mirrors in RTL, outside-click/Escape close, arrow-key
+  nav. Wired into the two Account › App-preferences rows (Language: English/עברית; Appearance:
+  Light/Dark/System) against the same theme store + `i18n.changeLanguage` — no behavior change.
+  `ThemeToggle`/`LanguageSwitcher` components kept (still used by the dev-only Styleguide). Verified
+  EN/HE × light/dark.
+- **Simulator wired to a real LiveKit web-call** (`eb83366`) — the deferred follow-up above is now
+  done. Ported the proven pipeline from `VoiceChat` (`/voice`) into the v5 orb design: `createWebCall`
+  → `Room`, mic-permission probe in the click gesture, per-track `<audio>` (recording-notice + agent
+  are separate tracks), autoplay-block recovery, full error handling (mic blocked / not authorized /
+  generic), mute, elapsed timer. The **orb core scales to the agent's real audio level** (WebAudio
+  analyser, set imperatively — truthful motion, no glow). **Live transcript** from
+  `RoomEvent.TranscriptionReceived` (upsert by segment id; honest empty/listening state if the agent
+  emits none). Removed the type-to-test box — the voice pipeline has no text-ingestion path, so it
+  would have been a dead control. Consumes the existing `createWebCall` client + VOICE-owned
+  `POST /voice/web-call` and `livekit-client@2.20.1` — **no backend edits**. Verified the
+  idle→connecting→ended state machine, orb activation, timer, controls; a full live call needs the API
+  (`:3000`) + agent worker running (VOICE session).
+  - **Open routing question (still #3):** `/voice` (VoiceChat, v4-styled) and `/simulator` (v5) now
+    both do a real web-call. `/voice` is not in the sidebar nav. Fold `/voice` into `/simulator` and
+    delete VoiceChat? Needs the routes decision.
+
+## Preview gallery (shared, self-updating link)
+
+`https://claude.ai/code/artifact/d2cd8c79-f8b8-462a-bfd0-a5e9dbbade43` — all 8 migrated pages captured
+across EN/HE × light/dark (32 live screenshots, tab + toggle nav). Refreshed after each change above.
