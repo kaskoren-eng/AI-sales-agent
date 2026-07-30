@@ -106,5 +106,30 @@ only with a new decision recorded here and in `STATUS.md`.
   metrics/summary endpoint that does not exist — those render designed-empty until
   dashboard-backend adds it. i18n `overview.*` added (en + he). tsc + build clean; verified
   EN/HE × light/dark.
-- **Next Phase-3 pages:** Calls (+ drawer) → Leads (+ drawer) → Personality → Simulator → Calendar →
-  Copilot → Settings, each replacing its bridge usage with v5 tokens.
+- **Phase 3 — ALL remaining pages migrated to v5 (2026-07-30).** Each built to its approved preview on
+  v5 tokens, i18n (en+he), RTL-correct, honest data/empty states; `tsc -b` + `vite build` clean;
+  visual sweep in EN light passed for every page.
+  - **Calls** — v5 table + in-page detail **drawer** (scrim/panel, not a route change): meta, recording
+    state, outcome summary, sales analysis, Transcript/Data tabs (`useCallDetail`). PROPOSED chips.
+  - **Leads** — v5 table + pop-out **timeline drawer** folding lead facts + messages(in/out) + meetings,
+    time-sorted (`useLeadDetail`). PROPOSED chips, v5 score bar.
+  - **Personality** (`/agent`) — full port: metrics strip, identity, handbook tabs with toggles + Hebrew
+    "the agent says" samples, advanced generated-prompt, save bar. Local state.
+  - **Simulator** (`/simulator`) — orb stage (animates only while active) + live transcript + type-to-test.
+    **Deferred:** real mic/LiveKit wiring (`createWebCall`) — visual shell only this pass.
+  - **Calendar** (`/bookings`) — upcoming meetings (real, from bookings endpoint) + availability summary
+    rows + booking-preview panel. **Dropped this pass:** the old cancel-booking modal (revisit as a row
+    action).
+  - **Copilot** (`/chat`) — Grok hero (avatar, composer, suggestion pills, platform-LLM note). **Deferred:**
+    the conversation thread + confirm-before-apply card; today-state numbers omitted (no metrics source).
+  - **Settings** — converted the Radix top-tabs to a **folk grouped left rail** (My account / The business)
+    with **no feature loss** (business profile, Twilio, tenant name, flows JSON, API-key regen all preserved);
+    new Account pane wires the real interface-language + three-state theme controls + firewall note. The
+    inner tab components still use bridge tokens — a later polish pass restyles their internals to v5.
+- **Routing:** `/agent`, `/chat`, `/simulator` now render real pages (interim `Placeholder` removed).
+- **Bridge status:** still in `index.css` — most migrated pages now use v5 tokens directly, but Settings'
+  inner tabs and a few UI primitives still reference old names. Delete the bridge once none remain (search
+  hint in the CSS comment).
+- **Follow-ups queued:** Simulator live-wiring · Copilot conversation + confirm-card · Calendar cancel
+  action · Settings inner-tab v5 polish · backend metrics endpoint (Overview chart + richer KPIs) · retire
+  the token bridge.
