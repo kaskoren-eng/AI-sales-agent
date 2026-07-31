@@ -158,6 +158,15 @@ describe('Keren Phase 4 — tools-mode prompt', () => {
     expect(TOOLS_PROMPT).toContain('יש לי פנוי מ-10:00 עד 15:00');
   });
 
+  it('carries the objection-handling playbook (tools variant), absent from the legacy variant', () => {
+    // Koren's content (OBJECTION_PLAYBOOK_HE) — the semantic reflex the code can't type. It rides in
+    // the prompt on the tools variant only; the deprecated no-tools prompt stays byte-stable.
+    expect(TOOLS_PROMPT).toContain('## Objection Handling');
+    expect(TOOLS_PROMPT).toMatch(/ACKNOWLEDGE the concern/u);
+    expect(TOOLS_PROMPT).toMatch(/מחיר|נשמע רובוטי|אני צריך להתייעץ/u);
+    expect(SYSTEM_PROMPT_HE).not.toContain('## Objection Handling');
+  });
+
   it('anti-hallucination survives the range flow: exact slot_datetime, never adjust a time', () => {
     expect(TOOLS_PROMPT).toMatch(/EXACT slot_datetime value/u);
     expect(TOOLS_PROMPT).toMatch(/never invent, guess, round or adjust a time/u);

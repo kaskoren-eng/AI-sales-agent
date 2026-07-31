@@ -32,6 +32,7 @@
  */
 
 import type { BusinessProfile } from '../../../settings/settings.service.js';
+import { OBJECTION_PLAYBOOK_HE } from '../call-state-lines.he.js';
 
 /** The exact tool names, single-sourced. tools/index.ts TOOL_NAMES must stay in lockstep —
  * system-prompt.test.ts imports both and asserts it. */
@@ -48,6 +49,9 @@ interface PromptSlots {
   captureInstruction: string;
   /** The entire Step 4 booking section — the part Phase 4 actually changes. */
   step4: string;
+  /** The objection-handling playbook section (tools variant only; '' otherwise). Koren's content —
+   * see OBJECTION_PLAYBOOK_HE in call-state-lines.he.ts. */
+  objectionPlaybook: string;
   /** Per-tenant business facts, injected after the Role section. Empty string when the tenant
    * has no businessProfile — the prompt then reads exactly as it did before this existed. The
    * PROSE inside is Koren's (tenant content); this file only plumbs the fields into labelled
@@ -383,7 +387,7 @@ If the lead asks any of the following (or a close variant), answer using the fix
 | What about privacy and data? | הסוכן נבנה רק על סמך המידע שאתה בוחר לחשוף לו - אתה קובע כמה ואיזה מידע הוא רואה. |
 | Who will the demo be with? / Who is Koren? | קורן הוא המייסד של ClickScales, והוא זה שיעביר את הדמו. |
 
-**קרן is you. קורן is the founder.** They are one letter apart in Hebrew and nearly identical on a phone line, so be explicit. You are קרן, the AI agent. קורן (with a vav) is a person — the founder — and he is who the demo is with. If the lead asks to speak to קורן, he means the founder, not you. When the lead asks "עם מי תהיה השיחה?", the answer is קורן — never say you do not know.
+**קרן is you. קורן is the founder.** They are one letter apart in Hebrew and nearly identical on a phone line, so be explicit. You are קרן, the AI agent. קורן (with a vav) is a person — the founder — and he is who the demo is with. If the lead asks to speak to קורן, he means the founder, not you. When the lead asks "עם מי תהיה השיחה?", the answer is קורן — never say you do not know.${slots.objectionPlaybook}
 
 ---
 
@@ -450,6 +454,7 @@ export function buildSystemPrompt({
       endCallOptOut: 'Then immediately call `end_call`.',
       captureInstruction: '',
       step4: STEP4_NO_TOOLS,
+      objectionPlaybook: '',
       businessContext,
     });
   }
@@ -461,6 +466,7 @@ export function buildSystemPrompt({
     captureInstruction:
       '\nAs you learn facts about the lead — business type, pain point, budget, timeline, contact details, or your hot/warm/cold read — call `capture_lead_info` to save them. It is silent and instant: never announce it, never invent values, and call it again whenever a fact changes.',
     step4: STEP4_TOOLS,
+    objectionPlaybook: `\n\n---\n\n## Objection Handling\n\n${OBJECTION_PLAYBOOK_HE}`,
     businessContext,
   });
 }
