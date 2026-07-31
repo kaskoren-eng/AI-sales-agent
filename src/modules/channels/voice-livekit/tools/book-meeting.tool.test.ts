@@ -1,6 +1,7 @@
 import { llm } from '@livekit/agents';
 import { describe, expect, it, vi } from 'vitest';
 import { leads, scheduledCalls } from '../../../../db/schema/index.js';
+import { CallStateMachine } from '../call-state.js';
 import type { TimeSlot } from '../../../scheduling/providers/provider.interface.js';
 import {
   executeBookMeeting,
@@ -75,6 +76,7 @@ function fakeRt(opts: {
   failWrites?: boolean;
   lastCheckedDurationMinutes?: number | null;
   inviteSent?: boolean;
+  callState?: CallStateMachine;
 } = {}) {
   const getAvailableSlots = vi.fn(async () => opts.available ?? [mk(SLOT)]);
   const createBooking = vi.fn(async (params: { start: string }) => ({
@@ -101,6 +103,7 @@ function fakeRt(opts: {
     lastCheckedDurationMinutes: opts.lastCheckedDurationMinutes ?? 15,
     bookingCompleted: false,
     endReason: null,
+    callState: opts.callState,
   } as unknown as ToolRuntimeContext;
 
   return { rt, makeProvider, getAvailableSlots, createBooking, captured };
@@ -311,6 +314,38 @@ describe('executeBookMeeting — meeting reminders hook (C1)', () => {
     const { rt } = fakeRt(); // fakeRt sets no remindersQueue
     const out = await executeBookMeeting(rt, args(), NOW);
     expect(out).toContain('Meeting booked');
+  });
+});
+
+describe('executeBookMeeting — state-machine guardrails', () => {
+  /** A machine advanced into scheduling — the normal state when Keren books. */
+  function schedulingMachine(): CallStateMachine {
+    const m = new CallStateMachine();
+    m.onUserTurn(); // opening → discovery
+    m.onToolCall('check_calendar_availability', true); // → scheduling
+    return m;
+  }
+
+  it('refuses to book straight out of the greeting (stage=opening — an injection, not a lead)', async () => {
+    const { rt, createBooking } = fakeRt({ callState: new CallStateMachine() }); // fresh = opening
+    await expect(executeBookMeeting(rt, args(), NOW)).rejects.toThrow(/too early/i);
+    expect(createBooking).not.toHaveBeenCalled();
+    expect(rt.bookingCompleted).toBe(false);
+  });
+
+  it('refuses a SECOND booking on the same call (one meeting per call)', async () => {
+    const { rt, createBooking } = fakeRt({ callState: schedulingMachine() });
+    rt.bookingCompleted = true; // a booking already happened
+    await expect(executeBookMeeting(rt, args(), NOW)).rejects.toThrow(/already booked/i);
+    expect(createBooking).not.toHaveBeenCalled();
+  });
+
+  it('advances the machine to closing on a successful booking', async () => {
+    const cs = schedulingMachine();
+    const { rt } = fakeRt({ callState: cs });
+    await executeBookMeeting(rt, args(), NOW);
+    expect(rt.bookingCompleted).toBe(true);
+    expect(cs.stage).toBe('closing');
   });
 });
 

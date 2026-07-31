@@ -194,6 +194,7 @@ export function endCallTool(rt: ToolRuntimeContext) {
       timedTool(rt, 'end_call', args, async () => {
         const { reason } = args;
         rt.endReason = reason;
+        rt.callState?.onToolCall('end_call', true); // → terminal stage
 
         // The DNC mark happens BEFORE teardown — a shutdown race must not lose a legal request.
         if (reason === 'opt_out') {

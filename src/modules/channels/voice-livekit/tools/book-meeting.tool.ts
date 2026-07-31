@@ -73,6 +73,18 @@ export async function executeBookMeeting(
   args: BookMeetingArgs,
   now: Date = new Date(),
 ): Promise<string> {
+  // State-machine guardrails (advisory, defence-in-depth):
+  //  - one meeting per call (makes the prompt's security rule #4 enforceable in code);
+  //  - never book straight out of the greeting — a booking on turn 0 is an injection, not a lead.
+  if (rt.bookingCompleted) {
+    throw new llm.ToolError('A meeting was already booked on this call. Do not book another.');
+  }
+  if (rt.callState?.stage === 'opening') {
+    throw new llm.ToolError(
+      "Too early to book — talk with the lead first (discovery) and collect his confirmed details.",
+    );
+  }
+
   const email = normalizeEmail(args.email);
   if (!email) {
     throw new llm.ToolError(
@@ -203,6 +215,7 @@ export async function executeBookMeeting(
   }
 
   rt.bookingCompleted = true; // the speech-guard now lets her say it out loud
+  rt.callState?.onToolCall('book_meeting', true); // → closing stage
 
   // She may only claim an email exists if Google actually sent one. Without Domain-Wide
   // Delegation the event is real but the invite is NOT emailed (BookingResult.inviteSent=false)

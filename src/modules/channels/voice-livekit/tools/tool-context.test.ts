@@ -3,6 +3,7 @@ import type { Env } from '../../../../config/env.js';
 import type { Database } from '../../../../db/client.js';
 import { GoogleCalendarProvider } from '../../../scheduling/providers/google-calendar.provider.js';
 import type { CallReport } from '../call-report.js';
+import { CallStateMachine } from '../call-state.js';
 import {
   FLAG_READ_TIMEOUT_MS,
   buildToolRuntime,
@@ -68,6 +69,7 @@ function callOpts() {
     callerPhone: '+972501234567',
     participantMetadata: OUTBOUND_META,
     report: fakeReport(),
+    callState: new CallStateMachine(),
   };
 }
 

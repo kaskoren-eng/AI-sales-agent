@@ -97,6 +97,7 @@ export async function executeCheckAvailability(
 
   // Remember the grid the lead is about to hear — book_meeting re-checks on the SAME grid.
   rt.lastCheckedDurationMinutes = duration;
+  rt.callState?.onToolCall('check_calendar_availability', true); // → scheduling stage
 
   if (usable.length === 0) {
     // A valid answer, not an error: the LLM relays it and asks for a different range.

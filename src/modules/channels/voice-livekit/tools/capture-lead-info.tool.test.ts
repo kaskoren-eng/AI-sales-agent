@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { CallStateMachine } from '../call-state.js';
 import type { ToolRuntimeContext } from './tool-context.js';
 import {
   captureLeadInfoSchema,
@@ -6,7 +7,7 @@ import {
   type CaptureLeadInfoArgs,
 } from './capture-lead-info.tool.js';
 
-function fakeRt(opts: { leadId?: string | null; phoneMatch?: string | null; insertFails?: boolean } = {}) {
+function fakeRt(opts: { leadId?: string | null; phoneMatch?: string | null; insertFails?: boolean; callState?: CallStateMachine } = {}) {
   const updates: Record<string, unknown>[] = [];
   const inserts: Record<string, unknown>[] = [];
   const db = {
@@ -39,6 +40,7 @@ function fakeRt(opts: { leadId?: string | null; phoneMatch?: string | null; inse
     lastCheckedDurationMinutes: null,
     bookingCompleted: false,
     endReason: null,
+    callState: opts.callState,
   } as unknown as ToolRuntimeContext;
   return { rt, updates, inserts };
 }
@@ -55,6 +57,27 @@ describe('captureLeadInfoSchema', () => {
   it('accepts any single field', () => {
     expect(captureLeadInfoSchema.safeParse({ budget: 'בערך 20 אלף' }).success).toBe(true);
     expect(captureLeadInfoSchema.safeParse({ qualification: 'hot' }).success).toBe(true);
+  });
+
+  it('mirrors captured facts into the state machine working memory + advances on a qualification read', async () => {
+    const cs = new CallStateMachine();
+    cs.onUserTurn(); // opening → discovery
+    const { rt } = fakeRt({ leadId: 'lead-1', callState: cs });
+    await executeCaptureLeadInfo(
+      rt,
+      args({ business_type: 'מכון כושר', pain_point: 'לידים אבודים', qualification: 'hot' }),
+    );
+    expect(cs.stage).toBe('qualifying'); // qualification read advanced the stage
+    expect(cs.facts).toEqual({ businessType: 'מכון כושר', painPoint: 'לידים אבודים', qualification: 'hot' });
+  });
+
+  it('a capture WITHOUT a qualification read does not advance the stage', async () => {
+    const cs = new CallStateMachine();
+    cs.onUserTurn(); // → discovery
+    const { rt } = fakeRt({ leadId: 'lead-1', callState: cs });
+    await executeCaptureLeadInfo(rt, args({ business_type: 'חנות אונליין' }));
+    expect(cs.stage).toBe('discovery');
+    expect(cs.facts.businessType).toBe('חנות אונליין');
   });
 
   it('rejects unknown qualification values', () => {

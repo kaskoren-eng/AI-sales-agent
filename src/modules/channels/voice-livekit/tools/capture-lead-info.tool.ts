@@ -95,6 +95,17 @@ export async function executeCaptureLeadInfo(
     );
   }
 
+  // Mirror the gathered facts into the state machine's working memory ("what we know so far") and
+  // advance discovery→qualifying on a qualification read. The DB write above stays the source of truth.
+  rt.callState?.onToolCall('capture_lead_info', true, {
+    name: args.name ?? undefined,
+    businessType: args.business_type ?? undefined,
+    painPoint: args.pain_point ?? undefined,
+    budget: args.budget ?? undefined,
+    timeline: args.timeline ?? undefined,
+    qualification: args.qualification ?? undefined,
+  });
+
   return 'Saved. Continue the conversation naturally — do not mention that you saved anything.';
 }
 

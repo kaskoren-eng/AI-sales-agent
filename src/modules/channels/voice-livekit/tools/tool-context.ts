@@ -6,6 +6,7 @@ import { createDatabase, type Database } from '../../../../db/client.js';
 import { tenants } from '../../../../db/schema/index.js';
 import { GoogleCalendarProvider } from '../../../scheduling/providers/google-calendar.provider.js';
 import type { CallReport, ToolCallLog } from '../call-report.js';
+import type { CallStateMachine } from '../call-state.js';
 import { resolveFunctionsEnabled, resolveVoiceEngine } from '../voice-livekit.service.js';
 
 /**
@@ -88,6 +89,10 @@ export interface ToolRuntimeContext {
   callAnalysisQueue: Queue | null;
   /** Set by book_meeting on success; cleared never (one meeting per call). */
   lastBooking: LastBooking | null;
+  /** The advisory conversation state machine (stage + working memory + situations). The SAME
+   * instance lives on the agent instance too — tools advance it via onToolCall / read it for
+   * guardrails; the agent advances it on turns and reflex events. */
+  callState: CallStateMachine;
 }
 
 export type ToolRuntimeResult =
@@ -146,6 +151,8 @@ export async function buildToolRuntime(
     callerPhone: string | null;
     participantMetadata: string | undefined;
     report: CallReport;
+    /** The per-call state machine, constructed in agent.ts and shared with the agent instance. */
+    callState: CallStateMachine;
   },
   deps: ToolRuntimeDeps = {},
 ): Promise<ToolRuntimeResult> {
@@ -268,6 +275,7 @@ export async function buildToolRuntime(
       remindersQueue,
       callAnalysisQueue,
       lastBooking: null,
+      callState: opts.callState,
     },
   };
 }

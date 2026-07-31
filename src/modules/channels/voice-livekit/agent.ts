@@ -15,6 +15,7 @@ import { loadEnv } from '../../../config/env.js';
 import { callLearnings } from '../../../db/schema/index.js';
 import { buildSessionComponents } from './agent.config.js';
 import { CallReport } from './call-report.js';
+import { CallStateMachine } from './call-state.js';
 import { hasAiDisclosure } from './compliance/ai-disclosure.js';
 import { playRecordingNotice } from './compliance/recording-notice.js';
 import { GREETING_HE, buildSystemPrompt, readBusinessProfile } from './prompts/system-prompt.he.js';
@@ -271,11 +272,17 @@ export default defineAgent({
     // if the tenant can't be identified (outbound metadata → VOICE_WEBHOOK_TENANT_ID fallback) or
     // `voice_engine`/`functions_enabled` don't both say yes, `runtime` is null and the call runs
     // exactly as it did before Phase 4 — no tools, speech-guard fully armed. See tool-context.ts.
+    // The advisory conversation state machine — one per call, always present (even on gate-closed
+    // calls, so the silence/voicemail reflexes still work). The SAME instance is threaded into the
+    // tool runtime so the tools advance it; the event handlers below close over this const.
+    const callState = new CallStateMachine();
+
     const { runtime, disabledReason } = await buildToolRuntime(env, {
       callId: ctx.room.name ?? 'unknown',
       callerPhone: caller.callerPhone,
       participantMetadata: participant.metadata,
       report,
+      callState,
     });
     console.log(
       runtime
@@ -468,6 +475,10 @@ export default defineAgent({
       if (item?.role && item?.textContent) {
         report.recordTranscript(item.role, item.textContent);
       }
+
+      // 1b. Advance the conversation state machine on committed turns (opening→discovery→…).
+      if (item?.role === 'user') callState.onUserTurn();
+      else if (item?.role === 'assistant') callState.onAgentTurn();
 
       // 2. Trim the history — HERE, between turns, and never inside onUserTurnCompleted, where it
       //    invalidated LiveKit's preemptive draft on every single turn. See trimHistory().
