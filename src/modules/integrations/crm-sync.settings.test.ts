@@ -59,6 +59,11 @@ describe('resolveLeadStatusForOutcome', () => {
     expect(resolveLeadStatusForOutcome(undefined, base)).toBeNull();
   });
 
+  it('returns null for the system-only reflex reasons (nobody engaged)', () => {
+    expect(resolveLeadStatusForOutcome('no_answer', base)).toBeNull();
+    expect(resolveLeadStatusForOutcome('voicemail', base)).toBeNull();
+  });
+
   it('lets a per-tenant override win over the default', () => {
     const s = resolveCrmSyncSettings({ crm_sync: { statusMap: { meeting_booked: 'contacted' } } });
     expect(resolveLeadStatusForOutcome('meeting_booked', s)).toBe('contacted');

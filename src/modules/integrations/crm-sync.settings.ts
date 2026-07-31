@@ -38,6 +38,8 @@ export interface CrmSyncSettings {
  * canonical pipeline status. `opt_out` is already applied live on the call (end-call tool flips the
  * lead to opted_out immediately); it's mapped here too so the CRM push is idempotent and correct.
  * wrong_person / bad_time / other intentionally have no mapping — they don't move the pipeline.
+ * The system-only reasons `no_answer` / `voicemail` (set by the silence/voicemail reflexes, never by
+ * the LLM) are likewise absent by design: nobody engaged, so the lead's status must not change.
  */
 export const DEFAULT_OUTCOME_STATUS_MAP: Record<string, LeadStatus> = {
   meeting_booked: 'qualified',

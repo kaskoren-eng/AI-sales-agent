@@ -4,9 +4,12 @@ import { leads } from '../../../../db/schema/index.js';
 import {
   END_CALL_REASONS,
   LEAD_STATUS_OPTED_OUT,
+  LLM_END_REASONS,
+  SYSTEM_END_REASONS,
   endCallTool,
   goodbyeInstruction,
   markLeadOptedOut,
+  runEndCallTeardown,
 } from './end-call.tool.js';
 import type { ToolRuntimeContext } from './tool-context.js';
 
@@ -95,6 +98,38 @@ async function runTool(rt: ToolRuntimeContext, reason: string, ctx: never) {
     { ctx, toolCallId: 'tc-1', abortSignal: new AbortController().signal } as never,
   );
 }
+
+describe('end-call reason vocabulary', () => {
+  it('keeps the system-only reasons OUT of the LLM enum but IN the full vocabulary', () => {
+    expect(LLM_END_REASONS).not.toContain('no_answer');
+    expect(LLM_END_REASONS).not.toContain('voicemail');
+    expect(END_CALL_REASONS).toContain('no_answer');
+    expect(END_CALL_REASONS).toContain('voicemail');
+    expect(SYSTEM_END_REASONS).toEqual(['no_answer', 'voicemail']);
+  });
+
+  it('the tool rejects a system-only reason the model tried to self-select', async () => {
+    const { rt } = fakeRt({ leadId: 'lead-1' });
+    const { ctx } = fakeCtx();
+    // endCallSchema is z.enum(LLM_END_REASONS); the runtime parse happens in llm.tool, but the
+    // enum itself must not list it — a belt check that the vocabulary split is real.
+    expect((LLM_END_REASONS as readonly string[]).includes('voicemail')).toBe(false);
+    // sanity: a normal reason still runs
+    const out = await runTool(rt, 'not_interested', ctx);
+    expect(out).toContain('not_interested');
+  });
+});
+
+describe('runEndCallTeardown (shared by end_call + the reflexes)', () => {
+  it('hangs up only AFTER the spoken line finishes playing', () => {
+    const { session, speechHandle, doneCallbacks } = fakeCtx();
+    runEndCallTeardown(session as never, speechHandle as never);
+    expect(speechHandle.addDoneCallback).toHaveBeenCalledOnce();
+    expect(session.shutdown).not.toHaveBeenCalled();
+    doneCallbacks.forEach((cb) => cb());
+    expect(session.shutdown).toHaveBeenCalledOnce();
+  });
+});
 
 describe('goodbyeInstruction', () => {
   it('carries the reason and demands exactly one Hebrew goodbye sentence', () => {

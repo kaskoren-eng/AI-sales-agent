@@ -30,7 +30,8 @@ import { timedTool, type ToolRuntimeContext } from './tool-context.js';
  * and the flow-executor's make_call step refuses to dial any lead in that status.
  */
 
-export const END_CALL_REASONS = [
+/** Reasons the LLM may choose when it calls end_call. */
+export const LLM_END_REASONS = [
   'meeting_booked',
   'not_qualified',
   'not_interested',
@@ -41,11 +42,21 @@ export const END_CALL_REASONS = [
   'other',
 ] as const;
 
+/**
+ * Reasons set ONLY by a code reflex (silence → no_answer, answering machine → voicemail) — never
+ * offered to the model. Kept out of the tool's enum so the LLM can't self-select them; the reflexes
+ * in agent.ts write `rt.endReason` directly.
+ */
+export const SYSTEM_END_REASONS = ['no_answer', 'voicemail'] as const;
+
+/** The full analytics/CRM vocabulary: what the model can pick PLUS what reflexes set. */
+export const END_CALL_REASONS = [...LLM_END_REASONS, ...SYSTEM_END_REASONS] as const;
+
 export type EndCallReason = (typeof END_CALL_REASONS)[number];
 
 export const endCallSchema = z.object({
   reason: z
-    .enum(END_CALL_REASONS)
+    .enum(LLM_END_REASONS)
     .describe(
       'Why the call is ending. meeting_booked = a demo was booked; not_qualified = budget/fit too low; ' +
         'not_interested = declined; callback_requested = asked to be called another time; ' +
@@ -120,6 +131,44 @@ function onceEvent<T>(
 }
 
 /**
+ * The graceful hang-up choreography — shared by end_call AND the code reflexes (silence/voicemail),
+ * so a reflex-issued hang-up ends the call exactly the way the tool does. In order:
+ *   - the just-spoken line (`speechHandle`) finishes PLAYING → session.shutdown() (hanging up
+ *     mid-sentence is a hang-up, not a goodbye);
+ *   - the session Close event → jobCtx.deleteRoom() (this disconnects the SIP caller) + jobCtx.shutdown().
+ * `getJobContext(false)` is null-safe, so console/test mode ends the session without a room.
+ */
+/** The handle returned by session.say()/tool speech — typed via the public API so we don't depend
+ * on a deep SDK import path for the `SpeechHandle` class. */
+type SpeechHandleLike = ReturnType<voice.AgentSession['say']>;
+
+export function runEndCallTeardown(
+  session: voice.AgentSession,
+  speechHandle: SpeechHandleLike,
+  abortSignal?: AbortSignal,
+): void {
+  const controller = new AbortController();
+  const signal = abortSignal ? AbortSignal.any([abortSignal, controller.signal]) : controller.signal;
+
+  void onceEvent<{ reason: unknown }>(session, voice.AgentSessionEventTypes.Close, { signal })
+    .then((event) => {
+      if (!event) return;
+      controller.abort();
+      const jobCtx = getJobContext(false);
+      if (!jobCtx) return; // console/test mode — no room to delete
+      jobCtx.addShutdownCallback(async () => {
+        await jobCtx.deleteRoom();
+      });
+      jobCtx.shutdown(String(event.reason));
+    })
+    .catch((err) => console.error('end_call_shutdown_error', err instanceof Error ? err.message : String(err)));
+
+  // The line finishes PLAYING, then the session shuts down. Cascade LLM only — the built-in's
+  // RealtimeModel wait-for-reply branch is dead code for us.
+  speechHandle.addDoneCallback(() => session.shutdown());
+}
+
+/**
  * What the LLM is told after the hang-up is armed. When the transcript shows no AI disclosure
  * happened during the call, the goodbye must carry it — end-of-call disclosure is the documented
  * product decision for the Israeli market (see compliance/ai-disclosure.ts, incl. the EU caveat).
@@ -156,28 +205,8 @@ export function endCallTool(rt: ToolRuntimeContext) {
           }
         }
 
-        const session = ctx.session;
-        const controller = new AbortController();
-        const signal = abortSignal ? AbortSignal.any([abortSignal, controller.signal]) : controller.signal;
-
-        // Session closed → tear the JOB down: delete the room (this hangs up the SIP caller),
-        // then shut the job down with the reason. Exactly the built-in tool's sequence.
-        void onceEvent<{ reason: unknown }>(session, voice.AgentSessionEventTypes.Close, { signal })
-          .then((event) => {
-            if (!event) return;
-            controller.abort();
-            const jobCtx = getJobContext(false);
-            if (!jobCtx) return; // console/test mode — no room to delete
-            jobCtx.addShutdownCallback(async () => {
-              await jobCtx.deleteRoom();
-            });
-            jobCtx.shutdown(String(event.reason));
-          })
-          .catch((err) => console.error('end_call_shutdown_error', err instanceof Error ? err.message : String(err)));
-
-        // The goodbye finishes PLAYING, then the session shuts down. Cascade LLM only — the
-        // built-in's RealtimeModel wait-for-reply branch is dead code for us.
-        ctx.speechHandle.addDoneCallback(() => session.shutdown());
+        // The graceful goodbye → hang-up sequence, shared with the reflex paths.
+        runEndCallTeardown(ctx.session, ctx.speechHandle, abortSignal);
 
         // AI disclosure — decided from the TRANSCRIPT, never from the model's memory of itself.
         const disclosedDuringCall = rt.report.someAgentLine(hasAiDisclosure);
