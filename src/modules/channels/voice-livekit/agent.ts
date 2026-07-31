@@ -16,6 +16,7 @@ import { callLearnings } from '../../../db/schema/index.js';
 import { buildSessionComponents } from './agent.config.js';
 import { CallReport } from './call-report.js';
 import { CallStateMachine } from './call-state.js';
+import { decideSilenceAction, decideVoicemailAction } from './call-reflexes.js';
 import { hasAiDisclosure } from './compliance/ai-disclosure.js';
 import { playRecordingNotice } from './compliance/recording-notice.js';
 import { GREETING_HE, buildSystemPrompt, readBusinessProfile } from './prompts/system-prompt.he.js';
@@ -28,6 +29,7 @@ import { guardStream, withFiller } from './speech-guard.js';
 import { ShadowSTT } from './stt/shadow-stt.js';
 import { DeepdubTTS } from './tts/deepdub.tts.js';
 import { buildAgentTools } from './tools/index.js';
+import { runEndCallTeardown } from './tools/end-call.tool.js';
 import { buildToolRuntime, type ToolRuntimeContext } from './tools/tool-context.js';
 import { enqueueLiveKitCallAnalysis } from '../../../queues/call-analysis.queue.js';
 import { ensureAgentSideConversation } from './call-record.js';
@@ -432,6 +434,11 @@ export default defineAgent({
               ...(runtime.endReason ? { end_reason: runtime.endReason } : {}),
               // Provable compliance, per call: recording notice + AI disclosure verdicts.
               ...json.compliance,
+              // The advisory state machine's record: final stage, the stage timeline, the reflex
+              // situations that fired, and the working memory ("what we knew by the end"). Merge-safe
+              // (these keys are agent-written; the GPT analysis never emits them) and invisible to the
+              // CRM sync (which reads only end_reason + summary).
+              ...callState.serialize(),
             },
             durationSecs: json.durationSec,
             status: 'pending',
@@ -558,6 +565,67 @@ export default defineAgent({
         );
       }, env.VOICE_THINKING_FILLER_MS);
     });
+
+    // ── Situational reflexes ──────────────────────────────────────────────────────────────────
+    // The state machine reacts to events the LLM never sees (it only ever gets committed turns).
+    // Every reaction is a FIXED line via session.say() — no prompt/chatCtx mutation, so preemptive
+    // generation is untouched. Silence + barge-in run on every call; voicemail is outbound-only and
+    // flag-gated. All three reference the `callState` const and the `runtime`/`session` in scope.
+    let isOutbound = false;
+    try {
+      const meta = participant.metadata ? (JSON.parse(participant.metadata) as { direction?: string }) : null;
+      isOutbound = meta?.direction === 'outbound';
+    } catch {
+      // Malformed/absent metadata = inbound SIP or console — leave isOutbound false.
+    }
+
+    // SILENCE — the caller went quiet (user state → 'away', ~15s of no reply). Strike 1 is a
+    // stage-scoped check-in; strike 2 wraps and hangs up. Gated so a nudge never lands on top of an
+    // in-flight draft (which would clip her).
+    session.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
+      if (ev.newState !== 'away' || callState.isTerminal()) return;
+      if (session.agentState === 'speaking' || session.agentState === 'thinking') return;
+      const action = decideSilenceAction(callState.onSilenceStrike(), callState.stage);
+      console.log(
+        'reflex_silence',
+        JSON.stringify({ strike: callState.silenceStrikes, stage: callState.stage, teardown: action.teardown }),
+      );
+      const handle = session.say(action.say, { allowInterruptions: true });
+      if (action.teardown) {
+        callState.markTerminal();
+        if (runtime && action.endReason) runtime.endReason = action.endReason;
+        runEndCallTeardown(session, handle);
+      }
+    });
+
+    // BARGE-IN — the caller talked over her. The SDK already yields; we only record it (analytics).
+    session.on(voice.AgentSessionEventTypes.OverlappingSpeech, () => callState.noteSituation('barge_in'));
+    session.on(voice.AgentSessionEventTypes.AgentFalseInterruption, (ev) => {
+      if (!ev.resumed) callState.noteSituation('barge_in', 'false_interruption');
+    });
+
+    // VOICEMAIL — an answering machine picked up (outbound only, opt-in). Leave a short message and
+    // hang up instead of running discovery into a beep. Wrapped so AMD can NEVER fail the call.
+    if (isOutbound && env.VOICE_AMD_ENABLED) {
+      try {
+        const amd = new voice.AMD(session, { waitUntilFinished: true });
+        void amd
+          .execute()
+          .then((prediction) => {
+            if (!prediction.isMachine || callState.isTerminal()) return;
+            callState.noteSituation('voicemail', prediction.category);
+            callState.markTerminal();
+            const action = decideVoicemailAction(prediction.category);
+            if (runtime && action.endReason) runtime.endReason = action.endReason;
+            console.log('reflex_voicemail', JSON.stringify({ category: prediction.category }));
+            const handle = session.say(action.say, { allowInterruptions: false });
+            runEndCallTeardown(session, handle);
+          })
+          .catch((err) => console.error('amd_failed', err instanceof Error ? err.message : String(err)));
+      } catch (err) {
+        console.error('amd_init_failed', err instanceof Error ? err.message : String(err));
+      }
+    }
 
     await session.start({
       agent,

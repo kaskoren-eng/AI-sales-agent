@@ -323,6 +323,10 @@ const envSchema = z.object({
   // notice.ts) stays intact — flip this to 'true' to re-enable once the frame-size fix is verified
   // on a real phone call. When off, compliance is recorded as played:false reason:disabled.
   VOICE_RECORDING_NOTICE_ENABLED: z.enum(['true', 'false', '1', '0']).optional(),
+  // Answering-machine detection (voicemail reflex), OUTBOUND ONLY. Default off — experimental until
+  // verified on a real voicemail call that it fires and leaves inbound untouched. When on, an
+  // outbound call that hits a machine gets a short message + hang-up instead of a discovery attempt.
+  VOICE_AMD_ENABLED: envBool(false),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),

@@ -31,6 +31,22 @@ export interface SalesCallAnalysis {
   recording_notice_at?: string;
   /** Compliance: when the caller learned they were talking to an AI. 'missed' should never happen. */
   ai_disclosure?: 'during_call' | 'at_end' | 'missed';
+  // ---- Conversation state machine (voice-livekit) — the advisory awareness layer ----
+  /** Coarse stage the call ended in (opening | discovery | qualifying | scheduling | closing | terminal). */
+  final_stage?: string;
+  /** The stage timeline: each stage entered with ms-since-call-start. */
+  stage_history?: Array<{ stage: string; atMs: number }>;
+  /** Reflex-worthy events that fired during the call (silence | barge_in | voicemail | objection). */
+  situations?: Array<{ type: string; atMs: number; detail?: string }>;
+  /** "What we knew by the end" — the facts capture_lead_info gathered, mirrored for the dashboard. */
+  working_memory?: {
+    name?: string;
+    businessType?: string;
+    painPoint?: string;
+    budget?: string;
+    timeline?: string;
+    qualification?: string;
+  };
 }
 
 /**
