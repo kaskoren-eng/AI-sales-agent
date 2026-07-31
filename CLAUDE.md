@@ -141,7 +141,8 @@ The voice module is being migrated from Retell AI to a self-built pipeline on Li
 - `scheduling` — Google Calendar (default provider), Trafft provider also available; slots query, booking, cancel
 - `integrations` — Monday.com (sync/push/webhook), CSV import, Google Sheets, Nango CRM
 - `webhooks` — Meta Lead Ads, generic lead intake
-- `tenants` — create/read/update, API key generation, flow config storage
+- `tenants` — **self-service only** now (`/me` + self-guarded `/:id`). Cross-tenant powers moved to `admin`. `PATCH /me` added (name + settings). A tenant can no longer read/mutate another tenant or create tenants.
+- `admin` — **operator console (super-admin, cross-tenant).** Gated by `ADMIN_API_KEY` env (unset → every `/api/v1/admin/*` route 503s; the console is opt-in). Own scope in `server.ts` (NOT the per-tenant `authenticate` hook), IP-rate-limited, constant-time key check. Endpoints: `GET /overview` (system KPIs), `GET /tenants` (rollup), `GET /tenants/:id` (deep stats/usage), `POST /tenants` (create), `PATCH /tenants/:id` (rename / suspend via `isActive`), `POST /tenants/:id/rotate-key`. Frontend at `/admin/*` (separate shell + admin-key gate, `dashboard/src/pages/admin/**`). No schema change (reuses `tenants.isActive`). New env key: `ADMIN_API_KEY` (in `.env.example`).
 - `calls` — list/detail/audio proxy for Retell calls
 - `calls/monitor` — create Twilio conference calls for monitoring, label outcomes
 

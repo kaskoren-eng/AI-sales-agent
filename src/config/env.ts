@@ -51,6 +51,11 @@ const envSchema = z.object({
   // JWT
   JWT_SECRET: z.string().min(16),
 
+  // Super-admin (operator console). Optional: when unset, every /api/v1/admin/* route replies 503
+  // "admin not configured" — the console is opt-in and cannot be reached without this secret. Min 24
+  // chars so a weak value can't gate cross-tenant powers. Rotate by changing the env and redeploying.
+  ADMIN_API_KEY: z.string().min(24).optional(),
+
   // Lead intake webhooks
   META_APP_SECRET: z.string().min(1).optional(),
   LEAD_WEBHOOK_SECRET: z.string().min(1).optional(),
@@ -358,6 +363,25 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().default('http://localhost:3001'),
 });
 
+/**
+ * Models that accept `reasoning_effort`. Everything else REJECTS it with a 400.
+ *
+ * This is not a style preference — it is the difference between a working agent and a silent one.
+ * agent.config.ts passes reasoningEffort whenever the env var is set, and the plugin forwards it
+ * unconditionally. Send it to a non-reasoning model and OpenAI 400s the completion, which surfaces
+ * as the agent simply never speaking again mid-call: no error the caller can hear, no error in the
+ * report. We already burned a call on the mirror-image of this (`reasoning_effort: 'none'` is fine
+ * on gpt-5.4 and rejected by gpt-5-mini — see VOICE_LLM_REASONING_EFFORT above).
+ *
+ * So the combination is refused at BOOT, where it is one line of output, rather than discovered
+ * mid-conversation. Same reasoning as resolveTurnDetection() in agent.config.ts.
+ */
+const REASONING_MODEL_PREFIXES = ['gpt-5', 'o1', 'o3', 'o4'];
+
+function supportsReasoningEffort(model: string): boolean {
+  return REASONING_MODEL_PREFIXES.some((p) => model.startsWith(p));
+}
+
 export type Env = z.infer<typeof envSchema>;
 
 export function loadEnv(): Env {
@@ -373,5 +397,23 @@ export function loadEnv(): Env {
     }
     process.exit(1);
   }
-  return result.data;
+
+  const env = result.data;
+
+  // The voice LLM is whatever VOICE_LLM_MODEL says, falling back to AI_MODEL (agent.config.ts).
+  const voiceModel = env.VOICE_LLM_MODEL ?? env.AI_MODEL;
+  if (env.VOICE_LLM_REASONING_EFFORT && !supportsReasoningEffort(voiceModel)) {
+    console.error('❌ Invalid environment variables:');
+    console.error(
+      `  VOICE_LLM_REASONING_EFFORT='${env.VOICE_LLM_REASONING_EFFORT}' is set, but the voice LLM ` +
+        `is '${voiceModel}', which does not accept reasoning_effort.`,
+    );
+    console.error(
+      '  OpenAI rejects that combination with a 400, and the agent goes SILENT mid-call with no ' +
+        'audible error. Unset VOICE_LLM_REASONING_EFFORT, or use a gpt-5 / o-series model.',
+    );
+    process.exit(1);
+  }
+
+  return env;
 }
