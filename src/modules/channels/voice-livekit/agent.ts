@@ -586,11 +586,15 @@ export default defineAgent({
       if (ev.newState !== 'away' || callState.isTerminal()) return;
       if (session.agentState === 'speaking' || session.agentState === 'thinking') return;
       const action = decideSilenceAction(callState.onSilenceStrike(), callState.stage);
+      // Past the nudge cap: hold the line quietly and keep waiting — never hang up on silence.
+      if (!action) return;
       console.log(
         'reflex_silence',
         JSON.stringify({ strike: callState.silenceStrikes, stage: callState.stage, teardown: action.teardown }),
       );
       const handle = session.say(action.say, { allowInterruptions: true });
+      // Silence never tears down (a pause is not a dead call); the branch stays as a guard in case a
+      // future reflex reuses this action shape.
       if (action.teardown) {
         callState.markTerminal();
         if (runtime && action.endReason) runtime.endReason = action.endReason;

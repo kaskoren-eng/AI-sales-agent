@@ -24,14 +24,20 @@ export interface ReflexAction {
   endReason?: SystemEndReason;
 }
 
+/** After this many check-ins Keren stops nudging and simply holds the line, waiting quietly. */
+export const MAX_SILENCE_NUDGES = 2;
+
 /**
- * The caller went silent (user state → 'away'). Strike 1 is a gentle, stage-aware check-in; strike 2
- * (or more) wraps and hangs up — a line that never gets a reply is a dead call, and Keren shouldn't
- * hold an empty line open.
+ * The caller went silent (user state → 'away'). A pause is NOT a dead call: a human thinking,
+ * checking a detail, or muting for a moment must never lose the call — so the silence reflex NEVER
+ * hangs up. Strike 1 is a gentle, stage-aware check-in; strike 2 reassures and explicitly holds the
+ * line; beyond that she stays quiet and keeps waiting (returns null → the handler does nothing). A
+ * caller who has genuinely gone is torn down by the SDK's `participant_disconnected`, not here.
  */
-export function decideSilenceAction(strike: number, stage: CallStage): ReflexAction {
+export function decideSilenceAction(strike: number, stage: CallStage): ReflexAction | null {
+  if (strike > MAX_SILENCE_NUDGES) return null;
   if (strike >= 2) {
-    return { say: SILENCE_WRAP_HE, teardown: true, endReason: 'no_answer' };
+    return { say: SILENCE_WRAP_HE, teardown: false };
   }
   return { say: SILENCE_NUDGE_HE[stage] ?? SILENCE_NUDGE_HE.discovery, teardown: false };
 }

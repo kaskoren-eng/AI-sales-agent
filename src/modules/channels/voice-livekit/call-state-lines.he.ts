@@ -21,8 +21,9 @@ export const SILENCE_NUDGE_HE: Record<CallStage, string> = {
   terminal: 'אתה עדיין שם?',
 };
 
-/** Spoken on the SECOND silence strike, right before Keren hangs up. */
-export const SILENCE_WRAP_HE = 'נראה שנותקנו. אין בעיה, אנסה שוב מאוחר יותר. יום טוב!';
+/** Spoken on the SECOND silence strike. Keren NEVER hangs up on silence — this reassures and holds
+ * the line so the lead can take a moment; after this she simply waits quietly. */
+export const SILENCE_WRAP_HE = 'אני כאן, אין לחץ — קח את הזמן שאתה צריך ואני מחכה.';
 
 /** Left on an answering machine when voicemail detection fires (outbound only). */
 export const VOICEMAIL_MESSAGE_HE =
