@@ -28,7 +28,9 @@ const STAGE = '.agent-build';
 const REGION = 'eu-central';
 
 // Only what the agent process actually needs to build and run.
-const INCLUDE = ['package.json', 'package-lock.json', 'tsconfig.json', 'src'];
+// `assets` carries the compliance recording-notice WAV (assets/recording-notice.wav), which
+// Dockerfile.agent COPYs in — must be staged or the build fails at "COPY assets ./assets".
+const INCLUDE = ['package.json', 'package-lock.json', 'tsconfig.json', 'src', 'assets'];
 
 await rm(STAGE, { recursive: true, force: true });
 await mkdir(STAGE, { recursive: true });
