@@ -2,25 +2,13 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Phone, BarChart3, ArrowRight } from 'lucide-react'
+import { Phone, ArrowRight } from 'lucide-react'
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { Skeleton } from '../components/ui/Skeleton.js'
-import { fetchLeads, fetchCalls } from '../lib/api.js'
+import { fetchCalls, fetchMetricsSummary } from '../lib/api.js'
+import { useTheme } from '../hooks/useTheme.js'
 
 type Range = 'today' | 'd7' | 'd30'
-
-/** ISO from/to window for the selected range. `today` = since local midnight. */
-function rangeWindow(range: Range): { from: string; to: string; days: number } {
-  const now = new Date()
-  const to = now.toISOString()
-  const start = new Date(now)
-  if (range === 'today') {
-    start.setHours(0, 0, 0, 0)
-    return { from: start.toISOString(), to, days: 1 }
-  }
-  const days = range === 'd7' ? 7 : 30
-  start.setDate(start.getDate() - days)
-  return { from: start.toISOString(), to, days }
-}
 
 const PIPELINE: { key: string; labelKey: string; dot: string; accent?: string }[] = [
   { key: 'new', labelKey: 'overview.pipeline.new', dot: 'var(--status-neutral)' },
@@ -41,11 +29,10 @@ export function Overview() {
   const { t, i18n } = useTranslation()
   const isHebrew = i18n.language.startsWith('he')
   const [range, setRange] = useState<Range>('today')
-  const win = useMemo(() => rangeWindow(range), [range])
 
-  const leadsQ = useQuery({
-    queryKey: ['leads', { limit: 1000 }],
-    queryFn: () => fetchLeads({ limit: 1000 }),
+  const metricsQ = useQuery({
+    queryKey: ['metrics', range],
+    queryFn: () => fetchMetricsSummary(range),
     staleTime: 60_000,
   })
   const callsRecentQ = useQuery({
@@ -53,24 +40,21 @@ export function Overview() {
     queryFn: () => fetchCalls({ limit: 6 }),
     staleTime: 60_000,
   })
-  const callsRangeQ = useQuery({
-    queryKey: ['calls', 'range', win.from, win.to],
-    queryFn: () => fetchCalls({ from: win.from, to: win.to, limit: 1 }),
-    staleTime: 60_000,
-  })
 
-  const leads = leadsQ.data?.data ?? []
-  const totalLeads = leadsQ.data?.meta.total ?? 0
-  const stageCount = (key: string) => leads.filter((l) => l.status?.toLowerCase() === key).length
-  const qualified = stageCount('qualified')
-  const booked = stageCount('booked')
-  const totalCalls = callsRecentQ.data?.meta.total ?? 0
-  const callsInRange = callsRangeQ.data?.meta.total ?? 0
+  const m = metricsQ.data
+  const loadingM = metricsQ.isLoading
+  const stageCount = (key: string) => m?.pipeline[key] ?? 0
+  const totalLeads = m?.kpis.leadsTotal ?? 0
+  const qualified = m?.kpis.qualified ?? 0
+  const booked = m?.kpis.booked ?? 0
+  const totalCalls = m?.kpis.callsTotal ?? 0
+  const callsInRange = m?.kpis.callsInRange ?? 0
+  const quality = m?.kpis.qualityScore ?? null
   const recent = callsRecentQ.data?.data ?? []
 
   const num = (n: number) => n.toLocaleString(isHebrew ? 'he-IL' : 'en-US')
   const rangeCallsLabel =
-    range === 'today' ? t('overview.kpi.callsToday') : t('overview.kpi.callsRange', { n: win.days })
+    range === 'today' ? t('overview.kpi.callsToday') : t('overview.kpi.callsRange', { n: range === 'd7' ? 7 : 30 })
 
   return (
     <div style={{ maxInlineSize: 'var(--container-max)', marginInline: 'auto' }}>
@@ -128,37 +112,40 @@ export function Overview() {
         </div>
       </div>
 
-      {/* KPI grid — 5 real + 1 designed-empty (never an invented metric) */}
+      {/* KPI grid — all real. Quality shows once at least one call is analyzed; else designed-empty. */}
       <section aria-label="Key metrics" className="kpi-grid" style={{ display: 'grid', gap: '14px' }}>
-        <Kpi label={rangeCallsLabel} value={num(callsInRange)} loading={callsRangeQ.isLoading} />
-        <Kpi label={t('overview.kpi.meetings')} value={num(booked)} loading={leadsQ.isLoading} money />
-        <Kpi label={t('overview.kpi.leads')} value={num(totalLeads)} loading={leadsQ.isLoading} />
-        <Kpi label={t('overview.kpi.qualified')} value={num(qualified)} loading={leadsQ.isLoading} />
-        <Kpi label={t('overview.kpi.totalCalls')} value={num(totalCalls)} loading={callsRecentQ.isLoading} />
-        {/* 6th slot: no data source yet (frontend spec §7.1) — designed empty, not blank */}
-        <div
-          style={{
-            ...CARD,
-            background: 'transparent',
-            boxShadow: 'none',
-            border: '1px dashed var(--border-strong)',
-            padding: '16px',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            gap: '6px',
-            minBlockSize: '128px',
-          }}
-        >
-          <Eyebrow isHebrew={isHebrew}>{t('overview.kpi.quality')}</Eyebrow>
-          <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '20px', color: 'var(--text-tertiary)' }}>
-            {t('overview.kpi.soon')}
-          </span>
-          <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{t('overview.kpi.qualityNote')}</span>
-        </div>
+        <Kpi label={rangeCallsLabel} value={num(callsInRange)} loading={loadingM} />
+        <Kpi label={t('overview.kpi.meetings')} value={num(booked)} loading={loadingM} money />
+        <Kpi label={t('overview.kpi.leads')} value={num(totalLeads)} loading={loadingM} />
+        <Kpi label={t('overview.kpi.qualified')} value={num(qualified)} loading={loadingM} />
+        <Kpi label={t('overview.kpi.totalCalls')} value={num(totalCalls)} loading={loadingM} />
+        {quality != null ? (
+          <Kpi label={t('overview.kpi.quality')} value={`${num(quality)}`} loading={loadingM} suffix="/100" />
+        ) : (
+          <div
+            style={{
+              ...CARD,
+              background: 'transparent',
+              boxShadow: 'none',
+              border: '1px dashed var(--border-strong)',
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              gap: '6px',
+              minBlockSize: '128px',
+            }}
+          >
+            <Eyebrow isHebrew={isHebrew}>{t('overview.kpi.quality')}</Eyebrow>
+            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '20px', color: 'var(--text-tertiary)' }}>
+              {t('overview.kpi.soon')}
+            </span>
+            <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{t('overview.kpi.qualityNote')}</span>
+          </div>
+        )}
       </section>
 
-      {leadsQ.isError && (
+      {metricsQ.isError && (
         <p role="alert" style={{ fontSize: '13px', color: 'var(--status-danger)', marginBlockStart: '12px' }}>
           {t('overview.errors.leads')}
         </p>
@@ -201,7 +188,7 @@ export function Overview() {
                 color: s.accent ?? 'var(--text-primary)',
               }}
             >
-              {leadsQ.isLoading ? <Skeleton width="40px" height="26px" /> : num(stageCount(s.key))}
+              {loadingM ? <Skeleton width="40px" height="26px" /> : num(stageCount(s.key))}
             </span>
           </Link>
         ))}
@@ -209,27 +196,16 @@ export function Overview() {
 
       {/* Bottom row: weekly chart (needs metrics endpoint — designed empty) + recent activity (real) */}
       <div style={{ display: 'grid', gap: '16px', marginBlockStart: '16px' }} className="ov-bottom">
-        {/* chart — honest empty state until a time-series metrics endpoint exists */}
+        {/* chart — real daily trend from the metrics endpoint */}
         <section style={{ ...CARD, padding: '18px' }} aria-label={t('overview.chart.title')}>
-          <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '15px', marginBlockEnd: '16px' }}>
-            {t('overview.chart.title')}
-          </h3>
-          <div
-            style={{
-              minBlockSize: '186px',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              textAlign: 'center',
-              gap: '10px',
-              color: 'var(--text-tertiary)',
-            }}
-          >
-            <BarChart3 size={26} strokeWidth={1.5} />
-            <span style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>{t('overview.chart.empty')}</span>
-            <span style={{ fontSize: '12px', maxInlineSize: '280px' }}>{t('overview.chart.emptyNote')}</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBlockEnd: '14px', gap: '12px', flexWrap: 'wrap' }}>
+            <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '15px' }}>{t('overview.chart.title')}</h3>
+            <div style={{ display: 'flex', gap: '14px' }}>
+              <Legend color="var(--data-1)" label={t('overview.chart.leads')} />
+              <Legend color="var(--data-2)" label={t('overview.chart.calls')} />
+            </div>
           </div>
+          <TrendChart series={m?.series ?? []} loading={loadingM} error={metricsQ.isError} isHebrew={isHebrew} emptyLabel={t('overview.chart.empty')} />
         </section>
 
         {/* recent activity — real, from recent calls */}
@@ -342,7 +318,7 @@ function Eyebrow({ children, isHebrew }: { children: React.ReactNode; isHebrew: 
   )
 }
 
-function Kpi({ label, value, loading, money }: { label: string; value: string; loading?: boolean; money?: boolean }) {
+function Kpi({ label, value, loading, money, suffix }: { label: string; value: string; loading?: boolean; money?: boolean; suffix?: string }) {
   const { i18n } = useTranslation()
   const isHebrew = i18n.language.startsWith('he')
   return (
@@ -370,7 +346,71 @@ function Kpi({ label, value, loading, money }: { label: string; value: string; l
         }}
       >
         {loading ? <Skeleton width="60px" height="34px" /> : value}
+        {!loading && suffix && <span style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-tertiary)', marginInlineStart: '3px' }}>{suffix}</span>}
       </span>
+    </div>
+  )
+}
+
+function Legend({ color, label }: { color: string; label: string }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
+      <span style={{ inlineSize: '10px', blockSize: '10px', borderRadius: '3px', background: color }} />
+      {label}
+    </span>
+  )
+}
+
+/** Daily leads/calls trend. Colors are read from the CSS vars and recomputed on theme change so the
+ *  chart tracks light/dark (SVG attributes don't resolve CSS custom properties on their own). */
+function TrendChart({ series, loading, error, isHebrew, emptyLabel }: { series: Array<{ date: string; leads: number; calls: number }>; loading: boolean; error: boolean; isHebrew: boolean; emptyLabel: string }) {
+  const { resolved } = useTheme()
+  const c = useMemo(() => {
+    const cs = getComputedStyle(document.documentElement)
+    const v = (name: string, fb: string) => cs.getPropertyValue(name).trim() || fb
+    return {
+      leads: v('--data-1', '#2F35C7'),
+      calls: v('--data-2', '#D9861B'),
+      grid: v('--border-default', '#D9E0EA'),
+      axis: v('--text-tertiary', '#7A8598'),
+      surface: v('--surface-overlay', '#fff'),
+      border: v('--border-default', '#D9E0EA'),
+      text: v('--text-primary', '#0C1226'),
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolved])
+
+  const fmtDay = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString(isHebrew ? 'he-IL' : 'en-GB', { day: '2-digit', month: '2-digit' })
+
+  if (loading) return <Skeleton width="100%" height="200px" />
+  if (error) return <div style={{ minBlockSize: '200px', display: 'grid', placeItems: 'center', color: 'var(--status-danger)', fontSize: '13px' }}>{emptyLabel}</div>
+
+  return (
+    <div style={{ inlineSize: '100%', blockSize: '200px' }} dir="ltr">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={series} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+          <defs>
+            <linearGradient id="gLeads" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={c.leads} stopOpacity={0.28} />
+              <stop offset="100%" stopColor={c.leads} stopOpacity={0.02} />
+            </linearGradient>
+            <linearGradient id="gCalls" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={c.calls} stopOpacity={0.24} />
+              <stop offset="100%" stopColor={c.calls} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
+          <XAxis dataKey="date" tickFormatter={fmtDay} tick={{ fill: c.axis, fontSize: 11 }} tickLine={false} axisLine={{ stroke: c.grid }} minTickGap={24} />
+          <YAxis allowDecimals={false} width={34} tick={{ fill: c.axis, fontSize: 11 }} tickLine={false} axisLine={false} />
+          <Tooltip
+            cursor={{ stroke: c.grid }}
+            contentStyle={{ background: c.surface, border: `1px solid ${c.border}`, borderRadius: 10, fontSize: 12, color: c.text }}
+            labelFormatter={(l) => fmtDay(String(l))}
+          />
+          <Area type="monotone" dataKey="leads" stroke={c.leads} strokeWidth={2} fill="url(#gLeads)" />
+          <Area type="monotone" dataKey="calls" stroke={c.calls} strokeWidth={2} fill="url(#gCalls)" />
+        </AreaChart>
+      </ResponsiveContainer>
     </div>
   )
 }

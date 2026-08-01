@@ -55,6 +55,29 @@ export function fetchBookings(): Promise<BookingsListResponse> {
   return apiFetch<BookingsListResponse>('/scheduling/bookings')
 }
 
+// --- Dashboard metrics (Overview KPIs, pipeline, quality, trend) ---
+
+export interface MetricsSummary {
+  range: 'today' | 'd7' | 'd30'
+  from: string
+  to: string
+  days: number
+  kpis: {
+    leadsTotal: number
+    qualified: number
+    booked: number
+    callsTotal: number
+    callsInRange: number
+    qualityScore: number | null
+  }
+  pipeline: Record<string, number>
+  series: Array<{ date: string; leads: number; calls: number }>
+}
+
+export function fetchMetricsSummary(range: 'today' | 'd7' | 'd30'): Promise<MetricsSummary> {
+  return apiFetch<MetricsSummary>(`/metrics/summary?range=${range}`)
+}
+
 export function fetchTenantMe(): Promise<TenantMe> {
   return apiFetch<TenantMe>('/tenants/me')
 }

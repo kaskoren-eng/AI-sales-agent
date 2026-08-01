@@ -276,7 +276,9 @@
     "chart": {
       "title": "Calls this week",
       "empty": "Waiting on a data source",
-      "emptyNote": "Daily call volume will show here once the metrics endpoint is wired."
+      "emptyNote": "Daily call volume will show here once the metrics endpoint is wired.",
+      "leads": "Leads",
+      "calls": "Calls"
     },
     "activity": {
       "title": "Recent activity",
