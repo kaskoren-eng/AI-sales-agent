@@ -292,8 +292,10 @@ function LeadDrawer({ lead, onClose }: { lead: LeadFull; onClose: () => void }) 
 
   const items: TimelineItem[] = []
   if (data) {
-    for (const m of data.messages) items.push({ kind: 'message', at: m.createdAt, direction: m.direction === 'inbound' ? 'inbound' : 'outbound', content: m.content })
-    for (const s of data.scheduledCalls) items.push({ kind: 'meeting', at: s.scheduledAt, status: s.status })
+    // Guard against a partial/malformed payload — a missing array must degrade to an empty
+    // timeline, never blank the whole app with a "not iterable" throw.
+    for (const m of data.messages ?? []) items.push({ kind: 'message', at: m.createdAt, direction: m.direction === 'inbound' ? 'inbound' : 'outbound', content: m.content })
+    for (const s of data.scheduledCalls ?? []) items.push({ kind: 'meeting', at: s.scheduledAt, status: s.status })
     items.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
   }
 

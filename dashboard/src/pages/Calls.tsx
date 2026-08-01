@@ -373,7 +373,7 @@ function CallDrawer({ call, onClose }: { call: CallSummary; onClose: () => void 
                     </span>
                   )}
                 </div>
-                {learnings?.sales_analysis ? (
+                {learnings?.sales_analysis?.what_worked?.length ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {learnings.sales_analysis.what_worked.slice(0, 4).map((w, i) => (
                       <div key={i} style={{ display: 'flex', gap: '8px', fontSize: '13px', color: 'var(--text-secondary)' }} dir="auto">
@@ -414,9 +414,9 @@ function CallDrawer({ call, onClose }: { call: CallSummary; onClose: () => void 
                 {tab === 'transcript' &&
                   (isLoading ? (
                     <Skeleton width="100%" height="60px" />
-                  ) : data && data.transcript.length > 0 ? (
+                  ) : data && (data.transcript?.length ?? 0) > 0 ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {data.transcript.map((turn, i) => (
+                      {(data.transcript ?? []).map((turn, i) => (
                         <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                           <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
                             {turn.role === 'agent' ? t('calls.drawer.agent') : call.lead?.name ?? '—'}

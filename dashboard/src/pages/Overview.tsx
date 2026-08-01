@@ -156,7 +156,8 @@ export function Overview() {
         <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '17px' }}>{t('overview.pipeline.title')}</h2>
         <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{t('overview.pipeline.hint')}</span>
       </div>
-      <div style={{ ...CARD, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)' }} role="group" aria-label={t('overview.pipeline.title')}>
+      <div className="pipeline-scroll">
+      <div className="pipeline-grid" style={{ ...CARD }} role="group" aria-label={t('overview.pipeline.title')}>
         {PIPELINE.map((s, idx) => (
           <Link
             key={s.key}
@@ -192,6 +193,7 @@ export function Overview() {
             </span>
           </Link>
         ))}
+      </div>
       </div>
 
       {/* Bottom row: weekly chart (needs metrics endpoint — designed empty) + recent activity (real) */}

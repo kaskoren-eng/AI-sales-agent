@@ -93,8 +93,9 @@ html, body {
   transform: scaleX(-1);
 }
 
-/* Overview KPI row: 3-up on narrow, 6-up on wide (matches the v5 preview). */
-.kpi-grid { grid-template-columns: repeat(3, 1fr); }
+/* Overview KPI row: 2-up on phones, 3-up on tablets, 6-up on wide. */
+.kpi-grid { grid-template-columns: repeat(2, 1fr); }
+@media (min-width: 640px) { .kpi-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (min-width: 1000px) { .kpi-grid { grid-template-columns: repeat(6, 1fr); } }
 
 /* Overview bottom row: chart + activity side by side on wide screens, stacked on narrow. */
@@ -104,6 +105,50 @@ html, body {
 /* Settings: folk left rail + content pane, stacked on narrow. */
 .set-grid { grid-template-columns: 1fr; }
 @media (min-width: 860px) { .set-grid { grid-template-columns: 244px 1fr; } }
+
+/* --- App shell responsiveness -------------------------------------------------
+   Desktop: sidebar is a sticky 240px column. Mobile (<900px): it becomes an
+   off-canvas drawer toggled by the top-bar hamburger, and the page never scrolls
+   sideways. Structural styles live here (not inline) so the media query can win. */
+.app-shell { display: flex; min-height: 100vh; background: var(--surface-page); }
+.app-sidebar {
+  width: 240px; min-width: 240px; height: 100vh;
+  position: sticky; top: 0; z-index: 40;
+  display: flex; flex-direction: column;
+  background: var(--surface-card);
+  border-inline-end: 1px solid var(--border-default);
+  overflow: hidden;
+}
+.app-content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.app-main { flex: 1; padding: 28px; overflow-y: auto; }
+.app-menu-btn { display: none; }
+.app-scrim { display: none; }
+
+@media (max-width: 899px) {
+  .app-sidebar {
+    position: fixed; inset-block: 0; inset-inline-start: 0;
+    transform: translateX(-100%);
+    transition: transform var(--duration-base) var(--ease-standard);
+    box-shadow: var(--shadow-overlay); z-index: 60;
+  }
+  [dir="rtl"] .app-sidebar { transform: translateX(100%); }
+  .app-sidebar.is-open { transform: translateX(0); }
+  .app-scrim.is-open {
+    display: block; position: fixed; inset: 0;
+    background: rgba(0,0,0,.45); z-index: 55;
+  }
+  .app-menu-btn { display: inline-flex; }
+  .app-main { padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .app-sidebar { transition: none; } }
+
+/* Hide the wide presence pill on small screens so the top bar doesn't crowd. */
+@media (max-width: 639px) { .topbar-presence { display: none !important; } }
+
+/* Pipeline strip scrolls horizontally on phones instead of squashing 5 stages. */
+.pipeline-scroll { overflow-x: auto; }
+.pipeline-grid { display: grid; grid-template-columns: repeat(5, minmax(116px, 1fr)); min-width: 560px; }
+@media (min-width: 720px) { .pipeline-grid { min-width: 0; } }
 
 a { color: inherit; text-decoration: none; }
 button { font-family: inherit; cursor: pointer; }

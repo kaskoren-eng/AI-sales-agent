@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, SlidersHorizontal, Mic, ArrowUp, Info, UserPlus, Phone, Clock, Sparkles } from 'lucide-react'
 
@@ -5,6 +6,8 @@ import { Plus, SlidersHorizontal, Mic, ArrowUp, Info, UserPlus, Phone, Clock, Sp
  *  Conversation + confirm-before-apply flow lands in a follow-up step. */
 export function Copilot() {
   const { t } = useTranslation()
+  const [draft, setDraft] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const suggestions = [
     { key: 's1', icon: <UserPlus size={15} strokeWidth={1.7} /> },
@@ -28,8 +31,11 @@ export function Copilot() {
       {/* composer */}
       <div style={{ border: '1px solid var(--border-strong)', borderRadius: '26px', background: 'var(--surface-card)', boxShadow: 'var(--shadow-card)', padding: '8px' }}>
         <input
+          ref={inputRef}
           type="text"
           dir="auto"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
           placeholder={t('copilot.placeholder')}
           aria-label={t('copilot.placeholder')}
           style={{ inlineSize: '100%', border: 0, outline: 'none', background: 'transparent', fontFamily: 'var(--font-body)', fontSize: '16px', color: 'var(--text-primary)', padding: '12px 12px 8px' }}
@@ -54,7 +60,12 @@ export function Copilot() {
       {/* suggestions */}
       <div style={{ display: 'flex', gap: '9px', flexWrap: 'wrap', justifyContent: 'center' }}>
         {suggestions.map((s) => (
-          <button key={s.key} dir="auto" style={ctrlSuggest}>
+          <button
+            key={s.key}
+            dir="auto"
+            style={ctrlSuggest}
+            onClick={() => { setDraft(t(`copilot.${s.key}`)); inputRef.current?.focus() }}
+          >
             <span style={{ color: 'var(--accent-fg)', display: 'inline-flex' }}>{s.icon}</span>
             {t(`copilot.${s.key}`)}
           </button>

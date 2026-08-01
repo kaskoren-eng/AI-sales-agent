@@ -19,7 +19,8 @@
     "integrations": "אינטגרציות",
     "settings": "הגדרות",
     "billing": "חיוב ומנוי",
-    "mainNavigation": "ניווט ראשי"
+    "mainNavigation": "ניווט ראשי",
+    "openMenu": "פתיחת תפריט"
   },
   "navgroup": {
     "monitor": "מעקב נתונים",

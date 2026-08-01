@@ -1,4 +1,4 @@
-import { Bell } from 'lucide-react'
+import { Bell, Menu } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
@@ -22,7 +22,7 @@ function getTitleKey(pathname: string): string {
   return PAGE_TITLE_KEYS[pathname] ?? 'topbar.dashboard'
 }
 
-export function TopBar() {
+export function TopBar({ onMenu }: { onMenu?: () => void }) {
   const location = useLocation()
   const { t } = useTranslation()
   const title = t(getTitleKey(location.pathname))
@@ -38,27 +38,52 @@ export function TopBar() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingInline: '28px',
+        paddingInline: 'clamp(16px, 4vw, 28px)',
         zIndex: 30,
         flexShrink: 0,
       }}
     >
-      <h1
-        className="uppercase-track"
-        style={{
-          fontFamily: 'var(--font-display)',
-          fontWeight: 700,
-          fontSize: '17px',
-          letterSpacing: '-0.01em',
-          color: 'var(--text-primary)',
-        }}
-      >
-        {title}
-      </h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+        <button
+          className="app-menu-btn"
+          onClick={onMenu}
+          aria-label={t('nav.openMenu')}
+          style={{
+            width: '38px',
+            height: '38px',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: '10px',
+            border: '1px solid var(--border-default)',
+            background: 'transparent',
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            flexShrink: 0,
+          }}
+        >
+          <Menu size={18} strokeWidth={1.8} />
+        </button>
+        <h1
+          className="uppercase-track"
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontWeight: 700,
+            fontSize: '17px',
+            letterSpacing: '-0.01em',
+            color: 'var(--text-primary)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {title}
+        </h1>
+      </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
         {/* Presence — the one animated element in the shell (dot pulse). */}
         <div
+          className="topbar-presence"
           style={{
             display: 'inline-flex',
             alignItems: 'center',

@@ -58,26 +58,19 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ]
 
-export function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean
+  onNavigate?: () => void
+}
+
+export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
   const location = useLocation()
   const { t, i18n } = useTranslation()
   const isHebrew = i18n.language.startsWith('he')
 
   return (
     <aside
-      style={{
-        width: '240px',
-        minWidth: '240px',
-        height: '100vh',
-        position: 'sticky',
-        top: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        backgroundColor: 'var(--surface-card)',
-        borderInlineEnd: '1px solid var(--border-default)',
-        zIndex: 40,
-        overflow: 'hidden',
-      }}
+      className={`app-sidebar${isOpen ? ' is-open' : ''}`}
       aria-label={t('nav.mainNavigation')}
     >
       {/* Platform wordmark — ClickScales (flat, no gradient). Agent name is per-tenant elsewhere. */}
@@ -158,7 +151,7 @@ export function Sidebar() {
                     </span>
                   </div>
                 ) : (
-                  <NavItemLink key={item.to} item={item} pathname={location.pathname} label={t(item.labelKey)} />
+                  <NavItemLink key={item.to} item={item} pathname={location.pathname} label={t(item.labelKey)} onNavigate={onNavigate} />
                 ),
               )}
             </div>
@@ -170,12 +163,13 @@ export function Sidebar() {
   )
 }
 
-function NavItemLink({ item, pathname, label }: { item: NavItem; pathname: string; label: string }) {
+function NavItemLink({ item, pathname, label, onNavigate }: { item: NavItem; pathname: string; label: string; onNavigate?: () => void }) {
   const isActive = item.end ? pathname === item.to : pathname.startsWith(item.to)
   return (
     <NavLink
       to={item.to}
       end={item.end}
+      onClick={onNavigate}
       style={{
         display: 'flex',
         alignItems: 'center',

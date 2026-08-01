@@ -19,7 +19,8 @@
     "integrations": "Integrations",
     "settings": "Settings",
     "billing": "Billing & Subscription",
-    "mainNavigation": "Main navigation"
+    "mainNavigation": "Main navigation",
+    "openMenu": "Open menu"
   },
   "navgroup": {
     "monitor": "Monitor",
