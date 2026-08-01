@@ -107,32 +107,36 @@ demo request triggers a real call.
 
 That needs a server-side hop, because the lead-intake endpoint authenticates with an
 `x-webhook-secret` header (`src/modules/webhooks/lead-intake.routes.ts`) which must never sit
-in browser JavaScript. Create `website/netlify/functions/lead.js`, set `LEAD_WEBHOOK_SECRET`
-and `API_BASE` in Netlify environment variables, and forward there:
+in browser JavaScript. **The forwarder function is now written** —
+`website/netlify/functions/lead.js` — but it stays **inert**: with no env vars set it no-ops
+(204) and calls nobody. It's wired into `netlify.toml` (`[functions]`). Flipping it on is one
+config step + one line, deliberately left to you because it makes a real phone ring.
 
-```js
-export default async (req) => {
-  const form = Object.fromEntries(new URLSearchParams(await req.text()));
-  await fetch(`${process.env.API_BASE}/webhooks/leads`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-webhook-secret': process.env.LEAD_WEBHOOK_SECRET,
-      'x-lead-source': 'website',
-    },
-    body: JSON.stringify({
-      name: form.name, email: form.email, phone: form.phone,
-      company: form.company, source: 'clickscales.com',
-    }),
-  });
-  return new Response('ok');
-};
-```
+### Go-live (3 steps — your call, triggers real calls)
 
-Then point the `fetch` in `assets/site.js` at `/.netlify/functions/lead`. Not wired now — it
-changes what happens to a real person's phone number, so it is your call, not mine.
+1. **Netlify env vars** (Site configuration → Environment variables):
+   - `API_BASE = https://ai-sales-agent-production-9736.up.railway.app`
+   - `LEAD_WEBHOOK_SECRET = <the same secret set on Railway>`
+2. **Railway env** — confirm the backend has both `LEAD_WEBHOOK_SECRET` (same value) and
+   `LEAD_WEBHOOK_TENANT_ID = <KEREN tenant uuid>` so a `website` lead resolves to your tenant.
+3. **Activate the form** — in `assets/site.js`, after the existing Netlify-Forms `fetch('/', …)`
+   that captures the submission, add a fire-and-forget call so capture AND the live call both
+   happen (leaving Netlify Forms as your archive):
 
-Production API base: `https://ai-sales-agent-production-9736.up.railway.app`.
+   ```js
+   // fire-and-forget: also hand the lead to KEREN so she calls within 60s
+   fetch('/.netlify/functions/lead', {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+     body: data,           // the same URLSearchParams string already built above
+   }).catch(function () {}); // never block the thank-you redirect on this
+   ```
+
+   Deploy. Submit the form once with **your own** number to verify the call fires, check the
+   lead lands in the dashboard Calls list, then it's live.
+
+Until step 3 ships, the function is dormant and the form behaves exactly as today
+(Netlify Forms capture → `/thanks`).
 
 ---
 
