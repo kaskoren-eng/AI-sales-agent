@@ -42,6 +42,7 @@ import tenantsModule from './modules/tenants/index.js';
 import callsModule from './modules/calls/index.js';
 import settingsModule from './modules/settings/index.js';
 import adminModule from './modules/admin/index.js';
+import metricsModule from './modules/metrics/index.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -169,6 +170,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     await apiScope.register(integrationsModule, { prefix: '/api/v1/integrations' });
     await apiScope.register(callsModule, { prefix: '/api/v1/calls' });
     await apiScope.register(settingsModule, { prefix: '/api/v1/settings' });
+    await apiScope.register(metricsModule, { prefix: '/api/v1/metrics' });
     // Browser voice simulation with the LiveKit agent — see web-call.routes.ts.
     await apiScope.register(webCallRoutes, { prefix: '/api/v1/voice' });
   });
