@@ -28,6 +28,46 @@ A running log of updates, investigations, and conclusions for the Keren voice ag
 
 ## Log
 
+### 2026-08-02 — Persist every call's stats to the DB (call_learnings.call_report)
+**What:** Per-call transcript + latency (EOU/LLM/TTS/worst-case, cutOffs, fragmentedTurns,
+duplicateReplies, per-turn metrics, usage) used to live ONLY in ephemeral `lk agent logs` — lost
+whenever a capture wasn't running. Now the agent writes the full `CallReport` verbatim to a new
+**`call_report` jsonb column** on `call_learnings` at call end (migration **0006**, applied to the
+prod Railway DB). Own column, NOT nested in `analysis` (the GPT-analysis worker overwrites `analysis`
+and would wipe it). Read path: **`npm run call:stats`** (`scripts/call-stats.mjs`) — newest calls one
+line each with the latency columns; `--full <id>` for transcript + per-turn metrics. Defaults to the
+agent's prod DB.
+**Verified end-to-end:** live call → row `442a489d` with report=true, read back from the DB (EOU 698 /
+LLM 859 / TTS 945 / worst 2502 ms, 0 cut/frag/dup, transcript + per-turn metrics all present).
+**Migration claim:** 0006 = `call_learnings.call_report` (VOICE, applied). Surfacing this on the
+dashboard calls page is DASHBOARD territory — separate handoff.
+**Status:** Shipped, committed, deployed.
+
+### 2026-08-02 — ElevenLabs TTS integration (the full saga) → v3 voice great, but 2.2 s (fails <1 s)
+**What:** Added ElevenLabs as a 3rd provider behind `VOICE_TTS_PROVIDER=elevenlabs` (official
+`@livekit/agents-plugin-elevenlabs@1.5.1`). Debugged live over many calls. The matrix we learned:
+- **Voice** `rvWcnzLKiWMjusauPtAj` "KEREN CLICKSCALES" is a Voice-Design **generated** voice → only
+  renders right on **eleven_v3**. On flash/multilingual it's gibberish / wrong-language.
+- **Websocket** (`multi-stream-input`) serves only **flash/turbo v2.5**. multilingual_v2 & v3 403 the
+  handshake because the plugin sends `auto_mode`/`sync_alignment` — turning both OFF
+  (`ELEVENLABS_AUTO_MODE=false`, `ELEVENLABS_SYNC_ALIGNMENT=false`) lets multilingual_v2 onto the ws.
+  **v3 is HTTP-only** regardless (403 on ws).
+- **HTTP path:** `ELEVENLABS_USE_HTTP=true` wraps the plugin in LiveKit `tts.StreamAdapter` →
+  `synthesize()` over `POST /text-to-speech/{voice}/stream` (all models 200). This is how v3 runs.
+- **language_code:** NO model on our path accepts forced `he` (flash/turbo & multilingual all reject
+  it) → leave `ELEVENLABS_LANGUAGE` unset (auto-detect). `optimize_streaming_latency` is **rejected by
+  v3** (silent call) → don't set `ELEVENLABS_STREAMING_LATENCY` for v3.
+- **Choppiness** = ElevenLabs **3-concurrent limit** (payg tier) exceeded by preemptive TTS →
+  `concurrent_limit_exceeded` → 2 s retry gaps. Fix: `VOICE_PREEMPTIVE_TTS=false` (0 errors after).
+**Result:** v3-over-HTTP with the KEREN voice sounds great (Koren approved) and is smooth, but
+**~2.2 s worst-case (TTS TTFB ~840 ms)** and CANNOT get under 1 s — v3 is heavy, HTTP-only, and rejects
+the latency param. **Fails the <1 s requirement.** New env knobs:
+`ELEVENLABS_{MODEL,LANGUAGE,AUTO_MODE,SYNC_ALIGNMENT,USE_HTTP,STREAMING_LATENCY}`.
+**Next (Koren):** to hit <1 s with a Keren-like voice → **Instant Voice Clone** on multilingual_v2/turbo
+over the **websocket** (~150 ms TTFB), or stay on Cartesia/DeepDub. Also: **rotate the EL API key**
+(pasted in chat). Cartesia stays the shipped default; ElevenLabs is opt-in.
+**Status:** Code shipped/committed/deployed; config currently on the v3-HTTP arm for evaluation.
+
 ### 2026-08-02 — VAD silence-window sweep → **200 ms wins** (sweep closed)
 **What:** Ran the planned real-call sweep of `VOICE_VAD_MIN_SILENCE_MS` /
 `VOICE_ENDPOINTING_MIN_DELAY_MS` to kill turn fragmentation. Arms: 400/350 (A), 200/200 (baseline).
