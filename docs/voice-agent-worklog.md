@@ -68,6 +68,41 @@ over the **websocket** (~150 ms TTFB), or stay on Cartesia/DeepDub. Also: **rota
 (pasted in chat). Cartesia stays the shipped default; ElevenLabs is opt-in.
 **Status:** Code shipped/committed/deployed; config currently on the v3-HTTP arm for evaluation.
 
+### 2026-08-03 — Can v3 run on the TTS **websocket**? Probed it. No — and the reason is not what we thought
+**Why:** ElevenLabs support told Koren "we support websockets on all our models", which contradicts
+the entry above. Their docs exclude `eleven_v3` from the ws by name — but they never enumerate what
+the ws *does* accept, and a second model exists that nobody here had tried:
+**`eleven_v3_conversational`** ("ultra-low-latency version of Eleven v3, optimized for live
+back-and-forth dialogue", added to the API Feb 2026, documented as ElevenAgents-only).
+**How:** `scripts/elevenlabs-v3-ws-probe.ts` — raw `ws`, NOT the LiveKit plugin (the plugin appends
+`auto_mode`/`sync_alignment`, which would confound a model-403 with a handshake-403). 24 cells:
+{`stream-input`, `multi-stream-input`} × {v3_conversational, v3, flash_v2_5 control} × {KEREN
+Voice-Design, Charlotte stock} × {bare, auto+sync}. Sequential — the 3-concurrent payg cap otherwise
+masquerades as a model rejection.
+**Result:** all 16 v3-family cells → **HTTP 403 at the upgrade, empty body**. Control passed
+(flash_v2_5 ws TTFB 224–362 ms), so the harness is sound. Two things the probe settled that guessing
+could not:
+- **The 403 is a model-class gate, not an auth gate.** On this endpoint ElevenLabs authenticates
+  *after* the upgrade: a deliberately bad API key **connects** and then returns JSON `invalid_api_key`,
+  and an unknown model id also connects and returns JSON `model_not_found`. Only the v3 family is
+  refused before the handshake completes. So the ws is closed to v3 by class.
+- **`eleven_v3_conversational` is real and this account is not entitled to it.** Over HTTP it returns
+  `401 model_access_denied` — "Your account is not authorized to access this model" — whereas a
+  made-up model id returns `400 model_not_found`. It is also absent from our `GET /v1/models`
+  (which does list `eleven_v3`, `tts=Y`, Hebrew ✓ — the only model in the list with Hebrew).
+**Verdict:** no form of v3 renders over the standalone TTS websocket today. The residual unknown —
+would the ws accept `eleven_v3_conversational` if the account were entitled — is **not testable from
+here**; it needs ElevenLabs to enable the model on the key. The evidence above says probably not
+(the ws refuses it at the same pre-auth gate as plain v3), but the ask is cheap and the same support
+contact is the right person.
+**Next (Koren):** ask support to enable `eleven_v3_conversational` on the account, then re-run
+`npx tsx scripts/elevenlabs-v3-ws-probe.ts` — it will answer in ~2 minutes. Otherwise the only
+websocket route to a v3 voice is the **Agents / Speech Engine** socket
+(`wss://api.elevenlabs.io/v1/convai/conversation`), which also hands ElevenLabs the STT and
+turn-taking — Soniox out. Koren's gate for even considering that: a recorded-call Hebrew STT A/B
+against Soniox's 4.3 % semantic WER, using the `stt:ab` harness, before any live call.
+**Status:** Probe committed. No shipped config touched; Cartesia still the default.
+
 ### 2026-08-02 — VAD silence-window sweep → **200 ms wins** (sweep closed)
 **What:** Ran the planned real-call sweep of `VOICE_VAD_MIN_SILENCE_MS` /
 `VOICE_ENDPOINTING_MIN_DELAY_MS` to kill turn fragmentation. Arms: 400/350 (A), 200/200 (baseline).
