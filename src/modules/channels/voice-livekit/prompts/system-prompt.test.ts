@@ -167,6 +167,15 @@ describe('Keren Phase 4 — tools-mode prompt', () => {
     expect(SYSTEM_PROMPT_HE).not.toContain('## Objection Handling');
   });
 
+  it('omits the objection playbook when the advisory layer is off (objectionHandling: false)', () => {
+    // The state-machine kill-switch (VOICE_STATE_MACHINE_ENABLED=false) drops the objection section
+    // even on a tools-enabled call, so an A/B run is the pre-state-machine prompt on that axis.
+    const noObjection = buildSystemPrompt({ toolsEnabled: true, objectionHandling: false });
+    expect(noObjection).not.toContain('## Objection Handling');
+    // Everything else about the tools prompt is unchanged — the tools are still present.
+    expect(noObjection).toContain('check_calendar_availability');
+  });
+
   it('anti-hallucination survives the range flow: exact slot_datetime, never adjust a time', () => {
     expect(TOOLS_PROMPT).toMatch(/EXACT slot_datetime value/u);
     expect(TOOLS_PROMPT).toMatch(/never invent, guess, round or adjust a time/u);

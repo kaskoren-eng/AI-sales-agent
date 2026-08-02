@@ -274,10 +274,12 @@ export default defineAgent({
     // if the tenant can't be identified (outbound metadata → VOICE_WEBHOOK_TENANT_ID fallback) or
     // `voice_engine`/`functions_enabled` don't both say yes, `runtime` is null and the call runs
     // exactly as it did before Phase 4 — no tools, speech-guard fully armed. See tool-context.ts.
-    // The advisory conversation state machine — one per call, always present (even on gate-closed
-    // calls, so the silence/voicemail reflexes still work). The SAME instance is threaded into the
-    // tool runtime so the tools advance it; the event handlers below close over this const.
-    const callState = new CallStateMachine();
+    // The advisory conversation state machine — one per call (even on gate-closed calls, so the
+    // silence/voicemail reflexes still work). The SAME instance is threaded into the tool runtime so
+    // the tools advance it; the event handlers below close over this const. `undefined` when the
+    // whole advisory layer is switched off (VOICE_STATE_MACHINE_ENABLED=false) — reflexes, tracking
+    // and the objection prompt section all fall away, running Keren exactly as she was before it.
+    const callState = env.VOICE_STATE_MACHINE_ENABLED ? new CallStateMachine() : undefined;
 
     const { runtime, disabledReason } = await buildToolRuntime(env, {
       callId: ctx.room.name ?? 'unknown',
@@ -437,8 +439,8 @@ export default defineAgent({
               // The advisory state machine's record: final stage, the stage timeline, the reflex
               // situations that fired, and the working memory ("what we knew by the end"). Merge-safe
               // (these keys are agent-written; the GPT analysis never emits them) and invisible to the
-              // CRM sync (which reads only end_reason + summary).
-              ...callState.serialize(),
+              // CRM sync (which reads only end_reason + summary). Absent when the layer is disabled.
+              ...(callState?.serialize() ?? {}),
             },
             durationSecs: json.durationSec,
             status: 'pending',
@@ -484,8 +486,9 @@ export default defineAgent({
       }
 
       // 1b. Advance the conversation state machine on committed turns (opening→discovery→…).
-      if (item?.role === 'user') callState.onUserTurn();
-      else if (item?.role === 'assistant') callState.onAgentTurn();
+      //     No-op when the advisory layer is disabled (callState undefined).
+      if (item?.role === 'user') callState?.onUserTurn();
+      else if (item?.role === 'assistant') callState?.onAgentTurn();
 
       // 2. Trim the history — HERE, between turns, and never inside onUserTurnCompleted, where it
       //    invalidated LiveKit's preemptive draft on every single turn. See trimHistory().
@@ -515,7 +518,11 @@ export default defineAgent({
     const businessProfile = runtime ? readBusinessProfile(runtime.settings) : null;
     const agent = new ClickScalesAgent(
       {
-        instructions: buildSystemPrompt({ toolsEnabled: runtime !== null, businessProfile }),
+        instructions: buildSystemPrompt({
+          toolsEnabled: runtime !== null,
+          businessProfile,
+          objectionHandling: env.VOICE_STATE_MACHINE_ENABLED,
+        }),
         ...(runtime ? { tools: buildAgentTools(runtime) } : {}),
       },
       runtime,
@@ -579,6 +586,10 @@ export default defineAgent({
       // Malformed/absent metadata = inbound SIP or console — leave isOutbound false.
     }
 
+    // The whole reflex layer is gated by the kill-switch: when callState is undefined
+    // (VOICE_STATE_MACHINE_ENABLED=false) none of these handlers are subscribed, and Keren behaves
+    // exactly as she did before the state machine.
+    if (callState) {
     // SILENCE — the caller went quiet (user state → 'away', ~15s of no reply). Strike 1 is a
     // stage-scoped check-in; strike 2 wraps and hangs up. Gated so a nudge never lands on top of an
     // in-flight draft (which would clip her).
@@ -630,6 +641,7 @@ export default defineAgent({
         console.error('amd_init_failed', err instanceof Error ? err.message : String(err));
       }
     }
+    } // end if (callState) — advisory reflex layer
 
     await session.start({
       agent,

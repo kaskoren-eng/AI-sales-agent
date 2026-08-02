@@ -75,6 +75,7 @@ export async function buildTestApp(
     VOICE_TURN_DETECTION: 'vad' as const,
     SHADOW_STT_ENABLED: false,
     VOICE_AMD_ENABLED: false,
+    VOICE_STATE_MACHINE_ENABLED: true,
     VOICE_TTS_ROUTE: 'cartesia' as const,
     VOICE_TTS_PROVIDER: 'cartesia' as const,
     DEEPDUB_MODEL: 'dd-etts-3.2',

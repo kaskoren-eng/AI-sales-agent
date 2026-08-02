@@ -327,6 +327,11 @@ const envSchema = z.object({
   // verified on a real voicemail call that it fires and leaves inbound untouched. When on, an
   // outbound call that hits a machine gets a short message + hang-up instead of a discovery attempt.
   VOICE_AMD_ENABLED: envBool(false),
+  // Kill-switch for the whole advisory conversation-state layer: situational reflexes (silence /
+  // barge-in / voicemail), stage/working-memory tracking, and the objection-handling prompt section.
+  // Default ON. Set false to run Keren exactly as she was before the state machine — used to A/B
+  // whether the advisory layer affects call behaviour. Tools and the gate are unaffected either way.
+  VOICE_STATE_MACHINE_ENABLED: envBool(true),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),

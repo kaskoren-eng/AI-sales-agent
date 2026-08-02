@@ -440,10 +440,14 @@ If the lead says "רגע," "שנייה," "חכה," "hold on," or "one moment," r
 export function buildSystemPrompt({
   toolsEnabled,
   businessProfile = null,
+  objectionHandling = true,
 }: {
   toolsEnabled: boolean;
   /** Per-tenant grounding. Absent/null → the prompt is byte-for-byte the pre-existing one. */
   businessProfile?: BusinessProfile | null;
+  /** Part of the advisory state layer (VOICE_STATE_MACHINE_ENABLED). When false, the objection
+   * playbook section is omitted even on tools-enabled calls — for A/B-ing the advisory layer. */
+  objectionHandling?: boolean;
 }): string {
   const businessContext = renderBusinessContext(businessProfile);
   if (!toolsEnabled) {
@@ -466,7 +470,7 @@ export function buildSystemPrompt({
     captureInstruction:
       '\nAs you learn facts about the lead — business type, pain point, budget, timeline, contact details, or your hot/warm/cold read — call `capture_lead_info` to save them. It is silent and instant: never announce it, never invent values, and call it again whenever a fact changes.',
     step4: STEP4_TOOLS,
-    objectionPlaybook: `\n\n---\n\n## Objection Handling\n\n${OBJECTION_PLAYBOOK_HE}`,
+    objectionPlaybook: objectionHandling ? `\n\n---\n\n## Objection Handling\n\n${OBJECTION_PLAYBOOK_HE}` : '',
     businessContext,
   });
 }

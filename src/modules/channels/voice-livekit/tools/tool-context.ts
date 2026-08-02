@@ -91,8 +91,9 @@ export interface ToolRuntimeContext {
   lastBooking: LastBooking | null;
   /** The advisory conversation state machine (stage + working memory + situations). The SAME
    * instance lives on the agent instance too — tools advance it via onToolCall / read it for
-   * guardrails; the agent advances it on turns and reflex events. */
-  callState: CallStateMachine;
+   * guardrails; the agent advances it on turns and reflex events. `undefined` when the advisory
+   * layer is disabled (VOICE_STATE_MACHINE_ENABLED=false) — every tool reads it as `rt.callState?.`. */
+  callState: CallStateMachine | undefined;
 }
 
 export type ToolRuntimeResult =
@@ -151,8 +152,9 @@ export async function buildToolRuntime(
     callerPhone: string | null;
     participantMetadata: string | undefined;
     report: CallReport;
-    /** The per-call state machine, constructed in agent.ts and shared with the agent instance. */
-    callState: CallStateMachine;
+    /** The per-call state machine, constructed in agent.ts and shared with the agent instance.
+     * `undefined` when the advisory layer is disabled (VOICE_STATE_MACHINE_ENABLED=false). */
+    callState: CallStateMachine | undefined;
   },
   deps: ToolRuntimeDeps = {},
 ): Promise<ToolRuntimeResult> {
