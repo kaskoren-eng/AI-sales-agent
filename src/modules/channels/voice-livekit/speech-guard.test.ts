@@ -55,6 +55,20 @@ describe('speech guard — she must not claim a booking that does not exist', ()
   });
 });
 
+describe('speech guard — niqqud is stripped so Cartesia gets clean consonantal Hebrew', () => {
+  it('removes niqqud/cantillation the model may emit', () => {
+    const r = guardSpeech('שָׁלוֹם, מְדַבֶּרֶת קֶרֶן.');
+    expect(r.text).toBe('שלום, מדברת קרן.');
+    expect(r.interventions).toContain('stripped niqqud (Cartesia mispronounces vowel points)');
+  });
+
+  it('is a silent no-op on ordinary unpointed Hebrew', () => {
+    const t = 'שלום, מדברת קרן. איך אפשר לעזור?';
+    expect(guardSpeech(t).text).toBe(t);
+    expect(guardSpeech(t).interventions).toHaveLength(0);
+  });
+});
+
 /**
  * The streaming guard. THIS IS THE ONE THAT MATTERS FOR LATENCY.
  *

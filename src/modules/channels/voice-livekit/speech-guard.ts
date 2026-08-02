@@ -106,6 +106,21 @@ export function forceMasculineAddress(text: string): string {
 const NO_RESPONSE = /NO_RESPONSE_NEEDED/gi;
 
 /**
+ * Hebrew niqqud + cantillation marks (U+0591–U+05C7 — the same range stripped in
+ * normalizeFillerWord). Cartesia mispronounces vowel-pointed Hebrew — Koren confirmed the
+ * inconsistency persisted with niqqud in the prompt (see the gender note above). So if the model
+ * ever emits niqqud, strip it before the text reaches the TTS; bare consonantal Hebrew is what
+ * Cartesia reads most reliably. Speech-only, like forceMasculineAddress — never touches what is
+ * stored, logged or transcribed.
+ */
+const NIQQUD = /[֑-ׇ]/gu;
+
+/** Removes Hebrew niqqud / cantillation so the TTS receives clean consonantal text. */
+export function stripNiqqud(text: string): string {
+  return text.replace(NIQQUD, '');
+}
+
+/**
  * Claims that a booking is DONE. Every one of these is a lie — UNTIL a booking actually happened.
  *
  * Phase 4 made the claim conditionally true: when the tenant's tool gate is open and book_meeting
@@ -239,6 +254,14 @@ export function guardSpeech(
   // LAST, so it applies to the rewritten text too. Purely a PRONUNCIATION fix — it changes how
   // Cartesia says the word, never which word the LLM chose. See forceMasculineAddress().
   out = forceMasculineAddress(out);
+
+  // Strip any niqqud the model emitted — Cartesia mispronounces vowel-pointed Hebrew. Only logs an
+  // intervention when it actually removed something, so it stays quiet on the common (unpointed) case.
+  const unpointed = stripNiqqud(out);
+  if (unpointed !== out) {
+    interventions.push('stripped niqqud (Cartesia mispronounces vowel points)');
+    out = unpointed;
+  }
 
   return { text: out.replace(/\s{2,}/gu, ' ').trim(), silent: false, interventions };
 }
