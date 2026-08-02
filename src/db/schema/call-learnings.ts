@@ -72,6 +72,46 @@ export interface ShadowSttTranscript {
   errors: string[];
 }
 
+/**
+ * The per-call CallReport (voice-livekit) persisted verbatim, so every call's latency + transcript
+ * is queryable from the DB regardless of whether an ephemeral `lk agent logs` capture happened to be
+ * running. Written ONCE by the agent at call end into its OWN column — deliberately NOT nested inside
+ * `analysis`, because the later GPT call-analysis worker overwrites `analysis` and would wipe it.
+ * Shape mirrors CallReport.toJson() (modules/channels/voice-livekit/call-report.ts); the deep arrays
+ * are loosely typed on purpose so the report can evolve without a migration (jsonb is schemaless).
+ */
+export interface PersistedCallReport {
+  room: string;
+  callerPhone: string | null;
+  startedAt: string;
+  durationSec: number;
+  config: {
+    sttProvider: string;
+    sttModel: string;
+    turnDetection: string;
+    llmModel: string;
+    ttsModel: string;
+  };
+  summary: {
+    turnsHeard: number;
+    ttsSegments: number;
+    cutOffs: number;
+    fragmentedTurns: number;
+    duplicateReplies: number;
+    promptCacheHitPct: number | null;
+    endOfTurnMedianMs: number | null;
+    llmTtftMedianMs: number | null;
+    ttsTtfbMedianMs: number | null;
+    worstCaseMs: number | null;
+  };
+  transcript?: unknown[];
+  metrics?: unknown[];
+  toolCalls?: unknown[];
+  compliance?: unknown;
+  usage?: unknown;
+  shadow?: unknown;
+}
+
 export const callLearnings = pgTable('call_learnings', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull(),
@@ -86,6 +126,10 @@ export const callLearnings = pgTable('call_learnings', {
   // null for every call not run in shadow mode, which is almost all of them.
   shadowSttTranscript: jsonb('shadow_stt_transcript').$type<ShadowSttTranscript>(),
   analysis: jsonb('analysis').$type<SalesCallAnalysis>().default({} as SalesCallAnalysis),
+  // The full per-call CallReport (latency medians, per-turn metrics, transcript, usage). Nullable:
+  // only LiveKit calls write it, and it is the durable home for the stats that used to live only in
+  // ephemeral logs. Isolated from `analysis` so the GPT-analysis worker can never overwrite it.
+  callReport: jsonb('call_report').$type<PersistedCallReport>(),
   // won | lost | neutral — set manually via API or inferred by AI
   outcome: varchar('outcome', { length: 20 }),
   durationSecs: integer('duration_secs'),

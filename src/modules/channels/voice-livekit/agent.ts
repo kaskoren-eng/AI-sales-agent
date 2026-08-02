@@ -447,6 +447,11 @@ export default defineAgent({
               // CRM sync (which reads only end_reason + summary). Absent when the layer is disabled.
               ...(callState?.serialize() ?? {}),
             },
+            // The full CallReport verbatim (latency medians, per-turn metrics, transcript, usage) in
+            // its own column so every call's stats are queryable from the DB — not just whenever an
+            // `lk agent logs` capture happened to be running. Isolated from `analysis` so the
+            // GPT-analysis worker can't overwrite it.
+            callReport: json,
             durationSecs: json.durationSec,
             status: 'pending',
             label: 'livekit',
