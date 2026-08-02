@@ -227,6 +227,9 @@ const envSchema = z.object({
   // only render correctly on v3, which is HTTP-only. true → wrap the plugin in a LiveKit StreamAdapter
   // so the session calls synthesize() (HTTP /stream, sentence-tokenized). Higher TTFB than the ws.
   ELEVENLABS_USE_HTTP: envBool(false),
+  // optimize_streaming_latency (0-4) on the HTTP path — trades a little quality for lower TTS TTFB.
+  // v3 over HTTP measured ~783ms TTFB; 3 pulls that down. Omit to leave it unset. HTTP path only.
+  ELEVENLABS_STREAMING_LATENCY: z.coerce.number().int().min(0).max(4).optional(),
 
   // How long she may think in SILENCE before making the noise a person makes while thinking.
   //

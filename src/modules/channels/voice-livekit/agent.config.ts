@@ -189,6 +189,9 @@ function buildTTS(env: Env): ttsBase.TTS {
       autoMode: env.ELEVENLABS_AUTO_MODE,
       syncAlignment: env.ELEVENLABS_SYNC_ALIGNMENT,
       ...(env.ELEVENLABS_LANGUAGE ? { language: env.ELEVENLABS_LANGUAGE } : {}),
+      ...(env.ELEVENLABS_STREAMING_LATENCY !== undefined
+        ? { streamingLatency: env.ELEVENLABS_STREAMING_LATENCY }
+        : {}),
     });
     if (env.ELEVENLABS_USE_HTTP) {
       // v3 / Voice-Design voices only render over ElevenLabs' HTTP endpoint (the ws multi-stream-input
