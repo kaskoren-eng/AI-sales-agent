@@ -73,6 +73,7 @@ async function buildAuthTestApp(db: ReturnType<typeof createMockDb>) {
     ELEVENLABS_MODEL: 'eleven_flash_v2_5',
     ELEVENLABS_AUTO_MODE: false,
     ELEVENLABS_SYNC_ALIGNMENT: false,
+    ELEVENLABS_USE_HTTP: false,
     VOICE_THINKING_FILLER_MS: 1200,
     VOICE_MAX_HISTORY_ITEMS: 0,
   };

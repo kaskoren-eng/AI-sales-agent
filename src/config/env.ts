@@ -222,6 +222,11 @@ const envSchema = z.object({
   // default OFF so the quality models can connect over the websocket. See docs/voice-agent-worklog.md.
   ELEVENLABS_AUTO_MODE: envBool(false),
   ELEVENLABS_SYNC_ALIGNMENT: envBool(false),
+  // Route via ElevenLabs' HTTP endpoint instead of the websocket. Required for eleven_v3 and other
+  // Voice-Design "generated" voices (KEREN CLICKSCALES is one): they 403 the ws multi-stream-input and
+  // only render correctly on v3, which is HTTP-only. true → wrap the plugin in a LiveKit StreamAdapter
+  // so the session calls synthesize() (HTTP /stream, sentence-tokenized). Higher TTFB than the ws.
+  ELEVENLABS_USE_HTTP: envBool(false),
 
   // How long she may think in SILENCE before making the noise a person makes while thinking.
   //

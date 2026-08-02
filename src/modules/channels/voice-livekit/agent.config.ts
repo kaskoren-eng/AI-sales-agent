@@ -1,4 +1,4 @@
-import { inference, type stt as sttBase, type tts as ttsBase, type voice } from '@livekit/agents';
+import { inference, tokenize, tts as ttsBase, type stt as sttBase, type voice } from '@livekit/agents';
 import * as cartesia from '@livekit/agents-plugin-cartesia';
 import * as elevenlabs from '@livekit/agents-plugin-elevenlabs';
 import * as openai from '@livekit/agents-plugin-openai';
@@ -181,7 +181,7 @@ function buildTTS(env: Env): ttsBase.TTS {
         'ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID are required when VOICE_TTS_PROVIDER=elevenlabs',
       );
     }
-    return new elevenlabs.TTS({
+    const elevenTTS = new elevenlabs.TTS({
       apiKey: env.ELEVENLABS_API_KEY,
       voiceId: env.ELEVENLABS_VOICE_ID,
       model: env.ELEVENLABS_MODEL,
@@ -190,6 +190,14 @@ function buildTTS(env: Env): ttsBase.TTS {
       syncAlignment: env.ELEVENLABS_SYNC_ALIGNMENT,
       ...(env.ELEVENLABS_LANGUAGE ? { language: env.ELEVENLABS_LANGUAGE } : {}),
     });
+    if (env.ELEVENLABS_USE_HTTP) {
+      // v3 / Voice-Design voices only render over ElevenLabs' HTTP endpoint (the ws multi-stream-input
+      // 403s them). StreamAdapter presents a streaming interface to the session but synthesizes each
+      // sentence via the wrapped plugin's HTTP synthesize() (POST /text-to-speech/{voice}/stream),
+      // tokenizing so first audio still starts after the first sentence rather than the whole reply.
+      return new ttsBase.StreamAdapter(elevenTTS, new tokenize.basic.SentenceTokenizer());
+    }
+    return elevenTTS;
   }
   if (env.VOICE_TTS_ROUTE === 'inference') {
     const opts = cartesiaOptions(env);
