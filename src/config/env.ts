@@ -188,7 +188,10 @@ const envSchema = z.object({
   // won a blind A/B on Hebrew quality and native gender at cost parity, with a realtime model that
   // the dashboard reports at ~125ms TTFB (faster than Cartesia's ~250ms). Strangler-fig: both live
   // side by side behind this flag, exactly like STT_PROVIDER, so a bad call is one env var to revert.
-  VOICE_TTS_PROVIDER: z.enum(['cartesia', 'deepdub']).default('cartesia'),
+  // 'elevenlabs' selects the official @livekit/agents-plugin-elevenlabs (eleven_flash_v2_5) — added
+  // for a real-call A/B against Cartesia on Hebrew voice quality. Same strangler-fig rule: opt-in
+  // behind this flag, one env var to revert, Cartesia stays the shipped default until a decision.
+  VOICE_TTS_PROVIDER: z.enum(['cartesia', 'deepdub', 'elevenlabs']).default('cartesia'),
   // DeepDub (only read when VOICE_TTS_PROVIDER=deepdub). All optional so the app boots without it.
   DEEPDUB_API_KEY: z.string().min(1).optional(),
   DEEPDUB_VOICE_PROMPT_ID: z.string().min(1).optional(),
@@ -204,6 +207,14 @@ const envSchema = z.object({
   DEEPDUB_SAMPLE_RATE: z.coerce.number().int().positive().default(24_000),
   // Accent control: 0..1 how strongly to pull toward the target locale accent. 0.75 per the sample.
   DEEPDUB_ACCENT_RATIO: z.coerce.number().min(0).max(1).default(0.75),
+
+  // ElevenLabs (only read when VOICE_TTS_PROVIDER=elevenlabs). All optional so the app boots without
+  // it — buildTTS throws loudly if the flag is set but key/voice are missing (missing voiceId returns
+  // a SILENT empty stream from ElevenLabs, not an error, so we fail fast instead). Language is forced
+  // to VOICE_LANGUAGE ('he') — the documented gotcha behind the old "doesn't speak Hebrew" false read.
+  ELEVENLABS_API_KEY: z.string().min(1).optional(),
+  ELEVENLABS_VOICE_ID: z.string().min(1).optional(),
+  ELEVENLABS_MODEL: z.string().default('eleven_flash_v2_5'),
 
   // How long she may think in SILENCE before making the noise a person makes while thinking.
   //

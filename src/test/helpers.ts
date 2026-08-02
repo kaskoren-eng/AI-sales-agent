@@ -84,6 +84,7 @@ export async function buildTestApp(
     DEEPDUB_EU: true,
     DEEPDUB_SAMPLE_RATE: 24_000,
     DEEPDUB_ACCENT_RATIO: 0.75,
+    ELEVENLABS_MODEL: 'eleven_flash_v2_5',
     VOICE_THINKING_FILLER_MS: 1200,
     VOICE_MAX_HISTORY_ITEMS: 0,
     ...opts.envOverrides,

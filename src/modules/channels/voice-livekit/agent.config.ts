@@ -1,5 +1,6 @@
 import { inference, type stt as sttBase, type tts as ttsBase, type voice } from '@livekit/agents';
 import * as cartesia from '@livekit/agents-plugin-cartesia';
+import * as elevenlabs from '@livekit/agents-plugin-elevenlabs';
 import * as openai from '@livekit/agents-plugin-openai';
 import type * as silero from '@livekit/agents-plugin-silero';
 import { cartesiaOptions } from './testing/speech.js';
@@ -160,6 +161,25 @@ function buildTTS(env: Env): ttsBase.TTS {
   // Cartesia keeps serving until a decision is made. One env var to revert. See tts/deepdub.tts.ts.
   if (env.VOICE_TTS_PROVIDER === 'deepdub') {
     return new DeepdubTTS(deepdubOptions(env));
+  }
+  // ElevenLabs, behind the flag — real-call A/B on Hebrew quality (eleven_flash_v2_5, ~75ms TTFB).
+  // Official LiveKit plugin, so it mirrors the Cartesia branch below. Fail LOUD if key/voice missing:
+  // ElevenLabs returns a SILENT empty stream (not an error) when voiceId is absent, so a soft failure
+  // would ship a mute agent to a real caller. language is forced so it actually speaks Hebrew. PCM out
+  // (pcm_22050) avoids an mp3 decode hop on the latency-sensitive phone path; LiveKit resamples to 8kHz.
+  if (env.VOICE_TTS_PROVIDER === 'elevenlabs') {
+    if (!env.ELEVENLABS_API_KEY || !env.ELEVENLABS_VOICE_ID) {
+      throw new Error(
+        'ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID are required when VOICE_TTS_PROVIDER=elevenlabs',
+      );
+    }
+    return new elevenlabs.TTS({
+      apiKey: env.ELEVENLABS_API_KEY,
+      voiceId: env.ELEVENLABS_VOICE_ID,
+      model: env.ELEVENLABS_MODEL,
+      language: env.VOICE_LANGUAGE,
+      encoding: 'pcm_22050',
+    });
   }
   if (env.VOICE_TTS_ROUTE === 'inference') {
     const opts = cartesiaOptions(env);
