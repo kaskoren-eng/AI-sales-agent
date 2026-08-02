@@ -165,8 +165,14 @@ function buildTTS(env: Env): ttsBase.TTS {
   // ElevenLabs, behind the flag — real-call A/B on Hebrew quality (eleven_flash_v2_5, ~75ms TTFB).
   // Official LiveKit plugin, so it mirrors the Cartesia branch below. Fail LOUD if key/voice missing:
   // ElevenLabs returns a SILENT empty stream (not an error) when voiceId is absent, so a soft failure
-  // would ship a mute agent to a real caller. language is forced so it actually speaks Hebrew. PCM out
-  // (pcm_22050) avoids an mp3 decode hop on the latency-sensitive phone path; LiveKit resamples to 8kHz.
+  // would ship a mute agent to a real caller. PCM out (pcm_22050) avoids an mp3 decode hop on the
+  // latency-sensitive phone path; LiveKit resamples to 8kHz.
+  //
+  // DO NOT pass `language` here. flash_v2_5 (and turbo_v2_5) AUTO-DETECT language from the input text
+  // and REJECT an explicit language_code with code 1008 "does not support language_code 'he'" — which
+  // closes the websocket and yields ZERO audio (the first EL A/B call was silent for exactly this).
+  // The text is already Hebrew, so auto-detect speaks Hebrew. Only eleven_multilingual_v2 accepts an
+  // explicit he code — if this ever switches to that model, gate language back in on the model.
   if (env.VOICE_TTS_PROVIDER === 'elevenlabs') {
     if (!env.ELEVENLABS_API_KEY || !env.ELEVENLABS_VOICE_ID) {
       throw new Error(
@@ -177,7 +183,6 @@ function buildTTS(env: Env): ttsBase.TTS {
       apiKey: env.ELEVENLABS_API_KEY,
       voiceId: env.ELEVENLABS_VOICE_ID,
       model: env.ELEVENLABS_MODEL,
-      language: env.VOICE_LANGUAGE,
       encoding: 'pcm_22050',
     });
   }
