@@ -71,6 +71,8 @@ async function buildAuthTestApp(db: ReturnType<typeof createMockDb>) {
     DEEPDUB_SAMPLE_RATE: 24_000,
     DEEPDUB_ACCENT_RATIO: 0.75,
     ELEVENLABS_MODEL: 'eleven_flash_v2_5',
+    ELEVENLABS_AUTO_MODE: false,
+    ELEVENLABS_SYNC_ALIGNMENT: false,
     VOICE_THINKING_FILLER_MS: 1200,
     VOICE_MAX_HISTORY_ITEMS: 0,
   };

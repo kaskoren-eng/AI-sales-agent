@@ -210,11 +210,18 @@ const envSchema = z.object({
 
   // ElevenLabs (only read when VOICE_TTS_PROVIDER=elevenlabs). All optional so the app boots without
   // it — buildTTS throws loudly if the flag is set but key/voice are missing (missing voiceId returns
-  // a SILENT empty stream from ElevenLabs, not an error, so we fail fast instead). Language is forced
-  // to VOICE_LANGUAGE ('he') — the documented gotcha behind the old "doesn't speak Hebrew" false read.
+  // a SILENT empty stream from ElevenLabs, not an error, so we fail fast instead).
   ELEVENLABS_API_KEY: z.string().min(1).optional(),
   ELEVENLABS_VOICE_ID: z.string().min(1).optional(),
   ELEVENLABS_MODEL: z.string().default('eleven_flash_v2_5'),
+  // Force a language on the ws stream. Empty → omit (flash/turbo v2.5 REJECT language_code=he with a
+  // 1008 close → set empty for those). 'he' → clean Hebrew on models that accept it (multilingual_v2).
+  ELEVENLABS_LANGUAGE: z.string().optional(),
+  // The two ws-handshake levers. The plugin appends auto_mode / sync_alignment to the multi-stream-input
+  // URL; multilingual_v2 & v3 403 the HANDSHAKE when those are requested (flash/turbo accept them). Both
+  // default OFF so the quality models can connect over the websocket. See docs/voice-agent-worklog.md.
+  ELEVENLABS_AUTO_MODE: envBool(false),
+  ELEVENLABS_SYNC_ALIGNMENT: envBool(false),
 
   // How long she may think in SILENCE before making the noise a person makes while thinking.
   //

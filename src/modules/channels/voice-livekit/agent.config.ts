@@ -162,17 +162,19 @@ function buildTTS(env: Env): ttsBase.TTS {
   if (env.VOICE_TTS_PROVIDER === 'deepdub') {
     return new DeepdubTTS(deepdubOptions(env));
   }
-  // ElevenLabs, behind the flag — real-call A/B on Hebrew quality (eleven_flash_v2_5, ~75ms TTFB).
-  // Official LiveKit plugin, so it mirrors the Cartesia branch below. Fail LOUD if key/voice missing:
-  // ElevenLabs returns a SILENT empty stream (not an error) when voiceId is absent, so a soft failure
-  // would ship a mute agent to a real caller. PCM out (pcm_22050) avoids an mp3 decode hop on the
-  // latency-sensitive phone path; LiveKit resamples to 8kHz.
+  // ElevenLabs over the low-latency WEBSOCKET (multi-stream-input). Official plugin, mirrors Cartesia.
+  // Fail LOUD if key/voice missing: ElevenLabs returns a SILENT empty stream (not an error) when voiceId
+  // is absent. PCM out (pcm_22050) avoids an mp3 decode hop on the phone path; LiveKit resamples to 8kHz.
   //
-  // DO NOT pass `language` here. flash_v2_5 (and turbo_v2_5) AUTO-DETECT language from the input text
-  // and REJECT an explicit language_code with code 1008 "does not support language_code 'he'" — which
-  // closes the websocket and yields ZERO audio (the first EL A/B call was silent for exactly this).
-  // The text is already Hebrew, so auto-detect speaks Hebrew. Only eleven_multilingual_v2 accepts an
-  // explicit he code — if this ever switches to that model, gate language back in on the model.
+  // THE WEBSOCKET/MODEL MATRIX (learned the hard way on real calls — see worklog):
+  //  - flash_v2_5 / turbo_v2_5 connect on the ws, but flash's Hebrew auto-detect is gibberish and it
+  //    REJECTS language_code=he (1008). Good for latency, bad for Hebrew.
+  //  - multilingual_v2 / v3 speak good Hebrew and ACCEPT language_code=he, but the plugin 403s their
+  //    ws HANDSHAKE — because it appends auto_mode=true & sync_alignment=true, which those models don't
+  //    support. So we drive both OFF (ELEVENLABS_AUTO_MODE / _SYNC_ALIGNMENT default false) to let the
+  //    quality model connect over the websocket. `language` is passed only when ELEVENLABS_LANGUAGE is
+  //    set (empty for flash/turbo to avoid the 1008; 'he' for multilingual_v2). All env-driven so the
+  //    model/language/handshake combo is tunable via secrets without a redeploy.
   if (env.VOICE_TTS_PROVIDER === 'elevenlabs') {
     if (!env.ELEVENLABS_API_KEY || !env.ELEVENLABS_VOICE_ID) {
       throw new Error(
@@ -184,6 +186,9 @@ function buildTTS(env: Env): ttsBase.TTS {
       voiceId: env.ELEVENLABS_VOICE_ID,
       model: env.ELEVENLABS_MODEL,
       encoding: 'pcm_22050',
+      autoMode: env.ELEVENLABS_AUTO_MODE,
+      syncAlignment: env.ELEVENLABS_SYNC_ALIGNMENT,
+      ...(env.ELEVENLABS_LANGUAGE ? { language: env.ELEVENLABS_LANGUAGE } : {}),
     });
   }
   if (env.VOICE_TTS_ROUTE === 'inference') {
