@@ -22,7 +22,7 @@ A running log of updates, investigations, and conclusions for the Keren voice ag
 | State machine | `VOICE_STATE_MACHINE_ENABLED` | Kill-switch, default ON |
 | Niqqud strip | Active (always) | Speech-path only |
 | Recording notice | OFF | |
-| **Min replicas** | **0 (scale-to-zero)** | ⚠️ Root cause of "doesn't answer" — see below |
+| **Warm vs cold** | **plan-tier, not a setting** | ⚠️ Free plan = scale-to-zero (cold start → "doesn't answer"); paid plan = always warm. No `min_replicas` knob exists — see below |
 
 ---
 
@@ -131,9 +131,17 @@ hang-up). The real-call gate did its job.
 **What:** Inbound calls weren't being answered. Traced to **scale-to-zero + heavy cold start**: the
 agent sleeps when idle; waking it for a call takes up to ~60 s (heavy import graph), but a phone rings
 for only ~30 s — so the call drops before she joins. Affects **both** builds; not a code bug.
-**Fix:** Keep one **warm replica (Min replicas = 1)** in the LiveKit Cloud dashboard. **Pending — this
-is a dashboard setting only Koren can flip.** Until then, each test needs a redeploy/restart to warm her.
-**Conclusion:** Not a regression from any recent work; a deployment-scaling setting.
+**Fix (corrected 2026-08-02):** There is **no `min_replicas` / "Min replicas = 1" setting** — not in
+the LiveKit Cloud dashboard, not in `livekit.toml`, not in the `lk agent` CLI (verified: no scaling flag
+on `create`/`deploy`/`config`, no scaling field in the toml). Warm-vs-cold is **determined by plan tier**:
+per LiveKit docs, *"On certain plans, agents can be scaled down to zero replicas… the instance does a
+cold start"* — **free/dev tier = scale-to-zero (cold start); paid tier = always warm.** So the real fix
+is **being on a paid LiveKit plan**, or a keep-alive ping before call windows — not a toggle.
+⚠️ `lk agent status` has shown Replicas `1/1/1 Running` right after a deploy, so some "doesn't answer"
+incidents were actually the **`nan`-secret crash-loop + mid-flight deploy**, not scale-to-zero. Confirm
+the plan tier (dashboard → Billing / Quotas & Limits) before blaming cold start again.
+**Conclusion:** Not a code regression. Availability is a **plan-tier** matter, not a deploy setting.
+Earlier "flip Min replicas in the dashboard" guidance was **wrong** and is retracted.
 
 ### 2026-08-02 — Deploy-script fix (assets/)
 **What:** `Dockerfile.agent` COPYs `assets/` (the compliance recording-notice WAV) but the deploy
@@ -180,7 +188,9 @@ LiveKit agent).
       niqqud + preemptive surviving, not the window. `stt` stays OFF (known-bad). Keep 200/200.
 - [ ] **② DeepDub A/B on the real phone line** — the voice-*quality* lever (6:1 blind-A/B winner). Does
       NOT help latency. *(decision pending)*
-- [ ] **③ Min replicas = 1** in LiveKit dashboard — stops "doesn't answer" + cold-start audio artifacts. *(Koren)*
+- [ ] **③ Keep-warm = plan tier** (no `min_replicas` knob exists) — free tier scale-to-zero causes
+      "doesn't answer" + cold-start artifacts; fix is a **paid LiveKit plan** or a keep-alive ping.
+      Confirm current plan (dashboard → Billing / Quotas & Limits) first. *(Koren)*
 - [ ] **④ Echo / acoustic-echo-cancellation** — confirm whether Keren's TTS bleeds into the STT (her
       lines transcribed as the caller). A second fragmentation/gibberish source. *(investigate)*
 - [ ] **Merge gate** for `feature/crm-automation` — a clean real call landing outcomes in a connected
