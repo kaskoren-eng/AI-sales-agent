@@ -17,7 +17,7 @@ A running log of updates, investigations, and conclusions for the Keren voice ag
 | TTS | Cartesia `sonic-3`, direct route, 24 kHz | `VOICE_TTS_ROUTE=cartesia` (the good path, not the degraded gateway) |
 | TTS speed / volume | `0.9` / `1.4` | Tuned by ear for the phone line |
 | STT | Soniox `stt-rt-v5` | |
-| Turn detection | `vad` (Silero), min-silence 200 ms | Koren's tuning territory |
+| Turn detection | `vad` (Silero), min-silence **200 ms (sweep winner)** | Koren's territory — 200 ms beat 400 ms on worst-case latency, 0 cut-offs |
 | Preemptive TTS | `VOICE_PREEMPTIVE_TTS=true` | Kept ON for latency (Koren's call) |
 | State machine | `VOICE_STATE_MACHINE_ENABLED` | Kill-switch, default ON |
 | Niqqud strip | Active (always) | Speech-path only |
@@ -27,6 +27,32 @@ A running log of updates, investigations, and conclusions for the Keren voice ag
 ---
 
 ## Log
+
+### 2026-08-02 — VAD silence-window sweep → **200 ms wins** (sweep closed)
+**What:** Ran the planned real-call sweep of `VOICE_VAD_MIN_SILENCE_MS` /
+`VOICE_ENDPOINTING_MIN_DELAY_MS` to kill turn fragmentation. Arms: 400/350 (A), 200/200 (baseline).
+Held constant: state machine ON, niqqud strip, `VOICE_PREEMPTIVE_TTS=true`, Cartesia sonic-3, gpt-5.4.
+
+| Arm | worstCaseMs | EOU med | LLM TTFT med | TTS TTFB med | cutOffs | dupReplies | fragTurns | preempt discards |
+|---|---|---|---|---|---|---|---|---|
+| **200/200 (baseline)** | **1083** | 225 | 700 | 158 | 0 | 0 | 6 | 0 |
+| 400/350 (A) | 1440 | — | — | — | 0 | — | 24 | — |
+
+**Winner: 200/200 — the tightest arm.** The 277 s / 17-turn 200 ms call is the best recorded to date:
+worst-case **1083 ms** (the ~2 s the caller felt is gone), **0 cut-offs, 0 duplicate replies** (the
+"repeats last words" did not occur), preemptive drafts survived (0 discards, 89% cache). Widening to
+400 ms only *added* latency (1440 ms worst-case) without buying quality.
+**Why the earlier "200 ms fragments" pain vanished:** it was **cold-start prompt-cache misses + echo**,
+not the window — now that `TelephonyBackgroundVoiceCancellation` sits *before* the VAD, the niqqud strip
+is in, and preemptive gen is surviving, 200 ms is clean. **No code change:** 200/200 is already the
+deployed secret AND the `env.ts` default, so the sweep confirms the shipped config. Open item ① (turn
+detection) is **closed by measurement** — the lever was echo/BVC ordering, not the VAD width.
+**Residual behaviour note:** she re-drove the "who answers / how do leads reach you" qualifier a few
+times — transcript shows the caller kept deflecting and never answered it, not a stage regression
+(name captured cleanly, `stage_history` monotonic). `ai_disclosure: "missed"` logged — separate
+compliance line to fix, not a voice defect.
+**Status:** Sweep closed, config confirmed (no change needed). Arms B/700 not run — user's ear + the
+200 ms numbers settled it.
 
 ### 2026-08-02 — Latency breakdown (where the ~2 s goes) + transport
 **What:** Analysed the end-to-end response latency from the logged per-turn call-report metrics
@@ -148,9 +174,10 @@ LiveKit agent).
 
 ## Open items / decisions pending (priority order)
 
-- [ ] **① Turn detection + fragmentation** — the single highest-leverage fix: `VOICE_TURN_DETECTION`
-      `vad → stt` and raise VAD min-silence (200 ms is very short). Cuts latency (restores preemptive
-      generation → ~2 s to ~1.1 s) **and** fixes the re-asking flow bug. *(Koren's tuning — recommended)*
+- [x] **① Turn detection + fragmentation** — **CLOSED by the VAD sweep (2026-08-02).** 200 ms won on a
+      real call (worst-case **1083 ms** ≈ the ~1.1 s target, 0 cut-offs, 0 duplicate replies, preemptive
+      surviving). Widening to 400 ms only added latency. The real lever was echo/BVC-before-VAD +
+      niqqud + preemptive surviving, not the window. `stt` stays OFF (known-bad). Keep 200/200.
 - [ ] **② DeepDub A/B on the real phone line** — the voice-*quality* lever (6:1 blind-A/B winner). Does
       NOT help latency. *(decision pending)*
 - [ ] **③ Min replicas = 1** in LiveKit dashboard — stops "doesn't answer" + cold-start audio artifacts. *(Koren)*
