@@ -28,6 +28,37 @@ A running log of updates, investigations, and conclusions for the Keren voice ag
 
 ## Log
 
+### 2026-08-02 — Latency breakdown (where the ~2 s goes) + transport
+**What:** Analysed the end-to-end response latency from the logged per-turn call-report metrics
+(`eou`/`llm`/`tts`), consistent across calls.
+| Component | Median | What it is |
+|---|---|---|
+| STT / turn-detection (EOU) | ~500–800 ms | VAD deciding the turn ended (endpointing, not transcription) |
+| LLM time-to-first-token | ~880 ms | gpt-5.4; **meant to hide behind the EOU wait** via preemptive generation |
+| TTS time-to-first-byte | ~155 ms | Cartesia — small, not the bottleneck |
+| Network / SIP / server | ~150–300 ms | Zadarma ↔ LiveKit eu-central ↔ phone — minor |
+
+**Conclusion:** The ~2 s the caller feels = **preemptive generation failing** (the LLM's 880 ms stacks on
+top of the turn-detection wait instead of hiding behind it), because the **same turn-fragmentation**
+that makes her re-ask invalidates the in-flight draft. It is **not** the TTS, SIP trunk, or server.
+**Two levers (turn/VAD tuning — Koren's territory):** (1) `VOICE_TURN_DETECTION` `vad → stt` (Soniox
+semantic endpointing, ~1113 ms → ~500 ms); (2) cut fragmentation (VAD min-silence 200 ms is very short)
+→ restores preemptive generation (recovers ~880 ms) **and** fixes the re-asking flow bug. DeepDub helps
+voice quality, **not** latency.
+**Transport:** caller ↔ LiveKit = **WebRTC** (SIP/RTP bridged into the room); agent ↔ Soniox & Cartesia
+= **WebSockets**; agent ↔ OpenAI = HTTP streaming.
+
+### 2026-08-02 — A/B conclusion + the "re-asked my name" flow bug
+**A/B (state machine ON vs OFF):** voice quality and the repeat were **the same** in both → the advisory
+layer is **exonerated**; the problems are the STT/TTS pipeline. Confirmed on live calls + the full test
+suite.
+**"She jumped back and re-asked my name":** NOT a state-machine regression — `stage_history` was strictly
+monotonic (opening → discovery → qualifying → terminal) and the name **was** captured (working memory:
+קורן / website-building / warm). She re-asked because the **STT fragmented the caller's answers**, so she
+mis-heard, looped on the "how many inquiries / who answers" questions, and tacked a name re-confirm onto
+one loop. **Root cause = turn fragmentation**, same as the latency issue.
+**Decision:** State machine stays; focus shifts to **voice quality + agent flow/speed.**
+
 ### 2026-08-02 — Kill-switch + A/B test (state machine ON vs OFF)
 **What:** Added `VOICE_STATE_MACHINE_ENABLED` (default ON) to disable the entire advisory
 layer — reflexes, stage/working-memory tracking, and the objection prompt section — in one flag,
@@ -115,15 +146,24 @@ LiveKit agent).
 4. **The low voice quality** = Cartesia sonic-3 over 8 kHz. The real lever is **DeepDub**.
 5. **"Doesn't answer"** = cold-start vs SIP ring timeout; fix is a warm replica (dashboard).
 
-## Open items / decisions pending
+## Open items / decisions pending (priority order)
 
-- [ ] **Min replicas = 1** in LiveKit dashboard — stops "doesn't answer" and cold-start audio artifacts. *(Koren)*
-- [ ] **DeepDub A/B on the real phone line** — the highest-leverage voice-quality lever. *(decision pending)*
-- [ ] **Echo / acoustic-echo-cancellation** — confirm whether Keren's TTS is bleeding into the STT (her
-      lines transcribed as the caller). *(investigate)*
-- [ ] **Turn fragmentation** — VAD/endpointing tuning to stop chopping turns (also reduces the repeat). *(Koren's tuning)*
+- [ ] **① Turn detection + fragmentation** — the single highest-leverage fix: `VOICE_TURN_DETECTION`
+      `vad → stt` and raise VAD min-silence (200 ms is very short). Cuts latency (restores preemptive
+      generation → ~2 s to ~1.1 s) **and** fixes the re-asking flow bug. *(Koren's tuning — recommended)*
+- [ ] **② DeepDub A/B on the real phone line** — the voice-*quality* lever (6:1 blind-A/B winner). Does
+      NOT help latency. *(decision pending)*
+- [ ] **③ Min replicas = 1** in LiveKit dashboard — stops "doesn't answer" + cold-start audio artifacts. *(Koren)*
+- [ ] **④ Echo / acoustic-echo-cancellation** — confirm whether Keren's TTS bleeds into the STT (her
+      lines transcribed as the caller). A second fragmentation/gibberish source. *(investigate)*
 - [ ] **Merge gate** for `feature/crm-automation` — a clean real call landing outcomes in a connected
       CRM + reflexes verified. CRM backend still to deploy (Railway).
+
+## Standing conclusion
+The recent state-machine / context work is **sound and exonerated** — it doesn't break the voice or the
+flow. The remaining problems (latency, re-asking, gibberish, voice quality) live in the **STT/TTS
+pipeline**, and **turn fragmentation is the common root** of the latency and the re-asking. Fix that
+first; DeepDub second for pure voice quality.
 
 ## Test status
 Full suite: **567 passing**, 2 failing (pre-existing `lead.service`/`lead.routes` list tests — a
