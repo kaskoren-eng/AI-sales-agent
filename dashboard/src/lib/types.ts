@@ -39,10 +39,35 @@ export interface TranscriptTurn {
   time_in_call_secs?: number | null
 }
 
+export interface CallLearnings {
+  status: 'pending' | 'transcribing' | 'analyzed' | 'failed'
+  outcome: 'won' | 'lost' | 'neutral' | null
+  end_reason: string | null
+  tool_calls: Array<{ atMs: number; name: string; durationMs: number; ok: boolean; error?: string }>
+  compliance: {
+    recording_notice_played: boolean | null
+    recording_notice_at: string | null
+    ai_disclosure: 'during_call' | 'at_end' | 'missed' | null
+  }
+  sales_analysis: {
+    overall_effectiveness_score: number | null
+    opening_technique: string | null
+    closing_technique: string | null
+    rapport_building: string | null
+    pain_points_uncovered: string[]
+    objections: Array<{ objection: string; response: string; handled_well: boolean }>
+    key_questions_asked: string[]
+    what_worked: string[]
+    what_didnt_work: string[]
+    recommendations: string[]
+  } | null
+}
+
 export interface CallDetail extends CallSummary {
   transcript: TranscriptTurn[]
   analysis: Analysis | null
   audio_available: boolean
+  learnings: CallLearnings | null
 }
 
 export interface CallsMeta {
@@ -125,5 +150,71 @@ export interface TenantMe {
   name: string
   settings: Record<string, unknown> | null
   createdAt: string
+}
+
+// ---- Lead Detail: timeline endpoint ----
+
+export interface LeadDetailRow {
+  id: string
+  tenantId: string
+  externalId: string | null
+  name: string | null
+  email: string | null
+  phone: string | null
+  source: string | null
+  status: string
+  score: number | null
+  metadata: Record<string, unknown> | null
+  lastInboundWhatsappAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LeadConversation {
+  id: string
+  tenantId: string
+  leadId: string
+  channel: 'voice' | 'whatsapp' | 'email' | string
+  channelRef: string | null
+  status: string
+  summary: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LeadMessage {
+  id: string
+  tenantId: string
+  conversationId: string
+  direction: 'inbound' | 'outbound'
+  role: string
+  content: string
+  contentType: string | null
+  channelMsgId: string | null
+  metadata: Record<string, unknown> | null
+  createdAt: string
+}
+
+export interface LeadScheduledCall {
+  id: string
+  tenantId: string
+  leadId: string | null
+  conversationId: string | null
+  provider: string
+  providerRef: string | null
+  scheduledAt: string
+  duration: number | null
+  status: string
+  attendees: unknown
+  notes: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LeadTimelineResponse {
+  lead: LeadDetailRow
+  conversations: LeadConversation[]
+  messages: LeadMessage[]
+  scheduledCalls: LeadScheduledCall[]
 }
 

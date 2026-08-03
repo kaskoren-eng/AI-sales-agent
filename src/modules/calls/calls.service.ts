@@ -3,7 +3,8 @@ import type { Database } from '../../db/client.js';
 import type { Redis } from 'ioredis';
 import type { Env } from '../../config/env.js';
 import type { FastifyBaseLogger } from 'fastify';
-import { conversations, leads, messages } from '../../db/schema/index.js';
+import { conversations, leads, messages, callLearnings } from '../../db/schema/index.js';
+import type { SalesCallAnalysis, TranscriptSegment } from '../../db/schema/call-learnings.js';
 import { CircuitBreaker } from '../../shared/circuit-breaker.js';
 
 // ---------------------------------------------------------------------------
@@ -70,6 +71,35 @@ export interface CallAnalysis {
   transcript_summary: string | null;
 }
 
+// The GPT sales analysis written by the call-analysis worker. Null until the worker
+// has run — the agent-written keys (tool_calls, compliance) arrive at call teardown,
+// the sales analysis only after transcription + GPT analysis complete.
+export interface CallSalesAnalysis {
+  overall_effectiveness_score: number | null;
+  opening_technique: string | null;
+  closing_technique: string | null;
+  rapport_building: string | null;
+  pain_points_uncovered: string[];
+  objections: Array<{ objection: string; response: string; handled_well: boolean }>;
+  key_questions_asked: string[];
+  what_worked: string[];
+  what_didnt_work: string[];
+  recommendations: string[];
+}
+
+export interface CallLearnings {
+  status: 'pending' | 'transcribing' | 'analyzed' | 'failed';
+  outcome: 'won' | 'lost' | 'neutral' | null;
+  end_reason: string | null;
+  tool_calls: Array<{ atMs: number; name: string; durationMs: number; ok: boolean; error?: string }>;
+  compliance: {
+    recording_notice_played: boolean | null;
+    recording_notice_at: string | null;
+    ai_disclosure: 'during_call' | 'at_end' | 'missed' | null;
+  };
+  sales_analysis: CallSalesAnalysis | null;
+}
+
 export interface CallDetail {
   id: string;
   channel_ref: string | null;
@@ -90,6 +120,7 @@ export interface CallDetail {
   qualification: CallQualification;
   summary: string | null;
   audio_available: boolean;
+  learnings: CallLearnings | null;
 }
 
 export interface ListCallsParams {
@@ -120,6 +151,62 @@ function extractQualification(metadata: Record<string, unknown> | null | undefin
 
 function extractDurationSecs(metadata: Record<string, unknown>): number | null {
   return typeof metadata['call_duration_secs'] === 'number' ? metadata['call_duration_secs'] : null;
+}
+
+// Keys only the call-analysis worker writes. Their presence is what distinguishes an
+// analyzed call from one where the agent has merely logged its own teardown data.
+const GPT_ANALYSIS_KEYS: Array<keyof SalesCallAnalysis> = [
+  'overall_effectiveness_score',
+  'opening_technique',
+  'closing_technique',
+  'rapport_building',
+  'pain_points_uncovered',
+  'objections',
+  'key_questions_asked',
+  'what_worked',
+  'what_didnt_work',
+  'recommendations',
+];
+
+type CallLearningsRow = typeof callLearnings.$inferSelect;
+
+export function mapLearnings(row: Pick<CallLearningsRow, 'status' | 'outcome' | 'analysis'>): CallLearnings {
+  const a: SalesCallAnalysis = row.analysis ?? {};
+  const hasSalesAnalysis = GPT_ANALYSIS_KEYS.some((key) => a[key] !== undefined);
+
+  return {
+    status: row.status as CallLearnings['status'],
+    outcome: (row.outcome as CallLearnings['outcome']) ?? null,
+    end_reason: a.end_reason ?? null,
+    tool_calls: a.tool_calls ?? [],
+    compliance: {
+      recording_notice_played: a.recording_notice_played ?? null,
+      recording_notice_at: a.recording_notice_at ?? null,
+      ai_disclosure: a.ai_disclosure ?? null,
+    },
+    sales_analysis: hasSalesAnalysis
+      ? {
+          overall_effectiveness_score: a.overall_effectiveness_score ?? null,
+          opening_technique: a.opening_technique ?? null,
+          closing_technique: a.closing_technique ?? null,
+          rapport_building: a.rapport_building ?? null,
+          pain_points_uncovered: a.pain_points_uncovered ?? [],
+          objections: a.objections ?? [],
+          key_questions_asked: a.key_questions_asked ?? [],
+          what_worked: a.what_worked ?? [],
+          what_didnt_work: a.what_didnt_work ?? [],
+          recommendations: a.recommendations ?? [],
+        }
+      : null,
+  };
+}
+
+export function mapLearningsTranscript(segments: TranscriptSegment[]): CallTranscriptTurn[] {
+  return segments.map((s) => ({
+    role: s.speaker === 'agent' || s.speaker === 'assistant' ? 'agent' : 'user',
+    message: s.text,
+    time_in_call_secs: typeof s.start === 'number' ? s.start : null,
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -387,13 +474,50 @@ export class CallsService {
       }
     }
 
+    // LiveKit path: the agent's self-analysis lives in call_learnings, keyed by room
+    // name (conference_name = channel_ref). Missing row → learnings stays null; a
+    // learnings failure must never take down the call page.
+    let learnings: CallLearnings | null = null;
+    let learningsDurationSecs: number | null = null;
+    if (row.channelRef) {
+      try {
+        const [learningsRow] = await this.db
+          .select()
+          .from(callLearnings)
+          .where(
+            and(
+              eq(callLearnings.tenantId, tenantId),
+              eq(callLearnings.conferenceName, row.channelRef),
+            ),
+          )
+          .limit(1);
+
+        if (learningsRow) {
+          learnings = mapLearnings(learningsRow);
+          learningsDurationSecs = learningsRow.durationSecs ?? null;
+
+          // The learnings transcript is the only one a LiveKit call has — use it,
+          // but never override a transcript the Retell/messages path already built.
+          if (transcript.length === 0 && (learningsRow.transcript?.length ?? 0) > 0) {
+            transcript = mapLearningsTranscript(learningsRow.transcript ?? []);
+          }
+        }
+      } catch (err) {
+        this.logger?.warn(
+          { event: 'learnings_fetch_failed', conversationId: id, channelRef: row.channelRef, error: err instanceof Error ? err.message : String(err) },
+          'call_learnings lookup failed; returning call without learnings',
+        );
+      }
+    }
+
     return {
       id: row.id,
       channel_ref: row.channelRef ?? null,
       status: row.status,
       created_at: row.createdAt.toISOString(),
       updated_at: row.updatedAt.toISOString(),
-      duration_secs: durationSecs,
+      // LiveKit calls have no terminal-message metadata — the learnings row carries duration
+      duration_secs: durationSecs ?? learningsDurationSecs,
       lead: {
         id: row.lead.id,
         name: row.lead.name ?? null,
@@ -407,6 +531,7 @@ export class CallsService {
       qualification: qual,
       summary: row.summary ?? null,
       audio_available: audioAvailable,
+      learnings,
     };
   }
 

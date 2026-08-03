@@ -1,0 +1,480 @@
+{
+  "common": {
+    "close": "Close",
+    "cancel": "Cancel",
+    "save": "Save",
+    "retry": "Try again"
+  },
+  "nav": {
+    "overview": "Overview",
+    "analytics": "Analytics",
+    "copilot": "Copilot",
+    "leads": "Leads",
+    "calls": "Calls",
+    "calendar": "Calendar",
+    "personality": "Personality",
+    "simulator": "Simulator",
+    "testKeren": "Test Keren",
+    "bookings": "Bookings",
+    "integrations": "Integrations",
+    "settings": "Settings",
+    "billing": "Billing & Subscription",
+    "mainNavigation": "Main navigation",
+    "openMenu": "Open menu"
+  },
+  "navgroup": {
+    "monitor": "Monitor",
+    "activity": "Activity",
+    "setup": "Setup",
+    "general": "General",
+    "soon": "Soon"
+  },
+  "placeholder": {
+    "body": "This page is being built to its approved v5 preview as part of the dashboard migration."
+  },
+  "settings": {
+    "groups": {
+      "account": "My account",
+      "business": "The business"
+    },
+    "nav": {
+      "account": "Account",
+      "api": "API key",
+      "profile": "Business profile",
+      "voice": "Voice",
+      "flows": "Flows"
+    },
+    "appearanceTitle": "App preferences",
+    "appearance": "Appearance",
+    "appearanceDesc": "Light, dark, or follow your device.",
+    "language": "Interface language",
+    "languageDesc": "The language of this dashboard, for you. It does not change the language the agent speaks to your leads."
+  },
+  "simulator": {
+    "idle": "Ready to test",
+    "connecting": "Connecting…",
+    "listening": "Listening…",
+    "speaking": "The agent is speaking",
+    "start": "Start test call",
+    "end": "End",
+    "mute": "Mute",
+    "transcript": "Live transcript",
+    "started": "Call started",
+    "you": "You",
+    "agent": "Agent",
+    "type": "Type to test the agent",
+    "note": "A private call with your agent. Nothing here reaches a real lead.",
+    "waiting": "Waiting for the agent…",
+    "ended": "Call ended",
+    "callAgain": "Call again",
+    "unmute": "Unmute",
+    "hangUp": "Hang up",
+    "micBlocked": "Microphone is blocked. Allow it in your browser, then try again.",
+    "audioBlocked": "The browser muted the call — tap to hear the agent",
+    "notAuthorized": "This dashboard is not authorized against its backend. Check the API key.",
+    "genericError": "Could not start the call",
+    "realNote": "This runs the full agent pipeline over a real room — recording notice, Hebrew speech, calendar tools — everything except the phone line. Requires the agent worker to be running."
+  },
+  "calendar": {
+    "upcoming": "Upcoming meetings",
+    "empty": "No meetings booked yet",
+    "join": "Join",
+    "demo": "Demo call · 30 min",
+    "availTitle": "When the agent can book",
+    "availSub": "Change a rule and the booking page updates.",
+    "rows": {
+      "hours": "Working hours",
+      "hoursV": "Sunday to Thursday, 9:00 to 17:00",
+      "length": "Meeting length",
+      "lengthV": "30 minutes",
+      "buffer": "Gap between calls",
+      "bufferV": "10 minutes",
+      "notice": "Minimum notice",
+      "noticeV": "At least 2 hours ahead",
+      "calendar": "Calendar",
+      "calendarV": "Google Calendar",
+      "tz": "Time zone",
+      "tzV": "Jerusalem, Israel (GMT+3)"
+    },
+    "preview": {
+      "eyebrow": "What the lead sees",
+      "title": "Book a demo",
+      "meta": "30 min · Google Meet",
+      "pickDay": "Pick a day",
+      "pickTime": "Pick a time",
+      "tznote": "Times shown in the lead's time zone"
+    },
+    "error": "Could not load meetings."
+  },
+  "copilot": {
+    "title": "What would you like to know?",
+    "subtitle": "Ask about your leads and calls, or tell the agent to work differently.",
+    "placeholder": "Ask about your leads and calls, or tell the agent what to change",
+    "skills": "Skills",
+    "s1": "How many new leads this week?",
+    "s2": "Summarize today's calls",
+    "s3": "Be a little less formal",
+    "s4": "Which leads are waiting for follow-up?",
+    "note": "On the house from ClickScales. This chat does not use your call minutes."
+  },
+  "agent": {
+    "sub": "Set who your agent is and how it talks to your leads. Every change is something you can hear before it goes live.",
+    "metrics": {
+      "cost": "Cost per minute",
+      "costNote": "about a third of the old setup",
+      "latency": "Response time",
+      "latencyNote": "time before the agent starts talking",
+      "voice": "Voice",
+      "voiceNote": "natural Hebrew, female"
+    },
+    "identity": "Identity",
+    "name": "Agent name",
+    "nameHint": "Leads hear this name. Changing it updates it everywhere in the dashboard.",
+    "gender": "Gender",
+    "female": "Female",
+    "male": "Male",
+    "genderHint": "Sets the Hebrew grammar the agent uses about itself.",
+    "voice": "Voice",
+    "voiceDesc": "warm, calm, mid-pace",
+    "voiceChange": "Change voice",
+    "langNote": "The agent speaks Hebrew first and switches to English when a lead asks. This is set by the voice team.",
+    "handbook": "How the agent talks",
+    "says": "The agent says",
+    "tabs": {
+      "tone": "Personality & tone",
+      "accuracy": "Accuracy & format",
+      "trust": "Trust & safety"
+    },
+    "b": {
+      "tone": "Default tone",
+      "toneD": "How formal the agent sounds by default.",
+      "pro": "Professional",
+      "warm": "Warm",
+      "filler": "Natural filler words",
+      "fillerD": "Small pauses and fillers so it sounds human, not scripted.",
+      "empathy": "Show empathy",
+      "empathyD": "Acknowledges what the lead feels before moving on.",
+      "short": "Keep answers short",
+      "shortD": "Off by default. Turn on if leads feel it talks too much.",
+      "confirm": "Confirm details back",
+      "confirmD": "Repeats key facts so nothing gets written down wrong.",
+      "numbers": "Say numbers simply",
+      "numbersD": "Prices and quantities in plain speech, not digits.",
+      "disclose": "Always say it is an AI",
+      "discloseD": "Required. The agent makes it clear it is a digital assistant.",
+      "record": "Recording notice",
+      "recordD": "Tells the lead the call is recorded and asks if that is fine."
+    },
+    "sample": {
+      "warm": "אין בעיה, אני כבר בודקת את זה בשבילך.",
+      "filler": "רגע, שנייה, אני רק מסתכלת על היומן.",
+      "empathy": "אני מבינה, זה באמת מתסכל כשפניות הולכות לאיבוד.",
+      "short": "בקצרה, כן, אנחנו יכולים לעזור עם זה.",
+      "confirm": "רק לוודא, אמרת חמישה עד עשרה לקוחות ביום, נכון?",
+      "numbers": "זה יוצא בערך שלוש מאות שקל בחודש.",
+      "disclose": "רק שתדע, אני העוזרת הדיגיטלית של קליקסקיילז.",
+      "record": "השיחה מוקלטת לצורכי איכות, זה בסדר מבחינתך?"
+    },
+    "advanced": "Advanced view",
+    "advancedRo": "Read-only. Generated from the settings above and from Copilot.",
+    "save": "Save changes",
+    "discard": "Discard",
+    "saveNote": "Changes go live on the next call."
+  },
+  "calls": {
+    "filters": {
+      "statusAll": "All outcomes",
+      "from": "From",
+      "to": "To"
+    },
+    "count_one": "{{count}} call",
+    "count_other": "{{count}} calls",
+    "cols": {
+      "lead": "Lead",
+      "when": "When",
+      "duration": "Duration",
+      "outcome": "Outcome",
+      "qualified": "Qualified"
+    },
+    "outcome": {
+      "won": "Won",
+      "lost": "Lost",
+      "neutral": "Neutral",
+      "analyzing": "Analyzing",
+      "in_progress": "In progress",
+      "done": "Done",
+      "failed": "Failed"
+    },
+    "qualified": {
+      "qualified": "Qualified",
+      "not_qualified": "Not qualified",
+      "unknown": "—"
+    },
+    "empty": {
+      "title": "No calls yet",
+      "body": "Calls appear here once the voice channel is connected."
+    },
+    "error": "Could not load calls.",
+    "page": "Page {{page}} of {{total}}",
+    "prev": "Prev",
+    "next": "Next",
+    "drawer": {
+      "close": "Close",
+      "when": "When",
+      "duration": "Duration",
+      "phone": "Phone",
+      "audio": "Recording",
+      "noAudio": "No recording available",
+      "outcomeTitle": "Outcome & analysis",
+      "summary": "Summary",
+      "noSummary": "No summary yet.",
+      "analysisTitle": "Sales analysis",
+      "noAnalysis": "Sales analysis appears once the call is analyzed.",
+      "score": "Effectiveness",
+      "qualification": "Qualification",
+      "company": "Company",
+      "challenge": "Main challenge",
+      "followup": "Follow-up scheduled",
+      "yes": "Yes",
+      "no": "No",
+      "tabs": {
+        "transcript": "Transcript",
+        "data": "Data"
+      },
+      "noTranscript": "No transcript available.",
+      "agent": "Agent",
+      "loadError": "Could not load this call."
+    }
+  },
+  "overview": {
+    "live": "Live",
+    "range": {
+      "today": "Today",
+      "d7": "7 days",
+      "d30": "30 days",
+      "label": "Date range"
+    },
+    "kpi": {
+      "callsToday": "Calls today",
+      "callsRange": "Calls, last {{n}} days",
+      "meetings": "Meetings booked",
+      "leads": "Total leads",
+      "qualified": "Qualified leads",
+      "totalCalls": "Total calls",
+      "quality": "Quality metric",
+      "soon": "Coming soon",
+      "qualityNote": "Waiting on a data source"
+    },
+    "pipeline": {
+      "title": "Pipeline",
+      "hint": "Select a stage to filter leads",
+      "new": "New",
+      "contacted": "Contacted",
+      "qualifying": "Qualifying",
+      "qualified": "Qualified",
+      "booked": "Booked"
+    },
+    "chart": {
+      "title": "Calls this week",
+      "empty": "Waiting on a data source",
+      "emptyNote": "Daily call volume will show here once the metrics endpoint is wired.",
+      "leads": "Leads",
+      "calls": "Calls"
+    },
+    "activity": {
+      "title": "Recent activity",
+      "empty": "No calls yet",
+      "call": "Call",
+      "viewAll": "View all calls"
+    },
+    "errors": {
+      "leads": "Could not load lead metrics.",
+      "calls": "Could not load recent activity."
+    }
+  },
+  "topbar": {
+    "callDetail": "Call Detail",
+    "leadDetail": "Lead Detail",
+    "dashboard": "Dashboard"
+  },
+  "language": {
+    "label": "Language",
+    "switchToEnglish": "Switch to English",
+    "switchToHebrew": "Switch to Hebrew"
+  },
+  "presence": {
+    "available": "Keren is available",
+    "onCall": "Keren is on a call"
+  },
+  "theme": {
+    "label": "Appearance",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "sidebar": {
+    "tagline": "by ClickScales",
+    "kerenActive": "Keren is active",
+    "viewActivity": "View Keren's activity — agent is active",
+    "recentActivity": "Recent Activity",
+    "activityDescription": "Last 5 activity entries from Keren",
+    "closeActivity": "Close activity panel"
+  },
+  "status": {
+    "new": "new",
+    "contacted": "contacted",
+    "qualifying": "qualifying",
+    "qualified": "qualified",
+    "booked": "booked",
+    "disqualified": "disqualified",
+    "lost": "lost",
+    "opted_out": "opted out",
+    "scheduled": "scheduled",
+    "confirmed": "confirmed",
+    "cancelled": "cancelled",
+    "completed": "completed"
+  },
+  "providers": {
+    "google_calendar": "Google Calendar",
+    "trafft": "Trafft"
+  },
+  "bookings": {
+    "tableLabel": "Bookings table",
+    "loadError": "Failed to load bookings. Please try again.",
+    "columns": {
+      "lead": "Lead",
+      "dateTime": "Date / Time",
+      "status": "Status",
+      "provider": "Provider",
+      "actions": "Actions"
+    },
+    "emptyTitle": "No bookings yet",
+    "emptyDescription": "Bookings will appear here once leads are scheduled.",
+    "thisLead": "this lead",
+    "cancel": "Cancel",
+    "cancelFor": "Cancel booking for {{name}}",
+    "cancelTitle": "Cancel Booking",
+    "cancelConfirm": "Are you sure you want to cancel the booking for <strong>{{name}}</strong> on <strong>{{date}}</strong>? This action cannot be undone.",
+    "keepBooking": "Keep booking",
+    "confirmCancel": "Cancel booking",
+    "cancelError": "Failed to cancel booking. Please try again."
+  },
+  "channels": {
+    "whatsapp": "WhatsApp",
+    "email": "Email",
+    "voice": "Voice",
+    "meta_ads": "Meta Ads",
+    "csv": "CSV"
+  },
+  "sources": {
+    "meta_ads": "Meta Ads",
+    "facebook": "Facebook",
+    "google_sheets": "Google Sheets",
+    "csv": "CSV import",
+    "webhook": "Webhook",
+    "api": "API",
+    "voice_inbound": "Inbound call"
+  },
+  "leadDetail": {
+    "notFound": "Lead not found",
+    "notFoundDesc": "This lead does not exist or has been removed.",
+    "loadError": "Failed to load lead",
+    "loadErrorDesc": "Something went wrong. Please try again.",
+    "backToLeads": "Back to Leads",
+    "unnamedLead": "Unnamed lead",
+    "via": "via {{source}}",
+    "updatedLabel": "Updated",
+    "identity": "Identity",
+    "statusHeader": "Status",
+    "extractedByAgent": "Extracted by agent",
+    "more": "More ({{count}})",
+    "name": "Name",
+    "email": "Email",
+    "phone": "Phone",
+    "score": "Score",
+    "created": "Created",
+    "scoreValue": "{{score}} / 100",
+    "leadStatus": "Lead status",
+    "saving": "Saving…",
+    "saveChange": "Save change",
+    "saved": "Saved",
+    "saveError": "Failed to save. Try again.",
+    "saveSuccessTitle": "Status updated",
+    "activityTimeline": "Activity Timeline",
+    "events_one": "{{count}} event",
+    "events_other": "{{count}} events",
+    "emptyTimeline": "No activity yet. Once the agent reaches out, it will show up here.",
+    "conversations": "Conversations",
+    "conversationsCount": "Conversations ({{count}})",
+    "noConversations": "No conversations yet.",
+    "openConversation": "Open {{channel}} conversation",
+    "messages_one": "{{count}} message",
+    "messages_other": "{{count}} messages",
+    "meetings": "Meetings",
+    "meetingsCount": "Meetings ({{count}})",
+    "noMeetings": "No meetings scheduled.",
+    "minutes": "{{count}} min",
+    "upcoming": "upcoming",
+    "past": "past",
+    "timeline": {
+      "leadCreated": "Lead created",
+      "enteredSystem": "Entered the system",
+      "conversationStarted": "{{channel}} conversation started",
+      "sent": "Sent",
+      "received": "Received",
+      "meetingBooked": "Meeting booked",
+      "scheduledFor": "Scheduled for {{date}} · {{duration}} min",
+      "meetingUpcoming": "Meeting upcoming",
+      "meetingPast": "Meeting time (past)",
+      "providerDuration": "{{provider}} · {{duration}} min"
+    }
+  },
+  "leads": {
+    "filterLeads": "Filter leads",
+    "searchLabel": "Search leads",
+    "searchPlaceholder": "Search name, email, phone...",
+    "statusLabel": "Filter by status",
+    "allStatuses": "All statuses",
+    "count_one": "{{formattedCount}} lead",
+    "count_other": "{{formattedCount}} leads",
+    "tableLabel": "Leads table",
+    "columns": {
+      "name": "Name",
+      "contact": "Contact",
+      "channel": "Channel",
+      "status": "Status",
+      "score": "Score",
+      "lastActivity": "Last Activity",
+      "actions": "Actions"
+    },
+    "view": "View",
+    "viewDetails": "View details for {{name}}",
+    "drawer": {
+      "close": "Close",
+      "facts": "Details",
+      "agentSourced": "Found by the agent",
+      "score": "Score",
+      "channel": "Channel",
+      "status": "Status",
+      "email": "Email",
+      "phone": "Phone",
+      "timeline": "Timeline",
+      "empty": "No activity yet",
+      "agent": "Agent",
+      "lead": "Lead",
+      "meeting": "Meeting",
+      "loadError": "Could not load this lead."
+    },
+    "emptyTitle": "No leads yet",
+    "emptyDescription": "Connect a channel to start receiving leads.",
+    "loadError": "Failed to load leads. Please try again.",
+    "pagination": {
+      "label": "Pagination",
+      "pageOf": "Page {{page}} of {{total}}",
+      "prev": "Prev",
+      "next": "Next",
+      "previousPage": "Previous page",
+      "nextPage": "Next page"
+    }
+  }
+}

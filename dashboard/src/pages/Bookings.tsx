@@ -1,250 +1,132 @@
-import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, X } from 'lucide-react'
-import * as Dialog from '@radix-ui/react-dialog'
+import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import { Clock, Timer, Bell, CalendarDays, Globe, Video, ChevronDown } from 'lucide-react'
 import { fetchBookings } from '../lib/api.js'
-import { Badge, statusToBadgeVariant } from '../components/ui/Badge.js'
-import { Button } from '../components/ui/Button.js'
-import { Card } from '../components/ui/Card.js'
-import { TableSkeleton } from '../components/ui/Skeleton.js'
+import { Skeleton } from '../components/ui/Skeleton.js'
 import { formatDate } from '../lib/format.js'
-import { apiFetch } from '../lib/apiClient.js'
-import type { Booking } from '../lib/types.js'
 
-const providerLabel: Record<string, string> = {
-  google_calendar: 'Google Calendar',
-  trafft: 'Trafft',
+const CARD: React.CSSProperties = {
+  background: 'var(--surface-card)',
+  border: '1px solid var(--border-default)',
+  borderRadius: 'var(--r)',
+  boxShadow: 'var(--shadow-card)',
 }
 
-function CancelDialog({
-  booking,
-  open,
-  onOpenChange,
-  onConfirm,
-  isPending,
-}: {
-  booking: Booking | null
-  open: boolean
-  onOpenChange: (v: boolean) => void
-  onConfirm: () => void
-  isPending: boolean
-}) {
-  return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.6)',
-            zIndex: 50,
-          }}
-        />
-        <Dialog.Content
-          style={{
-            position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: '380px',
-            backgroundColor: 'var(--bg-surface)',
-            border: '1px solid var(--border-default)',
-            borderRadius: '12px',
-            boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
-            padding: '24px',
-            zIndex: 51,
-          }}
-          aria-describedby="cancel-booking-desc"
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-            <Dialog.Title
-              style={{
-                fontFamily: "'Montserrat', sans-serif",
-                fontWeight: 700,
-                fontSize: '15px',
-                color: 'var(--text-primary)',
-              }}
-            >
-              Cancel Booking
-            </Dialog.Title>
-            <Dialog.Close asChild>
-              <button
-                aria-label="Close dialog"
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px' }}
-              >
-                <X size={16} strokeWidth={1.5} />
-              </button>
-            </Dialog.Close>
-          </div>
-          <p
-            id="cancel-booking-desc"
-            style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '24px' }}
-          >
-            Are you sure you want to cancel the booking for{' '}
-            <strong style={{ color: 'var(--text-primary)' }}>
-              {booking?.leadName ?? 'this lead'}
-            </strong>
-            {' '}on{' '}
-            <strong style={{ color: 'var(--text-primary)' }}>
-              {booking ? formatDate(booking.scheduledAt) : ''}
-            </strong>
-            ? This action cannot be undone.
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-            <Dialog.Close asChild>
-              <Button variant="secondary" size="sm">Keep booking</Button>
-            </Dialog.Close>
-            <Button variant="danger" size="sm" onClick={onConfirm} loading={isPending}>
-              Cancel booking
-            </Button>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  )
-}
+const AVAIL_ROWS = [
+  { key: 'hours', icon: <Clock size={17} strokeWidth={1.7} /> },
+  { key: 'length', icon: <Timer size={17} strokeWidth={1.7} /> },
+  { key: 'buffer', icon: <CalendarDays size={17} strokeWidth={1.7} /> },
+  { key: 'notice', icon: <Bell size={17} strokeWidth={1.7} /> },
+  { key: 'calendar', icon: <CalendarDays size={17} strokeWidth={1.7} /> },
+  { key: 'tz', icon: <Globe size={17} strokeWidth={1.7} /> },
+]
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu']
+const SLOTS = ['09:00', '09:40', '10:20', '11:00', '11:40', '12:20']
 
 export function Bookings() {
-  const [cancelTarget, setCancelTarget] = useState<Booking | null>(null)
-  const queryClient = useQueryClient()
-
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['bookings'],
-    queryFn: fetchBookings,
-    staleTime: 30_000,
-  })
-
-  const cancelMutation = useMutation({
-    mutationFn: (bookingId: string) =>
-      apiFetch(`/scheduling/bookings/${bookingId}`, { method: 'DELETE' }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['bookings'] })
-      setCancelTarget(null)
-    },
-  })
-
+  const { t, i18n } = useTranslation()
+  const isHebrew = i18n.language.startsWith('he')
+  const { data, isLoading, isError } = useQuery({ queryKey: ['bookings'], queryFn: fetchBookings, staleTime: 60_000 })
   const bookings = data?.data ?? []
 
+  const secHead: React.CSSProperties = { display: 'flex', alignItems: 'baseline', gap: '12px', margin: '4px 0 12px' }
+  const secTitle: React.CSSProperties = { fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '17px' }
+  const secNote: React.CSSProperties = { fontSize: '12.5px', color: 'var(--text-tertiary)' }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <Card padding="none">
-        {isError && (
-          <div
-            role="alert"
-            style={{ padding: '32px', textAlign: 'center', color: 'var(--error)', fontSize: '14px' }}
-          >
-            Failed to load bookings. Please try again.
+    <div style={{ maxInlineSize: 'var(--container-max)', marginInline: 'auto' }}>
+      {/* Upcoming */}
+      <div style={secHead}>
+        <h2 style={secTitle}>{t('calendar.upcoming')}</h2>
+      </div>
+      <div style={{ ...CARD, overflow: 'hidden', marginBlockEnd: '30px' }}>
+        {isError ? (
+          <div role="alert" style={{ padding: '32px', textAlign: 'center', color: 'var(--status-danger)', fontSize: '14px' }}>{t('calendar.error')}</div>
+        ) : isLoading ? (
+          <div style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {[0, 1, 2].map((i) => <Skeleton key={i} width="100%" height="18px" />)}
           </div>
-        )}
-
-        {!isError && (
-          <div style={{ overflowX: 'auto' }}>
-            <table
-              style={{ width: '100%', borderCollapse: 'collapse', minWidth: '540px' }}
-              aria-label="Bookings table"
-              aria-busy={isLoading}
-            >
-              <thead>
-                <tr>
-                  {['Lead', 'Date / Time', 'Status', 'Provider', 'Actions'].map((h) => (
-                    <th
-                      key={h}
-                      scope="col"
-                      style={{
-                        padding: '10px 16px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: 'var(--text-muted)',
-                        textAlign: 'left',
-                        letterSpacing: '0.05em',
-                        textTransform: 'uppercase',
-                        borderBottom: '1px solid var(--border-subtle)',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  <TableSkeleton rows={6} cols={5} />
-                ) : bookings.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} style={{ padding: '64px 20px', textAlign: 'center' }}>
-                      <CalendarDays size={32} strokeWidth={1} style={{ color: 'var(--text-disabled)', display: 'block', margin: '0 auto 12px' }} />
-                      <p style={{ fontSize: '15px', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '6px' }}>
-                        No bookings yet
-                      </p>
-                      <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                        Bookings will appear here once leads are scheduled.
-                      </p>
-                    </td>
-                  </tr>
-                ) : (
-                  bookings.map((booking) => (
-                    <tr
-                      key={booking.id}
-                      style={{
-                        borderBottom: '1px solid var(--border-subtle)',
-                        transition: `background-color var(--duration-fast) var(--ease-standard)`,
-                      }}
-                      onMouseEnter={(e) => {
-                        ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'var(--bg-elevated)'
-                      }}
-                      onMouseLeave={(e) => {
-                        ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent'
-                      }}
-                    >
-                      <td style={{ padding: '13px 16px', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                        {booking.leadName ?? '—'}
-                      </td>
-                      <td style={{ padding: '13px 16px', fontSize: '13px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                        {formatDate(booking.scheduledAt)}
-                      </td>
-                      <td style={{ padding: '13px 16px' }}>
-                        <Badge variant={statusToBadgeVariant(booking.status)}>{booking.status}</Badge>
-                      </td>
-                      <td style={{ padding: '13px 16px' }}>
-                        <Badge variant="default">
-                          {providerLabel[booking.provider] ?? booking.provider}
-                        </Badge>
-                      </td>
-                      <td style={{ padding: '13px 16px' }}>
-                        {booking.status !== 'cancelled' && (
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            onClick={() => setCancelTarget(booking)}
-                            aria-label={`Cancel booking for ${booking.leadName ?? 'this lead'}`}
-                          >
-                            Cancel
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+        ) : bookings.length === 0 ? (
+          <div style={{ padding: '48px 20px', textAlign: 'center' }}>
+            <CalendarDays size={28} strokeWidth={1.3} style={{ color: 'var(--text-tertiary)', display: 'block', margin: '0 auto 10px' }} />
+            <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>{t('calendar.empty')}</p>
           </div>
+        ) : (
+          bookings.map((b, i) => (
+            <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '15px 18px', borderBlockEnd: i < bookings.length - 1 ? '1px solid var(--border-default)' : '0' }}>
+              <div style={{ inlineSize: '128px', flexShrink: 0, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                {formatDate(b.scheduledAt)}
+              </div>
+              <div style={{ flex: 1, minInlineSize: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: '14.5px', color: 'var(--text-primary)' }} dir="auto">{b.leadName ?? '—'}</div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-tertiary)' }}>{t('calendar.demo')} · {b.provider}</div>
+              </div>
+              <a href="#" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 13px', border: '1px solid var(--border-default)', borderRadius: '9px', fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)', textDecoration: 'none' }}>
+                <Video size={14} strokeWidth={1.8} /> {t('calendar.join')}
+              </a>
+            </div>
+          ))
         )}
-      </Card>
+      </div>
 
-      <CancelDialog
-        booking={cancelTarget}
-        open={cancelTarget !== null}
-        onOpenChange={(open) => { if (!open) setCancelTarget(null) }}
-        onConfirm={() => cancelTarget && cancelMutation.mutate(cancelTarget.id)}
-        isPending={cancelMutation.isPending}
-      />
+      {/* Availability config + booking preview */}
+      <div style={secHead}>
+        <h2 style={secTitle}>{t('calendar.availTitle')}</h2>
+        <span style={secNote}>{t('calendar.availSub')}</span>
+      </div>
+      <div style={{ display: 'grid', gap: '22px', alignItems: 'start' }} className="ov-bottom">
+        {/* summary rows */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {AVAIL_ROWS.map((r) => (
+            <div key={r.key} style={{ ...CARD, display: 'flex', alignItems: 'center', gap: '14px', padding: '15px 16px' }}>
+              <span style={{ inlineSize: '34px', blockSize: '34px', borderRadius: '9px', background: 'var(--surface-sunken)', display: 'grid', placeItems: 'center', color: 'var(--text-secondary)', flexShrink: 0 }}>{r.icon}</span>
+              <div style={{ flex: 1, minInlineSize: 0 }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-tertiary)' }}>{t(`calendar.rows.${r.key}`)}</div>
+                <div style={{ fontSize: '14.5px', color: 'var(--text-primary)', marginBlockStart: '2px' }} dir="auto">{t(`calendar.rows.${r.key}V`)}</div>
+              </div>
+              <ChevronDown size={18} strokeWidth={1.8} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+            </div>
+          ))}
+        </div>
 
-      {cancelMutation.isError && (
-        <p role="alert" style={{ fontSize: '13px', color: 'var(--error)' }}>
-          Failed to cancel booking. Please try again.
-        </p>
-      )}
+        {/* booking preview */}
+        <div style={{ position: 'sticky', top: '84px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBlockEnd: '10px' }}>
+            <span style={{ fontFamily: isHebrew ? 'var(--font-body)' : 'var(--font-mono)', fontSize: isHebrew ? '12px' : '11px', fontWeight: isHebrew ? 600 : 400, letterSpacing: isHebrew ? 'normal' : '0.12em', textTransform: isHebrew ? 'none' : 'uppercase', color: 'var(--text-tertiary)' }}>
+              {t('calendar.preview.eyebrow')}
+            </span>
+          </div>
+          <div style={CARD}>
+            <div style={{ padding: '20px', borderBlockEnd: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', gap: '13px' }}>
+              <div style={{ inlineSize: '46px', blockSize: '46px', borderRadius: '50%', background: 'var(--accent)', color: 'var(--text-on-accent)', display: 'grid', placeItems: 'center', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '18px' }}>ק</div>
+              <div>
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '18px' }}>{t('calendar.preview.title')}</div>
+                <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>{t('calendar.preview.meta')}</div>
+              </div>
+            </div>
+            <div style={{ padding: '16px 20px 20px' }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-tertiary)', marginBlockEnd: '9px' }}>{t('calendar.preview.pickDay')}</div>
+              <div style={{ display: 'flex', gap: '7px' }}>
+                {DAYS.map((d, i) => (
+                  <div key={d} style={{ flex: 1, padding: '9px 0', borderRadius: '10px', border: '1px solid var(--border-default)', background: i === 0 ? 'var(--accent)' : 'var(--surface-card)', textAlign: 'center' }}>
+                    <div style={{ fontSize: '11px', color: i === 0 ? 'var(--text-on-accent)' : 'var(--text-tertiary)' }}>{d}</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '15px', fontWeight: 600, color: i === 0 ? 'var(--text-on-accent)' : 'var(--text-primary)', marginBlockStart: '2px' }}>{i + 2}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-tertiary)', margin: '16px 0 9px' }}>{t('calendar.preview.pickTime')}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                {SLOTS.map((s, i) => (
+                  <div key={s} style={{ fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', fontSize: '13.5px', padding: '10px 0', borderRadius: '9px', border: `1px solid ${i === 2 ? 'var(--accent)' : 'var(--border-default)'}`, background: i === 2 ? 'var(--accent-tint)' : 'var(--surface-card)', color: i === 2 ? 'var(--accent-fg)' : 'var(--text-primary)', textAlign: 'center' }}>{s}</div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBlockStart: '16px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                <Globe size={13} strokeWidth={1.7} /> {t('calendar.preview.tznote')}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

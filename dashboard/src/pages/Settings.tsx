@@ -1,8 +1,12 @@
 import { useState, useEffect, useId } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import * as Tabs from '@radix-ui/react-tabs'
+import { useTranslation } from 'react-i18next'
 import * as Dialog from '@radix-ui/react-dialog'
-import { Eye, EyeOff, RefreshCw, X, Save, CheckCircle2, Phone, Trash2 } from 'lucide-react'
+import { Eye, EyeOff, RefreshCw, X, Save, CheckCircle2, Phone, Trash2, Sun, Moon, Monitor } from 'lucide-react'
+import { PrefSelect } from '../components/ui/PrefSelect.js'
+import { useTheme } from '../hooks/useTheme.js'
+import type { ThemePref } from '../lib/theme.js'
+import type { Language } from '../i18n/index.js'
 import {
   fetchTenantMe,
   updateTenantMe,
@@ -21,6 +25,38 @@ import { Skeleton } from '../components/ui/Skeleton.js'
 function maskApiKey(key: string): string {
   if (key.length <= 8) return '•'.repeat(key.length)
   return key.slice(0, 4) + '•'.repeat(Math.max(0, key.length - 8)) + key.slice(-4)
+}
+
+// v5 section caption — mono uppercase, auto-neutralized in Hebrew via `.uppercase-track`.
+const capStyle: React.CSSProperties = {
+  fontFamily: 'var(--font-mono)',
+  fontWeight: 600,
+  fontSize: '11px',
+  letterSpacing: '0.1em',
+  textTransform: 'uppercase',
+  color: 'var(--text-tertiary)',
+}
+function SectionCap({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <h3 className="uppercase-track" style={{ ...capStyle, ...style }}>
+      {children}
+    </h3>
+  )
+}
+
+// v5 overlay dialog surface (shared by the two confirm dialogs below).
+const dialogContentStyle: React.CSSProperties = {
+  position: 'fixed',
+  top: '50%',
+  left: '50%',
+  transform: 'translate(-50%, -50%)',
+  width: 'min(400px, calc(100vw - 32px))',
+  backgroundColor: 'var(--surface-overlay)',
+  border: '1px solid var(--border-default)',
+  borderRadius: 'var(--r)',
+  boxShadow: 'var(--shadow-overlay)',
+  padding: '24px',
+  zIndex: 51,
 }
 
 function GeneralTab() {
@@ -51,19 +87,7 @@ function GeneralTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '480px' }}>
       <Card>
-        <h3
-          style={{
-            fontFamily: "'Montserrat', sans-serif",
-            fontWeight: 700,
-            fontSize: '12px',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: 'var(--text-muted)',
-            marginBottom: '16px',
-          }}
-        >
-          Account
-        </h3>
+        <SectionCap style={{ marginBottom: '16px' }}>Account</SectionCap>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div>
             <label
@@ -84,13 +108,13 @@ function GeneralTab() {
                 style={{
                   width: '100%',
                   height: '36px',
-                  backgroundColor: 'var(--bg-inset)',
+                  backgroundColor: 'var(--surface-sunken)',
                   border: '1px solid var(--border-default)',
                   borderRadius: '8px',
                   padding: '0 12px',
                   color: 'var(--text-primary)',
                   fontSize: '14px',
-                  fontFamily: "'Assistant', sans-serif",
+                  fontFamily: 'var(--font-body)',
                   outline: 'none',
                 }}
               />
@@ -107,10 +131,10 @@ function GeneralTab() {
               <Save size={14} strokeWidth={1.5} /> Save Changes
             </Button>
             {saved && (
-              <span style={{ fontSize: '12px', color: 'var(--success)' }}>Saved</span>
+              <span style={{ fontSize: '12px', color: 'var(--status-success)' }}>Saved</span>
             )}
             {mutation.isError && (
-              <span role="alert" style={{ fontSize: '12px', color: 'var(--error)' }}>
+              <span role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)' }}>
                 Save failed
               </span>
             )}
@@ -164,20 +188,8 @@ function FlowsTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '680px' }}>
       <Card>
-        <h3
-          style={{
-            fontFamily: "'Montserrat', sans-serif",
-            fontWeight: 700,
-            fontSize: '12px',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: 'var(--text-muted)',
-            marginBottom: '8px',
-          }}
-        >
-          Flow Configuration
-        </h3>
-        <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px', lineHeight: 1.5 }}>
+        <SectionCap style={{ marginBottom: '8px' }}>Flow Configuration</SectionCap>
+        <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '16px', lineHeight: 1.5 }}>
           Define automation flows in JSON. Changes are applied on the next lead qualification cycle.
         </p>
         {isLoading ? (
@@ -193,13 +205,13 @@ function FlowsTab() {
             style={{
               width: '100%',
               height: '280px',
-              backgroundColor: 'var(--bg-inset)',
-              border: `1px solid ${jsonError ? 'var(--error)' : 'var(--border-default)'}`,
+              backgroundColor: 'var(--surface-sunken)',
+              border: `1px solid ${jsonError ? 'var(--status-danger)' : 'var(--border-default)'}`,
               borderRadius: '8px',
               padding: '12px',
               color: 'var(--text-primary)',
               fontSize: '13px',
-              fontFamily: "'Courier New', monospace",
+              fontFamily: 'var(--font-mono)',
               lineHeight: 1.6,
               outline: 'none',
               resize: 'vertical',
@@ -208,7 +220,7 @@ function FlowsTab() {
           />
         )}
         {jsonError && (
-          <p id="json-error" role="alert" style={{ fontSize: '12px', color: 'var(--error)', marginBottom: '8px' }}>
+          <p id="json-error" role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)', marginBottom: '8px' }}>
             {jsonError}
           </p>
         )}
@@ -222,9 +234,9 @@ function FlowsTab() {
           >
             <Save size={14} strokeWidth={1.5} /> Save Flow Config
           </Button>
-          {saved && <span style={{ fontSize: '12px', color: 'var(--success)' }}>Saved</span>}
+          {saved && <span style={{ fontSize: '12px', color: 'var(--status-success)' }}>Saved</span>}
           {mutation.isError && (
-            <span role="alert" style={{ fontSize: '12px', color: 'var(--error)' }}>
+            <span role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)' }}>
               Save failed
             </span>
           )}
@@ -253,20 +265,8 @@ function ApiTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '540px' }}>
       <Card>
-        <h3
-          style={{
-            fontFamily: "'Montserrat', sans-serif",
-            fontWeight: 700,
-            fontSize: '12px',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: 'var(--text-muted)',
-            marginBottom: '16px',
-          }}
-        >
-          API Key
-        </h3>
-        <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px', lineHeight: 1.5 }}>
+        <SectionCap style={{ marginBottom: '16px' }}>API Key</SectionCap>
+        <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '16px', lineHeight: 1.5 }}>
           Use this key to authenticate API requests. Keep it secret — it grants full access to your tenant.
         </p>
 
@@ -276,7 +276,7 @@ function ApiTab() {
             alignItems: 'center',
             gap: '8px',
             padding: '10px 12px',
-            backgroundColor: 'var(--bg-inset)',
+            backgroundColor: 'var(--surface-sunken)',
             border: '1px solid var(--border-default)',
             borderRadius: '8px',
             marginBottom: '16px',
@@ -286,7 +286,7 @@ function ApiTab() {
             style={{
               flex: 1,
               fontSize: '13px',
-              fontFamily: "'Courier New', monospace",
+              fontFamily: 'var(--font-mono)',
               color: 'var(--text-secondary)',
               wordBreak: 'break-all',
             }}
@@ -300,7 +300,7 @@ function ApiTab() {
             style={{
               background: 'none',
               border: 'none',
-              color: 'var(--text-muted)',
+              color: 'var(--text-tertiary)',
               cursor: 'pointer',
               padding: '4px',
               display: 'flex',
@@ -317,11 +317,11 @@ function ApiTab() {
             role="alert"
             style={{
               padding: '10px 12px',
-              backgroundColor: 'rgba(16, 185, 129, 0.08)',
-              border: '1px solid rgba(16, 185, 129, 0.25)',
+              backgroundColor: 'color-mix(in srgb, var(--status-success) 10%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--status-success) 28%, transparent)',
               borderRadius: '8px',
               fontSize: '13px',
-              color: 'var(--success)',
+              color: 'var(--status-success)',
               marginBottom: '16px',
               lineHeight: 1.5,
             }}
@@ -351,28 +351,13 @@ function ApiTab() {
               zIndex: 50,
             }}
           />
-          <Dialog.Content
-            style={{
-              position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              width: '400px',
-              backgroundColor: 'var(--bg-surface)',
-              border: '1px solid var(--border-default)',
-              borderRadius: '12px',
-              boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
-              padding: '24px',
-              zIndex: 51,
-            }}
-            aria-describedby="regen-key-desc"
-          >
+          <Dialog.Content style={dialogContentStyle} aria-describedby="regen-key-desc">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
               <Dialog.Title
                 style={{
-                  fontFamily: "'Montserrat', sans-serif",
+                  fontFamily: 'var(--font-display)',
                   fontWeight: 700,
-                  fontSize: '15px',
+                  fontSize: '16px',
                   color: 'var(--text-primary)',
                 }}
               >
@@ -381,7 +366,7 @@ function ApiTab() {
               <Dialog.Close asChild>
                 <button
                   aria-label="Close dialog"
-                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px' }}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px' }}
                 >
                   <X size={16} strokeWidth={1.5} />
                 </button>
@@ -407,7 +392,7 @@ function ApiTab() {
               </Button>
             </div>
             {mutation.isError && (
-              <p role="alert" style={{ fontSize: '12px', color: 'var(--error)', marginTop: '12px' }}>
+              <p role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)', marginTop: '12px' }}>
                 Failed to regenerate key. Please try again.
               </p>
             )}
@@ -431,13 +416,13 @@ function FieldGroup({ label, children }: { label: string; children: React.ReactN
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  backgroundColor: 'var(--bg-inset)',
+  backgroundColor: 'var(--surface-sunken)',
   border: '1px solid var(--border-default)',
   borderRadius: '8px',
   padding: '8px 12px',
   color: 'var(--text-primary)',
   fontSize: '14px',
-  fontFamily: "'Assistant', sans-serif",
+  fontFamily: 'var(--font-body)',
   outline: 'none',
   boxSizing: 'border-box',
 }
@@ -493,10 +478,8 @@ function AgentTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '560px' }}>
       <Card>
-        <h3 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 700, fontSize: '12px', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '4px' }}>
-          Agent Business Profile
-        </h3>
-        <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px', lineHeight: 1.5 }}>
+        <SectionCap style={{ marginBottom: '4px' }}>Agent Business Profile</SectionCap>
+        <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '20px', lineHeight: 1.5 }}>
           This information is injected into every call so your agent speaks as your brand — not a generic bot.
         </p>
 
@@ -548,8 +531,8 @@ function AgentTab() {
           >
             <Save size={14} strokeWidth={1.5} /> Save Profile
           </Button>
-          {saved && <span style={{ fontSize: '12px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={13} /> Saved</span>}
-          {mutation.isError && <span role="alert" style={{ fontSize: '12px', color: 'var(--error)' }}>Save failed — try again</span>}
+          {saved && <span style={{ fontSize: '12px', color: 'var(--status-success)', display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={13} /> Saved</span>}
+          {mutation.isError && <span role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)' }}>Save failed — try again</span>}
         </div>
       </Card>
     </div>
@@ -593,12 +576,10 @@ function TwilioTab() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '560px' }}>
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-          <Phone size={16} strokeWidth={1.5} color="var(--accent-cyan)" />
-          <h3 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 700, fontSize: '12px', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-            Twilio Account
-          </h3>
+          <Phone size={16} strokeWidth={1.5} color="var(--accent-fg)" />
+          <SectionCap>Twilio Account</SectionCap>
         </div>
-        <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px', lineHeight: 1.5 }}>
+        <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '20px', lineHeight: 1.5 }}>
           Connect your own Twilio account. Your agent will make and receive calls using your number — billed directly by Twilio.
         </p>
 
@@ -606,16 +587,16 @@ function TwilioTab() {
           <Skeleton height="120px" />
         ) : status?.configured ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ padding: '12px 14px', backgroundColor: 'rgba(16, 185, 129, 0.07)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '8px' }}>
+            <div style={{ padding: '12px 14px', backgroundColor: 'color-mix(in srgb, var(--status-success) 9%, transparent)', border: '1px solid color-mix(in srgb, var(--status-success) 24%, transparent)', borderRadius: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                <CheckCircle2 size={14} color="var(--success)" />
-                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--success)' }}>Connected</span>
+                <CheckCircle2 size={14} color="var(--status-success)" />
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--status-success)' }}>Connected</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Account SID: <code style={{ color: 'var(--text-secondary)' }}>{status.accountSid}</code></span>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Phone: <code style={{ color: 'var(--text-secondary)' }}>{status.phoneNumber}</code></span>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Auth Token: <code style={{ color: 'var(--text-secondary)' }}>{status.authTokenMasked}</code></span>
-                {status.configuredAt && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Configured {new Date(status.configuredAt).toLocaleDateString()}</span>}
+                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>Account SID: <code style={{ color: 'var(--text-secondary)' }}>{status.accountSid}</code></span>
+                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>Phone: <code style={{ color: 'var(--text-secondary)' }}>{status.phoneNumber}</code></span>
+                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>Auth Token: <code style={{ color: 'var(--text-secondary)' }}>{status.authTokenMasked}</code></span>
+                {status.configuredAt && <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Configured {new Date(status.configuredAt).toLocaleDateString()}</span>}
               </div>
             </div>
             <Button variant="danger" size="sm" onClick={() => setConfirmDisconnect(true)}>
@@ -637,7 +618,7 @@ function TwilioTab() {
             <FieldGroup label="Auth Token">
               <div style={{ position: 'relative' }}>
                 <input
-                  style={{ ...inputStyle, paddingRight: '40px' }}
+                  style={{ ...inputStyle, paddingInlineEnd: '40px' }}
                   type={showToken ? 'text' : 'password'}
                   value={form.authToken}
                   onChange={(e) => setForm((p) => ({ ...p, authToken: e.target.value.trim() }))}
@@ -647,7 +628,7 @@ function TwilioTab() {
                 <button
                   onClick={() => setShowToken((v) => !v)}
                   aria-label={showToken ? 'Hide token' : 'Show token'}
-                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                  style={{ position: 'absolute', insetInlineEnd: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
                 >
                   {showToken ? <EyeOff size={14} strokeWidth={1.5} /> : <Eye size={14} strokeWidth={1.5} />}
                 </button>
@@ -674,13 +655,13 @@ function TwilioTab() {
               >
                 <Save size={14} strokeWidth={1.5} /> Connect Twilio
               </Button>
-              {saved && <span style={{ fontSize: '12px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={13} /> Connected</span>}
-              {saveMutation.isError && <span role="alert" style={{ fontSize: '12px', color: 'var(--error)' }}>Save failed — check credentials</span>}
+              {saved && <span style={{ fontSize: '12px', color: 'var(--status-success)', display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={13} /> Connected</span>}
+              {saveMutation.isError && <span role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)' }}>Save failed — check credentials</span>}
             </div>
 
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px', lineHeight: 1.5 }}>
+            <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px', lineHeight: 1.5 }}>
               Find your Account SID and Auth Token in the{' '}
-              <span style={{ color: 'var(--accent-cyan)' }}>Twilio Console → Dashboard</span>.
+              <span style={{ color: 'var(--accent-fg)' }}>Twilio Console → Dashboard</span>.
               Your auth token is encrypted before storage.
             </p>
           </div>
@@ -691,16 +672,13 @@ function TwilioTab() {
       <Dialog.Root open={confirmDisconnect} onOpenChange={setConfirmDisconnect}>
         <Dialog.Portal>
           <Dialog.Overlay style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 50 }} />
-          <Dialog.Content
-            style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '400px', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-default)', borderRadius: '12px', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', padding: '24px', zIndex: 51 }}
-            aria-describedby="disconnect-desc"
-          >
+          <Dialog.Content style={dialogContentStyle} aria-describedby="disconnect-desc">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <Dialog.Title style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 700, fontSize: '15px', color: 'var(--text-primary)' }}>
+              <Dialog.Title style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '16px', color: 'var(--text-primary)' }}>
                 Disconnect Twilio?
               </Dialog.Title>
               <Dialog.Close asChild>
-                <button aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px' }}>
+                <button aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px' }}>
                   <X size={16} strokeWidth={1.5} />
                 </button>
               </Dialog.Close>
@@ -723,68 +701,120 @@ function TwilioTab() {
   )
 }
 
-const tabTriggerStyle = (active: boolean): React.CSSProperties => ({
-  padding: '8px 16px',
-  backgroundColor: 'transparent',
-  border: 'none',
-  borderBottom: active ? '2px solid var(--accent-cyan)' : '2px solid transparent',
-  color: active ? 'var(--accent-cyan)' : 'var(--text-secondary)',
-  fontFamily: "'Assistant', sans-serif",
-  fontWeight: 600,
-  fontSize: '14px',
-  cursor: 'pointer',
-  transition: `color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard)`,
-  whiteSpace: 'nowrap',
-})
+/** Appearance + interface-language, plus the account display-name (folk Profile pane).
+ *  The language + theme pickers live here (Settings › Preferences), not pinned to the shell. */
+function AccountPane() {
+  const { t, i18n } = useTranslation()
+  const { pref, setPref } = useTheme()
+  const lang: Language = i18n.language.startsWith('he') ? 'he' : 'en'
+
+  // Languages are labelled in their own script — a picker names options by what they are.
+  const langOptions = [
+    { value: 'en' as Language, label: 'English' },
+    { value: 'he' as Language, label: 'עברית' },
+  ]
+  const themeOptions = [
+    { value: 'light' as ThemePref, label: t('theme.light'), icon: <Sun size={15} strokeWidth={1.7} /> },
+    { value: 'dark' as ThemePref, label: t('theme.dark'), icon: <Moon size={15} strokeWidth={1.7} /> },
+    { value: 'system' as ThemePref, label: t('theme.system'), icon: <Monitor size={15} strokeWidth={1.7} /> },
+  ]
+
+  const row: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '18px', padding: '15px 20px', borderBlockEnd: '1px solid var(--border-default)' }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '620px' }}>
+      <GeneralTab />
+      <div>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBlockEnd: '10px' }} className="uppercase-track">
+          {t('settings.appearanceTitle')}
+        </div>
+        <div style={{ background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--r)', boxShadow: 'var(--shadow-card)' }}>
+          <div style={row}>
+            <div style={{ flex: 1, minInlineSize: 0 }}>
+              <div style={{ fontSize: '14.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{t('settings.language')}</div>
+              <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBlockStart: '3px' }}>{t('settings.languageDesc')}</div>
+            </div>
+            <PrefSelect ariaLabel={t('settings.language')} value={lang} options={langOptions} onChange={(v) => void i18n.changeLanguage(v)} />
+          </div>
+          <div style={{ ...row, borderBlockEnd: '0' }}>
+            <div style={{ flex: 1, minInlineSize: 0 }}>
+              <div style={{ fontSize: '14.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{t('settings.appearance')}</div>
+              <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBlockStart: '3px' }}>{t('settings.appearanceDesc')}</div>
+            </div>
+            <PrefSelect ariaLabel={t('settings.appearance')} value={pref} options={themeOptions} onChange={setPref} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+type Pane = 'account' | 'api' | 'profile' | 'voice' | 'flows'
+const NAV_GROUPS: { groupKey: string; items: Pane[] }[] = [
+  { groupKey: 'settings.groups.account', items: ['account', 'api'] },
+  { groupKey: 'settings.groups.business', items: ['profile', 'voice', 'flows'] },
+]
 
 export function Settings() {
-  const [activeTab, setActiveTab] = useState('agent')
+  const { t, i18n } = useTranslation()
+  const isHebrew = i18n.language.startsWith('he')
+  const [pane, setPane] = useState<Pane>('profile')
+
+  const railCap: React.CSSProperties = {
+    paddingInline: '10px',
+    paddingBlock: '10px 6px',
+    fontFamily: isHebrew ? 'var(--font-body)' : 'var(--font-mono)',
+    fontSize: isHebrew ? '12px' : '10.5px',
+    fontWeight: 600,
+    letterSpacing: isHebrew ? 'normal' : '0.1em',
+    textTransform: isHebrew ? 'none' : 'uppercase',
+    color: 'var(--text-tertiary)',
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
-        {/* Tab list */}
-        <Tabs.List
-          aria-label="Settings sections"
-          style={{
-            display: 'flex',
-            borderBottom: '1px solid var(--border-subtle)',
-            marginBottom: '24px',
-          }}
-        >
-          {[
-            { value: 'agent', label: 'Agent' },
-            { value: 'twilio', label: 'Twilio' },
-            { value: 'general', label: 'General' },
-            { value: 'flows', label: 'Flows' },
-            { value: 'api', label: 'API' },
-          ].map((tab) => (
-            <Tabs.Trigger
-              key={tab.value}
-              value={tab.value}
-              style={tabTriggerStyle(activeTab === tab.value)}
-            >
-              {tab.label}
-            </Tabs.Trigger>
-          ))}
-        </Tabs.List>
+    <div style={{ maxInlineSize: 'var(--container-max)', marginInline: 'auto', display: 'grid', gap: '22px', alignItems: 'start' }} className="set-grid">
+      <nav aria-label="Settings sections" style={{ background: 'var(--surface-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--r)', boxShadow: 'var(--shadow-card)', padding: '10px', position: 'sticky', top: '84px' }}>
+        {NAV_GROUPS.map((g) => (
+          <div key={g.groupKey} style={{ marginBlockStart: '4px' }}>
+            <div style={railCap} className="uppercase-track">{t(g.groupKey)}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {g.items.map((p) => {
+                const active = pane === p
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setPane(p)}
+                    aria-current={active ? 'page' : undefined}
+                    style={{
+                      display: 'flex',
+                      inlineSize: '100%',
+                      padding: '9px 12px',
+                      borderRadius: '10px',
+                      border: 0,
+                      textAlign: 'start',
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '14px',
+                      fontWeight: active ? 600 : 500,
+                      color: active ? 'var(--accent-fg)' : 'var(--text-secondary)',
+                      background: active ? 'var(--accent-tint)' : 'transparent',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {t(`settings.nav.${p}`)}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
 
-        <Tabs.Content value="agent">
-          <AgentTab />
-        </Tabs.Content>
-        <Tabs.Content value="twilio">
-          <TwilioTab />
-        </Tabs.Content>
-        <Tabs.Content value="general">
-          <GeneralTab />
-        </Tabs.Content>
-        <Tabs.Content value="flows">
-          <FlowsTab />
-        </Tabs.Content>
-        <Tabs.Content value="api">
-          <ApiTab />
-        </Tabs.Content>
-      </Tabs.Root>
+      <div>
+        {pane === 'account' && <AccountPane />}
+        {pane === 'api' && <ApiTab />}
+        {pane === 'profile' && <AgentTab />}
+        {pane === 'voice' && <TwilioTab />}
+        {pane === 'flows' && <FlowsTab />}
+      </div>
     </div>
   )
 }

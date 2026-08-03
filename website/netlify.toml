@@ -1,0 +1,37 @@
+# ClickScales marketing site — Netlify config.
+# If you connect this folder to Netlify via git, set the base directory to `website`.
+# If you drag-and-drop, drop the `website` folder itself.
+
+[build]
+  publish = "."
+  command = ""
+
+# Serverless functions (the lead-intake forwarder lives in netlify/functions/lead.js).
+# Relative to this file's base directory (website/).
+[functions]
+  directory = "netlify/functions"
+
+# Hebrew lives at /he/. Netlify serves he/index.html there and 301s the
+# slashless /he to it, so the canonical form is the trailing-slash one —
+# which is what canonical, hreflang and sitemap.xml all point at. No
+# redirect rule here: adding one that points the other way would fight
+# Netlify's own behaviour.
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=(), interest-cohort=()"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

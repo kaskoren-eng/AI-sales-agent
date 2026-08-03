@@ -1,0 +1,480 @@
+{
+  "common": {
+    "close": "סגירה",
+    "cancel": "ביטול",
+    "save": "שמירה",
+    "retry": "נסו שוב"
+  },
+  "nav": {
+    "overview": "סקירה",
+    "analytics": "דאשבורד",
+    "copilot": "עוזר אישי",
+    "leads": "לידים",
+    "calls": "שיחות",
+    "calendar": "יומן",
+    "personality": "אישיות",
+    "simulator": "סימולטור",
+    "testKeren": "בדיקת קרן",
+    "bookings": "פגישות",
+    "integrations": "אינטגרציות",
+    "settings": "הגדרות",
+    "billing": "חיוב ומנוי",
+    "mainNavigation": "ניווט ראשי",
+    "openMenu": "פתיחת תפריט"
+  },
+  "navgroup": {
+    "monitor": "מעקב נתונים",
+    "activity": "פעילות",
+    "setup": "סט-אפ",
+    "general": "כללי",
+    "soon": "בקרוב"
+  },
+  "placeholder": {
+    "body": "העמוד הזה נבנה כעת לפי התצוגה המאושרת ב־v5, כחלק ממעבר הדשבורד."
+  },
+  "settings": {
+    "groups": {
+      "account": "החשבון שלי",
+      "business": "העסק"
+    },
+    "nav": {
+      "account": "חשבון",
+      "api": "מפתח API",
+      "profile": "פרופיל העסק",
+      "voice": "קול",
+      "flows": "פלואים"
+    },
+    "appearanceTitle": "העדפות",
+    "appearance": "מראה",
+    "appearanceDesc": "בהיר, כהה, או לפי המכשיר.",
+    "language": "שפת הממשק",
+    "languageDesc": "שפת הדשבורד הזה, בשבילכם. היא לא משנה את השפה שהסוכנת מדברת עם הלידים."
+  },
+  "simulator": {
+    "idle": "מוכן לבדיקה",
+    "connecting": "מתחבר…",
+    "listening": "מקשיבה…",
+    "speaking": "הסוכנת מדברת",
+    "start": "התחלת שיחת בדיקה",
+    "end": "סיום",
+    "mute": "השתקה",
+    "transcript": "תמלול חי",
+    "started": "השיחה התחילה",
+    "you": "אתם",
+    "agent": "הסוכנת",
+    "type": "הקלידו כדי לבדוק את הסוכנת",
+    "note": "שיחה פרטית עם הסוכנת שלכם. שום דבר כאן לא מגיע לליד אמיתי.",
+    "waiting": "ממתינה לסוכנת…",
+    "ended": "השיחה הסתיימה",
+    "callAgain": "התקשרו שוב",
+    "unmute": "ביטול השתקה",
+    "hangUp": "ניתוק",
+    "micBlocked": "המיקרופון חסום. אשרו אותו בדפדפן ונסו שוב.",
+    "audioBlocked": "הדפדפן השתיק את השיחה — הקישו כדי לשמוע את הסוכנת",
+    "notAuthorized": "הדשבורד אינו מורשה מול השרת. בדקו את מפתח ה-API.",
+    "genericError": "לא ניתן להתחיל את השיחה",
+    "realNote": "זו שיחה אמיתית דרך חדר LiveKit — הודעת הקלטה, דיבור בעברית, כלי יומן — הכול חוץ מהקו הטלפוני. דורש שה-agent worker יפעל."
+  },
+  "calendar": {
+    "upcoming": "פגישות קרובות",
+    "empty": "עדיין לא נקבעו פגישות",
+    "join": "הצטרפות",
+    "demo": "שיחת דמו · 30 דקות",
+    "availTitle": "מתי הסוכנת יכולה לקבוע",
+    "availSub": "שנו כלל ודף ההזמנה מתעדכן.",
+    "rows": {
+      "hours": "שעות פעילות",
+      "hoursV": "ראשון עד חמישי, 9:00 עד 17:00",
+      "length": "אורך הפגישה",
+      "lengthV": "30 דקות",
+      "buffer": "מרווח בין שיחות",
+      "bufferV": "10 דקות",
+      "notice": "התראה מראש",
+      "noticeV": "לפחות שעתיים מראש",
+      "calendar": "יומן",
+      "calendarV": "Google Calendar",
+      "tz": "אזור זמן",
+      "tzV": "ירושלים, ישראל (GMT+3)"
+    },
+    "preview": {
+      "eyebrow": "מה שהליד רואה",
+      "title": "קביעת פגישת דמו",
+      "meta": "30 דקות · Google Meet",
+      "pickDay": "בחרו יום",
+      "pickTime": "בחרו שעה",
+      "tznote": "הזמנים מוצגים באזור הזמן של הליד"
+    },
+    "error": "לא ניתן לטעון את הפגישות."
+  },
+  "copilot": {
+    "title": "מה תרצו לדעת?",
+    "subtitle": "שאלו על הלידים והשיחות, או הגידו לסוכנת לעבוד אחרת.",
+    "placeholder": "שאלו על הלידים והשיחות, או הגידו לסוכנת מה לשנות",
+    "skills": "כלים",
+    "s1": "כמה לידים חדשים נכנסו השבוע?",
+    "s2": "סכמי את השיחות של היום",
+    "s3": "תהיי קצת פחות רשמית",
+    "s4": "אילו לידים מחכים למעקב?",
+    "note": "על חשבון ClickScales. הצ׳אט הזה לא מנצל את דקות השיחה שלכם."
+  },
+  "agent": {
+    "sub": "הגדירו מי הסוכנת שלכם ואיך היא מדברת עם הלידים. כל שינוי אפשר לשמוע לפני שהוא עולה לאוויר.",
+    "metrics": {
+      "cost": "עלות לדקה",
+      "costNote": "כשליש מהמערכת הקודמת",
+      "latency": "זמן תגובה",
+      "latencyNote": "הזמן עד שהסוכנת מתחילה לדבר",
+      "voice": "קול",
+      "voiceNote": "עברית טבעית, נקבה"
+    },
+    "identity": "זהות",
+    "name": "שם הסוכנת",
+    "nameHint": "הלידים שומעים את השם הזה. שינוי שלו מעדכן אותו בכל הדשבורד.",
+    "gender": "מגדר",
+    "female": "נקבה",
+    "male": "זכר",
+    "genderHint": "קובע את הדקדוק בעברית שהסוכנת משתמשת בו לגבי עצמה.",
+    "voice": "קול",
+    "voiceDesc": "חם, רגוע, קצב בינוני",
+    "voiceChange": "החלפת קול",
+    "langNote": "הסוכנת מדברת קודם עברית ועוברת לאנגלית כשליד מבקש. זה מוגדר על ידי צוות הקול.",
+    "handbook": "איך הסוכנת מדברת",
+    "says": "הסוכנת אומרת",
+    "tabs": {
+      "tone": "אישיות וטון",
+      "accuracy": "דיוק ופורמט",
+      "trust": "אמון ובטיחות"
+    },
+    "b": {
+      "tone": "טון ברירת מחדל",
+      "toneD": "כמה רשמית הסוכנת נשמעת כברירת מחדל.",
+      "pro": "מקצועי",
+      "warm": "חם",
+      "filler": "מילות חיבור טבעיות",
+      "fillerD": "הפסקות ומילות חיבור קטנות כדי שתישמע אנושית, לא מוקראת.",
+      "empathy": "הבעת אמפתיה",
+      "empathyD": "מכירה במה שהליד מרגיש לפני שממשיכה הלאה.",
+      "short": "תשובות קצרות",
+      "shortD": "כבויה כברירת מחדל. הפעילו אם לידים מרגישים שהיא מדברת יותר מדי.",
+      "confirm": "חזרה על פרטים",
+      "confirmD": "חוזרת על עובדות מרכזיות כדי ששום דבר לא יירשם שגוי.",
+      "numbers": "מספרים בשפה פשוטה",
+      "numbersD": "מחירים וכמויות בדיבור פשוט, לא בספרות.",
+      "disclose": "תמיד אומרת שהיא AI",
+      "discloseD": "חובה. הסוכנת מבהירה שהיא עוזרת דיגיטלית.",
+      "record": "הודעת הקלטה",
+      "recordD": "מיידעת את הליד שהשיחה מוקלטת ושואלת אם זה בסדר."
+    },
+    "sample": {
+      "warm": "אין בעיה, אני כבר בודקת את זה בשבילך.",
+      "filler": "רגע, שנייה, אני רק מסתכלת על היומן.",
+      "empathy": "אני מבינה, זה באמת מתסכל כשפניות הולכות לאיבוד.",
+      "short": "בקצרה, כן, אנחנו יכולים לעזור עם זה.",
+      "confirm": "רק לוודא, אמרת חמישה עד עשרה לקוחות ביום, נכון?",
+      "numbers": "זה יוצא בערך שלוש מאות שקל בחודש.",
+      "disclose": "רק שתדע, אני העוזרת הדיגיטלית של קליקסקיילז.",
+      "record": "השיחה מוקלטת לצורכי איכות, זה בסדר מבחינתך?"
+    },
+    "advanced": "תצוגה מתקדמת",
+    "advancedRo": "לקריאה בלבד. נוצר מההגדרות שלמעלה ומהעוזר האישי.",
+    "save": "שמירת שינויים",
+    "discard": "ביטול",
+    "saveNote": "השינויים עולים לאוויר בשיחה הבאה."
+  },
+  "calls": {
+    "filters": {
+      "statusAll": "כל התוצאות",
+      "from": "מתאריך",
+      "to": "עד"
+    },
+    "count_one": "שיחה אחת",
+    "count_other": "{{count}} שיחות",
+    "cols": {
+      "lead": "ליד",
+      "when": "מתי",
+      "duration": "משך",
+      "outcome": "תוצאה",
+      "qualified": "כשירות"
+    },
+    "outcome": {
+      "won": "נסגר",
+      "lost": "אבוד",
+      "neutral": "ניטרלי",
+      "analyzing": "בניתוח",
+      "in_progress": "בתהליך",
+      "done": "הסתיימה",
+      "failed": "נכשלה"
+    },
+    "qualified": {
+      "qualified": "כשיר",
+      "not_qualified": "לא כשיר",
+      "unknown": "—"
+    },
+    "empty": {
+      "title": "אין עדיין שיחות",
+      "body": "שיחות יופיעו כאן ברגע שערוץ הקול יחובר."
+    },
+    "error": "לא ניתן לטעון את השיחות.",
+    "page": "עמוד {{page}} מתוך {{total}}",
+    "prev": "הקודם",
+    "next": "הבא",
+    "drawer": {
+      "close": "סגירה",
+      "when": "מתי",
+      "duration": "משך",
+      "phone": "טלפון",
+      "audio": "הקלטה",
+      "noAudio": "אין הקלטה זמינה",
+      "outcomeTitle": "תוצאה וניתוח",
+      "summary": "סיכום",
+      "noSummary": "אין עדיין סיכום.",
+      "analysisTitle": "ניתוח מכירתי",
+      "noAnalysis": "הניתוח המכירתי יופיע לאחר שהשיחה תנותח.",
+      "score": "אפקטיביות",
+      "qualification": "כשירות",
+      "company": "חברה",
+      "challenge": "האתגר המרכזי",
+      "followup": "נקבע מעקב",
+      "yes": "כן",
+      "no": "לא",
+      "tabs": {
+        "transcript": "תמלול",
+        "data": "נתונים"
+      },
+      "noTranscript": "אין תמלול זמין.",
+      "agent": "הסוכנת",
+      "loadError": "לא ניתן לטעון את השיחה."
+    }
+  },
+  "overview": {
+    "live": "חי",
+    "range": {
+      "today": "היום",
+      "d7": "7 ימים",
+      "d30": "30 יום",
+      "label": "טווח תאריכים"
+    },
+    "kpi": {
+      "callsToday": "שיחות היום",
+      "callsRange": "שיחות, {{n}} ימים אחרונים",
+      "meetings": "פגישות שנקבעו",
+      "leads": "סך הלידים",
+      "qualified": "לידים כשירים",
+      "totalCalls": "סך השיחות",
+      "quality": "מדד איכות",
+      "soon": "בקרוב",
+      "qualityNote": "ממתין למקור נתונים"
+    },
+    "pipeline": {
+      "title": "פייפליין",
+      "hint": "בחרו שלב כדי לסנן לידים",
+      "new": "חדשים",
+      "contacted": "נוצר קשר",
+      "qualifying": "בתהליך",
+      "qualified": "כשיר",
+      "booked": "פגישה נקבעה"
+    },
+    "chart": {
+      "title": "שיחות השבוע",
+      "empty": "ממתין למקור נתונים",
+      "emptyNote": "נפח השיחות היומי יופיע כאן ברגע שנתוני המדדים יחוברו.",
+      "leads": "לידים",
+      "calls": "שיחות"
+    },
+    "activity": {
+      "title": "פעילות אחרונה",
+      "empty": "אין עדיין שיחות",
+      "call": "שיחה",
+      "viewAll": "לכל השיחות"
+    },
+    "errors": {
+      "leads": "לא ניתן לטעון את נתוני הלידים.",
+      "calls": "לא ניתן לטעון את הפעילות האחרונה."
+    }
+  },
+  "topbar": {
+    "callDetail": "פרטי שיחה",
+    "leadDetail": "פרטי ליד",
+    "dashboard": "לוח בקרה"
+  },
+  "language": {
+    "label": "שפה",
+    "switchToEnglish": "מעבר לאנגלית",
+    "switchToHebrew": "מעבר לעברית"
+  },
+  "presence": {
+    "available": "קרן זמינה",
+    "onCall": "קרן בשיחה"
+  },
+  "theme": {
+    "label": "מראה",
+    "light": "בהיר",
+    "dark": "כהה",
+    "system": "מערכת"
+  },
+  "sidebar": {
+    "tagline": "מבית ClickScales",
+    "kerenActive": "קרן פעילה",
+    "viewActivity": "צפייה בפעילות של קרן — הסוכנת פעילה",
+    "recentActivity": "פעילות אחרונה",
+    "activityDescription": "5 הפעילויות האחרונות של קרן",
+    "closeActivity": "סגירת חלונית הפעילות"
+  },
+  "status": {
+    "new": "חדש",
+    "contacted": "נוצר קשר",
+    "qualifying": "בבדיקה",
+    "qualified": "מוסמך",
+    "booked": "נקבעה פגישה",
+    "disqualified": "נפסל",
+    "lost": "אבוד",
+    "opted_out": "ביקש להסיר",
+    "scheduled": "מתוזמן",
+    "confirmed": "אושר",
+    "cancelled": "בוטל",
+    "completed": "הושלם"
+  },
+  "providers": {
+    "google_calendar": "Google Calendar",
+    "trafft": "Trafft"
+  },
+  "bookings": {
+    "tableLabel": "טבלת פגישות",
+    "loadError": "טעינת הפגישות נכשלה. נסו שוב.",
+    "columns": {
+      "lead": "ליד",
+      "dateTime": "תאריך / שעה",
+      "status": "סטטוס",
+      "provider": "ספק",
+      "actions": "פעולות"
+    },
+    "emptyTitle": "אין עדיין פגישות",
+    "emptyDescription": "הפגישות יופיעו כאן ברגע שיתוזמנו לידים.",
+    "thisLead": "ליד זה",
+    "cancel": "ביטול",
+    "cancelFor": "ביטול הפגישה של {{name}}",
+    "cancelTitle": "ביטול פגישה",
+    "cancelConfirm": "לבטל את הפגישה של <strong>{{name}}</strong> בתאריך <strong>{{date}}</strong>? לא ניתן לבטל פעולה זו.",
+    "keepBooking": "שמירת הפגישה",
+    "confirmCancel": "ביטול הפגישה",
+    "cancelError": "ביטול הפגישה נכשל. נסו שוב."
+  },
+  "channels": {
+    "whatsapp": "וואטסאפ",
+    "email": "אימייל",
+    "voice": "קולי",
+    "meta_ads": "Meta Ads",
+    "csv": "CSV"
+  },
+  "sources": {
+    "meta_ads": "Meta Ads",
+    "facebook": "פייסבוק",
+    "google_sheets": "Google Sheets",
+    "csv": "ייבוא CSV",
+    "webhook": "Webhook",
+    "api": "API",
+    "voice_inbound": "שיחה נכנסת"
+  },
+  "leadDetail": {
+    "notFound": "הליד לא נמצא",
+    "notFoundDesc": "הליד לא קיים או שהוסר.",
+    "loadError": "טעינת הליד נכשלה",
+    "loadErrorDesc": "משהו השתבש. נסו שוב.",
+    "backToLeads": "חזרה ללידים",
+    "unnamedLead": "ליד ללא שם",
+    "via": "דרך {{source}}",
+    "updatedLabel": "עודכן",
+    "identity": "פרטים",
+    "statusHeader": "סטטוס",
+    "extractedByAgent": "חולץ על ידי הסוכנת",
+    "more": "עוד ({{count}})",
+    "name": "שם",
+    "email": "אימייל",
+    "phone": "טלפון",
+    "score": "ניקוד",
+    "created": "נוצר",
+    "scoreValue": "{{score}} / 100",
+    "leadStatus": "סטטוס הליד",
+    "saving": "שומר…",
+    "saveChange": "שמירת שינוי",
+    "saved": "נשמר",
+    "saveError": "השמירה נכשלה. נסו שוב.",
+    "saveSuccessTitle": "הסטטוס עודכן",
+    "activityTimeline": "ציר פעילות",
+    "events_one": "אירוע {{count}}",
+    "events_other": "{{count}} אירועים",
+    "emptyTimeline": "אין עדיין פעילות. ברגע שהסוכנת תיצור קשר, זה יופיע כאן.",
+    "conversations": "שיחות",
+    "conversationsCount": "שיחות ({{count}})",
+    "noConversations": "אין עדיין שיחות.",
+    "openConversation": "פתיחת שיחת {{channel}}",
+    "messages_one": "הודעה {{count}}",
+    "messages_other": "{{count}} הודעות",
+    "meetings": "פגישות",
+    "meetingsCount": "פגישות ({{count}})",
+    "noMeetings": "לא נקבעו פגישות.",
+    "minutes": "{{count}} דק׳",
+    "upcoming": "עתידית",
+    "past": "עברה",
+    "timeline": {
+      "leadCreated": "הליד נוצר",
+      "enteredSystem": "נכנס למערכת",
+      "conversationStarted": "התחילה שיחת {{channel}}",
+      "sent": "נשלח",
+      "received": "התקבל",
+      "meetingBooked": "נקבעה פגישה",
+      "scheduledFor": "מתוזמנת ל-{{date}} · {{duration}} דק׳",
+      "meetingUpcoming": "פגישה עתידית",
+      "meetingPast": "מועד הפגישה (עבר)",
+      "providerDuration": "{{provider}} · {{duration}} דק׳"
+    }
+  },
+  "leads": {
+    "filterLeads": "סינון לידים",
+    "searchLabel": "חיפוש לידים",
+    "searchPlaceholder": "חיפוש שם, אימייל, טלפון...",
+    "statusLabel": "סינון לפי סטטוס",
+    "allStatuses": "כל הסטטוסים",
+    "count_one": "ליד {{formattedCount}}",
+    "count_other": "{{formattedCount}} לידים",
+    "tableLabel": "טבלת לידים",
+    "columns": {
+      "name": "שם",
+      "contact": "פרטי קשר",
+      "channel": "ערוץ",
+      "status": "סטטוס",
+      "score": "ניקוד",
+      "lastActivity": "פעילות אחרונה",
+      "actions": "פעולות"
+    },
+    "view": "צפייה",
+    "viewDetails": "צפייה בפרטים של {{name}}",
+    "drawer": {
+      "close": "סגירה",
+      "facts": "פרטים",
+      "agentSourced": "נמצא על ידי הסוכנת",
+      "score": "ציון",
+      "channel": "ערוץ",
+      "status": "סטטוס",
+      "email": "אימייל",
+      "phone": "טלפון",
+      "timeline": "ציר זמן",
+      "empty": "אין עדיין פעילות",
+      "agent": "הסוכנת",
+      "lead": "הליד",
+      "meeting": "פגישה",
+      "loadError": "לא ניתן לטעון את הליד."
+    },
+    "emptyTitle": "אין עדיין לידים",
+    "emptyDescription": "חברו ערוץ כדי להתחיל לקבל לידים.",
+    "loadError": "טעינת הלידים נכשלה. נסו שוב.",
+    "pagination": {
+      "label": "עימוד",
+      "pageOf": "עמוד {{page}} מתוך {{total}}",
+      "prev": "הקודם",
+      "next": "הבא",
+      "previousPage": "העמוד הקודם",
+      "nextPage": "העמוד הבא"
+    }
+  }
+}

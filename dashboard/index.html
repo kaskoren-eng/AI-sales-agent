@@ -4,7 +4,21 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>dashboard</title>
+    <meta name="theme-color" content="#EDF0F6" />
+    <title>ClickScales</title>
+    <script>
+      /* Apply theme before first paint to avoid a light/dark flash. Mirrors src/lib/theme.ts. */
+      (function () {
+        try {
+          var pref = localStorage.getItem('keren.theme') || 'system'
+          var dark = pref === 'dark' || (pref === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          var resolved = dark ? 'dark' : 'light'
+          document.documentElement.setAttribute('data-theme', resolved)
+          var m = document.querySelector('meta[name="theme-color"]')
+          if (m) m.setAttribute('content', dark ? '#0A0F20' : '#EDF0F6')
+        } catch (e) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

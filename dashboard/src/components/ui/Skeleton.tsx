@@ -21,7 +21,7 @@ export function Skeleton({
         height: typeof height === 'number' ? `${height}px` : height,
         width: typeof width === 'number' ? `${width}px` : width,
         borderRadius,
-        background: 'linear-gradient(90deg, var(--bg-elevated) 25%, var(--bg-surface) 50%, var(--bg-elevated) 75%)',
+        background: 'linear-gradient(90deg, var(--surface-sunken) 25%, var(--surface-card) 50%, var(--surface-sunken) 75%)',
         backgroundSize: '200% 100%',
         animation: 'shimmer 1.5s infinite linear',
         flexShrink: 0,
@@ -39,7 +39,7 @@ export function SkeletonRow({ cols = 5 }: { cols?: number }) {
       {Array.from({ length: cols }).map((_, i) => (
         <td
           key={i}
-          style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-subtle)' }}
+          style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-default)' }}
         >
           <Skeleton height="14px" width={i === 0 ? '60%' : i % 2 === 0 ? '80%' : '50%'} />
         </td>

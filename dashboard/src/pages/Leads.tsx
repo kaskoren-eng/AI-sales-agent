@@ -1,310 +1,231 @@
-import { useState, useId } from 'react'
-import { Users, Search, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Users, Search, X, CalendarDays } from 'lucide-react'
 import { useLeadsList } from '../hooks/useLeadsList.js'
-import { Badge, statusToBadgeVariant } from '../components/ui/Badge.js'
-import { Button } from '../components/ui/Button.js'
-import { Card } from '../components/ui/Card.js'
-import { TableSkeleton } from '../components/ui/Skeleton.js'
+import { useLeadDetail } from '../hooks/useLeadDetail.js'
+import { Skeleton } from '../components/ui/Skeleton.js'
 import { formatDate } from '../lib/format.js'
+import type { LeadFull } from '../lib/types.js'
 
-const STATUS_OPTIONS = ['', 'new', 'contacted', 'qualified', 'booked', 'lost']
+const STATUS_OPTIONS = ['new', 'contacted', 'qualifying', 'qualified', 'booked', 'disqualified']
 const LIMIT = 20
 
-const channelLabel: Record<string, string> = {
-  whatsapp: 'WhatsApp',
-  email: 'Email',
-  voice: 'Voice',
-  meta_ads: 'Meta Ads',
-  csv: 'CSV',
+const CARD: React.CSSProperties = {
+  background: 'var(--surface-card)',
+  border: '1px solid var(--border-default)',
+  borderRadius: 'var(--r)',
+  boxShadow: 'var(--shadow-card)',
+}
+
+/** §1.4.1 PROPOSED status colours (await sign-off). Lead status → chip tone. */
+function statusTone(status: string): string {
+  switch (status) {
+    case 'qualified':
+      return 'var(--status-success)'
+    case 'booked':
+      return 'var(--accent-fg)'
+    case 'qualifying':
+      return 'var(--status-warning)'
+    case 'disqualified':
+    case 'lost':
+    case 'opted_out':
+      return 'var(--status-danger)'
+    default:
+      return 'var(--status-neutral)'
+  }
+}
+
+function StatusChip({ status, label }: { status: string; label: string }) {
+  const tone = statusTone(status)
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '4px 10px 4px 9px',
+        borderRadius: 'var(--r-full)',
+        fontSize: '11.5px',
+        fontWeight: 600,
+        color: tone,
+        background: `color-mix(in srgb, ${tone} 12%, transparent)`,
+        border: `1px solid color-mix(in srgb, ${tone} 26%, transparent)`,
+      }}
+    >
+      <span style={{ inlineSize: '6px', blockSize: '6px', borderRadius: '50%', background: tone, flexShrink: 0 }} />
+      {label}
+    </span>
+  )
 }
 
 function ScoreBar({ score }: { score: number | null }) {
-  if (score == null) {
-    return <span style={{ fontSize: '13px', color: 'var(--text-disabled)' }}>—</span>
-  }
-  const color =
-    score >= 70 ? 'var(--success)' : score >= 40 ? 'var(--warning)' : 'var(--error)'
+  if (score == null) return <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+  const color = score >= 70 ? 'var(--status-success)' : score >= 40 ? 'var(--status-warning)' : 'var(--status-danger)'
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-      <div
-        style={{
-          flex: 1,
-          height: '4px',
-          borderRadius: '2px',
-          backgroundColor: 'var(--bg-inset)',
-          overflow: 'hidden',
-          maxWidth: '60px',
-        }}
-        aria-hidden="true"
-      >
-        <div
-          style={{
-            height: '100%',
-            width: `${score}%`,
-            borderRadius: '2px',
-            backgroundColor: color,
-          }}
-        />
+      <div style={{ flex: 1, blockSize: '4px', borderRadius: '2px', background: 'var(--surface-sunken)', overflow: 'hidden', maxInlineSize: '60px' }} aria-hidden>
+        <div style={{ blockSize: '100%', inlineSize: `${score}%`, borderRadius: '2px', background: color }} />
       </div>
-      <span style={{ fontSize: '12px', color, fontWeight: 600, minWidth: '28px' }}>{score}</span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color, fontWeight: 600, minInlineSize: '26px' }}>{score}</span>
     </div>
   )
 }
 
 export function Leads() {
+  const { t, i18n } = useTranslation()
+  const isHebrew = i18n.language.startsWith('he')
   const [search, setSearch] = useState('')
+  const [debounced, setDebounced] = useState('')
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
+  const [selected, setSelected] = useState<LeadFull | null>(null)
 
-  const searchId = useId()
-  const statusId = useId()
-
-  // Debounce search input effect
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const handleSearch = (val: string) => {
+  const onSearch = (val: string) => {
     setSearch(val)
     clearTimeout((window as unknown as Record<string, number>)['_leadSearchTimer'])
     ;(window as unknown as Record<string, number>)['_leadSearchTimer'] = setTimeout(() => {
-      setDebouncedSearch(val)
+      setDebounced(val)
       setPage(1)
     }, 350)
   }
 
   const { data, isLoading, isError } = useLeadsList({
     status: status || undefined,
-    search: debouncedSearch || undefined,
+    search: debounced || undefined,
     page,
     limit: LIMIT,
   })
-
   const leads = data?.data ?? []
   const meta = data?.meta
   const totalPages = meta?.total_pages ?? 1
 
-  const handleStatusChange = (val: string) => {
-    setStatus(val)
-    setPage(1)
+  const fieldStyle: React.CSSProperties = {
+    height: '38px',
+    background: 'var(--surface-card)',
+    border: '1px solid var(--border-strong)',
+    borderRadius: '10px',
+    color: 'var(--text-primary)',
+    fontSize: '13.5px',
+    fontFamily: 'var(--font-body)',
+    outline: 'none',
   }
+  const th: React.CSSProperties = {
+    padding: '11px 16px',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '10.5px',
+    fontWeight: 500,
+    letterSpacing: isHebrew ? 'normal' : '0.08em',
+    textTransform: isHebrew ? 'none' : 'uppercase',
+    color: 'var(--text-tertiary)',
+    textAlign: 'start',
+    borderBlockEnd: '1px solid var(--border-default)',
+    whiteSpace: 'nowrap',
+  }
+  const td: React.CSSProperties = { padding: '13px 16px', fontSize: '13.5px', verticalAlign: 'middle' }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-
+    <div style={{ maxInlineSize: 'var(--container-max)', marginInline: 'auto' }}>
       {/* Filter bar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          flexWrap: 'wrap',
-        }}
-        role="search"
-        aria-label="Filter leads"
-      >
-        {/* Search */}
-        <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: '360px' }}>
-          <label htmlFor={searchId} className="sr-only">Search leads</label>
-          <Search
-            size={15}
-            strokeWidth={1.5}
-            style={{
-              position: 'absolute',
-              left: '11px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: 'var(--text-muted)',
-              pointerEvents: 'none',
-            }}
-            aria-hidden="true"
-          />
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBlockEnd: '16px' }} role="search">
+        <div style={{ position: 'relative', flex: '1 1 240px', maxInlineSize: '360px' }}>
+          <Search size={15} strokeWidth={1.7} style={{ position: 'absolute', insetInlineStart: '12px', insetBlockStart: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
           <input
-            id={searchId}
             type="search"
-            placeholder="Search name, email, phone..."
+            dir="auto"
+            placeholder={t('leads.searchPlaceholder')}
             value={search}
-            onChange={(e) => handleSearch(e.target.value)}
-            style={{
-              width: '100%',
-              height: '36px',
-              backgroundColor: 'var(--bg-surface)',
-              border: '1px solid var(--border-default)',
-              borderRadius: '8px',
-              padding: '0 12px 0 36px',
-              color: 'var(--text-primary)',
-              fontSize: '13px',
-              fontFamily: "'Assistant', sans-serif",
-              outline: 'none',
-            }}
+            onChange={(e) => onSearch(e.target.value)}
+            aria-label={t('leads.searchLabel')}
+            style={{ ...fieldStyle, inlineSize: '100%', padding: '0 12px 0 34px' }}
           />
         </div>
-
-        {/* Status filter */}
-        <div>
-          <label htmlFor={statusId} className="sr-only">Filter by status</label>
-          <select
-            id={statusId}
-            value={status}
-            onChange={(e) => handleStatusChange(e.target.value)}
-            style={{
-              height: '36px',
-              backgroundColor: 'var(--bg-surface)',
-              border: '1px solid var(--border-default)',
-              borderRadius: '8px',
-              padding: '0 32px 0 12px',
-              color: status ? 'var(--text-primary)' : 'var(--text-muted)',
-              fontSize: '13px',
-              fontFamily: "'Assistant', sans-serif",
-              outline: 'none',
-              cursor: 'pointer',
-              appearance: 'none',
-              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='1.5'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
-              backgroundRepeat: 'no-repeat',
-              backgroundPosition: 'right 10px center',
-            }}
-            aria-label="Filter by status"
-          >
-            <option value="">All statuses</option>
-            {STATUS_OPTIONS.filter(Boolean).map((s) => (
-              <option key={s} value={s}>
-                {s.charAt(0).toUpperCase() + s.slice(1)}
-              </option>
-            ))}
-          </select>
-        </div>
-
+        <select
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value)
+            setPage(1)
+          }}
+          aria-label={t('leads.statusLabel')}
+          style={{ ...fieldStyle, padding: '0 12px', cursor: 'pointer' }}
+        >
+          <option value="">{t('leads.allStatuses')}</option>
+          {STATUS_OPTIONS.map((s) => (
+            <option key={s} value={s}>
+              {t(`status.${s}`, s)}
+            </option>
+          ))}
+        </select>
         {meta && (
-          <span style={{ fontSize: '13px', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-            {meta.total.toLocaleString()} {meta.total === 1 ? 'lead' : 'leads'}
+          <span style={{ marginInlineStart: 'auto', fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--text-secondary)' }}>
+            {t('leads.count', { count: meta.total, formattedCount: meta.total.toLocaleString(isHebrew ? 'he-IL' : 'en-US') })}
           </span>
         )}
       </div>
 
       {/* Table */}
-      <Card padding="none">
-        {isError && (
-          <div
-            role="alert"
-            style={{
-              padding: '32px',
-              textAlign: 'center',
-              color: 'var(--error)',
-              fontSize: '14px',
-            }}
-          >
-            Failed to load leads. Please try again.
+      <div style={{ ...CARD, overflow: 'hidden' }}>
+        {isError ? (
+          <div role="alert" style={{ padding: '40px', textAlign: 'center', color: 'var(--status-danger)', fontSize: '14px' }}>
+            {t('leads.loadError')}
           </div>
-        )}
-
-        {!isError && (
+        ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table
-              style={{ width: '100%', borderCollapse: 'collapse', minWidth: '640px' }}
-              aria-label="Leads table"
-              aria-busy={isLoading}
-            >
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '640px' }} aria-busy={isLoading}>
               <thead>
                 <tr>
-                  {['Name', 'Contact', 'Channel', 'Status', 'Score', 'Last Activity', 'Actions'].map((h) => (
-                    <th
-                      key={h}
-                      scope="col"
-                      style={{
-                        padding: '10px 16px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: 'var(--text-muted)',
-                        textAlign: 'left',
-                        letterSpacing: '0.05em',
-                        textTransform: 'uppercase',
-                        borderBottom: '1px solid var(--border-subtle)',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {h}
-                    </th>
-                  ))}
+                  <th style={th}>{t('leads.columns.name')}</th>
+                  <th style={th}>{t('leads.columns.status')}</th>
+                  <th style={th}>{t('leads.columns.score')}</th>
+                  <th style={th}>{t('leads.columns.channel')}</th>
+                  <th style={th}>{t('leads.columns.lastActivity')}</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <TableSkeleton rows={8} cols={7} />
+                  [...Array(8)].map((_, i) => (
+                    <tr key={i} style={{ borderBlockEnd: '1px solid var(--border-default)' }}>
+                      {[...Array(5)].map((__, j) => (
+                        <td key={j} style={td}>
+                          <Skeleton width="80%" height="14px" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
                 ) : leads.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ padding: '64px 20px', textAlign: 'center' }}>
-                      <Users size={32} strokeWidth={1} style={{ color: 'var(--text-disabled)', marginBottom: '12px', display: 'block', margin: '0 auto 12px' }} />
-                      <p style={{ fontSize: '15px', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '6px' }}>
-                        No leads yet
-                      </p>
-                      <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                        Connect a channel to start receiving leads.
-                      </p>
+                    <td colSpan={5} style={{ padding: '64px 20px', textAlign: 'center' }}>
+                      <Users size={30} strokeWidth={1.2} style={{ color: 'var(--text-tertiary)', display: 'block', margin: '0 auto 12px' }} />
+                      <p style={{ fontSize: '15px', color: 'var(--text-secondary)', fontWeight: 600, marginBlockEnd: '6px' }}>{t('leads.emptyTitle')}</p>
+                      <p style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>{t('leads.emptyDescription')}</p>
                     </td>
                   </tr>
                 ) : (
                   leads.map((lead) => (
                     <tr
                       key={lead.id}
-                      style={{
-                        borderBottom: '1px solid var(--border-subtle)',
-                        transition: `background-color var(--duration-fast) var(--ease-standard)`,
-                      }}
-                      onMouseEnter={(e) => {
-                        ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'var(--bg-elevated)'
-                      }}
-                      onMouseLeave={(e) => {
-                        ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent'
-                      }}
+                      onClick={() => setSelected(lead)}
+                      style={{ borderBlockEnd: '1px solid var(--border-default)', cursor: 'pointer' }}
+                      onMouseEnter={(e) => ((e.currentTarget as HTMLTableRowElement).style.background = 'var(--surface-sunken)')}
+                      onMouseLeave={(e) => ((e.currentTarget as HTMLTableRowElement).style.background = 'transparent')}
                     >
-                      <td style={{ padding: '13px 16px' }}>
-                        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                          {lead.name ?? '—'}
-                        </span>
+                      <td style={{ ...td, fontWeight: 600, color: 'var(--text-primary)' }} dir="auto">
+                        {lead.name ?? lead.email ?? '—'}
                       </td>
-                      <td style={{ padding: '13px 16px' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          {lead.email && (
-                            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                              {lead.email}
-                            </span>
-                          )}
-                          {lead.phone && (
-                            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                              {lead.phone}
-                            </span>
-                          )}
-                          {!lead.email && !lead.phone && (
-                            <span style={{ fontSize: '12px', color: 'var(--text-disabled)' }}>—</span>
-                          )}
-                        </div>
+                      <td style={td}>
+                        <StatusChip status={lead.status} label={t(`status.${lead.status}`, lead.status)} />
                       </td>
-                      <td style={{ padding: '13px 16px' }}>
-                        {lead.channel ? (
-                          <Badge variant="default">
-                            {channelLabel[lead.channel] ?? lead.channel}
-                          </Badge>
-                        ) : (
-                          <span style={{ fontSize: '13px', color: 'var(--text-disabled)' }}>—</span>
-                        )}
-                      </td>
-                      <td style={{ padding: '13px 16px' }}>
-                        <Badge variant={statusToBadgeVariant(lead.status)}>
-                          {lead.status}
-                        </Badge>
-                      </td>
-                      <td style={{ padding: '13px 16px', minWidth: '100px' }}>
+                      <td style={{ ...td, minWidth: '100px' }}>
                         <ScoreBar score={lead.score} />
                       </td>
-                      <td style={{ padding: '13px 16px', fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                        {formatDate(lead.lastActivityAt ?? lead.updatedAt)}
+                      <td style={td}>
+                        {lead.channel ? (
+                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{t(`channels.${lead.channel}`, lead.channel)}</span>
+                        ) : (
+                          <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+                        )}
                       </td>
-                      <td style={{ padding: '13px 16px' }}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`View details for ${lead.name ?? 'lead'}`}
-                          style={{ fontSize: '12px', color: 'var(--accent-cyan)' }}
-                        >
-                          View
-                        </Button>
+                      <td style={{ ...td, fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                        {formatDate(lead.lastActivityAt ?? lead.updatedAt)}
                       </td>
                     </tr>
                   ))
@@ -313,44 +234,195 @@ export function Leads() {
             </table>
           </div>
         )}
-      </Card>
+      </div>
 
       {/* Pagination */}
       {!isLoading && !isError && leads.length > 0 && totalPages > 1 && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingTop: '4px',
-          }}
-          aria-label="Pagination"
-        >
-          <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-            Page {page} of {totalPages}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBlockStart: '16px' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12.5px', color: 'var(--text-tertiary)' }}>
+            {t('leads.pagination.pageOf', { page, total: totalPages })}
           </span>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              aria-label="Previous page"
-            >
-              <ChevronLeft size={14} strokeWidth={1.5} /> Prev
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              aria-label="Next page"
-            >
-              Next <ChevronRight size={14} strokeWidth={1.5} />
-            </Button>
+            <PageBtn disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+              {t('leads.pagination.prev')}
+            </PageBtn>
+            <PageBtn disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+              {t('leads.pagination.next')}
+            </PageBtn>
           </div>
         </div>
       )}
+
+      {selected && <LeadDrawer lead={selected} onClose={() => setSelected(null)} />}
+    </div>
+  )
+}
+
+function PageBtn({ children, disabled, onClick }: { children: React.ReactNode; disabled?: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        fontFamily: 'var(--font-body)',
+        fontSize: '13px',
+        fontWeight: 600,
+        padding: '8px 15px',
+        borderRadius: '10px',
+        border: '1px solid var(--border-default)',
+        background: 'var(--surface-card)',
+        color: disabled ? 'var(--text-tertiary)' : 'var(--text-primary)',
+        cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+type TimelineItem =
+  | { kind: 'message'; at: string; direction: 'inbound' | 'outbound'; content: string }
+  | { kind: 'meeting'; at: string; status: string }
+
+function LeadDrawer({ lead, onClose }: { lead: LeadFull; onClose: () => void }) {
+  const { t, i18n } = useTranslation()
+  const isHebrew = i18n.language.startsWith('he')
+  const { data, isLoading, isError } = useLeadDetail(lead.id)
+
+  const items: TimelineItem[] = []
+  if (data) {
+    // Guard against a partial/malformed payload — a missing array must degrade to an empty
+    // timeline, never blank the whole app with a "not iterable" throw.
+    for (const m of data.messages ?? []) items.push({ kind: 'message', at: m.createdAt, direction: m.direction === 'inbound' ? 'inbound' : 'outbound', content: m.content })
+    for (const s of data.scheduledCalls ?? []) items.push({ kind: 'meeting', at: s.scheduledAt, status: s.status })
+    items.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+  }
+
+  const secLabel: React.CSSProperties = {
+    fontFamily: 'var(--font-mono)',
+    fontSize: '10.5px',
+    letterSpacing: isHebrew ? 'normal' : '0.1em',
+    textTransform: isHebrew ? 'none' : 'uppercase',
+    color: 'var(--text-tertiary)',
+    marginBlockEnd: '10px',
+  }
+  const time = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 55, background: 'rgba(8,12,26,0.42)' }} aria-hidden />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label={lead.name ?? 'Lead detail'}
+        style={{
+          position: 'fixed',
+          insetBlock: 0,
+          insetInlineEnd: 0,
+          zIndex: 60,
+          inlineSize: 'min(460px, 100vw)',
+          background: 'var(--surface-card)',
+          borderInlineStart: '1px solid var(--border-default)',
+          boxShadow: 'var(--shadow-overlay)',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <div style={{ padding: '18px 20px', borderBlockEnd: '1px solid var(--border-default)', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+          <div style={{ flex: 1, minInlineSize: 0 }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '18px', color: 'var(--text-primary)' }} dir="auto">
+              {lead.name ?? lead.email ?? '—'}
+            </div>
+            <div style={{ marginBlockStart: '8px' }}>
+              <StatusChip status={lead.status} label={t(`status.${lead.status}`, lead.status)} />
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label={t('leads.drawer.close')}
+            style={{ inlineSize: '34px', blockSize: '34px', display: 'grid', placeItems: 'center', borderRadius: '9px', border: '1px solid var(--border-default)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', flexShrink: 0 }}
+          >
+            <X size={17} strokeWidth={1.8} />
+          </button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '22px' }}>
+          {/* facts */}
+          <div>
+            <div style={secLabel}>{t('leads.drawer.facts')}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <Fact label={t('leads.drawer.channel')} value={lead.channel ? t(`channels.${lead.channel}`, lead.channel) : null} />
+              <Fact label={t('leads.drawer.score')} value={lead.score != null ? String(lead.score) : null} />
+              <Fact label={t('leads.drawer.email')} value={lead.email} ltr />
+              <Fact label={t('leads.drawer.phone')} value={lead.phone} ltr />
+            </div>
+          </div>
+
+          {/* timeline */}
+          <div>
+            <div style={secLabel}>{t('leads.drawer.timeline')}</div>
+            {isError ? (
+              <p role="alert" style={{ color: 'var(--status-danger)', fontSize: '13.5px' }}>{t('leads.drawer.loadError')}</p>
+            ) : isLoading ? (
+              <Skeleton width="100%" height="80px" />
+            ) : items.length === 0 ? (
+              <p style={{ fontSize: '12.5px', color: 'var(--text-tertiary)' }}>{t('leads.drawer.empty')}</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {items.map((it, i) =>
+                  it.kind === 'meeting' ? (
+                    <div key={i} style={{ ...CARD, background: 'var(--surface-sunken)', boxShadow: 'none', padding: '11px 13px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ inlineSize: '28px', blockSize: '28px', borderRadius: '8px', display: 'grid', placeItems: 'center', background: 'var(--accent-tint)', color: 'var(--accent-fg)', flexShrink: 0 }}>
+                        <CalendarDays size={15} strokeWidth={1.7} />
+                      </span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{t('leads.drawer.meeting')}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{formatDate(it.at)}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: it.direction === 'outbound' ? 'flex-start' : 'flex-end' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                        {it.direction === 'outbound' ? t('leads.drawer.agent') : t('leads.drawer.lead')} · <span style={{ fontFamily: 'var(--font-mono)' }}>{time(it.at)}</span>
+                      </span>
+                      <span
+                        dir="auto"
+                        style={{
+                          fontSize: '13.5px',
+                          lineHeight: 1.55,
+                          color: 'var(--text-primary)',
+                          background: it.direction === 'outbound' ? 'var(--surface-sunken)' : 'var(--accent-tint)',
+                          border: '1px solid var(--border-default)',
+                          borderRadius: '12px',
+                          padding: '9px 13px',
+                          maxInlineSize: '88%',
+                        }}
+                      >
+                        {it.content}
+                      </span>
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </aside>
+    </>
+  )
+}
+
+function Fact({ label, value, ltr }: { label: string; value?: string | null; ltr?: boolean }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', justifyContent: 'space-between', paddingBlock: '7px', borderBlockEnd: '1px solid var(--border-default)' }}>
+      <span style={{ fontSize: '12.5px', color: 'var(--text-tertiary)', flexShrink: 0 }}>{label}</span>
+      <span
+        style={{ fontSize: '13.5px', color: value ? 'var(--text-primary)' : 'var(--text-tertiary)', textAlign: 'end', fontFamily: ltr ? 'var(--font-mono)' : 'inherit' }}
+        dir={ltr ? 'ltr' : 'auto'}
+      >
+        {value ?? '—'}
+      </span>
     </div>
   )
 }

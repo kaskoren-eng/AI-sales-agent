@@ -1,32 +1,46 @@
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Assistant:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Rubik:wght@500;600;700&family=Assistant:wght@400;600;700&display=swap');
 @import "tailwindcss";
 
+/* =========================================================================
+   v5 "cool technical" tokens — brand_assets/keren-brand-brief-v5.md
+   §1.1 (light) + §1.2 (dark). The ONLY place colour values live. Full
+   light/dark via data-theme on <html>. Replaces the retired v4 cream+glass.
+   ========================================================================= */
 :root {
-  --bg-primary:        #0B132B;
-  --bg-surface:        #1C2541;
-  --bg-elevated:       #1F2A4A;
-  --bg-inset:          #060A1A;
-  --accent-cyan:       #00F5FF;
-  --accent-cyan-dim:   #00B8C2;
-  --accent-violet:     #6366F1;
-  --accent-violet-dim: #4F46E5;
-  --text-primary:      #F0F4FF;
-  --text-secondary:    #A0AEC0;
-  --text-muted:        #6B7280;
-  --text-disabled:     #4A5568;
-  --text-on-cyan:      #0B132B;
-  --success:           #10B981;
-  --warning:           #F59E0B;
-  --error:             #EF4444;
-  --info:              #3B82F6;
-  --border-subtle:     rgba(255, 255, 255, 0.08);
-  --border-default:    rgba(255, 255, 255, 0.12);
-  --border-strong:     rgba(255, 255, 255, 0.20);
-  --focus-ring:        #00F5FF;
-  --duration-fast:     150ms;
-  --duration-base:     220ms;
-  --duration-slow:     400ms;
-  --ease-standard:     cubic-bezier(0.4, 0, 0.2, 1);
+  --surface-page:#EDF0F6; --surface-card:#FFFFFF; --surface-sunken:#E4E9F1; --surface-overlay:#FFFFFF;
+  --text-primary:#0C1226; --text-secondary:#5B667E; --text-tertiary:#7A8598; --text-on-accent:#FFFFFF;
+  --border-default:#D9E0EA; --border-strong:#C3CDDB;
+  --accent:#2F35C7; --accent-hover:#252AB3; --accent-tint:#EAEAFB; --accent-fg:#2F35C7;
+  --data-1:#2F35C7; --data-2:#D9861B; --data-2-glow:#F2B24E; --data-2-tint:#FCF0DC;
+  --status-success:#1B7F5A; --status-warning:#9A5D0F; --status-danger:#C0392B; --status-neutral:#5B667E;
+
+  --r-sm:8px; --r:14px; --r-lg:22px; --r-full:999px; --container-max:1180px;
+  --shadow-card:0 1px 2px rgba(12,18,38,.04), 0 8px 24px rgba(12,18,38,.06);
+  --shadow-overlay:0 2px 4px rgba(12,18,38,.06), 0 24px 60px rgba(12,18,38,.16);
+
+  --font-display:"Bricolage Grotesque","Rubik",system-ui,sans-serif;
+  --font-body:"Instrument Sans","Assistant",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono","Assistant",ui-monospace,monospace;
+
+  /* Motion (palette-agnostic, unchanged) */
+  --duration-fast:150ms; --duration-base:220ms; --duration-slow:400ms; --glow:1600ms;
+  --ease-standard:cubic-bezier(0.4, 0, 0.2, 1);
+  /* v5 aliases used by new shell code */
+  --dur-fast:var(--duration-fast); --dur-base:var(--duration-base); --ease:var(--ease-standard);
+
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --surface-page:#0A0F20; --surface-card:#141B31; --surface-sunken:#070B17; --surface-overlay:#1A2240;
+  --text-primary:#EDF0F6; --text-secondary:#A2A9BC; --text-tertiary:#767E93; --text-on-accent:#FFFFFF;
+  --border-default:#232941; --border-strong:#333B57;
+  --accent:#2F35C7; --accent-fg:#8B90F0; --accent-hover:#3A41D8; --accent-tint:#1B2145;
+  --data-1:#6E74E8; --data-2:#F2B24E; --data-2-glow:#F8CC85; --data-2-tint:#2A2113;
+  --status-success:#3FB88C; --status-warning:#E0A64E; --status-danger:#E86A5E; --status-neutral:#A2A9BC;
+  --shadow-card:0 0 0 1px rgba(0,0,0,0), 0 8px 24px rgba(0,0,0,.24);
+  --shadow-overlay:0 2px 4px rgba(0,0,0,.3), 0 24px 60px rgba(0,0,0,.5);
+  color-scheme: dark;
 }
 
 *, *::before, *::after {
@@ -37,12 +51,13 @@
 
 html, body {
   height: 100%;
-  background-color: var(--bg-primary);
+  background-color: var(--surface-page);
   color: var(--text-primary);
-  font-family: 'Assistant', system-ui, sans-serif;
-  font-size: 16px;
+  font-family: var(--font-body);
+  font-size: 15px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color var(--duration-base) var(--ease-standard), color var(--duration-base) var(--ease-standard);
 }
 
 #root {
@@ -50,24 +65,109 @@ html, body {
   min-height: 100vh;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+/* --- Flat card material (v5). No glass, no blur, no glow: depth is border + a soft shadow.
+   .glass / .glass-solid are kept as aliases so existing consumers render as flat cards. --- */
+.glass, .glass-solid {
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-card);
 }
 
-button {
-  font-family: inherit;
-  cursor: pointer;
+/* --- Hebrew typography (brief v5 §4). Rubik/Assistant cover Hebrew; body inherits. --- */
+:lang(he) {
+  font-family: 'Rubik', 'Assistant', system-ui, sans-serif;
 }
+
+/* Uppercase + wide tracking are meaningless in Hebrew — neutralize wherever set. */
+:lang(he) .display,
+:lang(he) h1,
+:lang(he) h2,
+[lang="he"] .uppercase-track {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* --- RTL directional icons (brief §2). Decorative icons must NOT get this class. --- */
+[dir="rtl"] .flip-rtl {
+  transform: scaleX(-1);
+}
+
+/* Overview KPI row: 2-up on phones, 3-up on tablets, 6-up on wide. */
+.kpi-grid { grid-template-columns: repeat(2, 1fr); }
+@media (min-width: 640px) { .kpi-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1000px) { .kpi-grid { grid-template-columns: repeat(6, 1fr); } }
+
+/* Overview bottom row: chart + activity side by side on wide screens, stacked on narrow. */
+.ov-bottom { grid-template-columns: 1fr; }
+@media (min-width: 900px) { .ov-bottom { grid-template-columns: 1.5fr 1fr; } }
+
+/* Settings: folk left rail + content pane, stacked on narrow. */
+.set-grid { grid-template-columns: 1fr; }
+@media (min-width: 860px) { .set-grid { grid-template-columns: 244px 1fr; } }
+
+/* --- App shell responsiveness -------------------------------------------------
+   Desktop: sidebar is a sticky 240px column. Mobile (<900px): it becomes an
+   off-canvas drawer toggled by the top-bar hamburger, and the page never scrolls
+   sideways. Structural styles live here (not inline) so the media query can win. */
+.app-shell { display: flex; min-height: 100vh; background: var(--surface-page); }
+.app-sidebar {
+  width: 240px; min-width: 240px; height: 100vh;
+  position: sticky; top: 0; z-index: 40;
+  display: flex; flex-direction: column;
+  background: var(--surface-card);
+  border-inline-end: 1px solid var(--border-default);
+  overflow: hidden;
+}
+.app-content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.app-main { flex: 1; padding: 28px; overflow-y: auto; }
+.app-menu-btn { display: none; }
+.app-scrim { display: none; }
+
+@media (max-width: 899px) {
+  .app-sidebar {
+    position: fixed; inset-block: 0; inset-inline-start: 0;
+    transform: translateX(-100%);
+    transition: transform var(--duration-base) var(--ease-standard);
+    box-shadow: var(--shadow-overlay); z-index: 60;
+  }
+  [dir="rtl"] .app-sidebar { transform: translateX(100%); }
+  .app-sidebar.is-open { transform: translateX(0); }
+  .app-scrim.is-open {
+    display: block; position: fixed; inset: 0;
+    background: rgba(0,0,0,.45); z-index: 55;
+  }
+  .app-menu-btn { display: inline-flex; }
+  .app-main { padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .app-sidebar { transition: none; } }
+
+/* Hide the wide presence pill on small screens so the top bar doesn't crowd. */
+@media (max-width: 639px) { .topbar-presence { display: none !important; } }
+
+/* Pipeline strip scrolls horizontally on phones instead of squashing 5 stages. */
+.pipeline-scroll { overflow-x: auto; }
+.pipeline-grid { display: grid; grid-template-columns: repeat(5, minmax(116px, 1fr)); min-width: 560px; }
+@media (min-width: 720px) { .pipeline-grid { min-width: 0; } }
+
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; }
 
 :focus-visible {
-  outline: 2px solid var(--focus-ring);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
+}
+
+/* Presence dot — the one animated element in the shell (brief v5). */
+@keyframes presence-pulse {
+  0% { transform: scale(1); opacity: .5; }
+  70% { transform: scale(2.1); opacity: 0; }
+  100% { opacity: 0; }
 }
 
 @keyframes pulse-dot {
@@ -79,6 +179,11 @@ button {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* Simulator orb — the page's signature animation, only while a test call is active. */
+@keyframes orb-breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+.sim-orb-active { animation: orb-breathe 2.4s var(--ease-standard) infinite; }
+@media (prefers-reduced-motion: reduce) { .sim-orb-active { animation: none; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

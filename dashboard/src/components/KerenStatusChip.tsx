@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { X, Phone, Users, CalendarDays } from 'lucide-react'
 import * as Dialog from '@radix-ui/react-dialog'
 
@@ -25,36 +26,37 @@ const typeIcon: Record<ActivityEntry['type'], React.ReactNode> = {
 }
 
 const typeColor: Record<ActivityEntry['type'], string> = {
-  call: 'var(--accent-cyan)',
-  lead: 'var(--accent-violet)',
-  booking: 'var(--success)',
+  call: 'var(--accent-fg)',
+  lead: 'var(--data-1)',
+  booking: 'var(--status-success)',
 }
 
-export function DanieStatusChip() {
+export function KerenStatusChip() {
   const [open, setOpen] = useState(false)
+  const { t } = useTranslation()
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
         <button
-          aria-label="View Danie activity — agent is active"
+          aria-label={t('sidebar.viewActivity')}
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
             padding: '8px 12px',
             borderRadius: '8px',
-            border: '1px solid rgba(0, 245, 255, 0.2)',
-            backgroundColor: 'rgba(0, 245, 255, 0.05)',
+            border: '1px solid rgba(15, 163, 172, 0.2)',
+            backgroundColor: 'rgba(15, 163, 172, 0.05)',
             cursor: 'pointer',
             width: '100%',
             transition: `background-color var(--duration-fast) var(--ease-standard)`,
           }}
           onMouseEnter={(e) => {
-            ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(0, 245, 255, 0.1)'
+            ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(15, 163, 172, 0.1)'
           }}
           onMouseLeave={(e) => {
-            ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(0, 245, 255, 0.05)'
+            ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(15, 163, 172, 0.05)'
           }}
         >
           {/* Pulsing dot */}
@@ -63,7 +65,7 @@ export function DanieStatusChip() {
               width: '8px',
               height: '8px',
               borderRadius: '50%',
-              backgroundColor: 'var(--accent-cyan)',
+              backgroundColor: 'var(--accent-fg)',
               flexShrink: 0,
               animation: 'pulse-dot 2s ease-in-out infinite',
             }}
@@ -73,11 +75,11 @@ export function DanieStatusChip() {
             style={{
               fontSize: '12px',
               fontWeight: 600,
-              color: 'var(--accent-cyan)',
-              fontFamily: "'Assistant', sans-serif",
+              color: 'var(--accent-fg)',
+              fontFamily: 'var(--font-body)',
             }}
           >
-            Danie is active
+            {t('sidebar.kerenActive')}
           </span>
         </button>
       </Dialog.Trigger>
@@ -94,13 +96,13 @@ export function DanieStatusChip() {
         <Dialog.Content
           style={{
             position: 'fixed',
-            left: '248px',
+            insetInlineStart: '248px',
             bottom: '20px',
             width: '320px',
-            backgroundColor: 'var(--bg-surface)',
+            backgroundColor: 'var(--surface-card)',
             border: '1px solid var(--border-default)',
             borderRadius: '12px',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            boxShadow: '0 8px 32px rgba(38, 37, 36, 0.18)',
             zIndex: 51,
             overflow: 'hidden',
           }}
@@ -109,7 +111,7 @@ export function DanieStatusChip() {
           <div
             style={{
               padding: '16px 16px 12px',
-              borderBottom: '1px solid var(--border-subtle)',
+              borderBottom: '1px solid var(--border-default)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -117,7 +119,7 @@ export function DanieStatusChip() {
           >
             <Dialog.Title
               style={{
-                fontFamily: "'Montserrat', sans-serif",
+                fontFamily: 'var(--font-display)',
                 fontWeight: 700,
                 fontSize: '13px',
                 letterSpacing: '0.06em',
@@ -125,11 +127,11 @@ export function DanieStatusChip() {
                 color: 'var(--text-primary)',
               }}
             >
-              Recent Activity
+              {t('sidebar.recentActivity')}
             </Dialog.Title>
             <Dialog.Close asChild>
               <button
-                aria-label="Close activity panel"
+                aria-label={t('sidebar.closeActivity')}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -139,7 +141,7 @@ export function DanieStatusChip() {
                   borderRadius: '6px',
                   border: 'none',
                   backgroundColor: 'transparent',
-                  color: 'var(--text-muted)',
+                  color: 'var(--text-tertiary)',
                   cursor: 'pointer',
                 }}
               >
@@ -149,7 +151,7 @@ export function DanieStatusChip() {
           </div>
 
           <p id="activity-desc" className="sr-only">
-            Last 5 activity entries from Danie
+            {t('sidebar.activityDescription')}
           </p>
 
           <ul
@@ -164,7 +166,7 @@ export function DanieStatusChip() {
                   display: 'flex',
                   alignItems: 'flex-start',
                   gap: '10px',
-                  borderBottom: '1px solid var(--border-subtle)',
+                  borderBottom: '1px solid var(--border-default)',
                 }}
               >
                 <span
@@ -188,7 +190,7 @@ export function DanieStatusChip() {
                   <p style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.4 }}>
                     {entry.text}
                   </p>
-                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
                     {entry.time}
                   </p>
                 </div>

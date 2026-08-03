@@ -30,7 +30,7 @@ const INTEGRATIONS: Integration[] = [
   {
     id: 'voice',
     name: 'Voice',
-    description: 'AI voice calls via Twilio + ElevenLabs',
+    description: 'Hebrew-first AI voice calls — Zadarma SIP + Retell, migrating to LiveKit + Cartesia',
     icon: <Phone size={24} strokeWidth={1.5} />,
     status: 'not_configured',
   },
@@ -73,20 +73,20 @@ const INTEGRATIONS: Integration[] = [
 
 const iconColor: Record<Integration['id'], string> = {
   whatsapp: '#25D366',
-  email: 'var(--info)',
-  voice: 'var(--accent-cyan)',
+  email: 'var(--data-1)',
+  voice: 'var(--accent-fg)',
   monday: '#F62B54',
   google_sheets: '#34A853',
   google_calendar: '#4285F4',
-  trafft: 'var(--accent-violet)',
-  csv_import: 'var(--warning)',
+  trafft: 'var(--data-1)',
+  csv_import: 'var(--status-warning)',
 }
 
 export function Integrations() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <p style={{ fontSize: '14px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-        Connect your channels and third-party tools. Each integration extends Danie's reach and capabilities.
+      <p style={{ fontSize: '14px', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+        Connect your channels and third-party tools. Each integration extends Keren's reach and capabilities.
       </p>
 
       <div
@@ -99,7 +99,7 @@ export function Integrations() {
         aria-label="Available integrations"
       >
         {INTEGRATIONS.map((integration) => {
-          const color = iconColor[integration.id] ?? 'var(--accent-violet)'
+          const color = iconColor[integration.id] ?? 'var(--data-1)'
           return (
             <Card
               key={integration.id}
@@ -136,7 +136,7 @@ export function Integrations() {
               <div style={{ flex: 1 }}>
                 <h3
                   style={{
-                    fontFamily: "'Montserrat', sans-serif",
+                    fontFamily: 'var(--font-display)',
                     fontWeight: 700,
                     fontSize: '14px',
                     color: 'var(--text-primary)',
@@ -145,7 +145,7 @@ export function Integrations() {
                 >
                   {integration.name}
                 </h3>
-                <p style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
                   {integration.description}
                 </p>
               </div>

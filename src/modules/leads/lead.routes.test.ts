@@ -75,13 +75,26 @@ describe('lead routes', () => {
 
   it('GET / lists leads', async () => {
     const db = createMockDb();
-    db.select.mockReturnValue(makeQueryBuilder([SAMPLE_LEAD]));
+    // list() issues two selects: count first, then the page of data
+    const countBuilder: any = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([{ value: 1 }]),
+    };
+    const dataBuilder: any = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      offset: vi.fn().mockResolvedValue([SAMPLE_LEAD]),
+    };
+    db.select.mockReturnValueOnce(countBuilder).mockReturnValueOnce(dataBuilder);
 
     app = await buildTestApp(withLeadRoutes(db));
 
     const res = await app.inject({ method: 'GET', url: '/api/v1/leads', headers: AUTH });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toHaveLength(1);
+    expect(res.json().data).toHaveLength(1);
+    expect(res.json().meta).toEqual({ page: 1, limit: 20, total: 1, total_pages: 1 });
   });
 
   it('GET /:id returns the lead', async () => {

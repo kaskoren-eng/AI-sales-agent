@@ -3,6 +3,9 @@ import type { HTMLAttributes, ReactNode } from 'react'
 interface CardProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode
   padding?: 'none' | 'sm' | 'md' | 'lg'
+  /** 'glass' (default) blurs the cream behind it; 'solid' is opaque — use for rows
+   *  inside a scroll container, where blur kills 60fps (brief §1 glass rules). */
+  variant?: 'glass' | 'solid'
 }
 
 const paddingMap = {
@@ -12,15 +15,13 @@ const paddingMap = {
   lg: '28px',
 }
 
-export function Card({ children, padding = 'md', style, className = '', ...props }: CardProps) {
+export function Card({ children, padding = 'md', variant = 'glass', style, className = '', ...props }: CardProps) {
+  const glassClass = variant === 'solid' ? 'glass-solid' : 'glass'
   return (
     <div
-      className={className}
+      className={`${glassClass} ${className}`.trim()}
       style={{
-        backgroundColor: 'var(--bg-surface)',
-        border: '1px solid var(--border-default)',
-        borderRadius: '12px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.3), 0 1px 8px rgba(0,0,0,0.2)',
+        // material (bg/border/radius) comes from the .glass class; no shadow on glass
         padding: paddingMap[padding],
         ...style,
       }}

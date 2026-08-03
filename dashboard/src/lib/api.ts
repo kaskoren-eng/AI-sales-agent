@@ -5,6 +5,7 @@ import type {
   CallDetail,
   LeadsFilters,
   LeadsListResponse,
+  LeadTimelineResponse,
   BookingsListResponse,
   TenantMe,
 } from './types.js'
@@ -36,8 +37,45 @@ export function fetchLeads(filters: LeadsFilters = {}): Promise<LeadsListRespons
   return apiFetch<LeadsListResponse>(`/leads${qs ? `?${qs}` : ''}`)
 }
 
+export function fetchLeadTimeline(id: string): Promise<LeadTimelineResponse> {
+  return apiFetch<LeadTimelineResponse>(`/leads/${id}/timeline`)
+}
+
+export function updateLead(
+  id: string,
+  patch: { name?: string | null; email?: string | null; phone?: string | null; status?: string; score?: number | null },
+): Promise<LeadTimelineResponse['lead']> {
+  return apiFetch(`/leads/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
+}
+
 export function fetchBookings(): Promise<BookingsListResponse> {
   return apiFetch<BookingsListResponse>('/scheduling/bookings')
+}
+
+// --- Dashboard metrics (Overview KPIs, pipeline, quality, trend) ---
+
+export interface MetricsSummary {
+  range: 'today' | 'd7' | 'd30'
+  from: string
+  to: string
+  days: number
+  kpis: {
+    leadsTotal: number
+    qualified: number
+    booked: number
+    callsTotal: number
+    callsInRange: number
+    qualityScore: number | null
+  }
+  pipeline: Record<string, number>
+  series: Array<{ date: string; leads: number; calls: number }>
+}
+
+export function fetchMetricsSummary(range: 'today' | 'd7' | 'd30'): Promise<MetricsSummary> {
+  return apiFetch<MetricsSummary>(`/metrics/summary?range=${range}`)
 }
 
 export function fetchTenantMe(): Promise<TenantMe> {

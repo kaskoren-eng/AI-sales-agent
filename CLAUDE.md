@@ -1,10 +1,119 @@
 # AI Sales Agent
 
-Multi-channel AI sales agent (WhatsApp, Email, Voice) that qualifies leads and books calls via Google Calendar (or Trafft).
+Multi-channel AI sales agent (WhatsApp, Email, Voice) that qualifies leads and books meetings via Google Calendar (a Trafft provider also exists, unused).
+
+## Brand — ClickScales Voice Agent Platform (internal codename: KEREN)
+
+- **Company:** ClickScales · **Product:** a multi-tenant voice AI agent platform — **the
+  product is NOT named "KEREN"**. Platform branding (sidebar, login, billing) is ClickScales
+  until a product name is chosen. **KEREN (קרן) is ClickScales' own agent** and the sample
+  persona in all docs — wherever a doc says "Keren", read: the agent this tenant named.
+- **Every tenant names their own agent at onboarding (mandatory, no default).** The UI never
+  hardcodes an agent name: all agent-mentioning strings interpolate `{agentName}`, and
+  Hebrew strings carry gender variants ("קרן סיימה" / "דניאל סיים") driven by the agent's
+  configured gender. Agent persona (name, gender, voice) is a tenant setting — proposed key
+  `agent_persona`, **VOICE-owned** (selects TTS voice + prompt grammar), DASHBOARD reads for
+  display. Claim in the key-claims list before use; cross-workstream contract, do not
+  improvise.
+- **Two language settings, never collapsed into one:**
+  - **Agent spoken language (VOICE-owned): Hebrew first.** Keren speaks Hebrew to leads by
+    default, English on switch. This is the product — the entire Retell→LiveKit migration
+    exists because Retell's human-sounding features are unavailable in Hebrew. Nothing in
+    the dashboard changes this.
+  - **Dashboard interface language (DASHBOARD-owned): English default**, Hebrew available
+    via toggle. `<html lang="en" dir="ltr">`, English is the i18n source, `he.json` is the
+    translation. Never derive one setting from the other. If a `tenants.settings` key is
+    ever needed for interface language it is `ui_locale` — never `language` — and it must
+    be claimed in this file's key-claims list before use.
+- **"Danie" is deprecated.** `brand_assets/brand_identity` (v2) and brief v3 are superseded
+  by `brand_assets/keren-brand-brief-v5.md` — the single source of truth for all dashboard
+  design work (tokens, typography, light/dark theming, i18n/RTL rules, component DoD).
+  v3 stays in git history; v5 §12 defines exactly what changed and why the number skips
+  ("v4" internally meant the dead cream palette — never reuse it).
+- Palette is the **cool technical** system derived from the ClickScales landing page —
+  flat cool surfaces, indigo accent, mono for data, zero gradients, full light/dark toggle
+  (`data-theme` on `<html>`). The cream/glass direction is dead; do not reintroduce it.
+- Dashboard is **bilingual (HE+EN) from day one**: react-i18next, all UI strings via
+  `t('...')`, CSS logical properties only, `dir="auto"` on all user content. English
+  primary must not become Hebrew broken — no page is done until reviewed in Hebrew.
+  See brief v5 §4.
+
+## Parallel workstreams — see ⚠️ TERRITORY RULES below (single source of truth)
+
+An earlier version of this section contradicted the TERRITORY RULES on `src/modules/calls/` and `src/modules/leads/` ownership. **The TERRITORY RULES section below is canonical.** Resolution of the contradiction: within `calls/` and `leads/`, ownership splits by file role — VOICE owns services/workers/guards, DASHBOARD owns/extends API routes additively (details below).
+
+### Dev servers — shared machine rules
+
+- Ports: API `:3000` and dashboard `:3001` belong to the **voice session**; the **dashboard session** runs its own dashboard instance on `:3002` (`npm run dev -- --port 3002`).
+- **Never kill or restart a dev server you didn't start** — the other session may be mid-test. If a server looks stale, say so in your summary and let Koren decide.
+- The vite proxy default is the LOCAL backend (`http://localhost:3000`). Pointing a dev dashboard at production requires an explicit `VITE_PROXY_TARGET=` — never make prod the default (dev clicks mutate real data: lead status PATCH, booking cancel, API-key regeneration).
+
+### Session handoffs (inter-agent communication)
+
+- At the END of every session, write a short summary to `docs/handoffs/YYYY-MM-DD-<workstream>.md`: what shipped (commits), what's blocked, open questions. The architect session (Cowork) reads these directly — Koren should not need to copy-paste.
+- If you're blocked on a DECISION (not a bug), write it under an "Questions for architect" heading in your handoff file and move on to unblocked work. Don't guess on cross-workstream contracts.
 
 ## Stack
 
 TypeScript + Fastify 5 + Drizzle ORM + PostgreSQL + Redis + BullMQ + Zod + OpenAI gpt-5.4
+
+## ⚠️ PARALLEL WORKSTREAMS — TERRITORY RULES (two Claude Code sessions on this repo)
+
+Two agents work this repo simultaneously. Respect your lane:
+
+**VOICE agent** — owns: `src/modules/channels/voice-livekit/**`, `src/modules/channels/whatsapp/**` (window/consent logic), `src/queues/workers/meeting-reminders*`, `src/modules/scheduling/**` (may extend), `docs/phase-4-*`, `docs/go-live-plan.md`. Branches: `feature/voice-livekit-*`, `feature/meeting-reminders`.
+
+**DASHBOARD agent** — owns: `dashboard/**`, `src/modules/admin/**`, `src/modules/metrics/**`, `docs/phase-5-dashboard-*`, `brand_assets/**`. Branches: `feature/dashboard-*`.
+
+**WEBSITE** — `website/**` (marketing site + Netlify functions). De-facto third territory; whoever picks it up says so. Branch: `feature/website-*`.
+
+**SPLIT-OWNERSHIP modules (`src/modules/calls/**`, `src/modules/leads/**`):**
+- VOICE owns **services / workers / guards** (call-analysis, spend-guard, monitor, lead upsert logic)
+- DASHBOARD owns/extends **API routes** (`calls.routes.ts`, `leads` timeline endpoint) — additively, read-only queries
+- Neither rewrites the other's files in these modules; both announce schema-adjacent changes here first
+
+**SHARED FILES — collision zone. Special rules apply:**
+- `src/config/env.ts`, `.env.example`, `package.json`, `server.ts`, `src/plugins/**` — additive-only edits; never reorder/reformat existing lines; pull/rebase before editing.
+- `src/db/schema/**` + migrations — **migration numbers are claimed in the table below BEFORE generating.** Never renumber someone else's migration.
+- `CLAUDE.md`, `tenants` settings keys — announce in the claims lists below before changing.
+
+**Migration number claims:** 0004 = leads whatsapp fields (VOICE, applied) · 0005 = scheduled_calls.reminders (VOICE, applied) · next free: 0006.
+
+**tenants.settings key claims:** `voice_engine` (VOICE) · `functions_enabled` (VOICE) · `whatsapp_templates` (VOICE) · `toll_fraud` (VOICE) · `reminders` (VOICE) · `crm_sync` (VOICE, Workstream B) · `businessProfile` (shared) · `zadarma` (VOICE) · `monday` (shared) · `airtable` (shared) · `flows` (pre-existing, shared) · `billing_provider` (reserved, Workstream D) · `agent_persona` (**proposed, VOICE-owned, not yet claimed** — agent name/gender/voice; see Brand section) · `ui_locale` (**reserved** for dashboard interface language — never `language`). New keys → add here in the same commit.
+
+**Rules of engagement:**
+1. NEVER edit files in the other agent's territory — if you think you must, STOP and tell Koren why.
+2. NEVER commit to the other agent's branches; never merge/rebase their branches.
+3. Before touching a shared file: `git fetch` + check the other branch for pending changes to that file (`git diff main...<other-branch> -- <file>`). Conflict likely → coordinate via Koren.
+4. If you find uncommitted changes you didn't make — do NOT revert/stash them. They're the other agent's work. Tell Koren.
+5. New tenants.settings keys: check this section's claims first, add your key to the claims list in the same commit.
+6. `npm install`: announce new deps in commit message clearly (`deps: add X for Y`) — the other agent must `npm install` after pulling.
+
+## Current initiative — Launch
+
+The voice engine migration is **complete and live in production since 2026-07-29** (ClickScales tenant `613d826c`). The current work is closing the launch gates:
+
+- **Workstream B — CRM automation:** built + tested, **unmerged** on `feature/crm-automation`. Merge gate: one real call whose outcome lands in a connected CRM.
+- **Workstream C — conversation state machine + reflexes:** built + tested, **unmerged** on the same branch. Four behaviours need a live PSTN call to verify.
+- **Website go-live:** `website/netlify/functions/lead.js` is deployed but inert, awaiting the flip.
+- **Verification:** Layer 6 of `docs/phase-6-verification-checklist.md` — 10 real calls. Only 4 production calls so far, all internal.
+
+⚠️ **`master` is ~140 commits behind** (last commit 2026-07-10). `feature/crm-automation` is the de-facto backend/voice trunk.
+
+### The voice stack, as built
+
+`src/modules/channels/voice-livekit/` — Zadarma SIP → LiveKit → **Soniox `stt-rt-v5`** (STT) → OpenAI `gpt-5.4` (LLM) → **Cartesia `sonic-3`** (TTS). Per-tenant `voice_engine` flag in `tenants.settings` (`'retell'` | `'livekit'`, env default still `'retell'`).
+
+Two divergences from the original plan that trip people up: **STT is Soniox, not OpenAI Realtime** (semantic WER 4.3% vs 34.9% on real Hebrew calls — don't "fix" it back), and **DeepDub is a fully built TTS alternative behind `VOICE_TTS_PROVIDER`** that is deliberately not the default despite winning a blind A/B 6:1.
+
+**Rationale for the migration:** Retell doesn't expose its human-sounding features (audio tags, prosody, emotion) for Hebrew — our primary target language. Direct-to-provider unlocks full Hebrew quality, cuts per-minute cost, and removes vendor lock-in.
+
+**Before touching any voice code, read in this order:**
+1. `VOICE_MIGRATION_PLAN.md` (project root) — the 7 phases, as-built corrections, and what postdates the plan
+2. `docs/voice-agent-development-methodology.md` — 10 non-negotiable rules for every voice commit
+3. `docs/hebrew-voice-agent-dev-plan.md` — Hebrew-specific stack, prompts, business logic for lead-booking use case
+4. `docs/retell-ai-dashboard-reference.md` — feature parity checklist (what Retell has, what we replicate, what we skip)
+5. `docs/voice-ai-learning-resources.md` — 30 curated engineering guides + case studies (start with Tier 1)
 
 ## Commands
 
@@ -17,8 +126,12 @@ TypeScript + Fastify 5 + Drizzle ORM + PostgreSQL + Redis + BullMQ + Zod + OpenA
 - `npm run db:studio` — Drizzle Studio (visual DB browser)
 - `docker compose up -d` — start Postgres + Redis
 - `node scripts/seed-tenant.mjs` — create first tenant + print ready-to-use API key
-- `npm run screenshot` — screenshot all dashboard routes → `screenshots/*.png` (dashboard dev server must be running on :3001)
+- `npm run screenshot` — screenshot all dashboard routes → `screenshots/*.png` (targets the **voice** session's dashboard on `:3001`)
+- `npm run screenshot:dash` — same, against the **dashboard** session's instance on `:3002`
 - `node scripts/screenshot.mjs <route>` — screenshot a single route (overview, calls, call-detail)
+- ⚠️ `scripts/screenshot.mjs` reads **`BASE_URL`**, not `PORT`. Setting `PORT=3002` silently screenshots `:3001` instead — use `screenshot:dash` or pass `BASE_URL=`.
+
+**Voice / ops scripts** (see `package.json` for the full list): `voice:dev` · `voice:connect` · `voice:test` · `stt:ab` · `stt:shadow` · `bench:tts` · `bench:llm` · `call:report` · `agent:deploy` · `agent:logs`
 
 ## Architecture
 
@@ -29,33 +142,39 @@ TypeScript + Fastify 5 + Drizzle ORM + PostgreSQL + Redis + BullMQ + Zod + OpenA
 - **ai-engine** is a service module (no routes) — consumed by channel workers and lead qualification
 - All DB tables have `tenant_id` — always filter by it, never skip tenant isolation
 - **Dead Letter Queue:** all 3 main workers move exhausted jobs to `dead-letter` queue
-- **Circuit breakers:** UChat, Retell, Monday, Google Calendar, Trafft, Airtable each have their own breaker (5 failures → 30s cooldown)
+- **Circuit breakers:** UChat, Retell, LiveKit, Cartesia, Monday, Google Calendar, Trafft, Airtable each have their own breaker (5 failures → 30s cooldown)
 
 ## DB Schema (7 tables)
 
 `tenants`, `leads`, `conversations`, `messages`, `scheduled_calls`, `import_jobs`, `call_learnings`
 
-- `call_learnings` — stores call recordings (Twilio conference monitoring / Retell), Whisper transcripts, GPT sales analysis, outcome labels (`won`/`lost`/`neutral`)
+- `call_learnings` — stores call recordings (LiveKit; legacy Twilio conference monitoring / Retell), Whisper transcripts, GPT sales analysis, outcome labels (`won`/`lost`/`neutral`)
 
-## Workers (5)
+## Workers (6)
 
 - `message-processor` — routes inbound messages, runs `qualifyLead()` after each exchange
 - `outbound-sender` — sends WhatsApp / Email outbound messages
 - `flow-executor` — runs multi-step automation flows with delays
 - `csv-import` — bulk lead creation from uploaded CSVs
-- `call-analysis` — downloads call recording → Whisper transcription → GPT sales analysis → injects learnings into future Retell agent dynamic variables
+- `call-analysis` — downloads call recording → Whisper transcription → GPT sales analysis → injects learnings into the voice-livekit system prompt. Also the hook point for CRM sync (Workstream B)
+- `meeting-reminders` — dispatches reminders before scheduled calls; DST-safe, quiet-hours aware, per-tenant `reminders` settings (migration 0005)
 
 ## Modules
 
-- `leads` — CRUD, status workflow, score, manual flow trigger
+- `leads` — CRUD, status workflow, score, manual flow trigger. `GET /:id/timeline` returns lead + conversations + messages + scheduled_calls in one call (consumed by the dashboard Lead Detail page at `/leads/:id`)
 - `channels/whatsapp` — UChat inbound/outbound, signature verification, 24h window fallback
 - `channels/email` — Resend inbound/outbound, svix signature verification
-- `channels/voice` — Zadarma (SIP number / caller ID) + Retell AI (agent/LLM) + Cartesia (TTS); outbound call initiation, learnings injection via Retell dynamic variables. Twilio retained only for conference-call monitoring
-- `scheduling` — Google Calendar (default provider), Trafft provider also available; slots query, booking, cancel
-- `integrations` — Monday.com (sync/push/webhook), CSV import, Google Sheets, Nango CRM
+- `channels/voice` — **[deprecated — NOT a rollback path]** Zadarma + Retell AI + Cartesia; outbound call initiation, learnings injection via Retell dynamic variables. The code is still on disk and the `voice_engine` flag still flips, but Retell is unmaintained here — fix forward, don't roll back. Twilio retained for the WhatsApp bridge and conference-call monitoring.
+- `channels/voice-livekit` — **[LIVE in production since 2026-07-29]** Self-built pipeline: Zadarma SIP inbound trunk → LiveKit Agents (Node.js SDK) → **Soniox `stt-rt-v5`** STT → OpenAI `gpt-5.4` LLM → **Cartesia `sonic-3`** TTS (DeepDub adapter available behind `VOICE_TTS_PROVIDER`). Six agent tools, conversation state machine + reflexes, speech-guard, compliance (recording notice + AI disclosure), per-call `CallReport`, browser web-call path for the dashboard Simulator. Enabled per tenant via `tenants.settings.voice_engine='livekit'`. Reuses `google-calendar.provider.ts`, `ai-engine.service.ts`, `SettingsService`, `CallAnalysisService`, `scheduled_calls` and `call_learnings`.
+- `scheduling` — Google Calendar (default provider, service account + Domain-Wide Delegation), Trafft provider also available; slots query, booking, cancel. ⚠️ **Known gap:** there is no `GET /scheduling/bookings` list endpoint, but the dashboard Calendar page calls one — it 404s today.
+- `integrations` — Monday.com (sync/push/webhook), Airtable, CSV import, Google Sheets, `crm-sync.service.ts` (post-call outcome + summary push, per-tenant `crm_sync`). *(Nango was removed.)*
+- `settings` — per-tenant settings read/write, business profile
+- `flows` — flow definitions consumed by the flow-executor worker
+- `metrics` — `GET /api/v1/metrics/summary?range=` — Overview KPIs, pipeline, quality, trend. Consumed by the dashboard Overview page.
 - `webhooks` — Meta Lead Ads, generic lead intake
-- `tenants` — create/read/update, API key generation, flow config storage
-- `calls` — list/detail/audio proxy for Retell calls
+- `tenants` — **self-service only** now (`/me` + self-guarded `/:id`). Cross-tenant powers moved to `admin`. `PATCH /me` added (name + settings). A tenant can no longer read/mutate another tenant or create tenants.
+- `admin` — **operator console (super-admin, cross-tenant).** Gated by `ADMIN_API_KEY` env (unset → every `/api/v1/admin/*` route 503s; the console is opt-in). Own scope in `server.ts` (NOT the per-tenant `authenticate` hook), IP-rate-limited, constant-time key check. Endpoints: `GET /overview` (system KPIs), `GET /tenants` (rollup), `GET /tenants/:id` (deep stats/usage), `POST /tenants` (create), `PATCH /tenants/:id` (rename / suspend via `isActive`), `POST /tenants/:id/rotate-key`. Frontend at `/admin/*` (separate shell + admin-key gate, `dashboard/src/pages/admin/**`). No schema change (reuses `tenants.isActive`). New env key: `ADMIN_API_KEY` (in `.env.example`). **MVP** — the Ops & health pillar (queue depths, DLQ, breaker states), real admin accounts and an operator audit log are all deferred.
+- `calls` — list/detail/audio proxy. Serves both legacy Retell calls and LiveKit calls (outbound, inbound and web-call; web-call rooms use a placeholder "Web simulator" lead since the list inner-joins leads)
 - `calls/monitor` — create Twilio conference calls for monitoring, label outcomes
 
 ## Frontend
@@ -79,3 +198,30 @@ TypeScript + Fastify 5 + Drizzle ORM + PostgreSQL + Redis + BullMQ + Zod + OpenA
 - Webhook endpoints verify signatures before processing
 - Replay attack protection on WhatsApp + lead-intake webhooks (`src/shared/webhook-timestamp.ts`, 5-min window)
 - Per-tenant rate limiting: 200 req/min per tenant in API scope
+
+## Reference documents
+
+All four root docs were refreshed on **2026-08-02** and are current as of that date.
+
+**Root-level (read first for voice work):**
+- `VOICE_MIGRATION_PLAN.md` — the 7 phases, as-built corrections, and "what postdates this plan" (read before any voice code change)
+- `PROJECT_STATUS.md` — phase + workstream status, known bugs, env checklist
+- `THIRD_PARTY_REPORT.md` — vendor inventory, who owns which key, cost model
+- `PRODUCT_ROADMAP.md` — shipped vs planned product surface, plus the raw wishlist log
+
+**`docs/` folder — voice reference set:**
+- `voice-agent-development-methodology.md` — 10 development principles (mandatory before writing voice code)
+- `hebrew-voice-agent-dev-plan.md` — 7-phase Hebrew agent build plan with per-phase prompts
+- `phase-4-known-issues.md` — tribal knowledge: levers that look worth pulling and aren't
+- `phase-6-verification-checklist.md` — the launch gates, layers 0–6 (Layer 0 green, 1–6 open)
+- `learnings-dreamserver-voice-agent.md` — postmortem lessons from an external LiveKit agent
+- `retell-ai-dashboard-reference.md` — Retell feature parity checklist *(Retell is deprecated; historical)*
+- `voice-ai-learning-resources.md` — 30 curated engineering guides & case studies with reading order
+
+**`docs/` subfolders:**
+- `handoffs/` — end-of-session summaries, one per workstream per day. ⚠️ Split across branches: the voice handoffs live on `feature/crm-automation`, the dashboard ones on `feature/website-clickscales-v2`.
+- `go-live-plan.md` + `risk/` — the A/B/C/D workstream plan and the launch gap/risk register
+- `gtm/` — ICP, messaging, pricing, sales process, client onboarding (Hebrew)
+- `legal-drafts/` — privacy policy, ToS, DPA, accessibility statement, voice-AI disclosure (Hebrew drafts)
+- `website-patch/` — accessibility patch, Meta pixel snippet, lead-forwarder function
+- `phase-5-dashboard-frontend-spec.md` — the governing dashboard spec. *(`phase-5-dashboard-development.md` is the stale kickoff doc — don't trust its stack description.)*

@@ -41,6 +41,8 @@ import leadIntakeModule from './modules/webhooks/index.js';
 import tenantsModule from './modules/tenants/index.js';
 import callsModule from './modules/calls/index.js';
 import settingsModule from './modules/settings/index.js';
+import adminModule from './modules/admin/index.js';
+import metricsModule from './modules/metrics/index.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -168,8 +170,21 @@ export async function buildApp(): Promise<FastifyInstance> {
     await apiScope.register(integrationsModule, { prefix: '/api/v1/integrations' });
     await apiScope.register(callsModule, { prefix: '/api/v1/calls' });
     await apiScope.register(settingsModule, { prefix: '/api/v1/settings' });
+    await apiScope.register(metricsModule, { prefix: '/api/v1/metrics' });
     // Browser voice simulation with the LiveKit agent — see web-call.routes.ts.
     await apiScope.register(webCallRoutes, { prefix: '/api/v1/voice' });
+  });
+
+  // --- Operator console (super-admin, cross-tenant) ---
+  // Its OWN scope: NOT the per-tenant `authenticate` hook. Every route runs `requireAdmin`
+  // (constant-time ADMIN_API_KEY check) inside the module. IP rate-limited to slow key guessing.
+  await app.register(async (adminScope) => {
+    await adminScope.register(rateLimit, {
+      max: 60,
+      timeWindow: '1 minute',
+      keyGenerator: (request: any) => request.ip,
+    });
+    await adminScope.register(adminModule, { prefix: '/api/v1/admin' });
   });
 
   // --- Dashboard static files (production) ---

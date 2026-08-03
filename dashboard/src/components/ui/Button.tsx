@@ -15,7 +15,7 @@ const baseStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   gap: '6px',
-  fontFamily: "'Assistant', sans-serif",
+  fontFamily: 'var(--font-body)',
   fontWeight: 600,
   borderRadius: '8px',
   border: 'none',
@@ -35,11 +35,11 @@ const sizeStyles: Record<ButtonSize, React.CSSProperties> = {
 
 const variantStyles: Record<ButtonVariant, React.CSSProperties> = {
   primary: {
-    backgroundColor: 'var(--accent-cyan)',
-    color: 'var(--text-on-cyan)',
+    backgroundColor: 'var(--accent-fg)',
+    color: 'var(--text-on-accent)',
   },
   secondary: {
-    backgroundColor: 'var(--bg-surface)',
+    backgroundColor: 'var(--surface-card)',
     color: 'var(--text-primary)',
     border: '1px solid var(--border-default)',
   },
@@ -49,9 +49,9 @@ const variantStyles: Record<ButtonVariant, React.CSSProperties> = {
     border: '1px solid transparent',
   },
   danger: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    color: 'var(--error)',
-    border: '1px solid rgba(239, 68, 68, 0.3)',
+    backgroundColor: 'rgba(179, 38, 30, 0.10)',
+    color: 'var(--status-danger)',
+    border: '1px solid rgba(179, 38, 30, 0.25)',
   },
 }
 

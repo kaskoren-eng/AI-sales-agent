@@ -193,8 +193,8 @@ export function VoiceChat() {
     <div style={{ display: 'flex', justifyContent: 'center', padding: '48px 24px' }}>
       <style>{`
         @keyframes vc-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(0, 245, 255, 0.25); }
-          50% { box-shadow: 0 0 0 18px rgba(0, 245, 255, 0); }
+          0%, 100% { box-shadow: 0 0 0 0 rgba(15, 163, 172, 0.25); }
+          50% { box-shadow: 0 0 0 18px rgba(15, 163, 172, 0); }
         }
         @media (prefers-reduced-motion: reduce) {
           .vc-ring { animation: none !important; }
@@ -207,7 +207,7 @@ export function VoiceChat() {
             fontSize: 11,
             letterSpacing: '0.18em',
             textTransform: 'uppercase',
-            color: 'var(--accent-cyan-dim)',
+            color: 'var(--accent-hover)',
             marginBottom: 8,
           }}
         >
@@ -230,11 +230,11 @@ export function VoiceChat() {
             width: 160,
             height: 160,
             borderRadius: '50%',
-            border: `2px solid ${inCall ? (agentSpeaking ? 'var(--accent-cyan)' : 'var(--border-strong)') : 'var(--accent-cyan-dim)'}`,
+            border: `2px solid ${inCall ? (agentSpeaking ? 'var(--accent-fg)' : 'var(--border-strong)') : 'var(--accent-hover)'}`,
             background:
               state === 'live'
-                ? 'radial-gradient(circle at 50% 45%, rgba(0,245,255,0.10), var(--bg-surface) 70%)'
-                : 'var(--bg-surface)',
+                ? 'radial-gradient(circle at 50% 45%, rgba(15, 163, 172,0.10), var(--surface-card) 70%)'
+                : 'var(--surface-card)',
             color: 'var(--text-primary)',
             cursor: 'pointer',
             display: 'inline-flex',
@@ -259,7 +259,7 @@ export function VoiceChat() {
                     width: 6,
                     height: 8,
                     borderRadius: 3,
-                    background: 'var(--accent-cyan)',
+                    background: 'var(--accent-fg)',
                     transition: 'height 90ms linear',
                   }}
                 />
@@ -268,7 +268,7 @@ export function VoiceChat() {
           ) : inCall ? (
             <PhoneOff size={44} strokeWidth={1.5} />
           ) : (
-            <Phone size={44} strokeWidth={1.5} color="var(--accent-cyan)" />
+            <Phone size={44} strokeWidth={1.5} color="var(--accent-fg)" />
           )}
         </button>
 
@@ -278,7 +278,7 @@ export function VoiceChat() {
             marginTop: 24,
             minHeight: 22,
             fontSize: 14,
-            color: state === 'error' ? 'var(--error)' : 'var(--text-secondary)',
+            color: state === 'error' ? 'var(--status-danger)' : 'var(--text-secondary)',
           }}
         >
           {status}
@@ -293,9 +293,9 @@ export function VoiceChat() {
               marginTop: 12,
               padding: '10px 20px',
               borderRadius: 8,
-              border: '1px solid var(--warning)',
+              border: '1px solid var(--status-warning)',
               background: 'transparent',
-              color: 'var(--warning)',
+              color: 'var(--status-warning)',
               cursor: 'pointer',
               fontSize: 14,
               fontWeight: 600,
@@ -306,7 +306,7 @@ export function VoiceChat() {
         )}
 
         {inCall && (
-          <div style={{ marginTop: 6, fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)', fontSize: 13 }}>
+          <div style={{ marginTop: 6, fontVariantNumeric: 'tabular-nums', color: 'var(--text-tertiary)', fontSize: 13 }}>
             {mm}:{ss}
           </div>
         )}
@@ -323,8 +323,8 @@ export function VoiceChat() {
                 padding: '8px 16px',
                 borderRadius: 8,
                 border: '1px solid var(--border-default)',
-                background: muted ? 'var(--bg-elevated)' : 'transparent',
-                color: muted ? 'var(--warning)' : 'var(--text-secondary)',
+                background: muted ? 'var(--surface-sunken)' : 'transparent',
+                color: muted ? 'var(--status-warning)' : 'var(--text-secondary)',
                 cursor: 'pointer',
                 fontSize: 13,
               }}
@@ -341,7 +341,7 @@ export function VoiceChat() {
                 padding: '8px 16px',
                 borderRadius: 8,
                 border: '1px solid transparent',
-                background: 'var(--error)',
+                background: 'var(--status-danger)',
                 color: '#fff',
                 cursor: 'pointer',
                 fontSize: 13,
@@ -360,9 +360,9 @@ export function VoiceChat() {
               marginTop: 20,
               padding: '8px 18px',
               borderRadius: 8,
-              border: '1px solid var(--accent-cyan-dim)',
+              border: '1px solid var(--accent-hover)',
               background: 'transparent',
-              color: 'var(--accent-cyan)',
+              color: 'var(--accent-fg)',
               cursor: 'pointer',
               fontSize: 13,
             }}
@@ -376,8 +376,8 @@ export function VoiceChat() {
           style={{
             marginTop: 48,
             textAlign: 'left',
-            background: 'var(--bg-surface)',
-            border: '1px solid var(--border-subtle)',
+            background: 'var(--surface-card)',
+            border: '1px solid var(--border-default)',
             borderRadius: 12,
             padding: '16px 20px',
             fontSize: 13,

@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en" dir="ltr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClickScales — Test Keren (v5 preview)</title>
+<meta name="theme-color" content="#0A0F20">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Rubik:wght@500;600;700&family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* =========================================================================
+   v5 tokens — brand_assets/keren-brand-brief-v5.md §1.1 (light) + §1.2 (dark).
+   Simulator OPENS DARK by default (brief v5 §2.4); the preview toggle can override.
+   ========================================================================= */
+:root {
+  --surface-page:#EDF0F6; --surface-card:#FFFFFF; --surface-sunken:#E4E9F1; --surface-overlay:#FFFFFF;
+  --text-primary:#0C1226; --text-secondary:#5B667E; --text-tertiary:#7A8598; --text-on-accent:#FFFFFF;
+  --border-default:#D9E0EA; --border-strong:#C3CDDB;
+  --accent:#2F35C7; --accent-hover:#252AB3; --accent-tint:#EAEAFB; --accent-fg:#2F35C7;
+  --data-1:#2F35C7; --data-2:#D9861B; --data-2-glow:#F2B24E; --data-2-tint:#FCF0DC;
+  --status-success:#1B7F5A; --status-warning:#9A5D0F; --status-danger:#C0392B; --status-neutral:#5B667E;
+  --r-sm:8px; --r:14px; --r-lg:22px; --r-full:999px;
+  --shadow-card:0 1px 2px rgba(12,18,38,.04), 0 8px 24px rgba(12,18,38,.06);
+  --font-display:"Bricolage Grotesque","Rubik",system-ui,sans-serif;
+  --font-body:"Instrument Sans","Assistant",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono","Assistant",ui-monospace,monospace;
+  --dur-fast:150ms; --dur-base:220ms; --ease:cubic-bezier(.4,0,.2,1);
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --surface-page:#0A0F20; --surface-card:#141B31; --surface-sunken:#070B17; --surface-overlay:#1A2240;
+  --text-primary:#EDF0F6; --text-secondary:#A2A9BC; --text-tertiary:#767E93; --text-on-accent:#FFFFFF;
+  --border-default:#232941; --border-strong:#333B57;
+  --accent:#2F35C7; --accent-fg:#8B90F0; --accent-hover:#3A41D8; --accent-tint:#1B2145;
+  --data-1:#6E74E8; --data-2:#F2B24E; --data-2-glow:#F8CC85; --data-2-tint:#2A2113;
+  --status-success:#3FB88C; --status-warning:#E0A64E; --status-danger:#E86A5E; --status-neutral:#A2A9BC;
+  --shadow-card:0 0 0 1px rgba(0,0,0,0), 0 8px 24px rgba(0,0,0,.24);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--surface-page); color: var(--text-primary);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  padding-block-start: 46px; block-size: 100%; overflow: hidden;
+}
+:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: 2px; border-radius: 4px; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ---- Simulator shell (own top bar, full-bleed 3-col) ---- */
+.sim { block-size: calc(100vh - 46px); display: flex; flex-direction: column; }
+.sim-top {
+  flex-shrink: 0; block-size: 56px; display: flex; align-items: center; gap: 16px;
+  padding-inline: 18px; background: var(--surface-card); border-block-end: 1px solid var(--border-default);
+}
+.sim-ico { inline-size: 34px; block-size: 34px; display: grid; place-items: center; border: 1px solid var(--border-default); border-radius: 9px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.sim-ico:hover { background: var(--surface-sunken); color: var(--text-primary); }
+.sim-ico svg { inline-size: 16px; block-size: 16px; }
+.sim-id { display: flex; align-items: baseline; gap: 8px; }
+.sim-name { font-family: var(--font-display); font-weight: 700; font-size: 16px; }
+.sim-ver { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); padding: 2px 7px; border: 1px solid var(--border-default); border-radius: var(--r-full); }
+.sim-status { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: var(--r-full); background: var(--accent-tint); font-size: 12.5px; color: var(--text-secondary); }
+.sim-status .dot { inline-size: 7px; block-size: 7px; border-radius: 50%; background: var(--status-success); }
+.sim-top .spacer { margin-inline-start: auto; }
+
+.sim-grid { flex: 1; display: grid; grid-template-columns: 260px 1fr 380px; min-block-size: 0; }
+.col { min-block-size: 0; overflow-y: auto; }
+.col.history { border-inline-end: 1px solid var(--border-default); background: var(--surface-card); }
+.col.stage { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 30px; background: var(--surface-page); position: relative; }
+.col.transcript { border-inline-start: 1px solid var(--border-default); background: var(--surface-card); display: flex; flex-direction: column; }
+
+/* history column */
+.hist-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 10px; }
+.hist-head h2 { font-family: var(--font-display); font-weight: 600; font-size: 13px; color: var(--text-secondary); }
+.hist-new { background: transparent; border: 1px solid var(--border-default); border-radius: 8px; inline-size: 28px; block-size: 28px; display: grid; place-items: center; color: var(--text-secondary); cursor: pointer; }
+.hist-item { display: block; width: 100%; text-align: start; background: transparent; border: 0; border-block-end: 1px solid var(--border-default); padding: 12px 16px; cursor: pointer; }
+.hist-item:hover { background: var(--surface-sunken); }
+.hist-item.active { background: var(--accent-tint); }
+.hist-label { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.hist-time { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); margin-block-start: 3px; }
+
+/* ---- CENTRE STAGE: the orb (signature element) ---- */
+.orb-wrap { position: relative; inline-size: 220px; block-size: 220px; display: grid; place-items: center; }
+.ring { position: absolute; border-radius: 50%; border: 2px solid var(--accent-fg); opacity: 0; }
+.orb-core {
+  inline-size: 108px; block-size: 108px; border-radius: 50%;
+  background: var(--accent); position: relative; z-index: 2;
+  display: grid; place-items: center;
+}
+.orb-core .inner { inline-size: 60px; block-size: 60px; border-radius: 50%; background: var(--data-1); opacity: .55; }
+/* the ONE animated element on this screen — reacts to call state */
+body[data-state="speaking"] .ring { animation: wave 2.2s var(--ease) infinite; }
+body[data-state="speaking"] .ring.r1 { inline-size: 130px; block-size: 130px; animation-delay: 0s; }
+body[data-state="speaking"] .ring.r2 { inline-size: 168px; block-size: 168px; animation-delay: .5s; }
+body[data-state="speaking"] .ring.r3 { inline-size: 210px; block-size: 210px; animation-delay: 1s; }
+body[data-state="speaking"] .orb-core .inner { animation: breathe 2.2s var(--ease) infinite; }
+@keyframes wave { 0%{opacity:.5;transform:scale(.7)} 70%{opacity:0;transform:scale(1)} 100%{opacity:0} }
+@keyframes breathe { 0%,100%{transform:scale(1);opacity:.55} 50%{transform:scale(1.25);opacity:.8} }
+/* reduced motion: static concentric state ring, no looping */
+@media (prefers-reduced-motion: reduce) {
+  body[data-state="speaking"] .ring { animation: none; opacity: .35; }
+  body[data-state="speaking"] .ring.r1 { inline-size: 140px; block-size: 140px; }
+  body[data-state="speaking"] .ring.r2 { inline-size: 176px; block-size: 176px; opacity: .2; }
+  body[data-state="speaking"] .ring.r3 { display: none; }
+  body[data-state="speaking"] .orb-core .inner { animation: none; }
+}
+
+.stage-status { text-align: center; }
+.stage-state { font-family: var(--font-display); font-weight: 600; font-size: 18px; }
+.stage-hint { font-size: 13px; color: var(--text-tertiary); margin-block-start: 4px; }
+
+.controls { display: flex; align-items: center; gap: 14px; }
+.ctrl { inline-size: 52px; block-size: 52px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--border-strong); background: var(--surface-card); color: var(--text-primary); cursor: pointer; }
+.ctrl svg { inline-size: 20px; block-size: 20px; }
+.ctrl.end { inline-size: 64px; block-size: 64px; background: var(--status-danger); border-color: var(--status-danger); color: #fff; }
+.ctrl.muted { background: var(--surface-sunken); color: var(--text-tertiary); }
+
+/* transcript column */
+.tr-head { flex-shrink: 0; padding: 14px 18px; border-block-end: 1px solid var(--border-default); font-family: var(--font-display); font-weight: 600; font-size: 13px; color: var(--text-secondary); }
+.tr-body { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.sys { align-self: center; font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); padding: 3px 12px; border-radius: var(--r-full); background: var(--surface-sunken); }
+.turn { display: flex; gap: 9px; max-inline-size: 88%; }
+.turn.agent { align-self: flex-start; }
+.turn.user { align-self: flex-end; flex-direction: row-reverse; }
+.turn .ava { inline-size: 26px; block-size: 26px; border-radius: 50%; background: var(--accent); color: var(--text-on-accent); display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 11px; flex-shrink: 0; }
+.turn.user .ava { background: var(--surface-sunken); color: var(--text-secondary); }
+.tr-bubble { padding: 9px 13px; border-radius: 13px; font-size: 14px; line-height: 1.55; }
+.turn.agent .tr-bubble { background: var(--surface-sunken); border-start-start-radius: 3px; color: var(--text-primary); }
+.turn.user .tr-bubble { background: var(--accent-tint); border-start-end-radius: 3px; color: var(--text-primary); }
+.tr-live { display: inline-flex; gap: 3px; align-items: center; padding-block: 4px; }
+.tr-live span { inline-size: 5px; block-size: 5px; border-radius: 50%; background: var(--text-tertiary); }
+body[data-state="speaking"] .tr-live span { animation: blink 1.2s var(--ease) infinite; }
+body[data-state="speaking"] .tr-live span:nth-child(2){ animation-delay:.2s } body[data-state="speaking"] .tr-live span:nth-child(3){ animation-delay:.4s }
+@keyframes blink { 0%,100%{opacity:.3} 50%{opacity:1} }
+@media (prefers-reduced-motion: reduce){ .tr-live span{ animation:none !important; opacity:.5 } }
+
+.tr-input { flex-shrink: 0; padding: 12px 16px; border-block-start: 1px solid var(--border-default); display: flex; gap: 10px; align-items: center; }
+.tr-input input { flex: 1; min-inline-size: 0; font-family: var(--font-body); font-size: 14px; color: var(--text-primary); padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface-page); outline: none; }
+.tr-input input::placeholder { color: var(--text-tertiary); }
+.tr-send { inline-size: 40px; block-size: 40px; border-radius: 10px; display: grid; place-items: center; border: 0; background: var(--accent); color: var(--text-on-accent); cursor: pointer; flex-shrink: 0; }
+.tr-send svg { inline-size: 17px; block-size: 17px; }
+
+/* ---- Preview-control bar ---- */
+.preview-controls { position: fixed; inset-block-start: 0; inset-inline: 0; z-index: 100; block-size: 46px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-inline: 18px; background: var(--text-primary); color: var(--surface-page); border-block-end: 1px solid var(--border-strong); }
+.preview-controls .pc-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; opacity: .65; }
+.pc-groups { display: flex; align-items: center; gap: 20px; }
+.pc-group { display: flex; align-items: center; gap: 9px; }
+.pc-cap { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; opacity: .55; }
+.seg-ctl { display: inline-flex; gap: 5px; }
+.seg-ctl button { font-family: var(--font-body); font-size: 12px; font-weight: 600; padding: 5px 13px; border: 1px solid currentColor; border-radius: var(--r-full); cursor: pointer; background: transparent; color: inherit; opacity: .55; transition: opacity var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease); }
+.seg-ctl button:hover { opacity: .85; }
+.seg-ctl button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); opacity: 1; }
+.pc-hint { font-family: var(--font-mono); font-size: 9px; opacity: .5; }
+</style>
+</head>
+<body data-state="speaking">
+
+<!-- ================= PREVIEW CONTROL BAR ================= -->
+<div class="preview-controls" role="group" aria-label="Preview controls">
+  <span class="pc-label">Preview · not part of the design</span>
+  <div class="pc-groups">
+    <div class="pc-group"><span class="pc-cap">Theme</span>
+      <div class="seg-ctl" id="theme-ctl"><button data-theme-val="light" aria-pressed="false">Light</button><button data-theme-val="dark" aria-pressed="true">Dark</button></div>
+      <span class="pc-hint" data-i18n="pc.darkdefault">opens dark by design</span>
+    </div>
+    <div class="pc-group"><span class="pc-cap">Language</span>
+      <div class="seg-ctl" id="lang-ctl"><button data-lang-val="en" aria-pressed="true">EN</button><button data-lang-val="he" aria-pressed="false">עברית</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= SIMULATOR ================= -->
+<div class="sim">
+
+  <!-- own top bar -->
+  <div class="sim-top">
+    <button class="sim-ico" data-i18n-aria="a11y.back" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></button>
+    <button class="sim-ico" data-i18n-aria="a11y.history" aria-label="Toggle history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.4 2.6L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/></svg></button>
+    <div class="sim-id"><span class="sim-name" dir="auto">קרן</span><span class="sim-ver mono">v3</span></div>
+    <span class="spacer"></span>
+    <span class="sim-status"><span class="dot"></span><span data-i18n="status.incall">In a test call</span></span>
+    <button class="sim-ico" data-i18n-aria="a11y.voice" aria-label="Voice settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg></button>
+  </div>
+
+  <!-- three columns -->
+  <div class="sim-grid">
+
+    <!-- START column: session history -->
+    <div class="col history">
+      <div class="hist-head">
+        <h2 data-i18n="hist.title">Test sessions</h2>
+        <button class="hist-new" data-i18n-aria="a11y.newtest" aria-label="New test"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M12 5v14M5 12h14"/></svg></button>
+      </div>
+      <button class="hist-item active">
+        <div class="hist-label" dir="auto">פתיחה וגילוי צרכים</div>
+        <div class="hist-time">Today · 14:20</div>
+      </button>
+      <button class="hist-item">
+        <div class="hist-label" dir="auto">טיפול בהתנגדות מחיר</div>
+        <div class="hist-time">Today · 11:05</div>
+      </button>
+      <button class="hist-item">
+        <div class="hist-label" dir="auto">ליד קר, בלי הקדמה</div>
+        <div class="hist-time">Yesterday · 17:30</div>
+      </button>
+      <button class="hist-item">
+        <div class="hist-label" dir="auto">בדיקת מעבר לאנגלית</div>
+        <div class="hist-time">Jul 12 · 09:48</div>
+      </button>
+    </div>
+
+    <!-- CENTRE: orb + controls -->
+    <div class="col stage">
+      <div class="orb-wrap" aria-hidden="true">
+        <span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span>
+        <span class="orb-core"><span class="inner"></span></span>
+      </div>
+      <div class="stage-status">
+        <div class="stage-state" data-i18n="stage.speaking">Keren is speaking</div>
+        <div class="stage-hint" data-i18n="stage.hint">Answer out loud, or type below to test</div>
+      </div>
+      <div class="controls">
+        <button class="ctrl" data-i18n-aria="a11y.mute" aria-label="Mute"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg></button>
+        <button class="ctrl end" data-i18n-aria="a11y.end" aria-label="End call"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.5.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.5.1.4 0 .8-.3 1z"/></svg></button>
+        <button class="ctrl" data-i18n-aria="a11y.settings" aria-label="Call settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1l-.4-2.5H10.6l-.4 2.5a7 7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.4 2.5h3.8l.4-2.5a7 7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6a7 7 0 0 0 .1-1Z"/></svg></button>
+      </div>
+    </div>
+
+    <!-- END column: transcript + type-to-test -->
+    <div class="col transcript">
+      <div class="tr-head" data-i18n="tr.title">Live transcript</div>
+      <div class="tr-body">
+        <div class="sys" data-i18n="tr.started">Call started</div>
+        <div class="turn agent"><span class="ava">ק</span><span class="tr-bubble" dir="auto">היי, מדברת קרן מקליקסקיילז. תפסתי אותך בזמן טוב לדבר רגע?</span></div>
+        <div class="turn user"><span class="ava" data-i18n="tr.you">You</span><span class="tr-bubble" dir="auto">כן, דבר.</span></div>
+        <div class="turn agent"><span class="ava">ק</span><span class="tr-bubble" dir="auto">מעולה. ספר לי בקצרה, איזה עסק יש לך ומה אתה מוכר?</span></div>
+        <div class="turn user"><span class="ava" data-i18n="tr.you">You</span><span class="tr-bubble" dir="auto">שיפוצים לבתים פרטיים.</span></div>
+        <div class="turn agent"><span class="ava">ק</span><span class="tr-bubble" dir="auto">יופי. וכמה פניות חדשות אתה מקבל ביום בערך?</span></div>
+        <div class="turn agent"><span class="ava">ק</span><span class="tr-live"><span></span><span></span><span></span></span></div>
+      </div>
+      <div class="tr-input">
+        <input type="text" data-i18n-ph="tr.type" placeholder="Type to test Keren">
+        <button class="tr-send" data-i18n-aria="a11y.send" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z"/></svg></button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const I18N = {
+  en: {
+    "pc.darkdefault":"opens dark by design",
+    "a11y.back":"Back","a11y.history":"Toggle history","a11y.voice":"Voice settings","a11y.newtest":"New test",
+    "a11y.mute":"Mute","a11y.end":"End call","a11y.settings":"Call settings","a11y.send":"Send",
+    "status.incall":"In a test call",
+    "hist.title":"Test sessions",
+    "stage.speaking":"Keren is speaking","stage.hint":"Answer out loud, or type below to test",
+    "tr.title":"Live transcript","tr.started":"Call started","tr.you":"You","tr.type":"Type to test Keren"
+  },
+  he: {
+    "pc.darkdefault":"נפתח כהה כברירת מחדל",
+    "a11y.back":"חזרה","a11y.history":"היסטוריה","a11y.voice":"הגדרות קול","a11y.newtest":"בדיקה חדשה",
+    "a11y.mute":"השתקה","a11y.end":"סיום שיחה","a11y.settings":"הגדרות שיחה","a11y.send":"שליחה",
+    "status.incall":"בבדיקת שיחה",
+    "hist.title":"בדיקות קודמות",
+    "stage.speaking":"קרן מדברת","stage.hint":"ענו בקול, או הקלידו למטה כדי לבדוק",
+    "tr.title":"תמלול חי","tr.started":"השיחה התחילה","tr.you":"את/ה","tr.type":"הקלד כדי לבדוק את קרן"
+  }
+};
+function applyLang(lang){
+  const dict = I18N[lang], html = document.documentElement;
+  html.lang = lang; html.dir = (lang === "he") ? "rtl" : "ltr";
+  document.querySelectorAll("[data-i18n]").forEach(el=>{ const k=el.getAttribute("data-i18n"); if(dict[k]!=null) el.textContent=dict[k]; });
+  document.querySelectorAll("[data-i18n-aria]").forEach(el=>{ const k=el.getAttribute("data-i18n-aria"); if(dict[k]!=null) el.setAttribute("aria-label",dict[k]); });
+  document.querySelectorAll("[data-i18n-ph]").forEach(el=>{ const k=el.getAttribute("data-i18n-ph"); if(dict[k]!=null) el.setAttribute("placeholder",dict[k]); });
+  document.querySelectorAll("#lang-ctl button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.langVal===lang)));
+}
+function applyTheme(theme){
+  document.documentElement.setAttribute("data-theme", theme);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", theme==="dark" ? "#0A0F20" : "#EDF0F6");
+  document.querySelectorAll("#theme-ctl button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.themeVal===theme)));
+}
+document.getElementById("lang-ctl").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b) applyLang(b.dataset.langVal); });
+document.getElementById("theme-ctl").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b) applyTheme(b.dataset.themeVal); });
+/* defaults: English; DARK by default (simulator opens dark regardless of preference) */
+applyLang("en"); applyTheme("dark");
+</script>
+</body>
+</html>

@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en" dir="ltr" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClickScales — Ask the agent (v5 preview)</title>
+<meta name="theme-color" content="#EDF0F6">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Rubik:wght@500;600;700&family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* =========================================================================
+   v5 tokens — brand_assets/keren-brand-brief-v5.md §1.1 (light) + §1.2 (dark).
+   The ONLY place colour values live. Everything else references var(--token).
+   ========================================================================= */
+:root {
+  --surface-page:#EDF0F6; --surface-card:#FFFFFF; --surface-sunken:#E4E9F1; --surface-overlay:#FFFFFF;
+  --text-primary:#0C1226; --text-secondary:#5B667E; --text-tertiary:#7A8598; --text-on-accent:#FFFFFF;
+  --border-default:#D9E0EA; --border-strong:#C3CDDB;
+  --accent:#2F35C7; --accent-hover:#252AB3; --accent-tint:#EAEAFB; --accent-fg:#2F35C7;
+  --data-1:#2F35C7; --data-2:#D9861B; --data-2-glow:#F2B24E; --data-2-tint:#FCF0DC;
+  --status-success:#1B7F5A; --status-warning:#9A5D0F; --status-danger:#C0392B; --status-neutral:#5B667E;
+  --r-sm:8px; --r:14px; --r-lg:22px; --r-full:999px; --container-max:1180px;
+  --shadow-card:0 1px 2px rgba(12,18,38,.04), 0 8px 24px rgba(12,18,38,.06);
+  --shadow-overlay:0 2px 4px rgba(12,18,38,.06), 0 24px 60px rgba(12,18,38,.16);
+  --font-display:"Bricolage Grotesque","Rubik",system-ui,sans-serif;
+  --font-body:"Instrument Sans","Assistant",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono","Assistant",ui-monospace,monospace;
+  --dur-fast:150ms; --dur-base:220ms; --ease:cubic-bezier(.4,0,.2,1);
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --surface-page:#0A0F20; --surface-card:#141B31; --surface-sunken:#070B17; --surface-overlay:#1A2240;
+  --text-primary:#EDF0F6; --text-secondary:#A2A9BC; --text-tertiary:#767E93; --text-on-accent:#FFFFFF;
+  --border-default:#232941; --border-strong:#333B57;
+  --accent:#2F35C7; --accent-fg:#8B90F0; --accent-hover:#3A41D8; --accent-tint:#1B2145;
+  --data-1:#6E74E8; --data-2:#F2B24E; --data-2-glow:#F8CC85; --data-2-tint:#2A2113;
+  --status-success:#3FB88C; --status-warning:#E0A64E; --status-danger:#E86A5E; --status-neutral:#A2A9BC;
+  --shadow-card:0 0 0 1px rgba(0,0,0,0), 0 8px 24px rgba(0,0,0,.24);
+  --shadow-overlay:0 2px 4px rgba(0,0,0,.3), 0 24px 60px rgba(0,0,0,.5);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--surface-page); color: var(--text-primary);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
+  padding-block-start: 46px; min-block-size: 100vh; display: flex; flex-direction: column;
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-tertiary); }
+:lang(he) .eyebrow { text-transform: none; letter-spacing: normal; }
+
+/* ---- Top bar ---- */
+.topbar { position: sticky; top: 46px; z-index: 20; display: flex; align-items: center; gap: 20px; block-size: 60px; padding-inline: 24px; background: var(--surface-card); border-block-end: 1px solid var(--border-default); flex-shrink: 0; }
+.brand { display: flex; align-items: baseline; gap: 8px; }
+.brand .mark { font-family: var(--font-display); font-weight: 800; font-size: 20px; letter-spacing: .02em; color: var(--text-primary); }
+.brand .tag { font-size: 12px; color: var(--text-tertiary); }
+.presence { display: inline-flex; align-items: center; gap: 9px; padding: 6px 12px 6px 10px; background: var(--accent-tint); border: 1px solid var(--border-default); border-radius: var(--r-full); font-size: 13px; color: var(--text-secondary); }
+.dot { inline-size: 8px; block-size: 8px; border-radius: 50%; flex-shrink: 0; }
+.presence .dot { background: var(--accent-fg); position: relative; }
+.presence:not(.idle) .dot::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 1px solid var(--accent-fg); opacity: .5; animation: pulse 1.6s var(--ease) infinite; }
+.presence strong { color: var(--text-primary); font-weight: 600; }
+@keyframes pulse { 0%{transform:scale(1);opacity:.5} 70%{transform:scale(2.1);opacity:0} 100%{opacity:0} }
+@media (prefers-reduced-motion: reduce) { .presence .dot::after { animation: none; display: none; } }
+.topbar .spacer { margin-inline-start: auto; }
+.top-actions { display: flex; align-items: center; gap: 8px; }
+.icon-btn { inline-size: 36px; block-size: 36px; display: grid; place-items: center; border: 1px solid var(--border-default); border-radius: 10px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.icon-btn:hover { background: var(--surface-sunken); color: var(--text-primary); }
+.avatar { inline-size: 34px; block-size: 34px; border-radius: 50%; background: var(--accent); color: var(--text-on-accent); display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 13px; cursor: pointer; }
+
+/* =========================================================================
+   GROK-STYLE COMPOSER — shared by hero (centered) and conversation (docked)
+   ========================================================================= */
+.gcomposer { border: 1px solid var(--border-strong); border-radius: 26px; background: var(--surface-card); box-shadow: var(--shadow-card); padding: 8px 8px 8px 8px; }
+.gc-input { inline-size: 100%; border: 0; outline: none; background: transparent; font-family: var(--font-body); font-size: 16px; color: var(--text-primary); padding: 12px 12px 8px; }
+.gc-input::placeholder { color: var(--text-tertiary); }
+.gc-tools { display: flex; align-items: center; gap: 8px; padding: 2px 4px 2px; }
+.gc-tool { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--border-default); border-radius: var(--r-full); background: transparent; color: var(--text-secondary); font-family: var(--font-body); font-size: 12.5px; font-weight: 500; cursor: pointer; }
+.gc-tool:hover { color: var(--text-primary); border-color: var(--border-strong); }
+.gc-tool svg { inline-size: 15px; block-size: 15px; }
+.gc-plus { inline-size: 36px; block-size: 36px; padding: 0; justify-content: center; border-radius: 50%; }
+.gc-plus svg { inline-size: 18px; block-size: 18px; }
+.gc-spacer { margin-inline-start: auto; }
+.gc-mic { inline-size: 36px; block-size: 36px; display: grid; place-items: center; border: 0; background: transparent; border-radius: 50%; color: var(--text-secondary); cursor: pointer; }
+.gc-mic:hover { background: var(--surface-sunken); color: var(--text-primary); }
+.gc-mic svg { inline-size: 18px; block-size: 18px; }
+.gc-send { inline-size: 40px; block-size: 40px; display: grid; place-items: center; border: 0; background: var(--accent); color: var(--text-on-accent); border-radius: 50%; cursor: pointer; flex-shrink: 0; }
+.gc-send svg { inline-size: 18px; block-size: 18px; }
+
+/* =========================================================================
+   HERO (Grok landing) — vertically centered
+   ========================================================================= */
+.hero { flex: 1; inline-size: 100%; max-inline-size: 720px; margin-inline: auto; padding: 24px; display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 20px; }
+.hero-top { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.hero-ava { inline-size: 52px; block-size: 52px; border-radius: 50%; background: var(--accent); color: var(--text-on-accent); display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 22px; }
+.hero-ttl { font-family: var(--font-display); font-weight: 700; font-size: 30px; letter-spacing: -.02em; }
+:lang(he) .hero-ttl { letter-spacing: normal; }
+.hero-today { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; background: var(--surface-card); border: 1px solid var(--border-default); border-radius: var(--r-full); font-size: 13px; color: var(--text-secondary); }
+.hero-today .tdot { inline-size: 7px; block-size: 7px; border-radius: 50%; background: var(--status-success); flex-shrink: 0; }
+.hero-today b { color: var(--text-primary); font-weight: 600; }
+.suggest { display: flex; gap: 9px; flex-wrap: wrap; justify-content: center; }
+.chip-s { display: inline-flex; align-items: center; gap: 7px; font-family: var(--font-body); font-size: 13px; font-weight: 500; padding: 9px 14px; border-radius: var(--r-full); border: 1px solid var(--border-default); background: var(--surface-card); color: var(--text-secondary); cursor: pointer; text-align: start; }
+.chip-s:hover { border-color: var(--border-strong); color: var(--text-primary); }
+.chip-s svg { inline-size: 15px; block-size: 15px; color: var(--accent-fg); flex-shrink: 0; }
+.hero-note { text-align: center; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 11.5px; color: var(--text-tertiary); }
+.hero-note svg { inline-size: 13px; block-size: 13px; }
+
+/* =========================================================================
+   CONVERSATION (in-progress) — thread + docked composer
+   ========================================================================= */
+.conversation { flex: 1; inline-size: 100%; max-inline-size: 760px; margin-inline: auto; padding: 24px 24px 14px; display: flex; flex-direction: column; gap: 18px; }
+.msg { display: flex; gap: 11px; align-items: flex-start; }
+.msg.u { flex-direction: row-reverse; }
+.msg-ava { inline-size: 30px; block-size: 30px; border-radius: 50%; background: var(--accent); color: var(--text-on-accent); display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 13px; flex-shrink: 0; }
+.bubble { max-inline-size: 78%; padding: 11px 15px; border-radius: 16px; font-size: 14.5px; line-height: 1.6; }
+.msg.k .bubble { background: var(--surface-card); border: 1px solid var(--border-default); border-start-start-radius: 5px; color: var(--text-primary); box-shadow: var(--shadow-card); }
+.msg.u .bubble { background: var(--surface-sunken); border: 1px solid var(--border-default); border-start-end-radius: 5px; color: var(--text-primary); }
+
+/* confirmation card (confirm before apply) */
+.confirm { margin-block-start: 11px; border: 1px solid var(--border-strong); border-radius: 13px; background: var(--surface-sunken); overflow: hidden; }
+.confirm-head { display: flex; align-items: center; gap: 8px; padding: 11px 14px; border-block-end: 1px solid var(--border-default); font-size: 12.5px; font-weight: 600; color: var(--text-secondary); }
+.confirm-head svg { inline-size: 15px; block-size: 15px; color: var(--accent-fg); flex-shrink: 0; }
+.confirm-body { padding: 14px; }
+.diff-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.diff-k { font-size: 12px; font-weight: 600; color: var(--text-tertiary); }
+.diff-old { font-size: 14px; color: var(--text-tertiary); text-decoration: line-through; }
+.diff-arrow { color: var(--text-tertiary); display: inline-flex; }
+.diff-arrow svg { inline-size: 16px; block-size: 16px; }
+:root[dir="rtl"] .diff-arrow { transform: scaleX(-1); }
+.diff-new { font-size: 14px; font-weight: 600; color: var(--accent-fg); }
+.confirm-note { margin-block-start: 10px; font-size: 12px; color: var(--text-tertiary); }
+.confirm-actions { display: flex; gap: 9px; margin-block-start: 14px; }
+.btn { font-family: var(--font-body); font-size: 13px; font-weight: 600; padding: 8px 15px; border-radius: 10px; cursor: pointer; border: 1px solid var(--border-default); background: var(--surface-card); color: var(--text-primary); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
+.btn.sm { padding: 7px 13px; font-size: 12.5px; }
+
+/* docked composer wrapper (conversation view) */
+.dock { position: sticky; inset-block-end: 0; z-index: 15; background: var(--surface-page); border-block-start: 1px solid var(--border-default); flex-shrink: 0; }
+.dock-in { inline-size: 100%; max-inline-size: 760px; margin-inline: auto; padding: 12px 24px 14px; }
+.dock-today { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-secondary); margin-block-end: 10px; }
+.dock-today .tdot { inline-size: 7px; block-size: 7px; border-radius: 50%; background: var(--status-success); flex-shrink: 0; }
+.dock-today b { color: var(--text-primary); font-weight: 600; }
+.dock-note { display: flex; align-items: center; gap: 6px; margin-block-start: 9px; font-size: 11.5px; color: var(--text-tertiary); }
+.dock-note svg { inline-size: 13px; block-size: 13px; flex-shrink: 0; }
+
+/* view switching */
+body[data-view="empty"] .conversation, body[data-view="empty"] .dock { display: none; }
+body[data-view="chat"] .hero { display: none; }
+
+/* ---- Preview-control bar ---- */
+.preview-controls { position: fixed; inset-block-start: 0; inset-inline: 0; z-index: 100; block-size: 46px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-inline: 18px; background: var(--text-primary); color: var(--surface-page); border-block-end: 1px solid var(--border-strong); }
+.preview-controls .pc-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; opacity: .65; }
+.pc-groups { display: flex; align-items: center; gap: 20px; }
+.pc-group { display: flex; align-items: center; gap: 9px; }
+.pc-cap { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; opacity: .55; }
+.seg-ctl { display: inline-flex; gap: 5px; }
+.seg-ctl button { font-family: var(--font-body); font-size: 12px; font-weight: 600; padding: 5px 13px; border: 1px solid currentColor; border-radius: var(--r-full); cursor: pointer; background: transparent; color: inherit; opacity: .55; transition: opacity var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease); }
+.seg-ctl button:hover { opacity: .85; }
+.seg-ctl button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); opacity: 1; }
+@media (max-width: 720px) { .preview-controls .pc-label { display: none; } }
+</style>
+</head>
+<body data-view="empty">
+
+<!-- ================= PREVIEW CONTROL BAR ================= -->
+<div class="preview-controls" role="group" aria-label="Preview controls">
+  <span class="pc-label">Preview · not part of the design</span>
+  <div class="pc-groups">
+    <div class="pc-group"><span class="pc-cap">View</span>
+      <div class="seg-ctl" id="view-ctl"><button data-view-val="empty" aria-pressed="true">Empty</button><button data-view-val="chat" aria-pressed="false">In conversation</button></div>
+    </div>
+    <div class="pc-group"><span class="pc-cap">Theme</span>
+      <div class="seg-ctl" id="theme-ctl"><button data-theme-val="light" aria-pressed="true">Light</button><button data-theme-val="dark" aria-pressed="false">Dark</button></div>
+    </div>
+    <div class="pc-group"><span class="pc-cap">Language</span>
+      <div class="seg-ctl" id="lang-ctl"><button data-lang-val="en" aria-pressed="true">EN</button><button data-lang-val="he" aria-pressed="false">עברית</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= TOP BAR ================= -->
+<header class="topbar">
+  <div class="brand"><span class="mark">ClickScales</span></div>
+  <div class="presence" id="presence"><span class="dot"></span><span><span data-i18n="presence.prefix">The agent is on a call with</span> <strong dir="auto">דני כהן</strong></span></div>
+  <span class="spacer"></span>
+  <div class="top-actions">
+    <button class="icon-btn" data-i18n-aria="a11y.notifications" aria-label="Notifications"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" width="17" height="17"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+    <div class="avatar" title="ClickScales" aria-hidden="true">CS</div>
+  </div>
+</header>
+
+<!-- ================= HERO (Grok landing) ================= -->
+<main class="hero">
+  <div class="hero-top">
+    <div class="hero-ava">ק</div>
+    <h1 class="hero-ttl" data-i18n="hero.ttl">What would you like to know?</h1>
+    <div class="hero-today"><span class="tdot"></span><span dir="auto"><span data-i18n="today.pre">Today</span> <b data-i18n="today.name">your agent</b> <span data-i18n="today.body">answered 9 calls and booked 2 meetings.</span></span></div>
+  </div>
+
+  <div class="gcomposer">
+    <input class="gc-input" type="text" dir="auto" data-i18n-ph="composer.ph" placeholder="Ask about your leads and calls, or tell the agent what to change" aria-label="Message the agent">
+    <div class="gc-tools">
+      <button class="gc-tool gc-plus" data-i18n-aria="a11y.attach" aria-label="Attach"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg></button>
+      <button class="gc-tool"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span data-i18n="composer.tools">Skills</span></button>
+      <span class="gc-spacer"></span>
+      <button class="gc-mic" data-i18n-aria="a11y.voice" aria-label="Voice"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+      <button class="gc-send" data-i18n-aria="a11y.send" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+    </div>
+  </div>
+
+  <div class="suggest" role="group" data-i18n-aria="suggest.label" aria-label="Suggested questions">
+    <button class="chip-s" dir="auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M22 11h-6"/></svg><span data-i18n="s1">How many new leads this week?</span></button>
+    <button class="chip-s" dir="auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.5 2.8.6a2 2 0 0 1 1.7 2z"/></svg><span data-i18n="s2">Summarize today's calls</span></button>
+    <button class="chip-s" dir="auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg><span data-i18n="s3">Be a little less formal</span></button>
+    <button class="chip-s" dir="auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span data-i18n="s4">Which leads are waiting for follow-up?</span></button>
+  </div>
+
+  <div class="hero-note">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5M12 8h.01"/></svg>
+    <span data-i18n="dock.note">On the house from ClickScales. This chat does not use your call minutes.</span>
+  </div>
+</main>
+
+<!-- ================= CONVERSATION (in-progress) ================= -->
+<main class="conversation">
+  <div class="msg k">
+    <span class="msg-ava">ק</span>
+    <div class="bubble" dir="auto" data-i18n="m1">Hi. Ask me anything about your leads and calls, or just tell me to work differently.</div>
+  </div>
+  <div class="msg u">
+    <div class="bubble" dir="auto" data-i18n="m2">How many meetings did you book this week?</div>
+  </div>
+  <div class="msg k">
+    <span class="msg-ava">ק</span>
+    <div class="bubble" dir="auto" data-i18n="m3">I booked 3 meetings this week, all demo calls. The next one is today at 15:30 with Dani Cohen from Cohen Renovations.</div>
+  </div>
+  <div class="msg u">
+    <div class="bubble" dir="auto" data-i18n="m4">Could you be a little less formal on calls?</div>
+  </div>
+  <div class="msg k">
+    <span class="msg-ava">ק</span>
+    <div class="bubble">
+      <span dir="auto" data-i18n="m5">Sure. Before I change anything, here is how it would look:</span>
+      <div class="confirm">
+        <div class="confirm-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l7 4v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V7z"/><path d="m9 12 2 2 4-4"/></svg>
+          <span data-i18n="cf.head">Before I change this</span>
+        </div>
+        <div class="confirm-body">
+          <div class="diff-row">
+            <span class="diff-k" data-i18n="cf.k">Default tone</span>
+            <span class="diff-old" data-i18n="cf.old">Professional</span>
+            <span class="diff-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+            <span class="diff-new" data-i18n="cf.new">Warm</span>
+          </div>
+          <div class="confirm-note" data-i18n="cf.note">Takes effect on the next call. Nothing else changes.</div>
+          <div class="confirm-actions">
+            <button class="btn sm" data-i18n="cf.cancel">Cancel</button>
+            <button class="btn primary sm" data-i18n="cf.apply">Apply change</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- docked composer for conversation view -->
+<div class="dock">
+  <div class="dock-in">
+    <div class="dock-today"><span class="tdot"></span><span dir="auto"><span data-i18n="today.pre">Today</span> <b data-i18n="today.name">your agent</b> <span data-i18n="today.body">answered 9 calls and booked 2 meetings.</span></span></div>
+    <div class="gcomposer">
+      <input class="gc-input" type="text" dir="auto" data-i18n-ph="composer.ph" placeholder="Ask about your leads and calls, or tell the agent what to change" aria-label="Message the agent">
+      <div class="gc-tools">
+        <button class="gc-tool gc-plus" data-i18n-aria="a11y.attach" aria-label="Attach"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg></button>
+        <button class="gc-tool"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span data-i18n="composer.tools">Skills</span></button>
+        <span class="gc-spacer"></span>
+        <button class="gc-mic" data-i18n-aria="a11y.voice" aria-label="Voice"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+        <button class="gc-send" data-i18n-aria="a11y.send" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+      </div>
+    </div>
+    <div class="dock-note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5M12 8h.01"/></svg>
+      <span data-i18n="dock.note">On the house from ClickScales. This chat does not use your call minutes.</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const I18N = {
+  en: {
+    "brand.tag":"by ClickScales","presence.prefix":"The agent is on a call with",
+    "a11y.notifications":"Notifications","a11y.send":"Send","a11y.voice":"Voice","a11y.attach":"Attach","suggest.label":"Suggested questions",
+    "hero.ttl":"What would you like to know?",
+    "today.pre":"Today","today.name":"your agent","today.body":"answered 9 calls and booked 2 meetings.",
+    "composer.ph":"Ask about your leads and calls, or tell the agent what to change","composer.tools":"Skills",
+    "s1":"How many new leads this week?","s2":"Summarize today's calls","s3":"Be a little less formal","s4":"Which leads are waiting for follow-up?",
+    "dock.note":"On the house from ClickScales. This chat does not use your call minutes.",
+    "m1":"Hi. Ask me anything about your leads and calls, or just tell me to work differently.",
+    "m2":"How many meetings did you book this week?",
+    "m3":"I booked 3 meetings this week, all demo calls. The next one is today at 15:30 with Dani Cohen from Cohen Renovations.",
+    "m4":"Could you be a little less formal on calls?",
+    "m5":"Sure. Before I change anything, here is how it would look:",
+    "cf.head":"Before I change this","cf.k":"Default tone","cf.old":"Professional","cf.new":"Warm",
+    "cf.note":"Takes effect on the next call. Nothing else changes.","cf.cancel":"Cancel","cf.apply":"Apply change"
+  },
+  he: {
+    "brand.tag":"מבית ClickScales","presence.prefix":"הסוכנת בשיחה עם",
+    "a11y.notifications":"התראות","a11y.send":"שליחה","a11y.voice":"דיבור","a11y.attach":"צירוף","suggest.label":"שאלות מוצעות",
+    "hero.ttl":"מה תרצו לדעת?",
+    "today.pre":"היום","today.name":"הסוכנת","today.body":"ענתה ל־9 שיחות וקבעה 2 פגישות.",
+    "composer.ph":"שאלו על הלידים והשיחות, או הגידו לסוכנת מה לשנות","composer.tools":"כלים",
+    "s1":"כמה לידים חדשים נכנסו השבוע?","s2":"סכמי את השיחות של היום","s3":"תהיי קצת פחות רשמית","s4":"אילו לידים מחכים למעקב?",
+    "dock.note":"על חשבון ClickScales. הצ׳אט הזה לא מנצל את דקות השיחה שלכם.",
+    "m1":"היי. אפשר לשאול אותי כל דבר על הלידים והשיחות, או פשוט להגיד לי לעבוד אחרת.",
+    "m2":"כמה פגישות קבעת השבוע?",
+    "m3":"קבעתי 3 פגישות השבוע, כולן שיחות דמו. הקרובה היום ב־15:30 עם דני כהן משיפוצים כהן.",
+    "m4":"אפשר שתהיי קצת פחות רשמית בשיחות?",
+    "m5":"בטח. רגע לפני שאני משנה, ככה זה ייראה:",
+    "cf.head":"רגע לפני השינוי","cf.k":"טון ברירת מחדל","cf.old":"מקצועי","cf.new":"חם",
+    "cf.note":"ייכנס לתוקף בשיחה הבאה. שום דבר אחר לא משתנה.","cf.cancel":"ביטול","cf.apply":"אישור השינוי"
+  }
+};
+
+function applyLang(lang){
+  const dict = I18N[lang], html = document.documentElement;
+  html.lang = lang; html.dir = (lang === "he") ? "rtl" : "ltr";
+  document.querySelectorAll("[data-i18n]").forEach(el=>{ const k=el.getAttribute("data-i18n"); if(dict[k]!=null) el.textContent=dict[k]; });
+  document.querySelectorAll("[data-i18n-aria]").forEach(el=>{ const k=el.getAttribute("data-i18n-aria"); if(dict[k]!=null) el.setAttribute("aria-label",dict[k]); });
+  document.querySelectorAll("[data-i18n-ph]").forEach(el=>{ const k=el.getAttribute("data-i18n-ph"); if(dict[k]!=null) el.setAttribute("placeholder",dict[k]); });
+  document.querySelectorAll("#lang-ctl button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.langVal===lang)));
+}
+function applyTheme(theme){
+  document.documentElement.setAttribute("data-theme", theme);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", theme==="dark" ? "#0A0F20" : "#EDF0F6");
+  document.querySelectorAll("#theme-ctl button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.themeVal===theme)));
+}
+function applyView(view){
+  document.body.setAttribute("data-view", view);
+  document.querySelectorAll("#view-ctl button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.viewVal===view)));
+}
+document.getElementById("lang-ctl").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b) applyLang(b.dataset.langVal); });
+document.getElementById("theme-ctl").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b) applyTheme(b.dataset.themeVal); });
+document.getElementById("view-ctl").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b) applyView(b.dataset.viewVal); });
+
+/* defaults */
+applyLang("en"); applyTheme("light"); applyView("empty");
+</script>
+</body>
+</html>

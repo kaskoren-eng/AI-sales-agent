@@ -1,6 +1,11 @@
 node_modules/
 dist/
-.env
+
+# Secrets — glob, not exact names. `.env` alone did NOT cover `.env.agent.bak`
+# or `.env.bak-soniox`, so `git add -A` would have staged live production keys.
+.env*
+!.env.example
+
 *.log
 .DS_Store
 .vscode/
