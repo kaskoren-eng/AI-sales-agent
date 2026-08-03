@@ -1,1 +1,0 @@
-ALTER TABLE "call_learnings" ADD COLUMN "call_report" jsonb;

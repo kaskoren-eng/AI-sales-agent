@@ -1,0 +1,80 @@
+name: CI
+
+# Until this file existed there was no CI of any kind: 586 passing tests that nothing enforced,
+# and two Docker images of which Railway only ever exercised one.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Typecheck & test (backend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test:ci
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results.xml
+          if-no-files-found: ignore
+
+  dashboard:
+    name: Build dashboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - run: npm ci
+        working-directory: dashboard
+
+      # The dashboard has no test runner and is excluded from vitest, so a successful production
+      # build is the only automated signal that it is not broken. It ships inside the API image.
+      - run: npm run build
+        working-directory: dashboard
+
+  images:
+    name: Build images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # BOTH images are built deliberately. Dockerfile (node:20-alpine) is what Railway runs;
+      # Dockerfile.agent (node:22-slim) is the LiveKit Cloud voice agent and is deployed by a
+      # separate script, so nothing else would ever catch a break in it — including the native
+      # dependency problems its own header documents (@livekit/rtc-node has no musl build).
+      - name: Build API image
+        run: docker build -f Dockerfile -t keren-api:ci .
+
+      - name: Build voice agent image
+        run: docker build -f Dockerfile.agent -t keren-agent:ci .

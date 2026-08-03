@@ -16,6 +16,7 @@ import queuePlugin from './plugins/queue.js';
 import authPlugin from './plugins/auth.js';
 import auditPlugin from './plugins/audit.js';
 import sentryPlugin from './plugins/sentry.js';
+import healthPlugin from './plugins/health.js';
 
 // Workers
 import { createMessageProcessorWorker } from './queues/workers/message-processor.worker.js';
@@ -109,8 +110,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
   });
 
-  // --- Health check (no auth) ---
-  app.get('/health', async () => ({ status: 'ok' }));
+  // --- Health checks (no auth) --- see src/plugins/health.ts
+  await app.register(healthPlugin);
 
   // --- Webhook routes (signature-based auth, higher rate limit) ---
   await app.register(async (webhookScope) => {
