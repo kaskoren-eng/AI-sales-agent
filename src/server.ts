@@ -44,6 +44,8 @@ import callsModule from './modules/calls/index.js';
 import settingsModule from './modules/settings/index.js';
 import adminModule from './modules/admin/index.js';
 import metricsModule from './modules/metrics/index.js';
+import authModule from './modules/auth/index.js';
+import { membersRoutes } from './modules/auth/members.routes.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -154,6 +156,12 @@ export async function buildApp(): Promise<FastifyInstance> {
     await webhookScope.register(leadIntakeModule, { prefix: '/webhooks/leads' });
   });
 
+  // --- Auth routes ---
+  // Their OWN scope, OUTSIDE the `authenticate` hook: /login and /refresh are how you obtain a
+  // credential, so requiring one would be circular. Credential endpoints carry their own much
+  // tighter IP rate limit inside the module.
+  await app.register(authModule, { prefix: '/api/v1/auth' });
+
   // --- API routes (auth required, per-tenant rate limiting) ---
   await app.register(async (apiScope) => {
     // Per-tenant rate limiting: each tenant gets their own 200 req/min bucket.
@@ -172,6 +180,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     await apiScope.register(callsModule, { prefix: '/api/v1/calls' });
     await apiScope.register(settingsModule, { prefix: '/api/v1/settings' });
     await apiScope.register(metricsModule, { prefix: '/api/v1/metrics' });
+    await apiScope.register(membersRoutes, { prefix: '/api/v1/members' });
     // Browser voice simulation with the LiveKit agent — see web-call.routes.ts.
     await apiScope.register(webCallRoutes, { prefix: '/api/v1/voice' });
   });
