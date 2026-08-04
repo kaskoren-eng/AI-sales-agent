@@ -4,6 +4,7 @@ import { TenantService } from '../tenants/tenant.service.js';
 import { createTenantSchema, updateTenantSchema } from '../tenants/tenant.schemas.js';
 import { requireAdmin } from './admin.guard.js';
 import { ValidationError } from '../../shared/errors.js';
+import { invalidateTenantStatus } from '../../plugins/tenant-status.js';
 
 /** Strip the api key hash from any tenant row before it leaves the API. */
 function safeTenant<T extends { apiKeyHash?: string | null }>(t: T) {
@@ -41,6 +42,20 @@ export async function adminRoutes(app: FastifyInstance) {
     if (!result.success) throw new ValidationError(result.error.issues[0]?.message ?? 'Invalid input');
     // name / slug / isActive — isActive:false is "suspend", true is "activate".
     const updated = await tenantsSvc.update(id, result.data);
+
+    // Suspension is enforced from a 30s-TTL status cache (see plugins/tenant-status.ts), so
+    // without this the operator clicks "suspend" and the tenant keeps working for up to half a
+    // minute — long enough to look broken, and long enough to place another call. Best-effort:
+    // if Redis is unreachable the entry expires on its own.
+    if (result.data.isActive !== undefined) {
+      await invalidateTenantStatus(app.redis, id);
+      request.log.info({
+        audit: true,
+        event: result.data.isActive ? 'tenant_activated' : 'tenant_suspended',
+        tenantId: id,
+      });
+    }
+
     return safeTenant(updated);
   });
 
