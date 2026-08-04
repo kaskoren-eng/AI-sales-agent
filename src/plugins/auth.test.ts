@@ -16,15 +16,47 @@ function makeSelectChain(rows: any[]) {
   const b: any = {
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
+    leftJoin: vi.fn().mockReturnThis(),
     limit: vi.fn().mockResolvedValue(rows),
   };
   return b;
 }
 
+const VALID_SID = '11111111-1111-1111-1111-111111111111';
+
+/** A live session row, as loadSession() returns it. */
+function sessionRow(over: Record<string, unknown> = {}) {
+  return {
+    id: VALID_SID,
+    userId: 'user-sub-123',
+    tenantId: 'tenant-1',
+    revokedAt: null,
+    expiresAt: new Date(Date.now() + 3_600_000),
+    role: 'member',
+    ...over,
+  };
+}
+
 /**
- * Build a test app that mounts the *real* auth plugin (not the stub from
- * helpers.ts) plus a protected route so we can exercise it end-to-end.
+ * The JWT path makes up to two queries, in order: loadSession, then the tenant-status lookup
+ * (only on a cache miss). Mock them in that order.
  */
+function mockJwtFlow(
+  db: ReturnType<typeof createMockDb>,
+  opts: { session?: Record<string, unknown> | null; tenant?: Record<string, unknown> | null } = {},
+) {
+  const session = opts.session === undefined ? sessionRow() : opts.session;
+  const tenant = opts.tenant === undefined ? { isActive: true } : opts.tenant;
+  db.select
+    .mockReturnValueOnce(makeSelectChain(session ? [session] : []))
+    .mockReturnValueOnce(makeSelectChain(tenant ? [tenant] : []));
+}
+
+/** Sign an access token the way the auth module will: tenant + subject + session id. */
+function signAccess(app: FastifyInstance, claims: Record<string, unknown>) {
+  return app.jwt.sign({ sid: VALID_SID, ...claims });
+}
+
 /**
  * Redis stand-in for the tenant-status cache. Defaults to a permanent cache MISS so that every
  * test exercises the Postgres fallback path unless it deliberately seeds the cache.
@@ -224,14 +256,16 @@ describe('auth plugin — JWT', () => {
     const tenantId = 'tenant-jwt-uuid';
     const userId = 'user-sub-123';
 
-    // The JWT path DOES consult the tenant's status now (cache first, Postgres on miss) — a
-    // signed token is no longer sufficient on its own. An existing, active tenant is required.
-    db.select.mockReturnValue(makeSelectChain([{ isActive: true }]));
+    // A signed token is no longer sufficient on its own: it must name a live session belonging
+    // to the claimed tenant, and that tenant must exist and be active.
+    mockJwtFlow(db, {
+      session: sessionRow({ tenantId, userId }),
+      tenant: { isActive: true },
+    });
 
     app = await buildAuthTestApp(db);
 
-    // Sign with the same secret the plugin uses
-    const token = app.jwt.sign({ tenantId, sub: userId });
+    const token = signAccess(app, { tenantId, sub: userId });
 
     const res = await app.inject({
       method: 'GET',
@@ -298,10 +332,13 @@ describe('auth plugin — dual auth (both paths work on API routes)', () => {
     // mint a token for any tenantId, including deleted ones, and be trusted without a lookup.
     // Harmless only while nothing minted JWTs; the moment login shipped it became the primary
     // auth path.
-    db.select.mockReturnValue(makeSelectChain([]));
+    mockJwtFlow(db, {
+      session: sessionRow({ tenantId: 'tenant-that-was-deleted' }),
+      tenant: null,
+    });
 
     app = await buildAuthTestApp(db);
-    const token = app.jwt.sign({ tenantId: 'tenant-that-was-deleted', sub: 'user-1' });
+    const token = signAccess(app, { tenantId: 'tenant-that-was-deleted', sub: 'user-1' });
 
     const res = await app.inject({
       method: 'GET',
@@ -313,11 +350,11 @@ describe('auth plugin — dual auth (both paths work on API routes)', () => {
   });
 
   it('JWT for an existing, active tenant is accepted', async () => {
-    db.select.mockReturnValue(makeSelectChain([{ isActive: true }]));
+    const tenantId = 'tenant-dual-jwt';
+    mockJwtFlow(db, { session: sessionRow({ tenantId }), tenant: { isActive: true } });
 
     app = await buildAuthTestApp(db);
-    const tenantId = 'tenant-dual-jwt';
-    const token = app.jwt.sign({ tenantId, sub: 'user-1' });
+    const token = signAccess(app, { tenantId, sub: 'user-1' });
 
     const res = await app.inject({
       method: 'GET',
@@ -345,6 +382,66 @@ describe('auth plugin — dual auth (both paths work on API routes)', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().authMethod).toBe('api_key');
     expect(res.json().tenantId).toBe(tenantId);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Forged tokens
+//
+// JWT_SECRET is present in four .env files in the working tree, one of them flagged in
+// PROJECT_STATUS.md as exposed. These tests assert the property that makes that survivable:
+// signing a token is not enough, because access requires a session row the attacker cannot
+// create. Rotating the secret is still necessary — this is what stops the NEXT leak.
+// ──────────────────────────────────────────────────────────────────────────
+
+describe('auth plugin — a leaked JWT_SECRET is not a master key', () => {
+  let app: FastifyInstance;
+  let db: ReturnType<typeof createMockDb>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db = createMockDb();
+  });
+
+  afterEach(async () => {
+    await app?.close();
+  });
+
+  it('a perfectly signed token with no session claim → 401', async () => {
+    db.select.mockReturnValue(makeSelectChain([{ isActive: true }]));
+    app = await buildAuthTestApp(db);
+
+    // Exactly what an attacker with the secret would produce: correct signature, active tenant.
+    const forged = app.jwt.sign({ tenantId: 'tenant-clickscales', sub: 'attacker' });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/protected',
+      headers: { authorization: `Bearer ${forged}` },
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('a perfectly signed token naming a session that does not exist → 401', async () => {
+    // The session lookup resolves to nothing.
+    db.select.mockReturnValue(makeSelectChain([]));
+    app = await buildAuthTestApp(db);
+
+    const forged = app.jwt.sign({
+      tenantId: 'tenant-clickscales',
+      sub: 'attacker',
+      sid: '00000000-0000-0000-0000-000000000000',
+      rol: 'owner', // claiming owner buys nothing — role is read from tenant_members
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/protected',
+      headers: { authorization: `Bearer ${forged}` },
+    });
+
+    expect(res.statusCode).toBe(401);
   });
 });
 
@@ -385,10 +482,13 @@ describe('auth plugin — suspended tenants', () => {
   });
 
   it('JWT for a suspended tenant → 403', async () => {
-    db.select.mockReturnValue(makeSelectChain([{ isActive: false }]));
+    mockJwtFlow(db, {
+      session: sessionRow({ tenantId: 'tenant-suspended' }),
+      tenant: { isActive: false },
+    });
 
     app = await buildAuthTestApp(db);
-    const token = app.jwt.sign({ tenantId: 'tenant-suspended', sub: 'user-1' });
+    const token = signAccess(app, { tenantId: 'tenant-suspended', sub: 'user-1' });
 
     const res = await app.inject({
       method: 'GET',
@@ -401,10 +501,11 @@ describe('auth plugin — suspended tenants', () => {
 
   it('honours a cached "inactive" without querying Postgres', async () => {
     const redis = makeMockRedis({ get: async () => 'inactive' });
-    db.select.mockReturnValue(makeSelectChain([{ isActive: true }])); // DB would say active
+    // One query only — the session lookup. The tenant read must be served from cache.
+    db.select.mockReturnValueOnce(makeSelectChain([sessionRow({ tenantId: 'tenant-suspended' })]));
 
     app = await buildAuthTestApp(db, redis);
-    const token = app.jwt.sign({ tenantId: 'tenant-suspended', sub: 'user-1' });
+    const token = signAccess(app, { tenantId: 'tenant-suspended', sub: 'user-1' });
 
     const res = await app.inject({
       method: 'GET',
@@ -413,7 +514,7 @@ describe('auth plugin — suspended tenants', () => {
     });
 
     expect(res.statusCode).toBe(403);
-    expect(db.select).not.toHaveBeenCalled();
+    expect(db.select).toHaveBeenCalledTimes(1); // session only, no tenant read
   });
 
   it('falls back to Postgres — never to "allow" — when Redis is down', async () => {
@@ -423,10 +524,13 @@ describe('auth plugin — suspended tenants', () => {
         throw new Error('redis down');
       },
     });
-    db.select.mockReturnValue(makeSelectChain([{ isActive: false }]));
+    mockJwtFlow(db, {
+      session: sessionRow({ tenantId: 'tenant-suspended' }),
+      tenant: { isActive: false },
+    });
 
     app = await buildAuthTestApp(db, redis);
-    const token = app.jwt.sign({ tenantId: 'tenant-suspended', sub: 'user-1' });
+    const token = signAccess(app, { tenantId: 'tenant-suspended', sub: 'user-1' });
 
     const res = await app.inject({
       method: 'GET',
@@ -440,10 +544,10 @@ describe('auth plugin — suspended tenants', () => {
 
   it('caches the tenant status after a Postgres read', async () => {
     const redis = makeMockRedis();
-    db.select.mockReturnValue(makeSelectChain([{ isActive: true }]));
+    mockJwtFlow(db, { session: sessionRow({ tenantId: 'tenant-active' }), tenant: { isActive: true } });
 
     app = await buildAuthTestApp(db, redis);
-    const token = app.jwt.sign({ tenantId: 'tenant-active', sub: 'user-1' });
+    const token = signAccess(app, { tenantId: 'tenant-active', sub: 'user-1' });
 
     await app.inject({
       method: 'GET',

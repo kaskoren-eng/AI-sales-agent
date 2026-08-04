@@ -5,6 +5,7 @@ import { tenants } from '../db/schema/index.js';
 import type { TenantRole } from '../db/schema/index.js';
 import { UnauthorizedError } from '../shared/errors.js';
 import { getTenantStatus, assertTenantUsable } from './tenant-status.js';
+import { loadSession, assertSessionUsable, sessionRejection } from './auth-session.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -59,17 +60,51 @@ export default fp(async (app) => {
       }
 
       if (decoded) {
-        // The JWT path touches no database of its own — request.tenantId is whatever the token
-        // claims. That was harmless only while nothing minted JWTs; the moment login shipped this
-        // became the PRIMARY auth path, so the suspension check has to live here too. Cached with
-        // a 30s TTL that suspension busts explicitly, so this costs no query per request.
-        const status = await getTenantStatus(app, decoded.tenantId!);
-        assertTenantUsable(status);
+        // A VERIFIED SIGNATURE IS NOT ENOUGH. Every access token must name a live session row —
+        // see plugins/auth-session.ts for why. A token with no `sid`, or a `sid` that does not
+        // resolve to an unrevoked, unexpired session belonging to the claimed tenant, is refused
+        // no matter how validly it is signed. This is what makes a leaked JWT_SECRET useless on
+        // its own: minting a token no longer grants access, because the attacker cannot also
+        // create the session row it has to point at.
+        if (!decoded.sid || !decoded.tenantId) {
+          request.log.warn({
+            audit: true,
+            event: 'auth_failure',
+            reason: 'jwt_missing_session_claim',
+            ip: request.ip,
+            method: request.method,
+            url: request.url,
+          });
+          throw sessionRejection();
+        }
 
-        request.tenantId = decoded.tenantId!;
-        request.userId = decoded.sub;
-        request.role = decoded.rol as never;
-        request.sessionId = decoded.sid;
+        const result = assertSessionUsable(
+          await loadSession(app.db, decoded.sid),
+          decoded.tenantId,
+        );
+        if ('reason' in result) {
+          request.log.warn({
+            audit: true,
+            event: 'auth_failure',
+            reason: result.reason,
+            sessionId: decoded.sid,
+            ip: request.ip,
+            method: request.method,
+            url: request.url,
+          });
+          throw sessionRejection();
+        }
+
+        // Only now is the tenant known to be real. Suspension is checked against a 30s-TTL cache
+        // that the admin PATCH busts explicitly.
+        assertTenantUsable(await getTenantStatus(app, result.principal.tenantId));
+
+        request.tenantId = result.principal.tenantId;
+        request.userId = result.principal.userId;
+        // Role comes from tenant_members, never from the token's claim — otherwise editing one
+        // claim would be a privilege escalation.
+        request.role = result.principal.role;
+        request.sessionId = result.principal.sessionId;
         request.authMethod = 'jwt';
         return;
       }
