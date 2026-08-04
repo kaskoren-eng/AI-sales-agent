@@ -15,7 +15,6 @@ import {
 } from './tool-context.js';
 
 const baseEnv = {
-  VOICE_ENGINE_DEFAULT: 'retell',
   VOICE_WEBHOOK_TENANT_ID: undefined,
   GOOGLE_CALENDAR_ID: 'cal@group.calendar.google.com',
   GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: 'svc@proj.iam.gserviceaccount.com',
@@ -30,7 +29,7 @@ const OUTBOUND_META = JSON.stringify({
   direction: 'outbound',
 });
 
-const ENABLED_SETTINGS = { voice_engine: 'livekit', functions_enabled: true };
+const ENABLED_SETTINGS = { functions_enabled: true };
 
 function fakeReport(): CallReport {
   return { recordToolCall: vi.fn() } as unknown as CallReport;
@@ -98,12 +97,12 @@ describe('parseOutboundMetadata', () => {
   });
 
   it('carries dispatcher-resolved settings when present, ignores a non-object settings field', () => {
-    const withSettings = JSON.stringify({ tenantId: 'tenant-1', settings: { voice_engine: 'livekit', functions_enabled: true } });
+    const withSettings = JSON.stringify({ tenantId: 'tenant-1', settings: { functions_enabled: true } });
     expect(parseOutboundMetadata(withSettings)).toEqual({
       tenantId: 'tenant-1',
       leadId: null,
       conversationId: null,
-      settings: { voice_engine: 'livekit', functions_enabled: true },
+      settings: { functions_enabled: true },
     });
     // A garbage settings field is simply dropped — the agent falls back to its own DB read.
     const badSettings = JSON.stringify({ tenantId: 'tenant-1', settings: 'nope' });
@@ -119,7 +118,6 @@ describe('sanitizeSettingsForAgent — whitelist, never leak secrets', () => {
   it('keeps only the voice-relevant keys and drops everything else (incl. secrets)', async () => {
     const { sanitizeSettingsForAgent } = await import('../voice-livekit.service.js');
     const out = sanitizeSettingsForAgent({
-      voice_engine: 'livekit',
       functions_enabled: true,
       whatsapp_templates: { meeting_confirmation: { contentSid: 'HX1' } },
       toll_fraud: { dailySpendLimitUsd: 50 },
@@ -129,7 +127,6 @@ describe('sanitizeSettingsForAgent — whitelist, never leak secrets', () => {
       apiKeyHash: 'also-secret',
     });
     expect(out).toEqual({
-      voice_engine: 'livekit',
       functions_enabled: true,
       whatsapp_templates: { meeting_confirmation: { contentSid: 'HX1' } },
       toll_fraud: { dailySpendLimitUsd: 50 },
@@ -147,28 +144,25 @@ describe('sanitizeSettingsForAgent — whitelist, never leak secrets', () => {
 });
 
 describe('evaluateToolGate — the fail-closed core', () => {
-  it('denies when the tenant runs on retell', () => {
-    expect(evaluateToolGate({ voice_engine: 'retell', functions_enabled: true }, baseEnv)).toEqual({
-      enabled: false,
-      reason: 'engine_not_livekit',
-    });
-  });
-
-  it('denies livekit tenants without the functions flag — absence means NO', () => {
-    expect(evaluateToolGate({ voice_engine: 'livekit' }, baseEnv)).toEqual({
+  it('denies tenants without the functions flag — absence means NO', () => {
+    expect(evaluateToolGate({})).toEqual({
       enabled: false,
       reason: 'functions_disabled',
     });
   });
 
-  it('denies on a truthy-but-not-true flag — strict === true, "true" strings do not count', () => {
-    expect(
-      evaluateToolGate({ voice_engine: 'livekit', functions_enabled: 'true' }, baseEnv).enabled,
-    ).toBe(false);
+  it('denies on null/undefined settings — an unreadable tenant gets no tools', () => {
+    expect(evaluateToolGate(null).enabled).toBe(false);
+    expect(evaluateToolGate(undefined).enabled).toBe(false);
   });
 
-  it('allows only livekit + functions_enabled === true', () => {
-    expect(evaluateToolGate(ENABLED_SETTINGS, baseEnv)).toEqual({ enabled: true, reason: null });
+  it('denies on a truthy-but-not-true flag — strict === true, "true" strings do not count', () => {
+    expect(evaluateToolGate({ functions_enabled: 'true' }).enabled).toBe(false);
+    expect(evaluateToolGate({ functions_enabled: 1 }).enabled).toBe(false);
+  });
+
+  it('allows only functions_enabled === true', () => {
+    expect(evaluateToolGate(ENABLED_SETTINGS)).toEqual({ enabled: true, reason: null });
   });
 });
 
@@ -223,13 +217,13 @@ describe('buildToolRuntime — fail-closed matrix', () => {
   });
 
   it('metadata settings that fail the gate are still honored — no DB fallback rescue', async () => {
-    const metaRetell = JSON.stringify({ tenantId: 't', settings: { voice_engine: 'retell' } });
+    const metaDisabled = JSON.stringify({ tenantId: 't', settings: { functions_enabled: false } });
     const result = await buildToolRuntime(
       baseEnv,
-      { ...callOpts(), participantMetadata: metaRetell },
+      { ...callOpts(), participantMetadata: metaDisabled },
       deps(ENABLED_SETTINGS).deps, // DB would say enabled — but metadata wins
     );
-    expect(result.disabledReason).toBe('engine_not_livekit');
+    expect(result.disabledReason).toBe('functions_disabled');
   });
 
   it('settings read throws → settings_read_failed, pool closed', async () => {
@@ -262,16 +256,16 @@ describe('buildToolRuntime — fail-closed matrix', () => {
   });
 
   it('flag off → functions_disabled, pool closed', async () => {
-    const { deps: d, close } = deps({ voice_engine: 'livekit', functions_enabled: false });
+    const { deps: d, close } = deps({ functions_enabled: false });
     const result = await buildToolRuntime(baseEnv, callOpts(), d);
     expect(result.disabledReason).toBe('functions_disabled');
     expect(close).toHaveBeenCalled();
   });
 
-  it('engine retell → engine_not_livekit even with the functions flag on', async () => {
-    const { deps: d } = deps({ voice_engine: 'retell', functions_enabled: true });
+  it('settings with no functions flag at all → functions_disabled', async () => {
+    const { deps: d } = deps({});
     const result = await buildToolRuntime(baseEnv, callOpts(), d);
-    expect(result.disabledReason).toBe('engine_not_livekit');
+    expect(result.disabledReason).toBe('functions_disabled');
   });
 
   it('both flags on → a live runtime carrying tenant, lead, and a provider factory', async () => {

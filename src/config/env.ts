@@ -81,9 +81,7 @@ const envSchema = z.object({
   TWILIO_WHATSAPP_NUMBER: z.string().min(1).optional(),
   TWILIO_WHATSAPP_TENANT_ID: z.string().uuid().optional(),
 
-  // Channels - Voice (Zadarma + Retell AI) — legacy engine, being replaced. See VOICE_MIGRATION_PLAN.md
-  RETELL_API_KEY: z.string().min(1).optional(),
-  RETELL_AGENT_ID: z.string().min(1).optional(),
+  // Channels - Voice (Zadarma SIP telephony into the LiveKit agent)
   ZADARMA_API_KEY: z.string().min(1).optional(),
   ZADARMA_API_SECRET: z.string().min(1).optional(),
   ZADARMA_PHONE_NUMBER: z.string().min(1).optional(),
@@ -341,8 +339,6 @@ const envSchema = z.object({
   // sentences of small talk, and reasoning was costing ~1030ms to first token.
   // ('xhigh' is valid at the API but absent from the plugin's ReasoningEffort type — omitted.)
   VOICE_LLM_REASONING_EFFORT: z.enum(['none', 'low', 'medium', 'high']).optional(),
-  // Default engine for tenants with no explicit tenants.settings.voice_engine override
-  VOICE_ENGINE_DEFAULT: z.enum(['retell', 'livekit']).default('retell'),
   // Recorded-call legal pre-roll (Wiretapping Law 1979 §2). DISABLED for now (Koren, 2026-07-27):
   // the choppy playback on the PSTN leg is worse than no notice for the interim test phase, and it
   // is not legally required while calls are pre-launch. The playback code (compliance/recording-

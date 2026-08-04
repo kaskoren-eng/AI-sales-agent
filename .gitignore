@@ -21,3 +21,6 @@ call-reports/
 
 # Probe output (WAVs + results.json) — reproducible, do not commit
 el-ws-probe/
+
+# Browser-automation snapshots — can capture env-var panels with live secrets
+.playwright-cli/

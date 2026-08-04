@@ -38,7 +38,7 @@ import { ensureAgentSideConversation } from './call-record.js';
 const CALL_REPORTS_DIR = 'call-reports';
 
 /**
- * LiveKit voice agent — Phase 1 skeleton of the Retell -> LiveKit migration.
+ * LiveKit voice agent — the production voice engine.
  *
  * This runs as its OWN process, not inside the Fastify server: `cli.runApp()` below takes over
  * the process (it forks a child per call and owns shutdown). Consequences:
@@ -113,8 +113,8 @@ class ClickScalesAgent extends voice.Agent {
    * model was doing exactly what it was told:
    *
    *   - She spoke `NO_RESPONSE_NEEDED` ALOUD, in English, to a Hebrew caller who had asked her to
-   *     hold on. It is a RETELL convention (the platform intercepts it); LiveKit has no such
-   *     convention, so it went straight to Cartesia and Cartesia read it out.
+   *     hold on. The token is inherited from the previous voice platform, which intercepted it;
+   *     nothing in our stack does, so it went straight to Cartesia and Cartesia read it out.
    *
    *   - She said "קבעתי לך שיחת דמו למחר" — I HAVE BOOKED YOUR DEMO FOR TOMORROW. No calendar was
    *     touched. This agent has no tools at all. The lead hangs up believing he has a meeting and a

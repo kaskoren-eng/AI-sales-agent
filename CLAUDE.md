@@ -29,13 +29,13 @@ TypeScript + Fastify 5 + Drizzle ORM + PostgreSQL + Redis + BullMQ + Zod + OpenA
 - **ai-engine** is a service module (no routes) — consumed by channel workers and lead qualification
 - All DB tables have `tenant_id` — always filter by it, never skip tenant isolation
 - **Dead Letter Queue:** all 3 main workers move exhausted jobs to `dead-letter` queue
-- **Circuit breakers:** UChat, Retell, Monday, Google Calendar, Trafft, Airtable each have their own breaker (5 failures → 30s cooldown)
+- **Circuit breakers:** UChat, LiveKit, Cartesia, Monday, Google Calendar, Trafft, Airtable each have their own breaker (5 failures → 30s cooldown)
 
 ## DB Schema (7 tables)
 
 `tenants`, `leads`, `conversations`, `messages`, `scheduled_calls`, `import_jobs`, `call_learnings`
 
-- `call_learnings` — stores call recordings (Twilio conference monitoring / Retell), Whisper transcripts, GPT sales analysis, outcome labels (`won`/`lost`/`neutral`)
+- `call_learnings` — stores call recordings (LiveKit; legacy Twilio conference monitoring), Whisper transcripts, GPT sales analysis, outcome labels (`won`/`lost`/`neutral`)
 
 ## Workers (5)
 
@@ -43,19 +43,20 @@ TypeScript + Fastify 5 + Drizzle ORM + PostgreSQL + Redis + BullMQ + Zod + OpenA
 - `outbound-sender` — sends WhatsApp / Email outbound messages
 - `flow-executor` — runs multi-step automation flows with delays
 - `csv-import` — bulk lead creation from uploaded CSVs
-- `call-analysis` — downloads call recording → Whisper transcription → GPT sales analysis → injects learnings into future Retell agent dynamic variables
+- `call-analysis` — downloads call recording → Whisper transcription → GPT sales analysis → injects learnings into the voice-livekit system prompt. Also the hook point for CRM sync
 
 ## Modules
 
 - `leads` — CRUD, status workflow, score, manual flow trigger
 - `channels/whatsapp` — UChat inbound/outbound, signature verification, 24h window fallback
 - `channels/email` — Resend inbound/outbound, svix signature verification
-- `channels/voice` — Zadarma (SIP number / caller ID) + Retell AI (agent/LLM) + Cartesia (TTS); outbound call initiation, learnings injection via Retell dynamic variables. Twilio retained only for conference-call monitoring
+- `channels/voice-livekit` — **the only voice engine.** Zadarma SIP inbound trunk → LiveKit Agents → Soniox `stt-rt-v5` STT → OpenAI `gpt-5.4` LLM → Cartesia `sonic-3` TTS. Six agent tools, conversation state machine + reflexes, speech-guard, compliance, per-call `CallReport`, browser web-call path.
+- `channels/zadarma` — Zadarma recording-notification webhooks at `/webhooks/voice/zadarma`, feeding `call_learnings`. Engine-independent; Twilio retained for the WhatsApp bridge and conference monitoring.
 - `scheduling` — Google Calendar (default provider), Trafft provider also available; slots query, booking, cancel
 - `integrations` — Monday.com (sync/push/webhook), CSV import, Google Sheets, Nango CRM
 - `webhooks` — Meta Lead Ads, generic lead intake
 - `tenants` — create/read/update, API key generation, flow config storage
-- `calls` — list/detail/audio proxy for Retell calls
+- `calls` — list/detail. Serves LiveKit calls (outbound, inbound and web-call) plus historical rows from the retired engine, rendered from the DB
 - `calls/monitor` — create Twilio conference calls for monitoring, label outcomes
 
 ## Frontend

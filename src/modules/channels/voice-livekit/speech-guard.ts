@@ -11,11 +11,15 @@
  *      [204s] KEREN  NO_RESPONSE_NEEDED
  *      [393s] KEREN  NO_RESPONSE_NEEDED
  *
- *    The v2 prompt is a RETELL prompt, and Retell has a convention: emit `NO_RESPONSE_NEEDED` and
- *    the platform stays silent. LiveKit has no such convention, so the string went straight to
+ *    `NO_RESPONSE_NEEDED` is inherited from the previous voice platform, where emitting it made
+ *    the platform stay silent. Our stack has no such convention, so the string went straight to
  *    Cartesia and Cartesia read it aloud, in English, to a Hebrew caller who had just asked her to
  *    hold on. Nothing in a prompt will stop this reliably — the model is doing exactly what it was
- *    told. The platform has to honour it.
+ *    told. The platform has to honour it, so we honour it here.
+ *
+ *    The prompt (system-prompt.he.ts) still instructs the model to emit it for holds. That is
+ *    deliberate: the token plus this guard IS the hold mechanism now. Do not remove either half
+ *    without removing the other, and not without a real call to verify.
  *
  *
  * 2. SHE CLAIMED TO HAVE BOOKED A MEETING THAT DOES NOT EXIST.
@@ -102,7 +106,7 @@ export function forceMasculineAddress(text: string): string {
   return out;
 }
 
-/** Retell's silence token. LiveKit has no such convention, so it must never reach the TTS. */
+/** The prompt's silence token. Nothing downstream interprets it, so it must never reach the TTS. */
 const NO_RESPONSE = /NO_RESPONSE_NEEDED/gi;
 
 /**
@@ -233,7 +237,7 @@ export function guardSpeech(
   let out = text;
 
   if (NO_RESPONSE.test(out)) {
-    interventions.push('removed NO_RESPONSE_NEEDED (Retell control token)');
+    interventions.push('removed NO_RESPONSE_NEEDED (silence control token)');
     out = out.replace(NO_RESPONSE, '').trim();
     // If that was the WHOLE reply, she is meant to stay silent — which is the correct behaviour when
     // a caller says "רגע" or "שנייה". Saying nothing is the point.

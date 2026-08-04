@@ -55,7 +55,7 @@ export function createCallAnalysisWorker(deps: WorkerDeps) {
       }
 
       const { tenantId, learningId, recordingUrl, durationSecs } = job.data;
-      if (!recordingUrl) throw new Error('call-analysis: recordingUrl required for the Retell path');
+      if (!recordingUrl) throw new Error('call-analysis: recordingUrl required for the recording path');
 
       // 1. Mark as transcribing
       await db
@@ -74,12 +74,6 @@ export function createCallAnalysisWorker(deps: WorkerDeps) {
         .update(callLearnings)
         .set({ transcript, analysis, status: 'analyzed' })
         .where(and(eq(callLearnings.id, learningId), eq(callLearnings.tenantId, tenantId)));
-
-      // 5. Bust Retell dynamic-variables cache so the next call gets fresh learnings
-      const agentId = env.RETELL_AGENT_ID;
-      if (agentId) {
-        await redis.del(`retell:dynvars:${agentId}`);
-      }
 
       return { learningId, transcriptSegments: transcript.length };
     },

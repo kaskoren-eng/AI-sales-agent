@@ -6,7 +6,7 @@ import { analyzeLiveKitCall } from './call-analysis.worker.js';
 
 /**
  * The LiveKit call-analysis path: GPT analysis layered over the agent's own instrumentation, and
- * the Task-0 conversation finalized. The Retell/Whisper path is unchanged and covered elsewhere.
+ * the Task-0 conversation finalized. The recording/Whisper path is covered elsewhere.
  */
 function fakeDb(row: { transcript: unknown; analysis: unknown } | null) {
   const updates: Array<{ table: unknown; vals: Record<string, unknown> }> = [];

@@ -42,7 +42,6 @@ export interface TranscriptTurn {
 export interface CallDetail extends CallSummary {
   transcript: TranscriptTurn[]
   analysis: Analysis | null
-  audio_available: boolean
 }
 
 export interface CallsMeta {

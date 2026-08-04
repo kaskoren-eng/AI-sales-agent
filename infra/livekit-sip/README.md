@@ -46,7 +46,12 @@ the call and LiveKit never sees an INVITE.
 
 ## Rollback
 
-Delete the forwarding rule in Zadarma. The number rings Retell again. Under a minute, no deploy.
+**There is none.** LiveKit is the only voice engine — the previous vendor is gone, and its code
+was removed from this repo. Deleting the forwarding rule in Zadarma does not fail over to
+anything: the number stops reaching an agent and inbound calls are silently dropped.
+
+If inbound is broken, fix forward — check the dispatch rule and the trunk (below), not the
+forwarding rule.
 
 ## Recreating from scratch
 

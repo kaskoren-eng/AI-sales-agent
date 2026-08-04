@@ -47,7 +47,7 @@ export async function ensureWebCallPlaceholderLead(db: Database, tenantId: strin
 
 /**
  * Creates the `conversations` row that surfaces a LiveKit call in the dashboard. `channelRef` is the
- * room name — the call's id everywhere (the same role Retell's call_id plays). Returns the new
+ * room name — the call's id everywhere. Returns the new
  * conversationId so the caller can ship it to the agent for end-of-call finalization.
  */
 export async function createVoiceConversation(

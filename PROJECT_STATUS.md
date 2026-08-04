@@ -7,7 +7,7 @@
 
 ## Current Phase: Phase 7 — Voice Engine Migration (Retell → self-built LiveKit)
 
-Voice engine history: **ElevenLabs (POC, retired) → Retell (current, live) → self-built LiveKit + Cartesia + OpenAI Realtime (in progress)**. Strangler-fig pattern. See `VOICE_MIGRATION_PLAN.md` for the full 7-phase plan.
+Voice engine history: **ElevenLabs (POC, retired) → Retell (deprecated, removed from the repo 2026-08-05) → self-built LiveKit + Cartesia + Soniox (live in production since 2026-07-29)**. See `VOICE_MIGRATION_PLAN.md` for the full 7-phase plan.
 
 ---
 
@@ -21,7 +21,7 @@ Voice engine history: **ElevenLabs (POC, retired) → Retell (current, live) →
 | 4 | Integrations (CSV, Sheets, CRM) | 🔄 Partial (Monday ✅, Airtable ✅, Sheets ⏳) |
 | 5 | Hardening, Observability & Tests | ✅ Complete (Sentry live, 142+ tests) |
 | 6 | SaaS Multi-tenancy & Dashboard | 🔄 Partial (dashboard live, self-serve pending) |
-| 7 | Voice Engine Migration (Retell → LiveKit) | 🔄 In Progress (Phase 1 of 7 sub-phases) |
+| 7 | Voice Engine Migration (Retell → LiveKit) | ✅ Live since 2026-07-29; legacy code removed 2026-08-05 |
 
 ---
 
@@ -96,11 +96,11 @@ Everything needed to start building on top of.
 ## Phase 5 — Hardening, Observability & Tests 🔄 In Progress
 
 ### Done
-- [x] Fetch timeouts on all external APIs — UChat (10s), Retell / Google Calendar / Monday (15s) via `AbortSignal.timeout()`
+- [x] Fetch timeouts on all external APIs — UChat (10s), Google Calendar / Monday (15s) via `AbortSignal.timeout()`
 - [x] Dead Letter Queue (DLQ) — `src/queues/dead-letter.ts`; all main workers (message-processor, outbound-sender, flow-executor) move exhausted jobs to `dead-letter` queue
 - [x] Replay attack protection — `src/shared/webhook-timestamp.ts`; `isTimestampFresh()` on WhatsApp + lead-intake webhooks (5-min window)
 - [x] Per-tenant rate limiting — 200 req/min per tenant in API scope via `keyGenerator`
-- [x] Circuit breaker — `src/shared/circuit-breaker.ts`; UChat, Retell, Monday, Google Calendar, Trafft, Airtable each have their own breaker (5 failures → 30s cooldown → HALF_OPEN test). LiveKit + Cartesia breakers to be added in Phase 7.
+- [x] Circuit breaker — `src/shared/circuit-breaker.ts`; UChat, LiveKit, Cartesia, Monday, Google Calendar, Trafft, Airtable each have their own breaker (5 failures → 30s cooldown → HALF_OPEN test).
 - [x] Auth failure audit logging — every rejected auth logs `event: auth_failure` with `reason`, `ip`, `method`, `url` (never the credential)
 - [x] Tenant seed script — `scripts/seed-tenant.mjs` creates a tenant + prints a ready-to-use API key
 
@@ -128,7 +128,7 @@ Everything needed to start building on top of.
 
 ---
 
-## Phase 7 — Voice Engine Migration (Retell → self-built LiveKit) 🔄 In Progress
+## Phase 7 — Voice Engine Migration (Retell → self-built LiveKit) ✅ Live
 
 Replace Retell with LiveKit + Cartesia + OpenAI Realtime pipeline. Full plan in `VOICE_MIGRATION_PLAN.md`. Reference docs in `docs/`.
 
@@ -148,9 +148,9 @@ Replace Retell with LiveKit + Cartesia + OpenAI Realtime pipeline. Full plan in 
 
 **Merge gate for 7.4:** a real phone call — qualify → book → event visible in Google Calendar within 5s + `scheduled_calls` + `call_learnings.analysis.tool_calls`. Until then the branch stays unmerged.
 
-**Rollback plan:** Retell code stays alive during migration. Rollback = single SQL update to flip `tenants.settings.voice_engine` back to `'retell'`.
+**Rollback plan:** ⚠️ **None.** The previous engine was decommissioned and its code removed from the repo (2026-08-05). `voice_engine` no longer exists as a setting. Fix forward.
 
-**Success criteria (before decommissioning Retell):**
+**Success criteria (carried over from the decommissioning gate — still open):**
 - Latency P95 < 800ms, P50 < 500ms per turn
 - Blind test: 3+ humans can't reliably identify agent as bot
 - 30 days of clean operation on Koren's tenant
@@ -183,8 +183,6 @@ Replace Retell with LiveKit + Cartesia + OpenAI Realtime pipeline. Full plan in 
 | `TWILIO_ACCOUNT_SID` | Voice (conference monitoring only) | ✅ Set |
 | `TWILIO_AUTH_TOKEN` | Voice (conference monitoring only) | ✅ Set |
 | `TWILIO_WHATSAPP_NUMBER` | WhatsApp (Twilio path — legacy) | — |
-| `RETELL_API_KEY` | Voice — current engine | ✅ Set |
-| `RETELL_AGENT_ID` | Voice — current engine | ✅ Set |
 | `ZADARMA_API_KEY` | Voice — SIP number / caller ID | ✅ Set |
 | `ZADARMA_API_SECRET` | Voice — SIP number / caller ID | ✅ Set |
 | `ZADARMA_PHONE_NUMBER` | Voice — the actual phone number | ✅ Set |

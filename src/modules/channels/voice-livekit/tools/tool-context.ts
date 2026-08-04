@@ -7,7 +7,7 @@ import { tenants } from '../../../../db/schema/index.js';
 import { GoogleCalendarProvider } from '../../../scheduling/providers/google-calendar.provider.js';
 import type { CallReport, ToolCallLog } from '../call-report.js';
 import type { CallStateMachine } from '../call-state.js';
-import { resolveFunctionsEnabled, resolveVoiceEngine } from '../voice-livekit.service.js';
+import { resolveFunctionsEnabled } from '../voice-livekit.service.js';
 
 /**
  * Per-call runtime for the agent's tools (Phase 4).
@@ -57,7 +57,7 @@ export interface ToolRuntimeContext {
    * via metadata. Null on inbound SIP (no dispatcher row yet) and on calls where the insert failed.
    * When set, end-of-call finalization updates THIS row (status='ended', summary). */
   conversationId: string | null;
-  /** The LiveKit room name — the call's id everywhere (same role as Retell's call_id). */
+  /** The LiveKit room name — the call's id everywhere. */
   callId: string;
   callerPhone: string | null;
   db: Database;
@@ -138,9 +138,14 @@ export function parseOutboundMetadata(
   return null;
 }
 
-/** The pure gate decision, separated from I/O so the fail-closed matrix is unit-testable. */
-export function evaluateToolGate(settings: unknown, env: Env): { enabled: boolean; reason: string | null } {
-  if (resolveVoiceEngine(settings, env) !== 'livekit') return { enabled: false, reason: 'engine_not_livekit' };
+/**
+ * The pure gate decision, separated from I/O so the fail-closed matrix is unit-testable.
+ *
+ * There is only one voice engine now, so the gate rests entirely on `functions_enabled`:
+ * STRICT `=== true`, no env fallback, no default-on. Tools write to the tenant's calendar and
+ * tables, so absence of the flag means NO.
+ */
+export function evaluateToolGate(settings: unknown): { enabled: boolean; reason: string | null } {
   if (!resolveFunctionsEnabled(settings)) return { enabled: false, reason: 'functions_disabled' };
   return { enabled: true, reason: null };
 }
@@ -159,7 +164,7 @@ export async function buildToolRuntime(
   deps: ToolRuntimeDeps = {},
 ): Promise<ToolRuntimeResult> {
   // 1. Who is this call for? Outbound dials carry it in metadata; inbound falls back to the
-  //    single-tenant env var (same pattern as the Retell webhook). No tenant, no tools.
+  //    single-tenant env var. No tenant, no tools.
   const identity = parseOutboundMetadata(opts.participantMetadata) ?? (env.VOICE_WEBHOOK_TENANT_ID
     ? { tenantId: env.VOICE_WEBHOOK_TENANT_ID, leadId: null, conversationId: null }
     : null);
@@ -219,7 +224,7 @@ export async function buildToolRuntime(
   }
 
   // 4. The per-tenant kill switch.
-  const gate = evaluateToolGate(settings, env);
+  const gate = evaluateToolGate(settings);
   if (!gate.enabled) {
     await connection.close().catch(() => undefined);
     return { runtime: null, disabledReason: gate.reason! };

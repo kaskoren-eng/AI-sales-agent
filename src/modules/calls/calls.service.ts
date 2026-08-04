@@ -4,21 +4,6 @@ import type { Redis } from 'ioredis';
 import type { Env } from '../../config/env.js';
 import type { FastifyBaseLogger } from 'fastify';
 import { conversations, leads, messages } from '../../db/schema/index.js';
-import { CircuitBreaker } from '../../shared/circuit-breaker.js';
-
-// ---------------------------------------------------------------------------
-// Module-level circuit breaker — shared across all CallsService instances
-// ---------------------------------------------------------------------------
-
-const RETELL_API_BASE = 'https://api.retellai.com';
-const RETELL_TIMEOUT_MS = 15_000;
-const RETELL_CACHE_TTL_SECS = 600; // 10 minutes
-
-const retellCircuit = new CircuitBreaker({
-  name: 'retell',
-  failureThreshold: 5,
-  cooldownMs: 30_000,
-});
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -89,7 +74,6 @@ export interface CallDetail {
   analysis: CallAnalysis | null;
   qualification: CallQualification;
   summary: string | null;
-  audio_available: boolean;
 }
 
 export interface ListCallsParams {
@@ -137,10 +121,6 @@ export class CallsService {
     this.redis = redis;
     this.env = env;
     this.logger = logger;
-  }
-
-  private _fetch(url: string, opts: RequestInit): Promise<Response> {
-    return retellCircuit.execute(() => fetch(url, opts));
   }
 
   // -------------------------------------------------------------------------
@@ -302,9 +282,6 @@ export class CallsService {
     const qual = extractQualification(terminalMeta);
     const durationSecs = extractDurationSecs(terminalMeta);
 
-    // audio_available: channel_ref is set AND status is ended (spec §2.2)
-    const audioAvailable = !!row.channelRef && row.status === 'ended';
-
     // Build fallback transcript from messages with content_type = 'transcript'
     const fallbackTranscript: CallTranscriptTurn[] = msgs
       .filter((m) => m.contentType === 'transcript')
@@ -317,75 +294,11 @@ export class CallsService {
         };
       });
 
-    let transcript: CallTranscriptTurn[] = fallbackTranscript;
-    let analysis: CallAnalysis | null = null;
-
-    // Attempt live Retell fetch when: channel_ref set, status ended, API key configured
-    if (row.channelRef && row.status === 'ended' && this.env.RETELL_API_KEY) {
-      const cacheKey = `retell:call:${row.channelRef}`;
-
-      try {
-        const cached = await this.redis.get(cacheKey);
-
-        if (cached) {
-          const parsed = JSON.parse(cached) as {
-            transcript?: CallTranscriptTurn[];
-            analysis?: CallAnalysis | null;
-          };
-          transcript = parsed.transcript ?? fallbackTranscript;
-          analysis = parsed.analysis ?? null;
-        } else {
-          const retellRes = await this._fetch(
-            `${RETELL_API_BASE}/v1/call/${row.channelRef}`,
-            {
-              headers: { Authorization: `Bearer ${this.env.RETELL_API_KEY}` },
-              signal: AbortSignal.timeout(RETELL_TIMEOUT_MS),
-            },
-          );
-
-          if (retellRes.ok) {
-            const retellData = (await retellRes.json()) as Record<string, unknown>;
-
-            // Parse transcript_object turns
-            const turns = Array.isArray(retellData['transcript_object'])
-              ? retellData['transcript_object']
-              : [];
-            transcript = (turns as Array<Record<string, unknown>>).map((turn) => ({
-              role: typeof turn['role'] === 'string' ? turn['role'] : 'unknown',
-              message: typeof turn['content'] === 'string' ? turn['content'] : '',
-              time_in_call_secs: null,
-            }));
-
-            // Parse call_analysis
-            const retellAnalysis = retellData['call_analysis'] as Record<string, unknown> | undefined;
-            if (retellAnalysis) {
-              analysis = {
-                call_successful:
-                  retellAnalysis['call_successful'] != null
-                    ? String(retellAnalysis['call_successful'])
-                    : null,
-                transcript_summary:
-                  typeof retellAnalysis['call_summary'] === 'string'
-                    ? retellAnalysis['call_summary']
-                    : null,
-              };
-            }
-
-            await this.redis.set(
-              cacheKey,
-              JSON.stringify({ transcript, analysis }),
-              'EX',
-              RETELL_CACHE_TTL_SECS,
-            );
-          }
-        }
-      } catch (err) {
-        this.logger?.warn(
-          { event: 'retell_fetch_failed', conversationId: id, error: err instanceof Error ? err.message : String(err) },
-          'Retell fetch failed; falling back to DB transcript',
-        );
-      }
-    }
+    // The transcript is whatever the DB holds. Historical calls from the retired engine kept
+    // their turns in `messages` (content_type='transcript'), written at call-analysis time, so
+    // they still render here; LiveKit calls write the same rows. There is no live vendor fetch.
+    const transcript: CallTranscriptTurn[] = fallbackTranscript;
+    const analysis: CallAnalysis | null = null;
 
     return {
       id: row.id,
@@ -406,39 +319,7 @@ export class CallsService {
       analysis,
       qualification: qual,
       summary: row.summary ?? null,
-      audio_available: audioAvailable,
     };
   }
 
-  // -------------------------------------------------------------------------
-  // checkAudioAvailable
-  // -------------------------------------------------------------------------
-
-  /**
-   * Verify tenant ownership and audio availability for a call.
-   *
-   * Returns:
-   *   null   → conversation not found, wrong tenant, or not a voice call → routes layer sends 404
-   *   false  → conversation found but channel_ref is null or API key not configured → routes layer sends 404
-   *   string → the channel_ref (Retell call_id) to use when proxying audio → proceed
-   */
-  async checkAudioAvailable(tenantId: string, id: string): Promise<string | null | false> {
-    const [row] = await this.db
-      .select({
-        channelRef: conversations.channelRef,
-        status: conversations.status,
-        channel: conversations.channel,
-      })
-      .from(conversations)
-      .where(and(eq(conversations.tenantId, tenantId), eq(conversations.id, id)))
-      .limit(1);
-
-    // Not found, wrong tenant, or not a voice call
-    if (!row || row.channel !== 'voice') return null;
-
-    // Audio requires a channel_ref AND a configured Retell API key
-    if (!row.channelRef || !this.env.RETELL_API_KEY) return false;
-
-    return row.channelRef;
-  }
 }

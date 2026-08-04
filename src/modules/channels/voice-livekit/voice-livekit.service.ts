@@ -11,11 +11,8 @@ import { checkDailySpendLimit } from '../../calls/spend-guard.js';
 import { createVoiceConversation } from './call-record.js';
 
 /**
- * Places outbound calls through LiveKit instead of Retell.
- *
- * Deliberately mirrors `VoiceService.initiateOutboundCall()` in ../voice/voice.service.ts so the
- * flow executor can pick an engine per tenant without caring which one it got. See
- * `resolveVoiceEngine()`.
+ * Places outbound calls through LiveKit. This is the only dialer — both the flow executor and
+ * POST /api/v1/calls/outbound come through here.
  *
  * The dial goes: our API -> LiveKit -> Zadarma SIP outbound trunk -> the lead's phone. The agent
  * (`agent.ts`) is auto-dispatched into the room and starts talking when the lead picks up.
@@ -58,10 +55,10 @@ export class LiveKitVoiceService {
 
   /**
    * Dials a lead. Returns the room name, which is our call id — it is what ties the call to the
-   * `conversations` row, the same role `channelRef` plays for Retell's call_id.
+   * `conversations` row via `channelRef`.
    *
-   * Returns `{ callId: 'skipped' }` when the outbound trunk isn't configured, matching
-   * VoiceService's behaviour so a missing config degrades rather than throws mid-flow.
+   * Returns `{ callId: 'skipped' }` when the outbound trunk isn't configured, so a missing
+   * config degrades rather than throws mid-flow.
    */
   async initiateOutboundCall(
     to: string,
@@ -146,30 +143,12 @@ export class LiveKitVoiceService {
 }
 
 /**
- * Which voice engine should this tenant use?
- *
- * Per-tenant override in `tenants.settings.voice_engine`, falling back to VOICE_ENGINE_DEFAULT.
- * This is the rollback switch: set a tenant back to 'retell' and the Retell path — which is
- * still fully wired — takes over on the next call.
- */
-export function resolveVoiceEngine(
-  settings: unknown,
-  env: Env,
-): 'retell' | 'livekit' {
-  const engine =
-    settings && typeof settings === 'object'
-      ? (settings as Record<string, unknown>)['voice_engine']
-      : undefined;
-  return engine === 'livekit' || engine === 'retell' ? engine : env.VOICE_ENGINE_DEFAULT;
-}
-
-/**
  * May the agent use its Phase 4 tools (calendar check, booking, hang-up) on this tenant's calls?
  *
  * `tenants.settings.functions_enabled` — a plain jsonb key, set via the settings API or SQL:
  *   UPDATE tenants SET settings = jsonb_set(settings, '{functions_enabled}', 'true') WHERE id = ...;
  *
- * STRICT `=== true`, no env fallback, and unlike voice_engine there is deliberately no default-on:
+ * STRICT `=== true`, no env fallback, and deliberately no default-on:
  * tools write to the tenant's calendar and tables, so absence of the flag means NO. This is the
  * per-tenant kill switch the migration plan requires before any tool goes near production.
  */
@@ -183,7 +162,6 @@ export function resolveVoiceEngine(
  * authenticated tenant anyway.
  */
 export const AGENT_SETTINGS_KEYS = [
-  'voice_engine',
   'functions_enabled',
   'whatsapp_templates',
   'toll_fraud',
