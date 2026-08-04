@@ -9,6 +9,11 @@ import {
 } from '../channels/whatsapp/whatsapp-window.js';
 import { resolveTollFraudSettings, type TollFraudSettings } from '../calls/spend-guard.js';
 import { resolveCrmSyncSettings, type CrmSyncSettings } from '../integrations/crm-sync.settings.js';
+import {
+  AGENT_PERSONA_KEY,
+  assertAgentPersona,
+  type AgentPersona,
+} from '../channels/voice-livekit/tts/tts-settings.js';
 
 export interface BusinessProfile {
   companyName: string;
@@ -40,6 +45,52 @@ export class SettingsService {
     private db: Database,
     private encryptionKey: string,
   ) {}
+
+  /** `agent_persona` — the agent's name/gender and how it sounds. See tts/tts-settings.ts. */
+  async getAgentPersona(tenantId: string): Promise<AgentPersona | null> {
+    const [tenant] = await this.db
+      .select({ settings: tenants.settings })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+
+    if (!tenant) throw new NotFoundError('Tenant', tenantId);
+
+    const settings = getTenantSettings(tenant.settings);
+    const raw = settings[AGENT_PERSONA_KEY];
+    if (raw === undefined) return null;
+    // Stored rows can predate the validator or come from raw SQL. Normalize through the same
+    // assert the write path uses; if it does not survive, report null rather than hand a caller a
+    // value the agent would silently refuse to use.
+    try {
+      return assertAgentPersona(raw);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Throws (→ 400) on any value Cartesia would reject. Deliberately strict: an out-of-range speed
+   * accepted here becomes an empty audio stream and a mute agent on a live call, with no error
+   * anywhere. Reject it at the only point a human is still watching.
+   */
+  async saveAgentPersona(tenantId: string, input: unknown): Promise<AgentPersona> {
+    const persona = assertAgentPersona(input);
+
+    const [tenant] = await this.db
+      .select({ settings: tenants.settings })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+
+    if (!tenant) throw new NotFoundError('Tenant', tenantId);
+
+    const settings = getTenantSettings(tenant.settings);
+    settings[AGENT_PERSONA_KEY] = persona;
+
+    await this.db.update(tenants).set({ settings, updatedAt: new Date() }).where(eq(tenants.id, tenantId));
+    return persona;
+  }
 
   async getBusinessProfile(tenantId: string): Promise<BusinessProfile | null> {
     const [tenant] = await this.db

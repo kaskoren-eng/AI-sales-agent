@@ -2,6 +2,7 @@ import { initializeLogger, tts as ttsBase } from '@livekit/agents';
 import * as cartesia from '@livekit/agents-plugin-cartesia';
 import type { AudioFrame } from '@livekit/rtc-node';
 import type { Env } from '../../../../config/env.js';
+import type { CartesiaEmotion, TtsOverrides } from '../tts/tts-settings.js';
 
 let loggerReady = false;
 
@@ -16,6 +17,16 @@ export function ensureLogger(level = 'error'): void {
   loggerReady = true;
 }
 
+export interface CartesiaCallOptions {
+  model: string;
+  voice: string | undefined;
+  language?: string;
+  speed: number;
+  volume: number;
+  emotion?: CartesiaEmotion[];
+  apiKey?: string;
+}
+
 /**
  * Cartesia TTS options — the single source of truth for how we call Cartesia, shared by the agent
  * and the test harness so they can't drift apart.
@@ -27,38 +38,50 @@ export function ensureLogger(level = 'error'): void {
  *
  * So: only declare the language on models that accept it. Never infer a model's language support
  * from an empty response.
+ *
+ * `overrides` carries the per-tenant voice/prosody resolved from `tenants.settings.agent_persona`
+ * (tts/tts-settings.ts). Called with one argument — as every bench and A/B harness does — the
+ * result is byte-identical to before this parameter existed.
  */
-export function cartesiaOptions(env: Env): {
-  model: string;
-  voice: string | undefined;
-  language?: string;
-  speed: number;
-  volume: number;
-} {
+export function cartesiaOptions(env: Env, overrides: TtsOverrides = {}): CartesiaCallOptions {
   const model = env.CARTESIA_MODEL;
-  const opts: {
-    model: string;
-    voice: string | undefined;
-    language?: string;
-    speed: number;
-    volume: number;
-  } = {
+  const opts: CartesiaCallOptions = {
     model,
-    voice: env.CARTESIA_VOICE_ID_PRIMARY,
+    voice: overrides.voice ?? env.CARTESIA_VOICE_ID_PRIMARY,
     // Intelligibility levers for the 8kHz phone line, not cosmetics. Narrowband strips the high
     // frequencies that carry consonants; slowing down and speaking up are what make Hebrew
     // legible down a phone. Judge them on the -phone samples from `npm run voice:ab`.
-    speed: env.VOICE_TTS_SPEED,
-    volume: env.VOICE_TTS_VOLUME,
+    speed: overrides.speed ?? env.VOICE_TTS_SPEED,
+    volume: overrides.volume ?? env.VOICE_TTS_VOLUME,
+    // The plugin reads CARTESIA_API_KEY off process.env when this is absent. Passing it
+    // explicitly means a missing key fails where it can be read, rather than becoming one more
+    // way to produce an empty audio stream.
+    ...(env.CARTESIA_API_KEY ? { apiKey: env.CARTESIA_API_KEY } : {}),
   };
-  if (MODELS_ACCEPTING_LANGUAGE.has(model)) {
+  // The plugin's TTSOptions.emotion is an ARRAY, but only emotion[0] reaches the wire
+  // (agents-plugin-cartesia/src/tts.ts — `generationConfig.emotion = opts.emotion[0]`). One value
+  // is all Cartesia's generation_config accepts, so the array is a shape, not a list.
+  if (overrides.emotion) opts.emotion = [overrides.emotion];
+  if (acceptsLanguage(model)) {
     opts.language = env.VOICE_LANGUAGE;
   }
   return opts;
 }
 
-/** Models that accept an explicit `language`. Others must be called without it. */
-const MODELS_ACCEPTING_LANGUAGE = new Set(['sonic-3', 'sonic-2', 'sonic', 'sonic-lite']);
+/**
+ * Does this model accept an explicit `language`? Others must be called without it.
+ *
+ * THE `startsWith` IS LOAD-BEARING. An exact-match set silently excluded `sonic-3.5`, so selecting
+ * it would have dropped `language: 'he'` and reproduced the sonic-turbo failure exactly: a one-shot
+ * WAV that sounds fine, and mush on a live call, because streaming Cartesia token-by-token with no
+ * declared language makes it guess per fragment — and on short Hebrew fragments it guesses wrong.
+ * A new model in a family we know accepts the parameter must not have to be remembered here.
+ */
+function acceptsLanguage(model: string): boolean {
+  return model.startsWith('sonic-3') || MODELS_ACCEPTING_LANGUAGE.has(model);
+}
+
+const MODELS_ACCEPTING_LANGUAGE = new Set(['sonic-2', 'sonic', 'sonic-lite']);
 
 /**
  * Synthesizes Hebrew speech for the *synthetic caller* — i.e. this is the fake human, not the
@@ -69,10 +92,14 @@ const MODELS_ACCEPTING_LANGUAGE = new Set(['sonic-3', 'sonic-2', 'sonic', 'sonic
  * Hebrew on sonic-3 ("AudioByteStream: incomplete frame during flush") — the websocket path is
  * the one the live agent uses and is proven to work.
  */
-export async function synthesizeHebrew(env: Env, text: string): Promise<AudioFrame[]> {
+export async function synthesizeHebrew(
+  env: Env,
+  text: string,
+  overrides: TtsOverrides = {},
+): Promise<AudioFrame[]> {
   ensureLogger();
 
-  const tts = new cartesia.TTS(cartesiaOptions(env));
+  const tts = new cartesia.TTS(cartesiaOptions(env, overrides));
 
   const stream = tts.stream();
   stream.pushText(text);

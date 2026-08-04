@@ -125,6 +125,7 @@ describe('sanitizeSettingsForAgent — whitelist, never leak secrets', () => {
       toll_fraud: { dailySpendLimitUsd: 50 },
       reminders: { enabled: true },
       businessProfile: { companyName: 'ClickScales' },
+      agent_persona: { name: 'קרן', gender: 'female', tts: { voiceId: 'HE_VOICE_ID' } },
       monday: { encryptedApiToken: 'SECRET-DO-NOT-LEAK' },
       apiKeyHash: 'also-secret',
     });
@@ -135,6 +136,7 @@ describe('sanitizeSettingsForAgent — whitelist, never leak secrets', () => {
       toll_fraud: { dailySpendLimitUsd: 50 },
       reminders: { enabled: true },
       businessProfile: { companyName: 'ClickScales' },
+      agent_persona: { name: 'קרן', gender: 'female', tts: { voiceId: 'HE_VOICE_ID' } },
     });
     expect(JSON.stringify(out)).not.toContain('SECRET-DO-NOT-LEAK');
   });
@@ -144,6 +146,54 @@ describe('sanitizeSettingsForAgent — whitelist, never leak secrets', () => {
     expect(sanitizeSettingsForAgent(null)).toBeUndefined();
     expect(sanitizeSettingsForAgent('x')).toBeUndefined();
   });
+});
+
+/**
+ * The voice config must survive a CLOSED tool gate. `functions_enabled` is the kill switch for
+ * tools that write to a tenant's calendar and tables — it says nothing about which voice the
+ * tenant should be spoken to in. Before this, the blob was dropped on the gate-closed path and a
+ * tenant with tools off silently got the env voice.
+ */
+describe('buildToolRuntime — settings blob survives a closed gate', () => {
+  it.each([
+    ['functions_disabled', { voice_engine: 'livekit', functions_enabled: false }],
+    ['engine_not_livekit', { voice_engine: 'retell', functions_enabled: true }],
+  ])('returns the blob alongside disabledReason=%s', async (reason, settings) => {
+    const d = deps({ ...settings, agent_persona: { tts: { voiceId: 'HE_VOICE_ID' } } });
+    const result = await buildToolRuntime(baseEnv, callOpts(), d.deps);
+
+    expect(result.runtime).toBeNull();
+    expect(result.disabledReason).toBe(reason);
+    expect(result.settings).toMatchObject({ agent_persona: { tts: { voiceId: 'HE_VOICE_ID' } } });
+    expect(d.close).toHaveBeenCalled();
+  });
+
+  it('returns the blob on the enabled path too', async () => {
+    const d = deps({ ...ENABLED_SETTINGS, agent_persona: { tts: { voiceId: 'HE_VOICE_ID' } } });
+    const result = await buildToolRuntime(baseEnv, callOpts(), d.deps);
+
+    expect(result.disabledReason).toBeNull();
+    expect(result.settings).toMatchObject({ agent_persona: { tts: { voiceId: 'HE_VOICE_ID' } } });
+  });
+
+  // No blob exists on these paths, so `undefined` is the honest answer and the env default is
+  // the correct fallback — not a bug to be papered over with a guess.
+  it('leaves settings undefined when there is genuinely no blob', async () => {
+    const noTenant = await buildToolRuntime(
+      baseEnv,
+      { ...callOpts(), participantMetadata: undefined },
+      deps(ENABLED_SETTINGS).deps,
+    );
+    expect(noTenant.disabledReason).toBe('no_tenant');
+    expect(noTenant.settings).toBeUndefined();
+
+    const timedOut = await buildToolRuntime(baseEnv, callOpts(), {
+      connectDb: () => ({ db: {} as Database, close: vi.fn(async () => undefined) }),
+      loadSettings: () => new Promise(() => undefined), // never resolves
+    });
+    expect(timedOut.disabledReason).toBe('settings_read_timeout');
+    expect(timedOut.settings).toBeUndefined();
+  }, FLAG_READ_TIMEOUT_MS + 3_000);
 });
 
 describe('evaluateToolGate — the fail-closed core', () => {

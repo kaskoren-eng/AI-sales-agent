@@ -13,7 +13,7 @@ import { TelephonyBackgroundVoiceCancellation } from '@livekit/noise-cancellatio
 import { type AudioFrame, RoomEvent, type RemoteAudioTrack, TrackKind } from '@livekit/rtc-node';
 import { loadEnv } from '../../../config/env.js';
 import { callLearnings } from '../../../db/schema/index.js';
-import { buildSessionComponents } from './agent.config.js';
+import { applyTenantTts, buildSessionComponents } from './agent.config.js';
 import { CallReport } from './call-report.js';
 import { CallStateMachine } from './call-state.js';
 import { decideSilenceAction, decideVoicemailAction } from './call-reflexes.js';
@@ -31,6 +31,7 @@ import { DeepdubTTS } from './tts/deepdub.tts.js';
 import { buildAgentTools } from './tools/index.js';
 import { runEndCallTeardown } from './tools/end-call.tool.js';
 import { buildToolRuntime, type ToolRuntimeContext } from './tools/tool-context.js';
+import { resolveAgentPersona } from './tts/tts-settings.js';
 import { enqueueLiveKitCallAnalysis } from '../../../queues/call-analysis.queue.js';
 import { ensureAgentSideConversation } from './call-record.js';
 
@@ -286,7 +287,7 @@ export default defineAgent({
     // and the objection prompt section all fall away, running Keren exactly as she was before it.
     const callState = env.VOICE_STATE_MACHINE_ENABLED ? new CallStateMachine() : undefined;
 
-    const { runtime, disabledReason } = await buildToolRuntime(env, {
+    const { runtime, disabledReason, settings } = await buildToolRuntime(env, {
       callId: ctx.room.name ?? 'unknown',
       callerPhone: caller.callerPhone,
       participantMetadata: participant.metadata,
@@ -298,6 +299,32 @@ export default defineAgent({
         ? `tools_enabled ${JSON.stringify({ tenantId: runtime.tenantId, leadId: runtime.leadId })}`
         : `tools_disabled reason=${disabledReason}`,
     );
+
+    // THIS TENANT'S VOICE. The TTS above was built from env defaults because the tenant is not
+    // knowable until the participant arrives — you cannot know whose call it is before answering
+    // it. So it is re-pointed here instead: a synchronous options swap, ~400 lines before the
+    // greeting, costing nothing measurable.
+    //
+    // Deliberately NOT gated on `runtime`. The tool gate is a kill switch for writes to a
+    // tenant's calendar and tables; a tenant with tools off has not asked to be spoken to in
+    // someone else's voice. `settings` is present on a closed gate for exactly this.
+    //
+    // resolveAgentPersona never throws: the caller has already been answered, and dropping a live
+    // call over a bad prosody number would be strictly worse than the default voice. Bad values
+    // are dropped per field and reported here — the only place a raw-SQL edit ever surfaces, since
+    // it bypasses the write-path validator entirely.
+    const persona = resolveAgentPersona(settings, env);
+    const ttsResult = applyTenantTts(components.tts, persona.overrides, env);
+    if (ttsResult !== 'noop' || persona.warnings.length > 0) {
+      console.log(
+        'voice_tts_config',
+        JSON.stringify({ result: ttsResult, ...persona.overrides, sources: persona.sources, warnings: persona.warnings }),
+      );
+      report.recordTtsConfig({ ...persona.overrides, result: ttsResult, sources: persona.sources, warnings: persona.warnings });
+    }
+    if (persona.warnings.length > 0) {
+      console.warn('voice_tts_config_rejected', JSON.stringify(persona.warnings));
+    }
 
     // Task 0 for calls the dispatcher didn't create a row for — inbound SIP phone calls (no dialer /
     // web-call route), plus a fallback if an outbound/web-call insert failed. The agent opens the

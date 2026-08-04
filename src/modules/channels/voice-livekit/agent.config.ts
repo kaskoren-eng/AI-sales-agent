@@ -4,6 +4,7 @@ import * as elevenlabs from '@livekit/agents-plugin-elevenlabs';
 import * as openai from '@livekit/agents-plugin-openai';
 import type * as silero from '@livekit/agents-plugin-silero';
 import { cartesiaOptions } from './testing/speech.js';
+import type { TtsOverrides } from './tts/tts-settings.js';
 import { createSonioxSTT } from './stt/soniox.stt.js';
 import { DeepdubTTS, deepdubOptions } from './tts/deepdub.tts.js';
 import type { Env } from '../../../config/env.js';
@@ -228,6 +229,65 @@ function buildTTS(env: Env): ttsBase.TTS {
   // Direct, with our own key. Options come from cartesiaOptions() so the agent and the test
   // harness cannot drift apart.
   return new cartesia.TTS(cartesiaOptions(env));
+}
+
+/** What `applyTenantTts` was able to do — logged per call so a no-op is never invisible. */
+export type TenantTtsResult = 'applied' | 'partial' | 'unsupported' | 'noop';
+
+/**
+ * Re-points a LIVE TTS object at this tenant's voice and prosody.
+ *
+ * WHY IT IS A MUTATION AND NOT A CONSTRUCTOR ARGUMENT. The TTS is built at the top of `entry()`,
+ * but the tenant is only knowable after `waitForParticipant()` — you cannot know whose call it is
+ * before you have picked up the phone. Building the pipeline later would push DeepDub's socket
+ * prewarm behind `ctx.connect()` and cost real milliseconds on every call, for a value that is
+ * usually the env default anyway. So: build with env defaults, then update in place before the
+ * greeting, which is ~250 lines and one `session.start()` later.
+ *
+ * This is safe, and not by luck: `updateOptions` REPLACES the options object rather than mutating
+ * it, so any stream already open keeps the options it was created with, and `ttsNode` opens a
+ * fresh stream per turn — so the update lands on the greeting and everything after it.
+ *
+ * The return value is the honest report. Two routes cannot carry everything:
+ *   - `inference` has no verified emotion passthrough on the gateway, so emotion is dropped.
+ *   - `deepdub` / `elevenlabs` are different vendors: a Cartesia voice id means nothing to them,
+ *     and neither exposes updateOptions. Changing them from here would be a guess.
+ * A caller that silently did nothing in those cases would look identical to a broken feature.
+ */
+// `tts` is deliberately `unknown`: AgentSessionOptions types it as `TTS | ModelWithVoice |
+// undefined` (a bare model string is a legal way to configure a session), and the instanceof
+// dispatch below is what decides whether this is a provider we can actually re-point. Anything
+// else is honestly reported as 'unsupported' rather than cast into a lie.
+export function applyTenantTts(tts: unknown, overrides: TtsOverrides, env: Env): TenantTtsResult {
+  const { voice, emotion, speed, volume } = overrides;
+  if (voice === undefined && emotion === undefined && speed === undefined && volume === undefined) {
+    return 'noop';
+  }
+
+  if (tts instanceof cartesia.TTS) {
+    tts.updateOptions({
+      ...(voice !== undefined ? { voice } : {}),
+      ...(speed !== undefined ? { speed } : {}),
+      ...(volume !== undefined ? { volume } : {}),
+      // Array shape, single value — only emotion[0] reaches Cartesia's generation_config.
+      ...(emotion !== undefined ? { emotion: [emotion] } : {}),
+    });
+    return 'applied';
+  }
+
+  if (tts instanceof inference.TTS) {
+    // modelOptions is REPLACED wholesale, not merged — so both levers must be resent together or
+    // the one the tenant did not override would silently revert to the gateway default. Reusing
+    // cartesiaOptions() is what guarantees the env fallbacks are the same ones buildTTS applied.
+    const opts = cartesiaOptions(env, overrides);
+    tts.updateOptions({
+      ...(voice !== undefined ? { voice } : {}),
+      modelOptions: { speed: opts.speed, volume: opts.volume },
+    });
+    return emotion === undefined ? 'applied' : 'partial';
+  }
+
+  return 'unsupported';
 }
 
 /**

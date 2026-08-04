@@ -84,6 +84,25 @@ export interface CallReportJson {
     turnDetection: string;
     llmModel: string;
     ttsModel: string;
+    /**
+     * The voice that ACTUALLY spoke on this call, after per-tenant overrides were applied
+     * (tts/tts-settings.ts). Absent on calls where nothing was overridden.
+     *
+     * Without it the report names only the env model and voice, so a call made in a tenant's own
+     * voice would be filed under ClickScales' — and `warnings` is the ONLY place a bad value
+     * written by raw SQL ever becomes visible, since it bypasses every validator on the way in.
+     */
+    tts?: {
+      voice?: string;
+      emotion?: string;
+      speed?: number;
+      volume?: number;
+      /** applied | partial | unsupported | noop — what the provider route could honour. */
+      result: string;
+      /** Per-field sources: 'tenant' or 'default'. */
+      sources?: Record<string, string>;
+      warnings?: string[];
+    };
   };
   summary: {
     /** Turns where the agent decided the caller had finished speaking. */
@@ -299,6 +318,11 @@ export class CallReport {
   /** A compliance fact, as it happens (e.g. the recording notice finished playing). */
   recordCompliance(patch: ComplianceLog): void {
     Object.assign(this.#compliance, patch);
+  }
+
+  /** Which voice this call was actually spoken in — see CallReportJson['config']['tts']. */
+  recordTtsConfig(tts: NonNullable<CallReportJson['config']['tts']>): void {
+    this.#config = { ...this.#config, tts };
   }
 
   /** end_call found no disclosure yet and instructed one into the goodbye. */

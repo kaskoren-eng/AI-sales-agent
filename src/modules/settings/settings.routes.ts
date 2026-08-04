@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { SettingsService } from './settings.service.js';
-import { ValidationError } from '../../shared/errors.js';
+import { NotFoundError, ValidationError } from '../../shared/errors.js';
 
 const businessProfileSchema = z.object({
   companyName: z.string().min(1).max(200),
@@ -38,6 +38,29 @@ export async function settingsRoutes(app: FastifyInstance) {
 
     const saved = await service.saveBusinessProfile(tenantId, result.data);
     return reply.status(200).send({ ok: true, businessProfile: saved });
+  });
+
+  // --- Agent persona (name, gender, voice) ---
+  //
+  // No zod schema here on purpose: `assertAgentPersona` in the service IS the schema, and it is the
+  // same function the agent and the voice:sample CLI validate with. A parallel zod copy of the
+  // ranges is exactly how an API comes to accept a value the voice pipeline then silently drops.
+
+  app.get('/agent-persona', async (request) => {
+    const tenantId = (request as any).tenantId as string;
+    return { agentPersona: await service.getAgentPersona(tenantId) };
+  });
+
+  app.put('/agent-persona', async (request, reply) => {
+    const tenantId = (request as any).tenantId as string;
+    let saved;
+    try {
+      saved = await service.saveAgentPersona(tenantId, request.body);
+    } catch (err) {
+      if (err instanceof NotFoundError) throw err;
+      throw new ValidationError(err instanceof Error ? err.message : 'Invalid agent persona');
+    }
+    return reply.status(200).send({ ok: true, agentPersona: saved });
   });
 
   // --- Zadarma ---

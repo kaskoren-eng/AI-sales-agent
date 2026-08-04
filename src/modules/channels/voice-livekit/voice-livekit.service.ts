@@ -189,6 +189,11 @@ export const AGENT_SETTINGS_KEYS = [
   'toll_fraud',
   'reminders',
   'businessProfile',
+  // How this tenant's agent SOUNDS (voice id, emotion, speed, volume) — see tts/tts-settings.ts.
+  // It has to be on this list or the whitelist silently strips it and every outbound and web call
+  // falls back to the env voice, which looks exactly like "the per-tenant voice feature is broken".
+  // Non-secret by construction: a Cartesia voice id and three prosody numbers, nothing more.
+  'agent_persona',
 ] as const;
 
 export function sanitizeSettingsForAgent(settings: unknown): Record<string, unknown> | undefined {

@@ -96,9 +96,20 @@ export interface ToolRuntimeContext {
   callState: CallStateMachine | undefined;
 }
 
+/**
+ * `settings` is the raw tenant blob, returned ALONGSIDE the gate decision rather than only inside
+ * `runtime` — because not everything that reads tenant config is a tool.
+ *
+ * The agent's VOICE (tts/tts-settings.ts) is the first such reader, and gating it on
+ * `functions_enabled` would be wrong: that flag is the kill switch for tools that WRITE to a
+ * tenant's calendar and tables. A tenant who has tools switched off has not asked to be spoken to
+ * in somebody else's voice. So the blob survives a closed gate; it is `undefined` only when there
+ * genuinely is no blob (no tenant, DB down, read timed out), where the env default is the honest
+ * answer anyway.
+ */
 export type ToolRuntimeResult =
-  | { runtime: ToolRuntimeContext; disabledReason: null }
-  | { runtime: null; disabledReason: string };
+  | { runtime: ToolRuntimeContext; disabledReason: null; settings: unknown }
+  | { runtime: null; disabledReason: string; settings?: unknown };
 
 /** Injection seam for tests — the default deps hit the real DB/Redis. */
 export interface ToolRuntimeDeps {
@@ -222,7 +233,8 @@ export async function buildToolRuntime(
   const gate = evaluateToolGate(settings, env);
   if (!gate.enabled) {
     await connection.close().catch(() => undefined);
-    return { runtime: null, disabledReason: gate.reason! };
+    // Tools off, but the tenant's voice config still applies — see ToolRuntimeResult.
+    return { runtime: null, disabledReason: gate.reason!, settings };
   }
 
   // Messaging queues — best-effort: a dead Redis degrades the messaging TOOLS (they refuse
@@ -249,6 +261,7 @@ export async function buildToolRuntime(
   const privateKey = env.GOOGLE_CALENDAR_PRIVATE_KEY.replace(/\\n/g, '\n');
   return {
     disabledReason: null,
+    settings,
     runtime: {
       tenantId: identity.tenantId,
       leadId: identity.leadId,
