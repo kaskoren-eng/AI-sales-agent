@@ -66,10 +66,10 @@
 
 - ✅ **AES-256-GCM encryption** לסודות tenant (via `src/shared/crypto.ts`)
 - ✅ **API keys מאוחסנים כ-SHA-256 hashes** — לא plaintext
-- ✅ **Webhook signature verification** — per channel (Meta, WhatsApp, Retell, Zadarma)
+- ✅ **Webhook signature verification** — per channel (Meta, WhatsApp, Zadarma)
 - ✅ **Replay attack protection** — 5-min window על WhatsApp + lead-intake
 - ✅ **Per-tenant rate limiting** — 200 req/min per tenant
-- ✅ **Circuit breakers** — על כל spec חיצוני (UChat, Retell, LiveKit, Cartesia, Monday, Google, Trafft, Airtable)
+- ✅ **Circuit breakers** — על כל spec חיצוני (UChat, LiveKit, Cartesia, Monday, Google, Trafft, Airtable)
 - ✅ **Auth failure audit logging** — כל rejected auth נרשם
 - ✅ **Multi-tenant isolation** — `tenant_id` בכל טבלה, filter תמיד
 - ✅ **JWT + API key dual auth** — לא סומכים על one factor
@@ -119,7 +119,7 @@
 - 2FA לפעולות של הגדלת quota
 
 ### 11. הצפנת הקלטות ב-Cloud storage
-**המצב אצלנו:** ⚠️ הקלטות שנשמרות (LiveKit egress, Retell) — לא ברור אם ב-S3 מוצפן.
+**המצב אצלנו:** ⚠️ הקלטות שנשמרות (LiveKit egress) — לא ברור אם ב-S3 מוצפן.
 
 **מה לעשות:**
 - לוודא שכל bucket של הקלטות עם **encryption at rest by default**

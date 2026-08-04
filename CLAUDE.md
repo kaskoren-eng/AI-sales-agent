@@ -102,7 +102,7 @@ The voice engine migration is **complete and live in production since 2026-07-29
 
 ### The voice stack, as built
 
-`src/modules/channels/voice-livekit/` — Zadarma SIP → LiveKit → **Soniox `stt-rt-v5`** (STT) → OpenAI `gpt-5.4` (LLM) → **Cartesia `sonic-3`** (TTS). Per-tenant `voice_engine` flag in `tenants.settings` (`'retell'` | `'livekit'`, env default still `'retell'`).
+`src/modules/channels/voice-livekit/` — Zadarma SIP → LiveKit → **Soniox `stt-rt-v5`** (STT) → OpenAI `gpt-5.4` (LLM) → **Cartesia `sonic-3`** (TTS). **The only voice engine** — the `voice_engine` setting and `VOICE_ENGINE_DEFAULT` were removed with the Retell code on 2026-08-05.
 
 Two divergences from the original plan that trip people up: **STT is Soniox, not OpenAI Realtime** (semantic WER 4.3% vs 34.9% on real Hebrew calls — don't "fix" it back), and **DeepDub is a fully built TTS alternative behind `VOICE_TTS_PROVIDER`** that is deliberately not the default despite winning a blind A/B 6:1.
 
@@ -112,7 +112,7 @@ Two divergences from the original plan that trip people up: **STT is Soniox, not
 1. `VOICE_MIGRATION_PLAN.md` (project root) — the 7 phases, as-built corrections, and what postdates the plan
 2. `docs/voice-agent-development-methodology.md` — 10 non-negotiable rules for every voice commit
 3. `docs/hebrew-voice-agent-dev-plan.md` — Hebrew-specific stack, prompts, business logic for lead-booking use case
-4. `docs/retell-ai-dashboard-reference.md` — feature parity checklist (what Retell has, what we replicate, what we skip)
+4. `docs/retell-ai-dashboard-reference.md` — **archived** feature-parity checklist; still the clearest statement of the dashboard backlog (what we replicate, what we skip)
 5. `docs/voice-ai-learning-resources.md` — 30 curated engineering guides + case studies (start with Tier 1)
 
 ## Commands
@@ -142,13 +142,13 @@ Two divergences from the original plan that trip people up: **STT is Soniox, not
 - **ai-engine** is a service module (no routes) — consumed by channel workers and lead qualification
 - All DB tables have `tenant_id` — always filter by it, never skip tenant isolation
 - **Dead Letter Queue:** all 3 main workers move exhausted jobs to `dead-letter` queue
-- **Circuit breakers:** UChat, Retell, LiveKit, Cartesia, Monday, Google Calendar, Trafft, Airtable each have their own breaker (5 failures → 30s cooldown)
+- **Circuit breakers:** UChat, LiveKit, Cartesia, Monday, Google Calendar, Trafft, Airtable each have their own breaker (5 failures → 30s cooldown)
 
 ## DB Schema (7 tables)
 
 `tenants`, `leads`, `conversations`, `messages`, `scheduled_calls`, `import_jobs`, `call_learnings`
 
-- `call_learnings` — stores call recordings (LiveKit; legacy Twilio conference monitoring / Retell), Whisper transcripts, GPT sales analysis, outcome labels (`won`/`lost`/`neutral`)
+- `call_learnings` — stores call recordings (LiveKit; legacy Twilio conference monitoring), Whisper transcripts, GPT sales analysis, outcome labels (`won`/`lost`/`neutral`)
 
 ## Workers (6)
 
@@ -164,7 +164,7 @@ Two divergences from the original plan that trip people up: **STT is Soniox, not
 - `leads` — CRUD, status workflow, score, manual flow trigger. `GET /:id/timeline` returns lead + conversations + messages + scheduled_calls in one call (consumed by the dashboard Lead Detail page at `/leads/:id`)
 - `channels/whatsapp` — UChat inbound/outbound, signature verification, 24h window fallback
 - `channels/email` — Resend inbound/outbound, svix signature verification
-- `channels/voice` — **[deprecated — NOT a rollback path]** Zadarma + Retell AI + Cartesia; outbound call initiation, learnings injection via Retell dynamic variables. The code is still on disk and the `voice_engine` flag still flips, but Retell is unmaintained here — fix forward, don't roll back. Twilio retained for the WhatsApp bridge and conference-call monitoring.
+- `channels/zadarma` — Zadarma recording-notification webhooks at `/webhooks/voice/zadarma`, feeding `call_learnings`. Engine-independent; extracted when the legacy Retell module was deleted (2026-08-05). **The URL is configured in the Zadarma portal — do not change the prefix.** Twilio retained for the WhatsApp bridge and conference-call monitoring.
 - `channels/voice-livekit` — **[LIVE in production since 2026-07-29]** Self-built pipeline: Zadarma SIP inbound trunk → LiveKit Agents (Node.js SDK) → **Soniox `stt-rt-v5`** STT → OpenAI `gpt-5.4` LLM → **Cartesia `sonic-3`** TTS (DeepDub adapter available behind `VOICE_TTS_PROVIDER`). Six agent tools, conversation state machine + reflexes, speech-guard, compliance (recording notice + AI disclosure), per-call `CallReport`, browser web-call path for the dashboard Simulator. Enabled per tenant via `tenants.settings.voice_engine='livekit'`. Reuses `google-calendar.provider.ts`, `ai-engine.service.ts`, `SettingsService`, `CallAnalysisService`, `scheduled_calls` and `call_learnings`.
 - `scheduling` — Google Calendar (default provider, service account + Domain-Wide Delegation), Trafft provider also available; slots query, booking, cancel. ⚠️ **Known gap:** there is no `GET /scheduling/bookings` list endpoint, but the dashboard Calendar page calls one — it 404s today.
 - `integrations` — Monday.com (sync/push/webhook), Airtable, CSV import, Google Sheets, `crm-sync.service.ts` (post-call outcome + summary push, per-tenant `crm_sync`). *(Nango was removed.)*
@@ -174,7 +174,7 @@ Two divergences from the original plan that trip people up: **STT is Soniox, not
 - `webhooks` — Meta Lead Ads, generic lead intake
 - `tenants` — **self-service only** now (`/me` + self-guarded `/:id`). Cross-tenant powers moved to `admin`. `PATCH /me` added (name + settings). A tenant can no longer read/mutate another tenant or create tenants.
 - `admin` — **operator console (super-admin, cross-tenant).** Gated by `ADMIN_API_KEY` env (unset → every `/api/v1/admin/*` route 503s; the console is opt-in). Own scope in `server.ts` (NOT the per-tenant `authenticate` hook), IP-rate-limited, constant-time key check. Endpoints: `GET /overview` (system KPIs), `GET /tenants` (rollup), `GET /tenants/:id` (deep stats/usage), `POST /tenants` (create), `PATCH /tenants/:id` (rename / suspend via `isActive`), `POST /tenants/:id/rotate-key`. Frontend at `/admin/*` (separate shell + admin-key gate, `dashboard/src/pages/admin/**`). No schema change (reuses `tenants.isActive`). New env key: `ADMIN_API_KEY` (in `.env.example`). **MVP** — the Ops & health pillar (queue depths, DLQ, breaker states), real admin accounts and an operator audit log are all deferred.
-- `calls` — list/detail/audio proxy. Serves both legacy Retell calls and LiveKit calls (outbound, inbound and web-call; web-call rooms use a placeholder "Web simulator" lead since the list inner-joins leads)
+- `calls` — list/detail. Serves LiveKit calls (outbound, inbound and web-call; web-call rooms use a placeholder "Web simulator" lead since the list inner-joins leads) plus historical rows from the retired engine, rendered from the DB. ⚠️ **No call-audio endpoint** — the Retell proxy was deleted 2026-08-05 and LiveKit playback is an open gap.
 - `calls/monitor` — create Twilio conference calls for monitoring, label outcomes
 
 ## Frontend
@@ -215,7 +215,7 @@ All four root docs were refreshed on **2026-08-02** and are current as of that d
 - `phase-4-known-issues.md` — tribal knowledge: levers that look worth pulling and aren't
 - `phase-6-verification-checklist.md` — the launch gates, layers 0–6 (Layer 0 green, 1–6 open)
 - `learnings-dreamserver-voice-agent.md` — postmortem lessons from an external LiveKit agent
-- `retell-ai-dashboard-reference.md` — Retell feature parity checklist *(Retell is deprecated; historical)*
+- `retell-ai-dashboard-reference.md` — **archived** feature-parity checklist *(Retell removed 2026-08-05; kept for the feature→phase backlog table)*
 - `voice-ai-learning-resources.md` — 30 curated engineering guides & case studies with reading order
 
 **`docs/` subfolders:**

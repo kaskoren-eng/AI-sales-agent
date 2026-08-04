@@ -152,6 +152,10 @@ Reference: https://mobbin.com/screens/8490b97a-dfc7-4f3b-a9a8-cce747fb743f
 
 ### 4.4 Calls — reference: **Retell** (Koren's screenshots, not Mobbin)
 
+> Retell is no longer a vendor (removed 2026-08-05). These references are to screenshots Koren
+> captured while we were a customer — they remain valid as *visual* precedent, but you cannot
+> log in to check them, and nothing here implies an integration.
+
 List columns, translated out of engineering language:
 
 | Retell | KEREN (HE) | KEREN (EN) |

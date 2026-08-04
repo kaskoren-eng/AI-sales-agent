@@ -2,7 +2,7 @@
 
 **Status:** Starting in parallel with Phase 4 (agent functions)
 **Focus:** Extend the existing dashboard to support voice-livekit calls + real-time metrics + weekly review workflow
-**Reference:** `docs/retell-ai-dashboard-reference.md` (Retell feature parity)
+**Reference:** `docs/retell-ai-dashboard-reference.md` (archived feature-parity backlog)
 
 ---
 
@@ -31,7 +31,7 @@ CONTEXT — Where the project stands right now:
 
 Existing docs to read FIRST (in this order):
 1. CLAUDE.md — project conventions + current state
-2. docs/retell-ai-dashboard-reference.md — feature parity target for our dashboard
+2. docs/retell-ai-dashboard-reference.md — archived feature-parity backlog for our dashboard
 3. docs/phase-5-dashboard-development.md — this document
 4. VOICE_MIGRATION_PLAN.md — overall migration context
 
@@ -45,7 +45,7 @@ b. For each existing page (overview, leads, calls, flows, call-detail):
    - What does it show today?
    - What data source does it read from?
    - Is it wired to the DB directly, or via API?
-   - Does it support voice-livekit calls, or only Retell?
+   - Does it support voice-livekit calls?
 
 c. Run `npm run screenshot` (from CLAUDE.md commands) to capture the current UI. 
    Save screenshots so we can see the starting point.
@@ -57,12 +57,11 @@ Report all of this back BEFORE proposing any changes. I want to see the starting
 point, not jump to solutions.
 
 STEP 2 — PROPOSE PRIORITIES (after Step 1 is reported):
-Based on what you found + the Retell reference doc + this document, propose a 
+Based on what you found + the archived reference doc + this document, propose a 
 prioritized list of dashboard improvements. My focus areas (in rough order):
 
 Priority A — MAKE VOICE-LIVEKIT VISIBLE
-- Ensure the "Calls" page shows voice-livekit calls (not just legacy Retell)
-- Add filter/tag for voice engine (retell | livekit)
+- Ensure the "Calls" page shows voice-livekit calls
 - Add columns for latency (P50 per call), cost per call, engine used
 
 Priority B — CALL DETAIL PAGE UPGRADE
@@ -115,7 +114,7 @@ Implement the top priority I approve. Follow these rules:
   visually verify progress without running it myself
 
 CONSTRAINTS:
-- Do NOT touch src/modules/channels/voice/ (legacy Retell code)
+- Do NOT touch src/modules/channels/voice-livekit/ (VOICE territory)
 - Do NOT touch src/modules/channels/voice-livekit/ (Phase 4 in progress by 
   another Claude Code session — merge conflict risk)
 - All new dashboard queries respect tenant isolation (tenant_id filter on 

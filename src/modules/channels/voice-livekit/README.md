@@ -1,9 +1,8 @@
 # voice-livekit — the self-built voice engine
 
-Phase 1 (skeleton) of the Retell → LiveKit migration. See `VOICE_MIGRATION_PLAN.md` at the repo root.
-
-Retell is untouched and still serves production. This module runs **alongside** it (strangler-fig),
-and today it does exactly one thing: answer a room in Hebrew and hold a conversation.
+**Live in production since 2026-07-29.** This is the only voice engine — the previous vendor
+was removed from the repo entirely. See `VOICE_MIGRATION_PLAN.md` at the repo root for how it got
+here and why.
 
 ## The one thing to understand
 
@@ -14,10 +13,14 @@ why `agent.ts` must never be imported by anything.
 
 ```
 caller audio ─→ Silero VAD (is someone talking?)
-             ─→ OpenAI gpt-realtime-whisper  (speech → Hebrew text, streaming)
-             ─→ OpenAI gpt-5.4               (text → reply, streaming)
-             ─→ Cartesia sonic-3             (reply → Hebrew audio, streaming)
+             ─→ Soniox stt-rt-v5   (speech → Hebrew text, streaming; semantic end-of-turn)
+             ─→ OpenAI gpt-5.4     (text → reply, streaming)
+             ─→ Cartesia sonic-3   (reply → Hebrew audio, streaming)
 ```
+
+STT is **Soniox, not OpenAI** — semantic WER 4.3% vs 34.9% on real Hebrew calls. Do not "fix"
+it back. A DeepDub TTS adapter exists behind `VOICE_TTS_PROVIDER` and is deliberately not the
+default. See `docs/phase-4-known-issues.md` before changing either.
 
 ## Files
 
@@ -59,8 +62,8 @@ latency tts_metrics ttfbMs=96 durationMs=740
 
 ## Required env
 
-`LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `OPENAI_API_KEY`, `CARTESIA_API_KEY`,
-`CARTESIA_VOICE_ID_PRIMARY`. See `.env.example`.
+`LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `OPENAI_API_KEY`, `SONIOX_API_KEY`,
+`STT_PROVIDER=soniox`, `CARTESIA_API_KEY`, `CARTESIA_VOICE_ID_PRIMARY`. See `.env.example`.
 
 ## Troubleshooting
 
@@ -68,10 +71,12 @@ latency tts_metrics ttfbMs=96 durationMs=740
 |---|---|---|
 | Greeting sounds English-accented | `CARTESIA_VOICE_ID_PRIMARY` is not a Hebrew voice | Pick one at <https://play.cartesia.ai/voices> (filter: Hebrew), or try `CARTESIA_VOICE_ID_SECONDARY` |
 | Long pause before the agent answers | Silence-timer end-of-turn (measured 1.3–2.5s). **The multilingual turn detector does NOT support Hebrew** — see the PHASE 2 comment in `agent.config.ts` for what does | Try OpenAI `semantic_vad` |
-| Agent replies to the wrong thing | Hebrew transcription is off | Set `OPENAI_REALTIME_MODEL=whisper-1` (slower, non-streaming, but proven) |
+| Agent replies to the wrong thing | Hebrew transcription is off | Confirm `STT_PROVIDER=soniox` — the OpenAI STT path is far worse in Hebrew (34.9% vs 4.3% semantic WER) |
 | LLM errors on the first turn | `gpt-5.4` may need the Responses API | Swap `openai.LLM` → `openai.responses.LLM` in `agent.config.ts` |
 
-## Not built yet
+## What's here
 
-Phone calls (Phase 3), tenant context + calendar booking (Phase 4), transcript persistence,
-production deploy (Phase 6). This module currently writes nothing to the database.
+Phone calls over the Zadarma SIP trunk, six agent tools (calendar check, booking, lead capture,
+end-call), the conversation state machine + reflexes, speech-guard, compliance (recording notice
++ AI disclosure), per-call `CallReport`, and the browser web-call path used by the dashboard
+Simulator. Transcripts and analysis persist to `call_learnings` and `conversations`.

@@ -1,8 +1,16 @@
-# Retell AI Dashboard — Full Feature Reference
+# Retell AI Dashboard — Full Feature Reference *(ARCHIVED)*
 
-**Purpose:** Feature parity reference for building our own voice AI platform on LiveKit. Use this as the checklist of "what Retell offers" so we know what to prioritize, replicate, skip, or improve.
+> ⚠️ **Archived 2026-08-05.** Retell is no longer a vendor of ours and its code has been removed
+> from this repo. Nothing here describes a system we run or can log into.
+>
+> **It is kept for one reason:** the feature→phase mapping table near the end is still the
+> clearest statement of the dashboard backlog — what to build, what to skip, and why. Read it as
+> a product backlog that happens to be organized around a competitor's surface area, not as
+> integration documentation.
+
+**Purpose (at capture time):** Feature parity reference for building our own voice AI platform on LiveKit — the checklist of "what Retell offers" so we knew what to prioritize, replicate, skip, or improve.
 **Captured:** July 2026
-**Source:** Full walkthrough of Retell AI production dashboard
+**Source:** Full walkthrough of the Retell AI production dashboard, while we were still a customer
 
 ---
 
