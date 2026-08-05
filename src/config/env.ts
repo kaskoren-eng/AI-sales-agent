@@ -76,6 +76,21 @@ const envSchema = z.object({
    */
   DASHBOARD_BASE_URL: z.string().url().optional(),
 
+  /**
+   * ClickScales' OWN tenant — the one whose credentials the global `*_API_KEY` env vars actually
+   * are.
+   *
+   * Several integrations fall back to process-wide credentials when a tenant has configured none
+   * of its own. That was correct while ClickScales was the only tenant and those env vars were
+   * simply "our config". With more than one tenant it means a customer who runs an Airtable step
+   * without connecting Airtable silently writes their leads into OUR base — a cross-tenant data
+   * leak that looks like a working feature from both ends.
+   *
+   * Setting this makes the fallback explicit and narrow: it applies to this tenant and nobody
+   * else. Every other tenant must configure its own credentials or the step fails loudly.
+   */
+  PLATFORM_TENANT_ID: z.string().uuid().optional(),
+
   // Channels - WhatsApp (UChat)
   UCHAT_WEBHOOK_SECRET: z.string().min(1).optional(),
   UCHAT_API_TOKEN: z.string().min(1).optional(),

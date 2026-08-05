@@ -395,7 +395,23 @@ export function createFlowExecutorWorker(deps: WorkerDeps) {
           tableId = airtableCfg.tableId;
           phoneFieldName = airtableCfg.phoneFieldName;
           emailFieldName = airtableCfg.emailFieldName;
-        } else if (env.AIRTABLE_API_KEY && env.AIRTABLE_BASE_ID && env.AIRTABLE_TABLE_ID) {
+        } else if (
+          /**
+           * The env credentials are ClickScales' OWN Airtable base, so only ClickScales may fall
+           * back to them.
+           *
+           * Without this check, any tenant that ran an `update_airtable` step without connecting
+           * Airtable wrote their leads — names, phone numbers, email addresses — into our base,
+           * and read ours back when searching by phone. Both ends look like the feature working.
+           * A tenant with no Airtable at all was the case most likely to hit it, because there was
+           * nothing to notice missing.
+           */
+          env.PLATFORM_TENANT_ID &&
+          ctx.tenantId === env.PLATFORM_TENANT_ID &&
+          env.AIRTABLE_API_KEY &&
+          env.AIRTABLE_BASE_ID &&
+          env.AIRTABLE_TABLE_ID
+        ) {
           apiKey = env.AIRTABLE_API_KEY;
           baseId = env.AIRTABLE_BASE_ID;
           tableId = env.AIRTABLE_TABLE_ID;
@@ -404,9 +420,18 @@ export function createFlowExecutorWorker(deps: WorkerDeps) {
         }
 
         if (!apiKey || !baseId || !tableId) {
+          // Loud, and specific about which tenant and why. The old message could not tell
+          // "nobody configured this" apart from "we refused to use someone else's credentials",
+          // and only one of those is a configuration mistake worth chasing.
           logger?.warn(
-            { event: 'flow_step_skip', tenantId: ctx.tenantId },
-            'Flow executor: Airtable not configured — skipping update_airtable step',
+            {
+              event: 'flow_step_skip',
+              tenantId: ctx.tenantId,
+              reason: airtableCfg
+                ? 'airtable_config_incomplete'
+                : 'airtable_not_connected_for_this_tenant',
+            },
+            'Flow executor: this tenant has no Airtable connection — skipping update_airtable step',
           );
           return {};
         }
