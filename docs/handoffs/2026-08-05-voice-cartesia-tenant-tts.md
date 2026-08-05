@@ -59,6 +59,25 @@ means nothing to them).
   `context_id` per `SynthesizeStream`, a fresh stream per turn from `ttsNode`, aborted on
   interruption. No logic duplicated.
 
+## TTFB bench — read the caveat before acting on it
+
+`npm run bench:tts`, 2026-08-05, from Koren's Windows machine (NOT the production region):
+
+```
+cartesia/sonic-3 (via inference)   292ms
+cartesia/sonic-3.5 (direct)        489ms
+cartesia/sonic-3   (direct, LIVE) 1351ms
+```
+
+**Do not read this as "sonic-3.5 is 860ms faster".** The live direct sonic-3 arm measured 1351ms
+against a documented ~455ms — 3× its own recorded value — so this run's baseline is suspect, most
+likely local network rather than anything about the models. The inference arm (292ms vs a documented
+~300ms) and sonic-3.5 (489ms) both land where they should; only the baseline is off.
+
+Re-run from an environment that resembles production before drawing a conclusion, and per
+agent.config.ts's own warning: judge the `-phone.wav` samples by ear, never latency alone. Three
+"fast" models have already turned out not to speak Hebrew.
+
 ## Questions for architect
 
 1. **CLAUDE.md key claim.** `agent_persona` needs flipping from *proposed* to *claimed (VOICE)* in
