@@ -51,6 +51,36 @@ update tenants set settings = jsonb_set(settings, '{agent_persona}', '{
 the call's `warnings` — check the `voice_tts_config` log line on the first call of each arm. The
 safe path is `PUT /api/v1/settings/agent-persona`, which rejects bad values with a 400.
 
+## ⚠️ `lk agent update-secrets --overwrite` REPLACES THE ENTIRE SECRET SET
+
+It does not merge. This command:
+
+```
+lk agent update-secrets --secrets CARTESIA_MODEL=sonic-3.5 --overwrite     # DO NOT
+```
+
+left the deployed agent with exactly one secret and took production into CrashLoop —
+`DATABASE_URL: Required / REDIS_URL: Required / ENCRYPTION_KEY: Required / JWT_SECRET: Required`.
+The phone line was down until the full set was re-uploaded. Done 2026-08-05; recorded here so it
+is done once.
+
+**Always pass the whole file:**
+
+```
+sed 's/^CARTESIA_MODEL=.*/CARTESIA_MODEL=sonic-3.5/' .agent-secrets.env > /tmp/restore.env
+lk agent update-secrets --secrets-file /tmp/restore.env --overwrite --ignore-empty-secrets
+```
+
+`.agent-secrets.env` is the recovery source of truth. **It is gitignored and lives on one laptop.**
+Keys added on the server and never written back to it — the ELEVENLABS_* set and
+VOICE_RECORDING_NOTICE_ENABLED, added 2026-08-02 — are not in it and were not restored. They are
+unused while `VOICE_TTS_PROVIDER=cartesia`, but flipping to elevenlabs will now fail until they are
+re-added. Anyone who changes a secret on the server should mirror it into that file the same day.
+
+Related: `lk` **exits 0 on a failed deploy** (a stale agent id in `livekit.toml` prints
+"failed to get agent" and returns success). `scripts/deploy-agent.mjs` now greps the output and
+exits non-zero, but if you call `lk` directly, check `lk agent list` for the version afterwards.
+
 ## Procedure
 
 1. Seed `agent_persona` with voice `94c2e193…` and `model: sonic-3`.
