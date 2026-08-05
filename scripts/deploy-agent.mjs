@@ -58,5 +58,24 @@ const args = [
 ];
 
 console.log(`lk ${args.join(' ')}\n`);
-const r = spawnSync('lk', args, { stdio: 'inherit', shell: true });
-process.exit(r.status ?? 1);
+
+// `lk` EXITS 0 ON A FAILED DEPLOY. A stale agent id in livekit.toml produces
+// "unable to deploy agent: failed to get agent" on stdout and status 0, so this script reported a
+// successful deploy while nothing shipped — and the next real call still ran the old code. A
+// deploy tool that can silently not deploy is worse than one that crashes.
+//
+// So: tee the output (the operator still sees the build live) and fail on the error text.
+const r = spawnSync('lk', args, { shell: true, encoding: 'utf8' });
+const output = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+process.stdout.write(output);
+
+const failed = /unable to deploy|failed to get agent|error:/i.test(output);
+if (failed || (r.status ?? 1) !== 0) {
+  console.error('\nDEPLOY FAILED — nothing shipped. The agent still runs the previous version.');
+  if (/failed to get agent/i.test(output)) {
+    console.error('The agent id in livekit.toml does not exist in this project. Check: lk agent list');
+  }
+  process.exit(1);
+}
+console.log('\nDeployed. Confirm the running version with: lk agent list');
+process.exit(0);

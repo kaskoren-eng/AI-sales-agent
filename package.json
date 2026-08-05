@@ -25,6 +25,7 @@
     "voice:clarity": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/clarity-ab.ts",
     "voice:sample": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/tts-sample.ts",
     "voice:model-ab": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/model-ab.ts",
+    "voice:persona": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/set-persona.ts",
     "stt:shadow": "node --env-file=.env scripts/analyze-shadow-stt.mjs",
     "call:report": "node scripts/show-call-report.mjs",
     "call:stats": "node scripts/call-stats.mjs",
