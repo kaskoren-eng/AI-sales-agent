@@ -6,6 +6,7 @@ import { requireAdmin } from './admin.guard.js';
 import { ValidationError } from '../../shared/errors.js';
 import { invalidateTenantStatus } from '../../plugins/tenant-status.js';
 import { safeTenant } from '../tenants/settings-policy.js';
+import { recordAudit } from '../../shared/audit.js';
 
 export async function adminRoutes(app: FastifyInstance) {
   const admin = new AdminService(app.db);
@@ -49,6 +50,17 @@ export async function adminRoutes(app: FastifyInstance) {
         event: result.data.isActive ? 'tenant_activated' : 'tenant_suspended',
         tenantId: id,
       });
+      // Suspension stops a customer's calls and API access. It needs a record that outlives log
+      // retention and can be shown to the customer who asks why their agent went quiet.
+      await recordAudit(app.db, {
+        tenantId: id,
+        action: result.data.isActive ? 'tenant.activated' : 'tenant.suspended',
+        targetType: 'tenant',
+        targetId: id,
+        actorType: 'admin_key',
+        actorLabel: 'operator_console',
+        ip: request.ip,
+      });
     }
 
     return safeTenant(updated);
@@ -57,6 +69,18 @@ export async function adminRoutes(app: FastifyInstance) {
   app.post('/tenants/:id/rotate-key', async (request) => {
     const { id } = request.params as { id: string };
     // Returns the new plaintext key once.
-    return tenantsSvc.rotateApiKey(id);
+    const rotated = await tenantsSvc.rotateApiKey(id);
+    // Rotation instantly breaks every integration still using the old key. When something stops
+    // working an hour later, this row is the answer.
+    await recordAudit(app.db, {
+      tenantId: id,
+      action: 'api_key.rotated',
+      targetType: 'tenant',
+      targetId: id,
+      actorType: 'admin_key',
+      actorLabel: 'operator_console',
+      ip: request.ip,
+    });
+    return rotated;
   });
 }

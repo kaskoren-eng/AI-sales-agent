@@ -14,6 +14,7 @@ import {
   safeTenant,
 } from './settings-policy.js';
 import { ValidationError, ForbiddenError } from '../../shared/errors.js';
+import { recordAudit, actorFromRequest } from '../../shared/audit.js';
 
 /**
  * A settings section is small by nature: field maps, offsets, a business description. The cap is
@@ -89,6 +90,16 @@ export async function tenantRoutes(app: FastifyInstance) {
         { audit: true, event: 'settings_write_refused', tenantId: request.tenantId, namespace },
         'refused a write to a settings section this tenant does not control',
       );
+      // Refusals are audited, not just successes. A tenant repeatedly probing at `toll_fraud` is
+      // the signal worth having, and it only exists if the failures are recorded.
+      await recordAudit(app.db, {
+        tenantId: request.tenantId,
+        action: 'settings.write_refused',
+        targetType: 'settings',
+        targetId: namespace,
+        metadata: { namespace },
+        ...actorFromRequest(request),
+      });
       throw new ForbiddenError(describeRefusal(namespace));
     }
 
@@ -116,7 +127,17 @@ export async function tenantRoutes(app: FastifyInstance) {
     return { ok: true, namespace, settings: redactSettings(tenant.settings) };
   });
 
-  app.post('/me/api-key', async (request) => service.rotateApiKey(request.tenantId));
+  app.post('/me/api-key', async (request) => {
+    const rotated = await service.rotateApiKey(request.tenantId);
+    await recordAudit(app.db, {
+      tenantId: request.tenantId,
+      action: 'api_key.rotated',
+      targetType: 'tenant',
+      targetId: request.tenantId,
+      ...actorFromRequest(request),
+    });
+    return rotated;
+  });
 
   app.get('/me/flows', async (request) => service.getFlows(request.tenantId));
 

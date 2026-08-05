@@ -249,7 +249,10 @@ export async function mondayRoutes(app: FastifyInstance) {
     await app.db
       .update(leads)
       .set({ metadata: { ...existingMeta, mondayItemId }, updatedAt: new Date() })
-      .where(eq(leads.id, lead.id));
+      // The tenant predicate is redundant here — `lead` came from a tenant-scoped read — and it
+      // stays anyway. The Monday WEBHOOK had exactly this shape and became a cross-tenant write
+      // the moment the id started coming from somewhere less trustworthy.
+      .where(and(eq(leads.id, lead.id), eq(leads.tenantId, tenantId)));
 
     app.log.info({ tenantId, leadId: lead.id, mondayItemId }, 'Lead pushed to Monday');
     return reply.send({ ok: true, mondayItemId, action: 'created' });

@@ -7,3 +7,5 @@ export { importJobs } from './import-jobs.js';
 export { callLearnings } from './call-learnings.js';
 export { users, tenantMembers, authSessions, invites, authTokens, TENANT_ROLES, AUTH_TOKEN_PURPOSES } from './users.js';
 export type { TenantRole, AuthTokenPurpose } from './users.js';
+export { auditEvents } from './audit-events.js';
+export type { AuditEvent, NewAuditEvent } from './audit-events.js';

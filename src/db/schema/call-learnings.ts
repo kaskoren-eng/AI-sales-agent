@@ -1,4 +1,5 @@
-import { pgTable, uuid, varchar, timestamp, jsonb, integer } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, jsonb, integer, index } from 'drizzle-orm/pg-core';
+import { tenants } from './tenants.js';
 
 export interface TranscriptSegment {
   speaker: string;
@@ -114,7 +115,15 @@ export interface PersistedCallReport {
 
 export const callLearnings = pgTable('call_learnings', {
   id: uuid('id').primaryKey().defaultRandom(),
-  tenantId: uuid('tenant_id').notNull(),
+  /**
+   * FK added late (migration 0010). This column was a bare uuid for most of the project's life:
+   * nothing stopped a row referencing a tenant that never existed, and deleting a tenant left its
+   * call recordings and transcripts behind as orphans — recorded voice data with no owner, which
+   * is a problem the privacy policy has opinions about.
+   */
+  tenantId: uuid('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
   // Friendly name we generate — used to correlate the Twilio recording webhook
   conferenceName: varchar('conference_name', { length: 64 }),
   // Twilio's own SID — populated from the recording webhook payload
@@ -137,4 +146,13 @@ export const callLearnings = pgTable('call_learnings', {
   // pending → transcribing → analyzed | failed
   status: varchar('status', { length: 20 }).notNull().default('pending'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => [
+  /**
+   * The spend guard's query, run before EVERY outbound dial:
+   *   WHERE tenant_id = ? AND created_at >= start_of_israel_day
+   *
+   * The table had exactly one index — the primary key — so that check was a sequential scan, on
+   * the hot path of the one component that talks to customers, growing with every call ever made.
+   */
+  index('call_learnings_tenant_created_idx').on(t.tenantId, t.createdAt),
+]);

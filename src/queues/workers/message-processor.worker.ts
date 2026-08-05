@@ -133,7 +133,7 @@ export function createMessageProcessorWorker(deps: WorkerDeps) {
               lead = { ...lead, status: 'qualified' };
 
               // 6b. Summarize conversation for handoff
-              await summarizeConversation(db, aiEngine, conversation.id, aiHistory);
+              await summarizeConversation(db, aiEngine, tenantId, conversation.id, aiHistory);
 
               // 6c. Trigger the qualified flow if configured
               await triggerQualifiedFlow(db, flowExecutorQueue, tenantId, lead, channel);
@@ -198,6 +198,7 @@ export function createMessageProcessorWorker(deps: WorkerDeps) {
 async function summarizeConversation(
   db: Database,
   aiEngine: AIEngineService,
+  tenantId: string,
   conversationId: string,
   history: Array<{ role: 'user' | 'assistant'; content: string }>,
 ) {
@@ -210,7 +211,10 @@ async function summarizeConversation(
     await db
       .update(conversations)
       .set({ summary, updatedAt: new Date() } as any)
-      .where(eq(conversations.id, conversationId));
+      // Scoped by tenant as well as id. The id is a uuid from a tenant-scoped read, so this is
+      // belt-and-braces — but it is the line whose absence turned the Monday webhook into a
+      // cross-tenant write when the id started arriving from a request body.
+      .where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, tenantId)));
   } catch {
     // Non-fatal
   }
