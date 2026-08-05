@@ -82,11 +82,33 @@ export function fetchTenantMe(): Promise<TenantMe> {
   return apiFetch<TenantMe>('/tenants/me')
 }
 
-export function updateTenantMe(data: Partial<Pick<TenantMe, 'name' | 'settings'>>): Promise<TenantMe> {
+export function updateTenantMe(data: Partial<Pick<TenantMe, 'name'>>): Promise<TenantMe> {
   return apiFetch<TenantMe>('/tenants/me', {
     method: 'PATCH',
     body: JSON.stringify(data),
   })
+}
+
+/**
+ * Write ONE section of tenant settings.
+ *
+ * Settings used to be PATCHed as a single blob through updateTenantMe, which meant the Flows pane
+ * loaded every tenant secret into the browser and posted it all back on save. The server now
+ * refuses that, and refuses sections it does not consider tenant-owned (spend caps, voice engine,
+ * integration credentials) with a 403 explaining where they are managed.
+ */
+export function updateTenantSettings(
+  namespace: 'flows' | 'businessProfile' | 'whatsapp_templates' | 'crm_sync' | 'reminders' | 'operating_hours' | 'ui_locale',
+  value: Record<string, unknown>,
+): Promise<{ ok: boolean; namespace: string; settings: Record<string, unknown> }> {
+  return apiFetch(`/tenants/me/settings/${namespace}`, {
+    method: 'PATCH',
+    body: JSON.stringify(value),
+  })
+}
+
+export function fetchTenantFlows(): Promise<Record<string, unknown>> {
+  return apiFetch('/tenants/me/flows')
 }
 
 export function regenerateApiKey(): Promise<{ apiKey: string }> {

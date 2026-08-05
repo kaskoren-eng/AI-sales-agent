@@ -10,6 +10,8 @@ import type { Language } from '../i18n/index.js'
 import {
   fetchTenantMe,
   updateTenantMe,
+  updateTenantSettings,
+  fetchTenantFlows,
   regenerateApiKey,
   fetchBusinessProfile,
   saveBusinessProfile,
@@ -145,11 +147,23 @@ function GeneralTab() {
   )
 }
 
+/**
+ * Flow editor.
+ *
+ * This pane was labelled "Flow Configuration" and was in fact editing the ENTIRE tenant settings
+ * document: it loaded `tenant.settings` — encrypted Zadarma secret, Monday API token, Airtable key,
+ * spend caps, voice engine — into a visible textarea, and PATCHed the whole thing back on save. So
+ * opening the page round-tripped every credential the tenant had through the browser, a stray edit
+ * could silently wipe an integration, and the JSON never passed the flow schema that the dedicated
+ * endpoint enforces.
+ *
+ * It now reads and writes only the `flows` section, which is what the label always claimed.
+ */
 function FlowsTab() {
   const queryClient = useQueryClient()
-  const { data: tenant, isLoading } = useQuery({
-    queryKey: ['tenant-me'],
-    queryFn: fetchTenantMe,
+  const { data: flows, isLoading } = useQuery({
+    queryKey: ['tenant-flows'],
+    queryFn: fetchTenantFlows,
     staleTime: 60_000,
   })
 
@@ -158,15 +172,19 @@ function FlowsTab() {
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
-    if (tenant?.settings != null) {
-      setFlowJson(JSON.stringify(tenant.settings, null, 2))
-    }
-  }, [tenant?.settings])
+    if (flows != null) setFlowJson(JSON.stringify(flows, null, 2))
+  }, [flows])
 
   const handleChange = (val: string) => {
     setFlowJson(val)
     try {
-      JSON.parse(val)
+      const parsed: unknown = JSON.parse(val)
+      // The server rejects a non-object anyway; catching it here means the button disables instead
+      // of the save failing with a error the user has to read to understand.
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        setJsonError('Flows must be a JSON object, keyed by flow name')
+        return
+      }
       setJsonError(null)
     } catch {
       setJsonError('Invalid JSON')
@@ -176,10 +194,10 @@ function FlowsTab() {
   const mutation = useMutation({
     mutationFn: () => {
       const parsed = JSON.parse(flowJson) as Record<string, unknown>
-      return updateTenantMe({ settings: parsed })
+      return updateTenantSettings('flows', parsed)
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['tenant-me'] })
+      void queryClient.invalidateQueries({ queryKey: ['tenant-flows'] })
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     },
@@ -236,8 +254,11 @@ function FlowsTab() {
           </Button>
           {saved && <span style={{ fontSize: '12px', color: 'var(--status-success)' }}>Saved</span>}
           {mutation.isError && (
+            // Show what the server said. It now validates each flow against the real schema, so
+            // the message names the flow and the field — "flows: lead-intake.steps Required" is
+            // worth reading, where a bare "Save failed" sends people guessing.
             <span role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)' }}>
-              Save failed
+              {mutation.error instanceof Error ? mutation.error.message : 'Save failed'}
             </span>
           )}
         </div>

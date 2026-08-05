@@ -59,14 +59,76 @@ export class TenantService {
       }
     }
 
+    /**
+     * Settings MERGE at the namespace level; they do not replace the column.
+     *
+     * `.set({ settings })` on a jsonb column overwrites the whole document, so an operator sending
+     * `{settings: {voice_engine: 'livekit'}}` — a one-key edit, and the obvious thing to send —
+     * silently destroyed that tenant's stored Monday token, Zadarma credentials and spend caps.
+     * The write looked like a PATCH and behaved like a PUT.
+     *
+     * An explicit `null` still deletes a namespace, so removal is possible but has to be asked for.
+     */
+    const patch: Record<string, unknown> = { ...input, updatedAt: new Date() };
+    if (input.settings !== undefined) {
+      patch.settings = await this.mergeSettings(id, input.settings);
+    }
+
     const [tenant] = await this.db
       .update(tenants)
-      .set({ ...input, updatedAt: new Date() })
+      .set(patch)
       .where(eq(tenants.id, id))
       .returning();
 
     if (!tenant) throw new NotFoundError('Tenant', id);
     return tenant;
+  }
+
+  /** Read-modify-write of the settings document, one namespace at a time. */
+  private async mergeSettings(id: string, incoming: Record<string, unknown>) {
+    const [tenant] = await this.db
+      .select({ settings: tenants.settings })
+      .from(tenants)
+      .where(eq(tenants.id, id))
+      .limit(1);
+
+    if (!tenant) throw new NotFoundError('Tenant', id);
+
+    const merged = { ...((tenant.settings as Record<string, unknown>) ?? {}) };
+    for (const [namespace, value] of Object.entries(incoming)) {
+      if (value === null) delete merged[namespace];
+      else merged[namespace] = value;
+    }
+    return merged;
+  }
+
+  /**
+   * Replace ONE namespace of the settings document. The tenant-facing write path.
+   *
+   * Whole-namespace replacement rather than a deep merge: a deep merge makes it impossible to
+   * remove a key (sending the object without it leaves the old value behind), which is exactly the
+   * bug you hit the first time someone tries to clear a field they set by mistake. Callers send
+   * the section as they want it to end up.
+   */
+  async updateSettingsNamespace(id: string, namespace: string, value: Record<string, unknown>) {
+    const [tenant] = await this.db
+      .select({ settings: tenants.settings })
+      .from(tenants)
+      .where(eq(tenants.id, id))
+      .limit(1);
+
+    if (!tenant) throw new NotFoundError('Tenant', id);
+
+    const settings = { ...((tenant.settings as Record<string, unknown>) ?? {}) };
+    settings[namespace] = value;
+
+    const [updated] = await this.db
+      .update(tenants)
+      .set({ settings, updatedAt: new Date() })
+      .where(eq(tenants.id, id))
+      .returning();
+
+    return updated;
   }
 
   async updateFlow(id: string, flowName: string, flow: FlowDefinition) {

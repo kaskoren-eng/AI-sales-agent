@@ -9,6 +9,7 @@ import {
   callLearnings,
 } from '../../db/schema/index.js';
 import { NotFoundError } from '../../shared/errors.js';
+import { redactSettings } from '../tenants/settings-policy.js';
 
 /** Per-tenant rollup shown in the operator tenants table + overview. All measured, never estimated. */
 export interface TenantRollup {
@@ -165,7 +166,11 @@ export class AdminService {
         slug: t.slug,
         isActive: t.isActive ?? true,
         hasApiKey: !!t.apiKeyHash,
-        settings: t.settings,
+        // Redacted for the operator console too. Being super-admin is a reason to see a tenant's
+        // configuration, not a reason to ship their credentials to a browser — the ciphertext is
+        // useless to an operator and the console is the one surface that can display every
+        // tenant's at once.
+        settings: redactSettings(t.settings),
         createdAt: t.createdAt,
         updatedAt: t.updatedAt,
       },

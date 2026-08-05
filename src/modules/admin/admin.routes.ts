@@ -5,12 +5,7 @@ import { createTenantSchema, updateTenantSchema } from '../tenants/tenant.schema
 import { requireAdmin } from './admin.guard.js';
 import { ValidationError } from '../../shared/errors.js';
 import { invalidateTenantStatus } from '../../plugins/tenant-status.js';
-
-/** Strip the api key hash from any tenant row before it leaves the API. */
-function safeTenant<T extends { apiKeyHash?: string | null }>(t: T) {
-  const { apiKeyHash, ...rest } = t;
-  return { ...rest, hasApiKey: !!apiKeyHash };
-}
+import { safeTenant } from '../tenants/settings-policy.js';
 
 export async function adminRoutes(app: FastifyInstance) {
   const admin = new AdminService(app.db);

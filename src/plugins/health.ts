@@ -51,6 +51,27 @@ export async function checkDependency(
   }
 }
 
+/**
+ * Which build is actually running.
+ *
+ * Railway injects these at build time. Without them, "did my deploy land?" is unanswerable from
+ * outside: a config-only change or a fix whose success is silent looks identical before and after,
+ * and the platform CLI does not report the deployed SHA. Guessing from container boot timestamps
+ * is how you convince yourself a fix is live when it isn't.
+ *
+ * The commit SHA of a private repo is not a secret — it identifies a build, it doesn't grant
+ * access to one — and this endpoint is already public because orchestrators must reach it
+ * unauthenticated.
+ */
+function buildInfo() {
+  return {
+    commit: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 12) ?? 'unknown',
+    branch: process.env.RAILWAY_GIT_BRANCH ?? 'unknown',
+    deployedAt: process.env.RAILWAY_DEPLOYMENT_CREATED_AT ?? null,
+    startedAt: new Date(Date.now() - Math.round(process.uptime() * 1000)).toISOString(),
+  };
+}
+
 export default fp(async (app) => {
   app.get('/health/live', async () => ({ status: 'ok' }));
 
@@ -64,6 +85,10 @@ export default fp(async (app) => {
     // 503, not 500: "temporarily unable to serve" is what load balancers and orchestrators are
     // built to interpret.
     if (!healthy) reply.status(503);
-    return { status: healthy ? 'ok' : 'degraded', checks: { postgres, redis } };
+    return {
+      status: healthy ? 'ok' : 'degraded',
+      build: buildInfo(),
+      checks: { postgres, redis },
+    };
   });
 }, { name: 'health' });
