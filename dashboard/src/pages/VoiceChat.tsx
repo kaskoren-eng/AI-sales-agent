@@ -160,7 +160,7 @@ export function VoiceChat() {
       teardown()
       const message =
         err instanceof Error && /HTTP 401|Invalid credentials|Unauthorized/i.test(err.message)
-          ? 'This dashboard is not authorized against the backend it is pointed at. Check the API key (localStorage auth_token / VITE_API_KEY).'
+          ? 'Your session is not authorized against this backend. Sign out and sign in again, or check that the dashboard is pointed at the right API.'
           : err instanceof Error
             ? err.message
             : 'Could not start the call'

@@ -88,6 +88,23 @@ html, body {
   letter-spacing: normal;
 }
 
+/* --- Mono field/section label (brief v5 §3.1 — mono does the structural work) ---------------
+   The uppercase and tracking live HERE, in a class, and not in an inline style. That is the
+   whole point: an inline `text-transform`/`letter-spacing` outranks any class, so a component
+   that sets them inline can never be corrected by the `[lang="he"]` rule above — it silently
+   opts itself out of the Hebrew fix while still carrying the class that promises it.
+   Use `.mono-label` for these labels rather than re-declaring the properties per component. */
+.mono-label {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+[lang="he"] .mono-label {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 /* --- RTL directional icons (brief §2). Decorative icons must NOT get this class. --- */
 [dir="rtl"] .flip-rtl {
   transform: scaleX(-1);

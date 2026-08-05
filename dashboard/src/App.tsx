@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AppLayout } from './components/layout/AppLayout.js'
+import { AuthGate } from './components/AuthGate.js'
 import { Overview } from './pages/Overview.js'
 import { Leads } from './pages/Leads.js'
 import { LeadDetail } from './pages/LeadDetail.js'
@@ -29,8 +30,8 @@ export default function App() {
           <Route index element={<AdminOverview />} />
           <Route path="tenants" element={<AdminTenants />} />
         </Route>
-        {/* Tenant dashboard */}
-        <Route path="/*" element={<TenantShell />} />
+        {/* Tenant dashboard — everything behind it requires a signed-in user. */}
+        <Route path="/*" element={<AuthGate><TenantShell /></AuthGate>} />
       </Routes>
     </BrowserRouter>
   )

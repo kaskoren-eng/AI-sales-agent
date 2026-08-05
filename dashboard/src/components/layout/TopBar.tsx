@@ -1,4 +1,5 @@
 import { Bell, Menu } from 'lucide-react'
+import { AccountMenu } from './AccountMenu.js'
 import { useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
@@ -146,28 +147,9 @@ export function TopBar({ onMenu }: { onMenu?: () => void }) {
           <Bell size={16} strokeWidth={1.6} />
         </button>
 
-        {/* ClickScales account avatar */}
-        <div
-          aria-label="Account"
-          title="ClickScales"
-          style={{
-            width: '34px',
-            height: '34px',
-            borderRadius: '50%',
-            backgroundColor: 'var(--accent)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '13px',
-            fontWeight: 700,
-            color: 'var(--text-on-accent)',
-            flexShrink: 0,
-            cursor: 'pointer',
-            fontFamily: 'var(--font-display)',
-          }}
-        >
-          CS
-        </div>
+        {/* Account menu. Was a hardcoded "CS" / "ClickScales" — which would have greeted every
+            customer as ClickScales. It now reflects the signed-in user and their workspace. */}
+        <AccountMenu />
       </div>
     </header>
   )

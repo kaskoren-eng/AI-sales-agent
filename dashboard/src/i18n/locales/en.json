@@ -476,5 +476,30 @@
       "previousPage": "Previous page",
       "nextPage": "Next page"
     }
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signInBlurb": "Sign in to manage your agent, leads and calls.",
+    "email": "Email",
+    "password": "Password",
+    "newPassword": "New password",
+    "name": "Your name",
+    "passwordHint": "At least 12 characters",
+    "forgotLink": "Forgot your password?",
+    "forgotTitle": "Reset your password",
+    "forgotBlurb": "We will email you a link to choose a new password.",
+    "sendLink": "Send reset link",
+    "checkEmail": "Check your email",
+    "checkEmailBlurb": "If that address has an account, a reset link is on its way.",
+    "checkEmailBody": "The link is valid for one hour and can be used once. If it does not arrive, check your spam folder.",
+    "resetTitle": "Choose a new password",
+    "resetBlurb": "Set a new password for your account.",
+    "inviteTitle": "Join the workspace",
+    "inviteBlurb": "You have been invited. Choose a password to finish setting up your account.",
+    "setPassword": "Save and sign in",
+    "backToSignIn": "Back to sign in",
+    "working": "Working…",
+    "genericError": "Something went wrong. Try again.",
+    "signOut": "Sign out"
   }
 }
