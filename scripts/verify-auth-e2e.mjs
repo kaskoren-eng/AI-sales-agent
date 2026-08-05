@@ -1,6 +1,21 @@
 /**
- * Phase 1 demonstration — every claim exercised against the live production API.
- * Creates a throwaway workspace, proves each property, then deletes everything it made.
+ * Live end-to-end verification of the auth system — every Phase 1 claim exercised against a
+ * running deployment, not a mock.
+ *
+ * ⚠️  IT WRITES TO WHATEVER DATABASE YOU POINT IT AT. It registers a throwaway workspace and two
+ *     users, suspends that workspace, and deletes everything it created on the way out. It never
+ *     touches rows it did not make. Even so, prefer staging; if you run it against production,
+ *     read the cleanup block at the bottom first.
+ *
+ * This is the harness that caught the empty-body refresh bug — /auth/refresh rejected every
+ * browser-shaped request while passing a curl check, because curl sends no content-type unless
+ * told to. Mocks and curl both missed it; a real client-shaped request did not.
+ *
+ * Usage (production, both credentials injected without printing them):
+ *   JWT=$(railway variables --service AI-sales-agent --kv | grep '^JWT_SECRET=' | cut -d= -f2-)
+ *   JWT_SECRET="$JWT" railway run --service Postgres node scripts/verify-auth-e2e.mjs
+ *
+ * JWT_SECRET is optional — without it the token-forgery section is skipped and the rest still runs.
  */
 import pg from 'pg';
 import { createHmac } from 'node:crypto';
