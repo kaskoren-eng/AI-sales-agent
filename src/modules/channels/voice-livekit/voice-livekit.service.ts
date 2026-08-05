@@ -7,7 +7,7 @@ import type { Database } from '../../../db/client.js';
 import { tenants } from '../../../db/schema/index.js';
 import { CircuitBreaker } from '../../../shared/circuit-breaker.js';
 import { AppError } from '../../../shared/errors.js';
-import { checkDailySpendLimit } from '../../calls/spend-guard.js';
+import { evaluateSpend, countDialAttempt } from '../../calls/spend-guard.js';
 import { createVoiceConversation } from './call-record.js';
 
 /**
@@ -84,15 +84,17 @@ export class LiveKitVoiceService {
         .where(eq(tenants.id, tenantId))
         .limit(1);
       gateSettings = sanitizeSettingsForAgent(tenantRow?.settings);
-      const decision = await checkDailySpendLimit(
-        { db: this.deps.db, redis: this.deps.redis ?? null },
-        tenantId,
-        tenantRow?.settings,
-      );
+      const guardDeps = { db: this.deps.db, redis: this.deps.redis ?? null };
+      const decision = await evaluateSpend(guardDeps, tenantId, tenantRow?.settings);
       if (!decision.allowed) {
         console.warn('livekit_dial_blocked_spend_limit', JSON.stringify({ tenantId, reason: decision.reason }));
         throw new AppError('Daily outbound spend limit reached', 429, 'SPEND_LIMIT_EXCEEDED');
       }
+
+      // This is the dialer, so this is where the attempt is counted — once, after the decision to
+      // proceed. Counting here rather than inside the check is what lets the flow executor and any
+      // future caller check as often as they like without tightening the cap.
+      await countDialAttempt(guardDeps, tenantId);
     } else {
       console.warn('livekit_dial_spend_guard_skipped — no db injected (non-production construction)');
     }

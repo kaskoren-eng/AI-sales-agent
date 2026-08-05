@@ -4,7 +4,7 @@ import { CircuitBreaker } from '../../../shared/circuit-breaker.js';
 import { callLearnings } from '../../../db/schema/call-learnings.js';
 import { tenants } from '../../../db/schema/index.js';
 import { AppError } from '../../../shared/errors.js';
-import { checkDailySpendLimit } from '../../calls/spend-guard.js';
+import { evaluateSpend, countDialAttempt } from '../../calls/spend-guard.js';
 import { CallAnalysisService } from '../../calls/call-analysis.service.js';
 import { SettingsService } from '../../settings/settings.service.js';
 
@@ -100,15 +100,16 @@ export class VoiceService {
       .from(tenants)
       .where(eq(tenants.id, tenantId))
       .limit(1);
-    const decision = await checkDailySpendLimit(
-      { db: this.app.db, redis: this.app.redis },
-      tenantId,
-      tenantRow?.settings,
-    );
+    const guardDeps = { db: this.app.db, redis: this.app.redis };
+    const decision = await evaluateSpend(guardDeps, tenantId, tenantRow?.settings);
     if (!decision.allowed) {
       this.app.log.warn({ tenantId, ...decision }, 'Outbound dial blocked by daily spend limit');
       throw new AppError('Daily outbound spend limit reached', 429, 'SPEND_LIMIT_EXCEEDED');
     }
+
+    // The dialer counts, once. See evaluateSpend()'s header for why the read and the count are
+    // separate functions.
+    await countDialAttempt(guardDeps, tenantId);
 
     const dynamicVars = await this.buildDynamicVariables(tenantId);
 

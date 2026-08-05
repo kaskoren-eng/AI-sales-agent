@@ -312,7 +312,10 @@ describe('flow-executor worker', () => {
     const tenant = makeTenantWithFlow('onboarding', [CALL_STEP]);
     const deps = makeDeps();
     deps.redis.duplicate = vi.fn().mockReturnValue({});
-    // Real-time call-count cap: the INCR says this is attempt #101 of a 100/day tenant.
+    // Real-time call-count cap: 100 dials already made today by a 100/day tenant, so the next one
+    // is refused. The worker READS this counter and never advances it — the dial service is the
+    // only writer, because counting in both places made every call count twice.
+    deps.redis.get = vi.fn().mockResolvedValue('100');
     deps.redis.incr = vi.fn().mockResolvedValue(101);
     deps.redis.expire = vi.fn().mockResolvedValue(1);
     deps.db.select

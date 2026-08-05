@@ -9,7 +9,7 @@ import type { Database } from '../../db/client.js';
 import { tenants, leads } from '../../db/schema/index.js';
 import type { WhatsAppService } from '../../modules/channels/whatsapp/whatsapp.service.js';
 import type { VoiceService } from '../../modules/channels/voice/voice.service.js';
-import { checkDailySpendLimit } from '../../modules/calls/spend-guard.js';
+import { evaluateSpend } from '../../modules/calls/spend-guard.js';
 import {
   resolveVoiceEngine,
   type LiveKitVoiceService,
@@ -209,7 +209,11 @@ export function createFlowExecutorWorker(deps: WorkerDeps) {
         // Toll-fraud brake, flow-level: a capped tenant SKIPS (never throws) — a policy block
         // must not retry the job into the DLQ. The dial services check again (defense in depth),
         // covering the HTTP path this worker never sees.
-        const spend = await checkDailySpendLimit({ db, redis }, ctx.tenantId, engineRow?.settings);
+        //
+        // READ ONLY. The attempt is counted by the dial service, once. When this function also
+        // counted, every flow-driven call was counted twice and the configured call cap fired at
+        // half its stated value.
+        const spend = await evaluateSpend({ db, redis }, ctx.tenantId, engineRow?.settings);
         if (!spend.allowed) {
           logger?.warn(
             {

@@ -67,15 +67,32 @@ export interface SpendGuardDeps {
   sendAlert?: (subject: string, body: string) => Promise<void>;
 }
 
-// 3 consecutive failures anywhere in the process → one alert; success resets. Module-level on
-// purpose: the operator cares that the BRAKE is dead, not which call noticed first.
-let consecutiveFailures = 0;
-let alertedForThisOutage = false;
+/**
+ * Failure tracking, PER CAP.
+ *
+ * These used to share one counter, reset by `if (dbOk || redisOk) recordSuccess()`. That line
+ * disarmed the very alert it was meant to arm: with Postgres down and Redis up, the dollar cap was
+ * dead — no spend was being measured at all — and a healthy Redis reset the counter on every
+ * check, so the 3-strike alert could never fire. The half of the brake that had failed was
+ * precisely the half nobody would be told about.
+ *
+ * Two caps, two counters, two alerts. Module-level on purpose: the operator cares that a brake is
+ * dead, not which call noticed first.
+ */
+interface CapHealth {
+  consecutiveFailures: number;
+  alerted: boolean;
+}
+
+const health: Record<'spend' | 'calls', CapHealth> = {
+  spend: { consecutiveFailures: 0, alerted: false },
+  calls: { consecutiveFailures: 0, alerted: false },
+};
 
 /** Visible for tests. */
 export function _resetSpendGuardFailureState(): void {
-  consecutiveFailures = 0;
-  alertedForThisOutage = false;
+  health.spend = { consecutiveFailures: 0, alerted: false };
+  health.calls = { consecutiveFailures: 0, alerted: false };
 }
 
 async function defaultSendAlert(subject: string, body: string): Promise<void> {
@@ -97,34 +114,64 @@ async function defaultSendAlert(subject: string, body: string): Promise<void> {
   });
 }
 
-async function recordFailure(deps: SpendGuardDeps, err: unknown): Promise<void> {
-  consecutiveFailures++;
+const CAP_LABEL: Record<'spend' | 'calls', string> = {
+  spend: 'תקרת ההוצאה היומית (דולרים)',
+  calls: 'תקרת מספר השיחות היומי',
+};
+
+async function recordFailure(
+  deps: SpendGuardDeps,
+  cap: 'spend' | 'calls',
+  err: unknown,
+): Promise<void> {
+  const state = health[cap];
+  state.consecutiveFailures++;
   console.error(
     'spend_guard_check_failed',
-    JSON.stringify({ consecutiveFailures, error: err instanceof Error ? err.message : String(err) }),
+    JSON.stringify({
+      cap,
+      consecutiveFailures: state.consecutiveFailures,
+      error: err instanceof Error ? err.message : String(err),
+    }),
   );
-  if (consecutiveFailures >= 3 && !alertedForThisOutage) {
-    alertedForThisOutage = true;
+
+  if (state.consecutiveFailures >= 3 && !state.alerted) {
+    state.alerted = true;
     const send = deps.sendAlert ?? defaultSendAlert;
     await send(
-      '🚨 בלם ה-toll fraud לא מתפקד — 3 בדיקות רצופות נכשלו',
-      'בדיקת תקרת ההוצאה היומית נכשלה 3 פעמים ברצף. שיחות יוצאות ממשיכות ללא בלם (fail-open). יש לבדוק את חיבור ה-DB/Redis של השרת.',
+      `🚨 בלם ה-toll fraud לא מתפקד — ${CAP_LABEL[cap]}`,
+      `${CAP_LABEL[cap]} נכשלה 3 פעמים ברצף. שיחות יוצאות ממשיכות ללא הבלם הזה (fail-open). ` +
+        'יש לבדוק את חיבור ה-DB/Redis של השרת.',
     ).catch((alertErr) =>
       console.error('spend_guard_alert_failed', alertErr instanceof Error ? alertErr.message : String(alertErr)),
     );
   }
 }
 
-function recordSuccess(): void {
-  consecutiveFailures = 0;
-  alertedForThisOutage = false;
+/** Reset ONE cap's health. Never reset a cap because the other one is fine. */
+function recordSuccess(cap: 'spend' | 'calls'): void {
+  health[cap] = { consecutiveFailures: 0, alerted: false };
 }
 
+const dayKey = (tenantId: string, now: Date) => `spend:calls:${tenantId}:${israelDayKey(now)}`;
+
+/** Two days, so a call placed just before midnight still sees its counter after the rollover. */
+const COUNTER_TTL_SECONDS = 48 * 60 * 60;
+
 /**
- * The check — call it immediately before dialing. Also COUNTS the attempt (Redis INCR), so
- * blocked attempts are visible in the counter too.
+ * READ the caps. No side effects — safe to call as many times as you like, from as many places as
+ * you like.
+ *
+ * This used to be one function that both read the caps AND incremented the dial counter, and it
+ * was called twice per outbound call: once by the flow executor (policy check) and again by the
+ * dial service (defence in depth). Each call incremented. So every real dial counted as two, and
+ * `dailyCallLimit: 100` actually blocked at about 50 — the brake was twice as tight as configured,
+ * and the number in the settings meant nothing.
+ *
+ * Splitting the read from the count is what makes defence-in-depth safe: checking in more places
+ * is now free, and only the code that actually dials calls `countDialAttempt`.
  */
-export async function checkDailySpendLimit(
+export async function evaluateSpend(
   deps: SpendGuardDeps,
   tenantId: string,
   settings: unknown,
@@ -148,28 +195,65 @@ export async function checkDailySpendLimit(
     const nullCount = Number(rows[0]?.nullCount ?? 0);
     spentUsd = (totalSecs / 60 + nullCount * ASSUMED_MINUTES_PER_UNFINISHED_CALL) * limits.perMinuteRateUsd;
     dbOk = true;
+    recordSuccess('spend');
   } catch (err) {
-    await recordFailure(deps, err);
+    await recordFailure(deps, 'spend', err);
   }
 
   if (deps.redis) {
     try {
-      const key = `spend:calls:${tenantId}:${israelDayKey(now)}`;
-      callsToday = await deps.redis.incr(key);
-      await deps.redis.expire(key, 48 * 60 * 60);
+      // GET, not INCR. The counter is advanced by countDialAttempt() and nowhere else.
+      const raw = await deps.redis.get(dayKey(tenantId, now));
+      callsToday = raw ? Number(raw) : 0;
+      if (!Number.isFinite(callsToday)) callsToday = 0;
       redisOk = true;
+      recordSuccess('calls');
     } catch (err) {
-      await recordFailure(deps, err);
+      await recordFailure(deps, 'calls', err);
     }
   }
-
-  if (dbOk || redisOk) recordSuccess();
 
   if (dbOk && spentUsd >= limits.dailySpendLimitUsd) {
     return { allowed: false, spentUsd, callsToday, limits, reason: 'daily_spend_limit_exceeded' };
   }
-  if (redisOk && callsToday > limits.dailyCallLimit) {
+  /**
+   * `>=`, not `>`.
+   *
+   * The old comparison ran AFTER the increment, so the value included the attempt being judged.
+   * This one runs BEFORE, so it is the number of attempts already made. With a limit of 100:
+   * attempt 101 sees 100 already made and is refused, which allows exactly 100 — the same
+   * behaviour the old `>` gave post-increment. Getting this backwards is an off-by-one in the
+   * only number standing between an attacker and an unbounded phone bill.
+   */
+  if (redisOk && callsToday >= limits.dailyCallLimit) {
     return { allowed: false, spentUsd, callsToday, limits, reason: 'daily_call_limit_exceeded' };
   }
   return { allowed: true, spentUsd, callsToday, limits, reason: null };
+}
+
+/**
+ * COUNT one dial attempt. Call this EXACTLY ONCE per real attempt, from the code that dials.
+ *
+ * Deliberately counts attempts and not successes: the abuse this brake exists to stop is a burst
+ * of dials, and a dial that fails at the carrier still costs money and still indicates the burst.
+ *
+ * Failure is swallowed — this is a brake, not a billing invariant, and a Redis blip must not stop
+ * a working sales channel. It is recorded against the calls cap's health, so three in a row alerts.
+ */
+export async function countDialAttempt(
+  deps: SpendGuardDeps,
+  tenantId: string,
+  now: Date = new Date(),
+): Promise<number | null> {
+  if (!deps.redis) return null;
+  try {
+    const key = dayKey(tenantId, now);
+    const count = await deps.redis.incr(key);
+    await deps.redis.expire(key, COUNTER_TTL_SECONDS);
+    recordSuccess('calls');
+    return count;
+  } catch (err) {
+    await recordFailure(deps, 'calls', err);
+    return null;
+  }
 }
