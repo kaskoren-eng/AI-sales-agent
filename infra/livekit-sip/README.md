@@ -17,19 +17,47 @@ Worse, the mistake does not announce itself: LiveKit's SIP servers answer `SIP/2
 *wrong* subdomain too, so a connectivity probe "passes" while real INVITEs are silently dropped.
 The only trustworthy source is the dashboard: **Telephony → SIP URI**.
 
-## Current setup
+## Current setup — TWO trunks, and they authenticate differently
+
+Inbound and outbound are separate LiveKit objects. They are not interchangeable, and the reason
+they differ is the thing most likely to trip you up:
 
 | Thing | ID | Notes |
 |---|---|---|
-| Inbound trunk | `ST_2cKqBieAJZG3` | Accepts `+972555070922` and `972555070922` — Zadarma's number format is not guaranteed |
-| Dispatch rule | `SDR_XAmvf73KaC5G` | One room per call (`call-*`); the agent auto-dispatches |
-| Outbound trunk | `ST_EeXshw4zXKuZ` | Dials via `sip.zadarma.com` over TCP. Zadarma SIP login/password live **inside the trunk on LiveKit**, not in our `.env` |
+| Inbound trunk | `ST_V5CXE6L5539t` | Accepts `+972555070922` and `972555070922` — Zadarma's number format is not guaranteed. **IP-allowlisted, no credentials.** |
+| Dispatch rule | `SDR_GHNgzGi4CB4n` | One room per call (`call-*`); the agent auto-dispatches. Bound to the inbound trunk only. |
+| Outbound trunk | `ST_8s6N3DqUVtWw` | Dials via `sip.zadarma.com`. Authenticates as Zadarma **direct SIP line `744650`** — credentials live inside the trunk on LiveKit, not in our `.env` |
 
-`LIVEKIT_SIP_OUTBOUND_TRUNK_ID` in `.env` points at the outbound trunk.
+**Inbound authenticates by IP, outbound by SIP credentials.** Zadarma sends inbound INVITEs from
+its own IP range, so the inbound trunk trusts those addresses and needs no password. Outbound is
+the reverse: we call Zadarma, so we present a login.
 
-**The inbound trunk is locked to `185.45.152.0/22`** (Zadarma's SIP range). Do not remove this. An
-unrestricted inbound trunk is a SIP endpoint anyone on the internet can dial, and every call spends
-real OpenAI + Cartesia credits.
+**Outbound must use a DIRECT SIP LINE, not a PBX extension.** A trunk authenticating as a PBX
+extension (`568106-100`) fails every INVITE with `max auth retry attempts reached for SIP invite`,
+because Zadarma expects PBX extensions to REGISTER first and LiveKit outbound trunks never
+register. This cost a long debugging session on 2026-08-05 — the password is not the problem, the
+account type is. Use the direct SIP line from **Settings → SIP**.
+
+### What the app needs
+
+Exactly one env var, and it is the OUTBOUND trunk:
+
+```
+LIVEKIT_SIP_OUTBOUND_TRUNK_ID=ST_8s6N3DqUVtWw
+```
+
+**The inbound trunk is not referenced by any env var or any line of application code.** Inbound is
+entirely LiveKit-side: trunk + dispatch rule + the Zadarma forwarding below. If inbound breaks,
+nothing in `.env` will fix it.
+
+Set the outbound var in `.env` **and in the production host env**. A stale trunk ID there is
+invisible until someone places a call and gets a 500.
+
+**The inbound trunk is IP-locked to Zadarma's SIP ranges** — currently `185.45.152.0/24`,
+`185.45.154.0/24`, `185.45.155.0/24`, `195.122.19.0/27`, `31.31.222.192/27`, `15.235.128.64/28`.
+Do not remove them. An unrestricted inbound trunk is a SIP endpoint anyone on the internet can
+dial, and every call spends real OpenAI + Cartesia credits. If Zadarma adds a range, inbound
+starts failing for some calls only — check this list first.
 
 ## Zadarma side
 
