@@ -64,8 +64,16 @@ const envSchema = z.object({
 
   // App base URL (for callback URLs)
   BASE_URL: z.string().url().optional(),
-  // Dashboard base URL — used to build "view this call" back-links pushed into the CRM (Workstream
-  // B). Optional: if unset, the link is simply omitted from CRM notes (never a broken URL).
+  /**
+   * Dashboard base URL. Originally cosmetic — "view this call" back-links in CRM notes (Workstream
+   * B), omitted when unset rather than rendered broken.
+   *
+   * It is NOT cosmetic any more. Since accounts shipped it is also the origin of every emailed
+   * password-reset and invite link, so an unset value means a locked-out user has no self-service
+   * recovery at all. Still optional rather than required-in-production, because refusing to boot
+   * over a password-reset link is a worse outage than the one it prevents — but loadEnv() warns
+   * loudly in production, and the reset route logs each link it could not send.
+   */
   DASHBOARD_BASE_URL: z.string().url().optional(),
 
   // Channels - WhatsApp (UChat)
@@ -443,6 +451,21 @@ export function loadEnv(): Env {
   }
 
   const env = result.data;
+
+  /**
+   * Warn, don't die. Without this, /auth/forgot-password creates a valid reset token and then
+   * quietly declines to mail it — returning the same 204 it returns on success, because that
+   * endpoint must not reveal whether an account exists. The result is a locked-out user with no
+   * recovery path and no error anywhere. It stayed invisible in production until someone clicked
+   * the button and waited for an email that was never attempted.
+   */
+  if (env.NODE_ENV === 'production' && !env.DASHBOARD_BASE_URL) {
+    console.warn(
+      '⚠️  DASHBOARD_BASE_URL is not set. Password-reset and invite emails cannot be sent: the ' +
+        'tokens are created but no link is mailed, and forgot-password still answers 204. Users ' +
+        'who forget their password will have no way back in.',
+    );
+  }
 
   // The voice LLM is whatever VOICE_LLM_MODEL says, falling back to AI_MODEL (agent.config.ts).
   const voiceModel = env.VOICE_LLM_MODEL ?? env.AI_MODEL;

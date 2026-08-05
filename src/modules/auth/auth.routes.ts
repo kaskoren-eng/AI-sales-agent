@@ -180,6 +180,16 @@ export async function authRoutes(app: FastifyInstance) {
 
     const created = await svc.createPasswordReset(parsed.data.email);
 
+    // A reset token that exists but was never mailed is the worst of both worlds: the user waits
+    // for an email that isn't coming, and the 204 below cannot tell them otherwise without turning
+    // this endpoint into an account-enumeration oracle. So the only place it can surface is here.
+    if (created && !baseUrl) {
+      request.log.error(
+        { audit: true, event: 'password_reset_undeliverable', reason: 'DASHBOARD_BASE_URL unset' },
+        'password reset token created but no link could be built — the user gets nothing',
+      );
+    }
+
     if (created && baseUrl) {
       const link = `${baseUrl}/reset-password?token=${encodeURIComponent(created.token)}`;
       await email
