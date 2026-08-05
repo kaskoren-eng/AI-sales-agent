@@ -77,6 +77,10 @@ if (tenantId) {
 } else {
   // Validate exactly as the settings API would, so the CLI cannot smuggle in a value the write
   // path would reject — the harness and production must agree on what is legal.
+  // NOTE `--model` is deliberately NOT validated against TENANT_SELECTABLE_MODELS here. The
+  // allowlist protects tenants from muting themselves; this harness exists precisely to probe
+  // models that misbehave (sonic-turbo's silent zero-audio Hebrew is a documented finding someone
+  // has to be able to reproduce). Everything else IS validated exactly as the settings API would.
   const persona = assertAgentPersona({
     tts: {
       ...(arg('voice') !== undefined ? { voiceId: arg('voice') } : {}),

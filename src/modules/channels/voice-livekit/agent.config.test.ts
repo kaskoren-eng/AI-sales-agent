@@ -61,6 +61,31 @@ describe('applyTenantTts — the direct Cartesia route', () => {
   });
 });
 
+/**
+ * The model swap is the whole point of the real-call A/B: one DB value, no redeploy. It must carry
+ * `language` with it — the gate that decides whether to declare a language is per-model, and a
+ * Hebrew stream with no declared language is the documented mush-on-a-live-call failure.
+ */
+describe('applyTenantTts — the model swap', () => {
+  it('sends the model together with language', () => {
+    const { tts, spy } = cartesiaTts();
+    expect(applyTenantTts(tts, { model: 'sonic-3.5' }, env)).toBe('applied');
+    expect(spy).toHaveBeenCalledWith({ model: 'sonic-3.5', language: 'he' });
+  });
+
+  it('namespaces the model by vendor on the inference route', () => {
+    const { tts, spy } = inferenceTts();
+    applyTenantTts(tts, { model: 'sonic-3.5' }, env);
+    expect(spy.mock.calls[0]![0]).toMatchObject({ model: 'cartesia/sonic-3.5' });
+  });
+
+  it('carries the model alongside voice and prosody', () => {
+    const { tts, spy } = cartesiaTts();
+    applyTenantTts(tts, { model: 'sonic-3.5', voice: 'v-1', speed: 0.85 }, env);
+    expect(spy).toHaveBeenCalledWith({ voice: 'v-1', model: 'sonic-3.5', language: 'he', speed: 0.85 });
+  });
+});
+
 describe('applyTenantTts — the inference gateway route', () => {
   it('resends BOTH prosody levers because modelOptions is replaced wholesale', () => {
     const { tts, spy } = inferenceTts();

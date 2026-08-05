@@ -100,5 +100,44 @@ for (const r of rows) {
     `${pad(when, 20)} ${pad(r.id.slice(0, 8), 8)} ${pad(cr.callerPhone ?? '-', 15)} ${pad(cr.config?.ttsModel ?? '-', 26)} ${pad((cr.durationSec ?? r.duration_secs ?? '') + 's', 4)} ${ms(s.endOfTurnMedianMs)} ${ms(s.llmTtftMedianMs)} ${ms(s.ttsTtfbMedianMs)} ${ms(s.worstCaseMs).padStart(6)} ${pad(s.cutOffs, 3)} ${pad(s.fragmentedTurns, 3)} ${pad(s.duplicateReplies, 3)}`,
   );
 }
-console.log(`\n${rows.length} call(s). Use --full <id> for transcript + per-turn metrics.\n`);
+// --by-model: the real-call A/B. Groups the same calls by the TTS model that actually spoke and
+// reports median-of-per-call-medians per arm.
+//
+// THIS IS THE NUMBER THAT DECIDES A MODEL SWAP, not the offline bench. `npm run voice:model-ab`
+// measures Cartesia's websocket from a laptop; this measures what a caller on a real PSTN line
+// waited for, through the deployed agent, in the production region. They can disagree, and when
+// they do this one is right.
+if (args.includes('--by-model')) {
+  const byModel = new Map();
+  for (const r of rows) {
+    const cr = r.call_report ?? {};
+    const model = cr.config?.ttsModel ?? '-';
+    if (!byModel.has(model)) byModel.set(model, []);
+    byModel.get(model).push(cr.summary ?? {});
+  }
+
+  const med = (xs) => {
+    const v = xs.filter((x) => typeof x === 'number').sort((a, b) => a - b);
+    return v.length ? v[Math.floor(v.length / 2)] : null;
+  };
+
+  console.log(`\n--- by TTS model (${rows.length} call(s)) ---`);
+  console.log(
+    `${pad('model', 26)} ${pad('calls', 5)} ${pad('EOU', 5)} ${pad('LLM', 5)} ${pad('TTS', 5)} ${pad('worst', 6)} ${pad('cut', 4)} ${pad('frg', 4)}`,
+  );
+  console.log('-'.repeat(70));
+  for (const [model, ss] of [...byModel.entries()].sort()) {
+    console.log(
+      `${pad(model, 26)} ${pad(ss.length, 5)} ${ms(med(ss.map((s) => s.endOfTurnMedianMs)))} ${ms(med(ss.map((s) => s.llmTtftMedianMs)))} ${ms(med(ss.map((s) => s.ttsTtfbMedianMs)))} ${ms(med(ss.map((s) => s.worstCaseMs))).padStart(6)} ${pad(ss.reduce((a, s) => a + (s.cutOffs ?? 0), 0), 4)} ${pad(ss.reduce((a, s) => a + (s.fragmentedTurns ?? 0), 0), 4)}`,
+    );
+  }
+  // A median over three calls is a rumour. Say the sample size out loud rather than let a
+  // confident-looking table imply more than it has.
+  const thin = [...byModel.values()].some((ss) => ss.length < 5);
+  if (thin) console.log('\n  NOTE: fewer than 5 calls in an arm — indicative only, not a result.');
+  console.log('  TTS is the column the model swap moves. EOU and LLM should be unchanged;');
+  console.log('  if they move, something other than the model differed between the arms.\n');
+}
+
+console.log(`\n${rows.length} call(s). Use --full <id> for transcript + per-turn metrics, --by-model for the A/B.\n`);
 await client.end();

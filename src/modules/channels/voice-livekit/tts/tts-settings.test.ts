@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CARTESIA_EMOTIONS,
+  TENANT_SELECTABLE_MODELS,
   TTS_LIMITS,
   assertAgentPersona,
   resolveAgentPersona,
@@ -21,14 +22,27 @@ describe('resolveAgentPersona — never throws, falls back per field', () => {
     const r = resolveAgentPersona({ voice_engine: 'livekit' }, ENV);
     expect(r.overrides).toEqual({});
     expect(r.warnings).toEqual([]);
-    expect(r.sources).toEqual({ voice: 'default', emotion: 'default', speed: 'default', volume: 'default' });
+    expect(r.sources).toEqual({
+      voice: 'default',
+      model: 'default',
+      emotion: 'default',
+      speed: 'default',
+      volume: 'default',
+    });
     expect(r.persona).toEqual({ name: null, gender: null });
   });
 
   it('applies a fully valid persona', () => {
     const r = resolveAgentPersona({ agent_persona: VALID }, ENV);
     expect(r.overrides).toEqual({ voice: 'HE_VOICE_ID', emotion: 'calm', speed: 0.85, volume: 1.4 });
-    expect(r.sources).toEqual({ voice: 'tenant', emotion: 'tenant', speed: 'tenant', volume: 'tenant' });
+    // `model` stays 'default' — VALID does not set one, so the env model still speaks.
+    expect(r.sources).toEqual({
+      voice: 'tenant',
+      model: 'default',
+      emotion: 'tenant',
+      speed: 'tenant',
+      volume: 'tenant',
+    });
     expect(r.warnings).toEqual([]);
     expect(r.persona).toEqual({ name: 'קרן', gender: 'female' });
   });
@@ -197,6 +211,53 @@ describe('assertAgentPersona — throws on the write path', () => {
       if (persona.tts.emotion !== undefined) expect(r.overrides.emotion).toBe(persona.tts.emotion);
       if (persona.tts.voiceId !== undefined) expect(r.overrides.voice).toBe(persona.tts.voiceId);
     }
+  });
+});
+
+/**
+ * The model allowlist exists so sonic-3 vs sonic-3.5 can be A/B'd on real calls by flipping one DB
+ * value — while making it impossible for a tenant to select a model that returns zero audio for
+ * Hebrew and mutes their own agent.
+ */
+describe('the tenant model allowlist', () => {
+  it.each(TENANT_SELECTABLE_MODELS)('accepts %s', (model) => {
+    const r = resolveAgentPersona({ agent_persona: { tts: { model } } }, ENV);
+    expect(r.overrides.model).toBe(model);
+    expect(r.sources.model).toBe('tenant');
+    expect(r.warnings).toEqual([]);
+    expect(assertAgentPersona({ tts: { model } }).tts.model).toBe(model);
+  });
+
+  it.each(['sonic-turbo', 'sonic-2', 'sonic-lite', 'sonic', 'gpt-4o', ''])(
+    'rejects %j — it would return zero Hebrew audio, silently',
+    (model) => {
+      const r = resolveAgentPersona({ agent_persona: { tts: { model } } }, ENV);
+      expect(r.overrides.model).toBeUndefined();
+      expect(r.warnings).toHaveLength(1);
+      expect(() => assertAgentPersona({ tts: { model } })).toThrow(/model must be one of/);
+    },
+  );
+
+  /** A rejected model must not take the rest of the persona down with it. */
+  it('keeps voice and speed when the model is invalid', () => {
+    const r = resolveAgentPersona(
+      { agent_persona: { tts: { model: 'sonic-turbo', voiceId: 'HE_VOICE_ID', speed: 0.85 } } },
+      ENV,
+    );
+    expect(r.overrides).toEqual({ voice: 'HE_VOICE_ID', speed: 0.85 });
+  });
+
+  /**
+   * The emotion gate must ask about the model that will actually SPEAK. Gating on the env model
+   * while sending the tenant's is the same class of silent mismatch as the language gate.
+   */
+  it('gates emotion on the tenant model, not the env model', () => {
+    const r = resolveAgentPersona(
+      { agent_persona: { tts: { model: 'sonic-3.5', emotion: 'calm' } } },
+      { CARTESIA_MODEL: 'sonic-2' }, // env model has no emotion control; tenant's does
+    );
+    expect(r.overrides.emotion).toBe('calm');
+    expect(r.warnings).toEqual([]);
   });
 });
 

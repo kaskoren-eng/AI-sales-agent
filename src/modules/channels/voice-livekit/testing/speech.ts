@@ -44,7 +44,10 @@ export interface CartesiaCallOptions {
  * result is byte-identical to before this parameter existed.
  */
 export function cartesiaOptions(env: Env, overrides: TtsOverrides = {}): CartesiaCallOptions {
-  const model = env.CARTESIA_MODEL;
+  // The tenant's model, if they picked one. Resolved FIRST because the language gate below asks
+  // about the model that will actually speak — gating on the env model while sending the tenant's
+  // would be exactly the silent-mismatch this function exists to prevent.
+  const model = overrides.model ?? env.CARTESIA_MODEL;
   const opts: CartesiaCallOptions = {
     model,
     voice: overrides.voice ?? env.CARTESIA_VOICE_ID_PRIMARY,

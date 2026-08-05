@@ -94,6 +94,7 @@ export interface CallReportJson {
      */
     tts?: {
       voice?: string;
+      model?: string;
       emotion?: string;
       speed?: number;
       volume?: number;
@@ -320,9 +321,15 @@ export class CallReport {
     Object.assign(this.#compliance, patch);
   }
 
-  /** Which voice this call was actually spoken in — see CallReportJson['config']['tts']. */
+  /**
+   * Which voice this call was actually spoken in — see CallReportJson['config']['tts'].
+   *
+   * A per-tenant model override also rewrites `ttsModel`, because that is the field
+   * `scripts/call-stats.mjs` groups and reports by. Leaving it on the env default would file a
+   * sonic-3.5 call under sonic-3 and quietly corrupt the A/B it exists to support.
+   */
   recordTtsConfig(tts: NonNullable<CallReportJson['config']['tts']>): void {
-    this.#config = { ...this.#config, tts };
+    this.#config = { ...this.#config, tts, ...(tts.model ? { ttsModel: tts.model } : {}) };
   }
 
   /** end_call found no disclosure yet and instructed one into the goodbye. */

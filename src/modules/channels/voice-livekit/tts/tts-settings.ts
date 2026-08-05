@@ -62,6 +62,21 @@ export const TTS_LIMITS = {
   volume: { min: 0.5, max: 2.0 },
 } as const;
 
+/**
+ * The ONLY models a tenant may select — an allowlist, not a free string.
+ *
+ * Model choice is a measured Hebrew finding, not a preference. `sonic-turbo`, `sonic-2` and
+ * `sonic-lite` all return zero audio for `he`, silently, so a free-text model field would let a
+ * tenant mute their own agent with a typo. These two are the models proven to speak Hebrew: both
+ * take the same voice ids and generation_config, and both accept `language: 'he'`.
+ *
+ * This exists so sonic-3 vs sonic-3.5 can be A/B'd on REAL CALLS by flipping one DB value, with no
+ * redeploy and no restart — the alternative being to redeploy the cloud agent between arms, which
+ * makes an interleaved comparison impossible and confounds the result with whatever else changed.
+ */
+export const TENANT_SELECTABLE_MODELS = ['sonic-3', 'sonic-3.5'] as const;
+export type TenantSelectableModel = (typeof TENANT_SELECTABLE_MODELS)[number];
+
 /** Agent gender — drives Hebrew verb inflection ("קרן סיימה" / "דניאל סיים"). */
 export type AgentGender = 'female' | 'male';
 
@@ -69,6 +84,8 @@ export type AgentGender = 'female' | 'male';
 export interface AgentPersonaTts {
   /** Cartesia voice id. Placeholder `HE_VOICE_ID` until voices are selected. */
   voiceId?: string;
+  /** sonic-3 | sonic-3.5. Absent = the env default (CARTESIA_MODEL). */
+  model?: TenantSelectableModel;
   emotion?: CartesiaEmotion;
   speed?: number;
   volume?: number;
@@ -95,12 +112,13 @@ export interface AgentPersona {
 /** TTS option overrides, named as the Cartesia plugin names them (`voice`, not `voiceId`). */
 export interface TtsOverrides {
   voice?: string;
+  model?: TenantSelectableModel;
   emotion?: CartesiaEmotion;
   speed?: number;
   volume?: number;
 }
 
-export type TtsField = 'voice' | 'emotion' | 'speed' | 'volume';
+export type TtsField = 'voice' | 'model' | 'emotion' | 'speed' | 'volume';
 
 export interface ResolvedAgentPersona {
   /** Only the fields this tenant actually set AND that survived validation. Empty means
@@ -128,6 +146,7 @@ export function supportsEmotion(model: string): boolean {
 
 const DEFAULT_SOURCES: Record<TtsField, 'tenant' | 'default'> = {
   voice: 'default',
+  model: 'default',
   emotion: 'default',
   speed: 'default',
   volume: 'default',
@@ -135,6 +154,10 @@ const DEFAULT_SOURCES: Record<TtsField, 'tenant' | 'default'> = {
 
 function isEmotion(value: unknown): value is CartesiaEmotion {
   return typeof value === 'string' && (CARTESIA_EMOTIONS as readonly string[]).includes(value);
+}
+
+function isSelectableModel(value: unknown): value is TenantSelectableModel {
+  return typeof value === 'string' && (TENANT_SELECTABLE_MODELS as readonly string[]).includes(value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -187,14 +210,29 @@ export function resolveAgentPersona(
     warnings.push(`agent_persona.tts.voiceId is ${describe(tts.voiceId)}, expected a non-empty string — using env voice`);
   }
 
+  // Resolved BEFORE emotion, because the emotion gate asks about the model that will actually
+  // speak — which is this one, not the env default.
+  if (tts.model !== undefined) {
+    if (!isSelectableModel(tts.model)) {
+      warnings.push(
+        `agent_persona.tts.model is ${describe(tts.model)}, expected one of ${TENANT_SELECTABLE_MODELS.join(' | ')} — using env model ` +
+          '(other Cartesia models return zero audio for Hebrew, silently)',
+      );
+    } else {
+      overrides.model = tts.model;
+      sources.model = 'tenant';
+    }
+  }
+  const effectiveModel = overrides.model ?? env.CARTESIA_MODEL;
+
   if (tts.emotion !== undefined) {
     if (!isEmotion(tts.emotion)) {
       warnings.push(
         `agent_persona.tts.emotion is ${describe(tts.emotion)}, expected one of ${CARTESIA_EMOTIONS.join(' | ')} — dropped`,
       );
-    } else if (!supportsEmotion(env.CARTESIA_MODEL)) {
+    } else if (!supportsEmotion(effectiveModel)) {
       // Not the tenant's mistake: the model changed underneath a valid setting. Say which.
-      warnings.push(`agent_persona.tts.emotion is set but model '${env.CARTESIA_MODEL}' has no emotion control — dropped`);
+      warnings.push(`agent_persona.tts.emotion is set but model '${effectiveModel}' has no emotion control — dropped`);
     } else {
       overrides.emotion = tts.emotion;
       sources.emotion = 'tenant';
@@ -282,6 +320,16 @@ export function assertAgentPersona(input: unknown): AgentPersona {
       throw new Error(`agent_persona.tts.voiceId must be a non-empty string, got ${describe(src.voiceId)}`);
     }
     tts.voiceId = src.voiceId.trim();
+  }
+
+  if (src.model !== undefined) {
+    if (!isSelectableModel(src.model)) {
+      throw new Error(
+        `agent_persona.tts.model must be one of ${TENANT_SELECTABLE_MODELS.join(' | ')}, got ${describe(src.model)}. ` +
+          'Other Cartesia models return zero audio for Hebrew — silently, with no error.',
+      );
+    }
+    tts.model = src.model;
   }
 
   if (src.emotion !== undefined) {

@@ -259,14 +259,25 @@ export type TenantTtsResult = 'applied' | 'partial' | 'unsupported' | 'noop';
 // dispatch below is what decides whether this is a provider we can actually re-point. Anything
 // else is honestly reported as 'unsupported' rather than cast into a lie.
 export function applyTenantTts(tts: unknown, overrides: TtsOverrides, env: Env): TenantTtsResult {
-  const { voice, emotion, speed, volume } = overrides;
-  if (voice === undefined && emotion === undefined && speed === undefined && volume === undefined) {
+  const { voice, model, emotion, speed, volume } = overrides;
+  if (
+    voice === undefined &&
+    model === undefined &&
+    emotion === undefined &&
+    speed === undefined &&
+    volume === undefined
+  ) {
     return 'noop';
   }
 
   if (tts instanceof cartesia.TTS) {
+    // When the MODEL changes, `language` must be re-sent with it. The gate that decides whether to
+    // declare a language is per-model, so a swap can flip the answer — and a Hebrew stream with no
+    // declared language is the documented mush-on-a-live-call failure, not an error you would see.
+    const opts = cartesiaOptions(env, overrides);
     tts.updateOptions({
       ...(voice !== undefined ? { voice } : {}),
+      ...(model !== undefined ? { model, ...(opts.language ? { language: opts.language } : {}) } : {}),
       ...(speed !== undefined ? { speed } : {}),
       ...(volume !== undefined ? { volume } : {}),
       // Array shape, single value — only emotion[0] reaches Cartesia's generation_config.
@@ -282,6 +293,8 @@ export function applyTenantTts(tts: unknown, overrides: TtsOverrides, env: Env):
     const opts = cartesiaOptions(env, overrides);
     tts.updateOptions({
       ...(voice !== undefined ? { voice } : {}),
+      // The gateway namespaces models by vendor: 'cartesia/sonic-3.5', not 'sonic-3.5'.
+      ...(model !== undefined ? { model: `cartesia/${model}` as never } : {}),
       modelOptions: { speed: opts.speed, volume: opts.volume },
     });
     return emotion === undefined ? 'applied' : 'partial';
