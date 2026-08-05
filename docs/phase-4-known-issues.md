@@ -58,8 +58,20 @@ It even sounds fine if you synthesize a whole sentence to a WAV file.
   streams text to Cartesia token-by-token as the LLM produces it, and with no declared language
   Cartesia has to guess per fragment. On tiny Hebrew fragments it guesses wrong.
 
-**Consequence:** `sonic-3` is the ONLY Cartesia model that speaks Hebrew. Its ~450ms
+**Consequence:** only the **sonic-3 family** speaks Hebrew — `sonic-3` and `sonic-3.5`. Its ~450ms
 time-to-first-byte is a **floor**, not a tuning target.
+
+> **Updated 2026-08-05.** `sonic-3.5` shipped after this was written, speaks Hebrew, accepts
+> `language: 'he'`, and takes the same voice ids and `generation_config`. It is now the default —
+> chosen on a real phone call for clearly better Hebrew, **not** for latency: an interleaved A/B
+> (`npm run voice:model-ab`) found the two models' TTFB indistinguishable, with two different
+> voices disagreeing about which was faster. `sonic-2`, `sonic-lite` and `sonic-turbo` remain
+> zero-audio for Hebrew, so the trap above is unchanged for them.
+>
+> A related trap this created: the language gate in `testing/speech.ts` was an exact-match set that
+> did not contain `sonic-3.5`, so selecting it would have dropped `language: 'he'` and reproduced
+> the sonic-turbo failure exactly. It is now a `startsWith('sonic-3')` predicate. **When a vendor
+> ships a new model in a family you already trust, check every place the old name was hardcoded.**
 
 **The lesson that generalises:** an empty response is evidence of a bug in YOUR request, not proof
 of a limitation in THEIR model. Turn the log level up and read the provider's own error before

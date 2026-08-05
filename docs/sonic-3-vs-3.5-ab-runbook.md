@@ -1,5 +1,18 @@
 # sonic-3 vs sonic-3.5 — real-call A/B runbook
 
+> ## DECIDED 2026-08-05: sonic-3.5, on quality.
+>
+> Koren, after a real PSTN call: *"the 3.5 sounds way better, much better than sonic 3."*
+> `CARTESIA_MODEL` now defaults to `sonic-3.5` in `env.ts` and `.env.example`, and the deployed
+> agent's secret is set to it.
+>
+> **It was NOT a latency decision** — see below: the interleaved A/B found no measurable
+> difference, and the two voices disagreed about which model was faster. Anyone who reopens this
+> with a bench will be re-deriving noise.
+>
+> sonic-3 remains fully supported and selectable, per tenant (`agent_persona.tts.model`) or via
+> `CARTESIA_MODEL`. The rest of this document stands as the method for the next such comparison.
+
 The offline bench cannot answer this. Real calls can. Here is how to run it.
 
 ## Why offline TTFB is not the instrument

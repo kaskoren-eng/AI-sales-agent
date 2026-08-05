@@ -99,11 +99,20 @@ const envSchema = z.object({
   LIVEKIT_URL: z.string().url().optional(),
   LIVEKIT_API_KEY: z.string().min(1).optional(),
   LIVEKIT_API_SECRET: z.string().min(1).optional(),
-  // Cartesia — Hebrew TTS. sonic-3 is the ONLY model that speaks Hebrew: sonic, sonic-2,
-  // sonic-lite and sonic-turbo all return zero audio for `he` (silently — no error).
-  // So the low-latency sonic-turbo is NOT an option for us. Verify: npm run voice:ab -- <model>
+  // Cartesia — Hebrew TTS. TWO models speak Hebrew: sonic-3 and sonic-3.5. sonic, sonic-2,
+  // sonic-lite and sonic-turbo all return zero audio for `he` (silently — no error), so the
+  // low-latency sonic-turbo is NOT an option for us. Verify: npm run voice:ab -- <model>
+  //
+  // DEFAULT IS sonic-3.5 SINCE 2026-08-05, decided on a real phone call: "way better, much better
+  // than sonic 3" (Koren). Drop-in — same voice ids, same request shape, same generation_config.
+  //
+  // LATENCY WAS NOT THE REASON, and do not re-litigate it with a bench. Interleaved A/B/B/A over
+  // two voices found the arms overlapping and the two voices DISAGREEING about which model was
+  // faster (voice A: sonic-3 by 266ms; voice B: sonic-3.5 by 249ms). A real effect does not
+  // reverse when you change voice. There is no measurable TTFB difference; this was a quality
+  // call, made by ear on the phone line, which is the only instrument that settled it.
   CARTESIA_API_KEY: z.string().min(1).optional(),
-  CARTESIA_MODEL: z.string().default('sonic-3'),
+  CARTESIA_MODEL: z.string().default('sonic-3.5'),
   CARTESIA_VOICE_ID_PRIMARY: z.string().min(1).optional(),
   // Backup voices — A/B candidates for the Phase 2 voice selection
   CARTESIA_VOICE_ID_SECONDARY: z.string().min(1).optional(),

@@ -138,14 +138,25 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
 }
 
 /**
- * The voice. CARTESIA sonic-3, and it is not a free choice — it is the ONLY model that speaks
- * Hebrew intelligibly down a phone line.
+ * The voice. CARTESIA sonic-3.5 since 2026-08-05, and the model is not a free choice — only the
+ * sonic-3 family speaks Hebrew intelligibly down a phone line.
+ *
+ * THE DECISION WAS MADE BY EAR, ON A REAL PHONE CALL: "the 3.5 sounds way better, much better than
+ * sonic 3" (Koren). sonic-3 remains selectable, per tenant or via CARTESIA_MODEL.
+ *
+ * LATENCY WAS NOT THE REASON — and the bench that suggested it was is the cautionary tale here.
+ * `bench:tts` measures candidates in BLOCKS, so network drift during a run is indistinguishable
+ * from a difference between models; it put live sonic-3 at 1351ms against its own documented
+ * ~455ms and made sonic-3.5 look 862ms faster. Re-measured INTERLEAVED (`npm run voice:model-ab`,
+ * A/B/B/A, two voices, 6 rounds each) the arms overlapped and the two voices DISAGREED about the
+ * winner: voice A said sonic-3 by 266ms, voice B said sonic-3.5 by 249ms. A real effect does not
+ * reverse when you change voice. There is no measurable TTFB difference between these two models.
  *
  * MEASURED, by synthesizing Hebrew, squeezing it through an 8kHz phone band, and transcribing it
  * back with Soniox (`npm run bench:tts`, then the intelligibility check):
  *
- *   cartesia/sonic-3      ~455ms ttfb   intelligible
- *   cartesia/sonic-3.5    ~388ms ttfb   intelligible, no faster in practice
+ *   cartesia/sonic-3      intelligible
+ *   cartesia/sonic-3.5    intelligible, and clearly better Hebrew on a real line
  *   elevenlabs/flash_v2_5 ~274ms ttfb   95% WER — IT DOES NOT SPEAK HEBREW. It returned "DSMH, אין."
  *
  * ElevenLabs Flash is the fastest TTS on the market and it is USELESS to us. A voice that is 180ms
@@ -206,7 +217,16 @@ function buildTTS(env: Env): ttsBase.TTS {
   if (env.VOICE_TTS_ROUTE === 'inference') {
     const opts = cartesiaOptions(env);
     return new inference.TTS({
-      model: 'cartesia/sonic-3',
+      // Follows CARTESIA_MODEL rather than pinning a version: the two routes must speak with the
+      // same voice AND the same model, or switching route silently changes what the caller hears.
+      // This was hardcoded to sonic-3 and would have quietly kept the old model on this route
+      // after sonic-3.5 became the default.
+      //
+      // The cast narrows to a Cartesia member of the gateway's model union — `modelOptions` is
+      // typed FROM the model, so widening to `string`/`never` here silently types speed+volume
+      // away and the intelligibility levers stop compiling. Both real values ('cartesia/sonic-3'
+      // and 'cartesia/sonic-3.5') are in that union.
+      model: `cartesia/${env.CARTESIA_MODEL}` as 'cartesia/sonic-3.5',
       voice: env.CARTESIA_VOICE_ID_PRIMARY,
       language: env.VOICE_LANGUAGE,
       // 24kHz, EXPLICITLY. This line is the whole reason the first attempt at this route shipped a
