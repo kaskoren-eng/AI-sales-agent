@@ -501,5 +501,18 @@
     "working": "Working…",
     "genericError": "Something went wrong. Try again.",
     "signOut": "Sign out"
+  },
+  "integrations": {
+    "blurb": "Connect your own tools, and see what ClickScales runs for you.",
+    "yours": "Your tools",
+    "managed": "Run by ClickScales",
+    "managedBlurb": "Set up for you during onboarding. Ask us to change one and it changes the same day.",
+    "connected": "Connected",
+    "notConnected": "Not connected",
+    "connect": "Connect",
+    "reconnect": "Reconnect",
+    "disconnect": "Disconnect",
+    "viaApi": "Connect via the API — board picker lands here next",
+    "statusFailed": "Could not load status"
   }
 }

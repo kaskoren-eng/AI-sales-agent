@@ -2,7 +2,7 @@ import { useState, useEffect, useId } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import * as Dialog from '@radix-ui/react-dialog'
-import { Eye, EyeOff, RefreshCw, X, Save, CheckCircle2, Phone, Trash2, Sun, Moon, Monitor } from 'lucide-react'
+import { Eye, EyeOff, RefreshCw, X, Save, CheckCircle2, Phone, Sun, Moon, Monitor } from 'lucide-react'
 import { PrefSelect } from '../components/ui/PrefSelect.js'
 import { useTheme } from '../hooks/useTheme.js'
 import type { ThemePref } from '../lib/theme.js'
@@ -15,9 +15,7 @@ import {
   regenerateApiKey,
   fetchBusinessProfile,
   saveBusinessProfile,
-  fetchTwilioSettings,
-  saveTwilioSettings,
-  deleteTwilioSettings,
+  fetchVoiceNumber,
   type BusinessProfile,
 } from '../lib/api.js'
 import { Button } from '../components/ui/Button.js'
@@ -560,164 +558,87 @@ function AgentTab() {
   )
 }
 
-function TwilioTab() {
-  const queryClient = useQueryClient()
-  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
-  const [showToken, setShowToken] = useState(false)
-  const [form, setForm] = useState({ accountSid: '', authToken: '', phoneNumber: '' })
-  const [saved, setSaved] = useState(false)
-
-  const { data: status, isLoading } = useQuery({
-    queryKey: ['twilio-settings'],
-    queryFn: fetchTwilioSettings,
+/**
+ * Voice — the tenant's phone number.
+ *
+ * This pane used to be a Twilio credential form: Account SID, Auth Token, phone number, posting to
+ * `/settings/twilio`. Two things were wrong with it. There is no `/settings/twilio` route on the
+ * backend — it has `/settings/zadarma` — so every load 404'd and the pane rendered its empty
+ * "connect" state forever. And it contradicted how the product actually works: ClickScales
+ * provisions and assigns the number during onboarding, so a tenant pasting their own telephony
+ * credentials was never part of the model.
+ *
+ * It now shows the number the tenant actually has, read-only, from the route that exists.
+ */
+function VoiceTab() {
+  const { data: status, isLoading, isError } = useQuery({
+    queryKey: ['voice-number'],
+    queryFn: fetchVoiceNumber,
     staleTime: 60_000,
   })
-
-  const saveMutation = useMutation({
-    mutationFn: () => saveTwilioSettings(form),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['twilio-settings'] })
-      setForm({ accountSid: '', authToken: '', phoneNumber: '' })
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    },
-  })
-
-  const disconnectMutation = useMutation({
-    mutationFn: deleteTwilioSettings,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['twilio-settings'] })
-      setConfirmDisconnect(false)
-    },
-  })
-
-  const canSave = form.accountSid.startsWith('AC') && form.accountSid.length === 34 && form.authToken.length >= 32 && form.phoneNumber.length >= 7
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '560px' }}>
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
           <Phone size={16} strokeWidth={1.5} color="var(--accent-fg)" />
-          <SectionCap>Twilio Account</SectionCap>
+          <SectionCap>Phone Number</SectionCap>
         </div>
         <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '20px', lineHeight: 1.5 }}>
-          Connect your own Twilio account. Your agent will make and receive calls using your number — billed directly by Twilio.
+          Your agent answers and dials on this number. ClickScales provisions it during onboarding —
+          tell us if you need it changed or want another one.
         </p>
 
         {isLoading ? (
-          <Skeleton height="120px" />
+          <Skeleton height="92px" />
+        ) : isError ? (
+          <p role="alert" style={{ fontSize: '13px', color: 'var(--status-danger)' }}>
+            Could not load your number. Try again in a moment.
+          </p>
         ) : status?.configured ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ padding: '12px 14px', backgroundColor: 'color-mix(in srgb, var(--status-success) 9%, transparent)', border: '1px solid color-mix(in srgb, var(--status-success) 24%, transparent)', borderRadius: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                <CheckCircle2 size={14} color="var(--status-success)" />
-                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--status-success)' }}>Connected</span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>Account SID: <code style={{ color: 'var(--text-secondary)' }}>{status.accountSid}</code></span>
-                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>Phone: <code style={{ color: 'var(--text-secondary)' }}>{status.phoneNumber}</code></span>
-                <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>Auth Token: <code style={{ color: 'var(--text-secondary)' }}>{status.authTokenMasked}</code></span>
-                {status.configuredAt && <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Configured {new Date(status.configuredAt).toLocaleDateString()}</span>}
-              </div>
+          <div
+            style={{
+              padding: '14px 16px',
+              backgroundColor: 'color-mix(in srgb, var(--status-success) 9%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--status-success) 24%, transparent)',
+              borderRadius: '8px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <CheckCircle2 size={14} color="var(--status-success)" />
+              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--status-success)' }}>Active</span>
             </div>
-            <Button variant="danger" size="sm" onClick={() => setConfirmDisconnect(true)}>
-              <Trash2 size={13} strokeWidth={1.5} /> Disconnect Twilio
-            </Button>
+            <span
+              dir="ltr"
+              style={{ fontFamily: 'var(--font-mono)', fontSize: '18px', color: 'var(--text-primary)', letterSpacing: '0.02em' }}
+            >
+              {status.phoneNumber ?? '—'}
+            </span>
+            {status.configuredAt && (
+              <span style={{ fontSize: '11.5px', color: 'var(--text-tertiary)' }}>
+                Provisioned {new Date(status.configuredAt).toLocaleDateString()}
+              </span>
+            )}
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <FieldGroup label="Account SID">
-              <input
-                style={inputStyle}
-                value={form.accountSid}
-                onChange={(e) => setForm((p) => ({ ...p, accountSid: e.target.value.trim() }))}
-                placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                autoComplete="off"
-              />
-            </FieldGroup>
-
-            <FieldGroup label="Auth Token">
-              <div style={{ position: 'relative' }}>
-                <input
-                  style={{ ...inputStyle, paddingInlineEnd: '40px' }}
-                  type={showToken ? 'text' : 'password'}
-                  value={form.authToken}
-                  onChange={(e) => setForm((p) => ({ ...p, authToken: e.target.value.trim() }))}
-                  placeholder="Your Twilio Auth Token"
-                  autoComplete="new-password"
-                />
-                <button
-                  onClick={() => setShowToken((v) => !v)}
-                  aria-label={showToken ? 'Hide token' : 'Show token'}
-                  style={{ position: 'absolute', insetInlineEnd: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
-                >
-                  {showToken ? <EyeOff size={14} strokeWidth={1.5} /> : <Eye size={14} strokeWidth={1.5} />}
-                </button>
-              </div>
-            </FieldGroup>
-
-            <FieldGroup label="Phone Number (E.164 format)">
-              <input
-                style={inputStyle}
-                value={form.phoneNumber}
-                onChange={(e) => setForm((p) => ({ ...p, phoneNumber: e.target.value.trim() }))}
-                placeholder="+972501234567"
-                autoComplete="off"
-              />
-            </FieldGroup>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => saveMutation.mutate()}
-                loading={saveMutation.isPending}
-                disabled={!canSave}
-              >
-                <Save size={14} strokeWidth={1.5} /> Connect Twilio
-              </Button>
-              {saved && <span style={{ fontSize: '12px', color: 'var(--status-success)', display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={13} /> Connected</span>}
-              {saveMutation.isError && <span role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)' }}>Save failed — check credentials</span>}
-            </div>
-
-            <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px', lineHeight: 1.5 }}>
-              Find your Account SID and Auth Token in the{' '}
-              <span style={{ color: 'var(--accent-fg)' }}>Twilio Console → Dashboard</span>.
-              Your auth token is encrypted before storage.
-            </p>
+          <div
+            style={{
+              padding: '14px 16px',
+              border: '1px dashed var(--border-default)',
+              borderRadius: '8px',
+              fontSize: '13px',
+              color: 'var(--text-secondary)',
+              lineHeight: 1.6,
+            }}
+          >
+            No number assigned yet. One is set up as part of onboarding — if your agent is live and
+            this is empty, tell us and we will look.
           </div>
         )}
       </Card>
-
-      {/* Disconnect confirmation dialog */}
-      <Dialog.Root open={confirmDisconnect} onOpenChange={setConfirmDisconnect}>
-        <Dialog.Portal>
-          <Dialog.Overlay style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 50 }} />
-          <Dialog.Content style={dialogContentStyle} aria-describedby="disconnect-desc">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-              <Dialog.Title style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '16px', color: 'var(--text-primary)' }}>
-                Disconnect Twilio?
-              </Dialog.Title>
-              <Dialog.Close asChild>
-                <button aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px' }}>
-                  <X size={16} strokeWidth={1.5} />
-                </button>
-              </Dialog.Close>
-            </div>
-            <p id="disconnect-desc" style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '24px' }}>
-              Your Twilio credentials will be removed. Voice calls will stop working until you reconnect.
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <Dialog.Close asChild>
-                <Button variant="secondary" size="sm">Cancel</Button>
-              </Dialog.Close>
-              <Button variant="danger" size="sm" onClick={() => disconnectMutation.mutate()} loading={disconnectMutation.isPending}>
-                Yes, disconnect
-              </Button>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
     </div>
   )
 }
@@ -833,7 +754,7 @@ export function Settings() {
         {pane === 'account' && <AccountPane />}
         {pane === 'api' && <ApiTab />}
         {pane === 'profile' && <AgentTab />}
-        {pane === 'voice' && <TwilioTab />}
+        {pane === 'voice' && <VoiceTab />}
         {pane === 'flows' && <FlowsTab />}
       </div>
     </div>

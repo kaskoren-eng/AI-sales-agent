@@ -501,5 +501,18 @@
     "working": "רגע…",
     "genericError": "משהו השתבש. נסו שוב.",
     "signOut": "התנתקות"
+  },
+  "integrations": {
+    "blurb": "חברו את הכלים שלכם, וראו מה ClickScales מפעילה עבורכם.",
+    "yours": "הכלים שלכם",
+    "managed": "מופעל על ידי ClickScales",
+    "managedBlurb": "מוגדר עבורכם בתהליך ההצטרפות. צריכים שינוי? אמרו לנו ונעשה זאת באותו יום.",
+    "connected": "מחובר",
+    "notConnected": "לא מחובר",
+    "connect": "חיבור",
+    "reconnect": "חיבור מחדש",
+    "disconnect": "ניתוק",
+    "viaApi": "חיבור דרך ה-API — בורר לוחות יגיע לכאן בקרוב",
+    "statusFailed": "לא ניתן לטעון את הסטטוס"
   }
 }

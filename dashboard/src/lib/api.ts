@@ -139,29 +139,74 @@ export function saveBusinessProfile(profile: BusinessProfile): Promise<{ ok: boo
   })
 }
 
-// --- Settings: Twilio ---
+// --- Settings: Voice number ---
+//
+// This used to be `fetchTwilioSettings` against `/settings/twilio`, a route that does not exist —
+// the backend has `/settings/zadarma`. Every load 404'd, so the Settings > Voice pane showed its
+// empty "connect your Twilio account" state permanently. Asking the tenant for telephony
+// credentials was wrong anyway: ClickScales provisions and assigns the number at onboarding.
 
-export interface TwilioStatus {
+export interface VoiceNumberStatus {
   configured: boolean
-  accountSid: string | null
   phoneNumber: string | null
-  authTokenMasked: string | null
   configuredAt: string | null
 }
 
-export function fetchTwilioSettings(): Promise<TwilioStatus> {
-  return apiFetch('/settings/twilio')
+export function fetchVoiceNumber(): Promise<VoiceNumberStatus> {
+  return apiFetch<VoiceNumberStatus>('/settings/zadarma')
 }
 
-export function saveTwilioSettings(data: { accountSid: string; authToken: string; phoneNumber: string }): Promise<{ ok: boolean }> {
-  return apiFetch('/settings/twilio', {
-    method: 'PUT',
+// --- Integrations: Airtable ---
+//
+// The backend has had a complete per-tenant Airtable API for a while — configure (which validates
+// the credentials against Airtable BEFORE storing them), status, disconnect, table listing — and
+// nothing in the UI called any of it. The Integrations page was a static array of cards, every one
+// hardcoded to "Not configured", every button a no-op. So a second tenant had no way to connect
+// their own base, which is the whole point of the feature.
+
+export interface AirtableStatus {
+  connected: boolean
+  baseId?: string
+  tableId?: string
+  phoneFieldName?: string | null
+  emailFieldName?: string | null
+}
+
+export function fetchAirtableStatus(): Promise<AirtableStatus> {
+  return apiFetch<AirtableStatus>('/integrations/airtable/status')
+}
+
+export function configureAirtable(data: {
+  apiKey: string
+  baseId: string
+  tableId: string
+  phoneFieldName?: string
+  emailFieldName?: string
+}): Promise<{ ok: boolean; baseId: string; tableId: string }> {
+  return apiFetch('/integrations/airtable/configure', {
+    method: 'POST',
     body: JSON.stringify(data),
   })
 }
 
-export function deleteTwilioSettings(): Promise<{ ok: boolean }> {
-  return apiFetch('/settings/twilio', { method: 'DELETE' })
+export function disconnectAirtable(): Promise<{ ok: boolean }> {
+  return apiFetch('/integrations/airtable/configure', { method: 'DELETE' })
+}
+
+// --- Integrations: Monday.com ---
+
+export interface MondayStatus {
+  connected: boolean
+  boardId?: string
+  columnMap?: Record<string, string>
+}
+
+export function fetchMondayStatus(): Promise<MondayStatus> {
+  return apiFetch<MondayStatus>('/integrations/monday/status')
+}
+
+export function disconnectMonday(): Promise<{ ok: boolean }> {
+  return apiFetch('/integrations/monday/configure', { method: 'DELETE' })
 }
 
 // --- Voice simulator (browser mic session with the LiveKit agent) ---

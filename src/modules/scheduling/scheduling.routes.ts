@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { getTenantId } from '../../shared/tenant-context.js';
 import { GoogleCalendarProvider } from './providers/google-calendar.provider.js';
-import { scheduledCalls } from '../../db/schema/index.js';
-import { eq, and } from 'drizzle-orm';
+import { scheduledCalls, leads } from '../../db/schema/index.js';
+import { eq, and, gte, asc, desc, count } from 'drizzle-orm';
 import { cancelMeetingReminders } from '../../queues/meeting-reminders.queue.js';
 
 function getCalendarProvider(app: FastifyInstance): GoogleCalendarProvider | null {
@@ -20,6 +20,61 @@ function getCalendarProvider(app: FastifyInstance): GoogleCalendarProvider | nul
 }
 
 export async function schedulingRoutes(app: FastifyInstance) {
+  /**
+   * GET /bookings — the tenant's meetings.
+   *
+   * The dashboard's Bookings page has called this since it was built and it has never existed, so
+   * the page has shown its error state to every user since day one. Read-only and additive: it
+   * reads `scheduled_calls`, which is already written by the booking path.
+   *
+   * Defaults to UPCOMING, ascending, because the page renders the result under a heading that says
+   * "Upcoming" — a list sorted newest-first under that heading would be actively misleading.
+   */
+  app.get<{
+    Querystring: { page?: string; limit?: string; status?: string; upcoming?: string };
+  }>('/bookings', async (request) => {
+    const tenantId = getTenantId(request);
+    const page = Math.max(1, Number(request.query.page ?? 1) || 1);
+    const limit = Math.min(100, Math.max(1, Number(request.query.limit ?? 50) || 50));
+    // Anything other than an explicit "false" means upcoming — the common case should not need a
+    // query string, and a typo should not silently dump the entire history into the page.
+    const upcoming = request.query.upcoming !== 'false';
+
+    const filters = [eq(scheduledCalls.tenantId, tenantId)];
+    if (request.query.status) filters.push(eq(scheduledCalls.status, request.query.status));
+    if (upcoming) filters.push(gte(scheduledCalls.scheduledAt, new Date()));
+    const where = and(...filters);
+
+    const [rows, [counted]] = await Promise.all([
+      app.db
+        .select({
+          id: scheduledCalls.id,
+          leadId: scheduledCalls.leadId,
+          leadName: leads.name,
+          scheduledAt: scheduledCalls.scheduledAt,
+          status: scheduledCalls.status,
+          provider: scheduledCalls.provider,
+          calendarEventId: scheduledCalls.providerRef,
+          createdAt: scheduledCalls.createdAt,
+        })
+        .from(scheduledCalls)
+        // LEFT join: `lead_id` is nullable, and a booking with no lead row still has to appear.
+        // An inner join would silently hide meetings, which is the worst failure a calendar has.
+        .leftJoin(leads, eq(leads.id, scheduledCalls.leadId))
+        .where(where)
+        .orderBy(upcoming ? asc(scheduledCalls.scheduledAt) : desc(scheduledCalls.scheduledAt))
+        .limit(limit)
+        .offset((page - 1) * limit),
+      app.db.select({ c: count() }).from(scheduledCalls).where(where),
+    ]);
+
+    const total = Number(counted?.c ?? 0);
+    return {
+      data: rows,
+      meta: { page, limit, total, total_pages: Math.max(1, Math.ceil(total / limit)) },
+    };
+  });
+
   // GET /slots — available time slots
   app.get<{
     Querystring: { startDate: string; endDate: string; timezone?: string };
