@@ -8,9 +8,17 @@
  *
  *   node scripts/webhook-url.mjs clickscales
  *
- * Reads ENCRYPTION_KEY and DATABASE_URL from the environment, so against production:
+ * Reads ENCRYPTION_KEY and a database URL from the environment.
  *
- *   railway run --service AI-sales-agent node scripts/webhook-url.mjs clickscales
+ * Against production from a laptop, the two live on different Railway services — ENCRYPTION_KEY on
+ * the app, and the only externally-resolvable database URL on Postgres (the app's DATABASE_URL is
+ * `postgres.railway.internal`, which resolves only inside Railway's network). So:
+ *
+ *   DBPUB=$(railway variables --service Postgres --kv | grep '^DATABASE_PUBLIC_URL=' | cut -d= -f2-)
+ *   railway run --service AI-sales-agent env DATABASE_PUBLIC_URL="$DBPUB" \
+ *     node scripts/webhook-url.mjs clickscales
+ *
+ * Locally, a plain `node scripts/webhook-url.mjs clickscales` with a .env is enough.
  */
 import { createHmac } from 'node:crypto';
 import pg from 'pg';
