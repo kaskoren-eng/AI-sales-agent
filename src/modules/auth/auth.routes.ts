@@ -40,6 +40,35 @@ export async function authRoutes(app: FastifyInstance) {
   const secureCookies = app.env.NODE_ENV === 'production';
   const baseUrl = app.env.DASHBOARD_BASE_URL ?? '';
 
+  /**
+   * Tolerate an EMPTY body on application/json.
+   *
+   * /refresh and /logout carry their credential in a cookie and take no body at all, but any
+   * normal fetch client sets a default `Content-Type: application/json` on POST. Fastify's stock
+   * JSON parser rejects that combination outright with "Body cannot be empty when content-type is
+   * set to 'application/json'" — so the browser refresh call failed for a reason that had nothing
+   * to do with the session, and every silent token renewal and page reload logged the user out.
+   *
+   * Scoped to this plugin, so the strict behaviour still applies everywhere else.
+   */
+  app.addContentTypeParser(
+    'application/json',
+    { parseAs: 'string', bodyLimit: 262_144 },
+    (_request, body: string, done) => {
+      if (!body || body.trim() === '') return done(null, {});
+      try {
+        done(null, JSON.parse(body));
+      } catch {
+        // statusCode must be set explicitly: a bare SyntaxError reaches the error handler as an
+        // unclassified throw and is served as 500. Malformed input from a client is a 400, and
+        // reporting it as a server error sends people debugging the wrong machine.
+        const err = new Error('Invalid JSON body') as Error & { statusCode: number };
+        err.statusCode = 400;
+        done(err, undefined);
+      }
+    },
+  );
+
   const issue = (reply: FastifyReply, result: LoginResult) => {
     const accessToken = app.jwt.sign(result.claims, { expiresIn: ACCESS_TOKEN_TTL });
     setRefreshCookie(reply, result.refreshToken, result.refreshExpiresAt, secureCookies);

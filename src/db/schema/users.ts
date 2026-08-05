@@ -101,10 +101,14 @@ export const invites = pgTable('invites', {
   email: varchar('email', { length: 255 }).notNull(),
   role: varchar('role', { length: 20 }).notNull().default('member').$type<TenantRole>(),
   tokenHash: varchar('token_hash', { length: 64 }).notNull().unique(),
-  invitedByUserId: uuid('invited_by_user_id').references(() => users.id),
+  // set null, NOT the default no-action: an invite records who sent it, but that record must not
+  // make the sender undeletable. Without this, deleting anyone who ever sent an invite fails on a
+  // foreign key — which breaks offboarding and any right-to-erasure request. The invite history
+  // survives; the person does not.
+  invitedByUserId: uuid('invited_by_user_id').references(() => users.id, { onDelete: 'set null' }),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   acceptedAt: timestamp('accepted_at', { withTimezone: true }),
-  acceptedUserId: uuid('accepted_user_id').references(() => users.id),
+  acceptedUserId: uuid('accepted_user_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => [index('invites_tenant_idx').on(t.tenantId)]);
 // A partial unique index (one OPEN invite per email per tenant) is added as raw SQL in the

@@ -79,7 +79,10 @@ interface AuthResponse {
 async function post<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api/v1/auth${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    // Only declare a JSON content-type when there IS a JSON body. /refresh and /logout carry
+    // their credential in the cookie and send nothing; announcing application/json with an empty
+    // body makes a strict server reject the request before it ever looks at the session.
+    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
     // Required for the refresh cookie to be sent and set at all.
     credentials: 'same-origin',
     body: body === undefined ? undefined : JSON.stringify(body),
