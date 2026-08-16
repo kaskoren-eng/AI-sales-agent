@@ -1,0 +1,35 @@
+# Line endings are pinned to LF, and for one file type it is not a style preference.
+#
+# `src/modules/channels/voice-livekit/prompts/__fixtures__/*.txt` hold the system prompt exactly as
+# it was before the persona refactor, and a test asserts `buildSystemPrompt()` reproduces them BYTE
+# FOR BYTE. That assertion is what lets us change the prompt's structure without re-running the
+# voice A/B suite on a live agent.
+#
+# With `core.autocrlf=true` — the default on Windows, and set on this machine — a fresh checkout
+# rewrites those .txt files to CRLF. The generated prompt does NOT become uniformly CRLF to match:
+# newlines inside template literals would follow the source file, but the `\n` escapes in
+# `renderFaq()` and the objection-playbook slot are LF whatever the file's encoding. The result is a
+# mixed-newline string compared against a uniformly-CRLF fixture, so the test fails on a clean clone
+# while passing for everyone who already had the working copy — the worst shape a failure can take.
+#
+# It is also a production concern, not only a test one: a CRLF system prompt is not the prompt that
+# was measured.
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.js   text eol=lf
+*.mjs  text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.sql  text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.txt  text eol=lf
+
+# Shell scripts and Dockerfiles break outright with CRLF.
+*.sh   text eol=lf
+Dockerfile* text eol=lf
+
+*.png  binary
+*.jpg  binary
+*.wav  binary
+*.mp3  binary
