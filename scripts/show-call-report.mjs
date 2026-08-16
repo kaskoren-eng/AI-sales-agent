@@ -69,6 +69,10 @@ if (d && d.samples > 0) {
   console.log(`  typical turn     ${bar(d.medianMs)}  ${ms(d.medianMs)}${verdict(d.medianMs)}`);
   console.log(`  worst 1 in 10    ${bar(d.p90Ms)}  ${ms(d.p90Ms)}`);
   console.log(`  best / worst     ${' '.repeat(20)}  ${ms(d.minMs)} / ${ms(d.maxMs)}   over ${d.samples} turns`);
+  // The budget, stated as pass/fail. Four calls in a row were read as "better" or "worse" than
+  // each other when the only question that matters is whether the median clears 1000ms.
+  const pass = d.medianMs !== null && d.medianMs < 1000;
+  console.log(`\n  BUDGET 1000ms    ${pass ? 'PASS' : 'FAIL'}   median ${ms(d.medianMs)}`);
   if (d.samples < 6) {
     console.log(`\n  Only ${d.samples} turns — too few to call a result. Take another call.`);
   }

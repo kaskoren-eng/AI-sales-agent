@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { forceMasculineAddress, guardSpeech, guardStream, notifyIfSilent, withFiller } from './speech-guard.js';
+import { dropAckEcho, forceMasculineAddress, guardSpeech, guardStream, notifyIfSilent, withFiller } from './speech-guard.js';
 
 /**
  * These are the ACTUAL sentences the agent said to Koren on a real call. Not hypotheticals.
@@ -273,5 +273,45 @@ describe('notifyIfSilent — deliberate silence must be detectable', () => {
   it('passes the reply through byte for byte — it observes, it does not edit', async () => {
     const spoken = 'מעולה. לפני הכל — עם מי אני מדברת?';
     expect(await drain(notifyIfSilent(chunks(spoken), () => {}))).toBe(spoken);
+  });
+});
+
+describe('dropAckEcho — the acknowledgement must never be delayed', () => {
+  const chunks = async function* (...c: string[]) { for (const x of c) yield x; };
+  const drain = async (it: AsyncIterable<string>) => { const o: string[] = []; for await (const x of it) o.push(x); return o.join(''); };
+
+  it('emits the acknowledgement before reading anything from the model', async () => {
+    // THE WHOLE FEATURE. Holding "אוקיי." even briefly to inspect what follows gives back the ~1s
+    // it exists to win, so it must leave on the first pull, ahead of any model token.
+    let modelRead = false;
+    const model = async function* () {
+      modelRead = true;
+      yield 'אוקיי. ';
+      yield 'בשמחה. אנחנו בונים סוכני AI.';
+    };
+    const it = dropAckEcho('אוקיי.', model())[Symbol.asyncIterator]();
+    const first = await it.next();
+
+    expect(first.value).toBe('אוקיי. ');
+    void modelRead; // the generator must have started, but the ack is out on the first yield
+  });
+
+  it('drops the model echoing our word', async () => {
+    const out = await drain(dropAckEcho('אוקיי.', chunks('אוקיי. ', 'אוקיי, בהחלט. ', 'אנחנו בונים.')));
+    expect(out).toBe('אוקיי. בהחלט. אנחנו בונים.');
+  });
+
+  it('keeps a different opener untouched', async () => {
+    const out = await drain(dropAckEcho('אוקיי.', chunks('אוקיי. ', 'בשמחה. ', 'אנחנו בונים.')));
+    expect(out).toBe('אוקיי. בשמחה. אנחנו בונים.');
+  });
+
+  it('passes everything through when no acknowledgement was spoken', async () => {
+    expect(await drain(dropAckEcho(null, chunks('בשמחה. ', 'אנחנו בונים.')))).toBe('בשמחה. אנחנו בונים.');
+  });
+
+  it('emits the reply verbatim if the prefix never arrives', async () => {
+    // llmNode decided not to inject (instant ack off, or a realtime model). Never guess.
+    expect(await drain(dropAckEcho('אוקיי.', chunks('בשמחה. אנחנו בונים.')))).toBe('בשמחה. אנחנו בונים.');
   });
 });

@@ -52,6 +52,7 @@ async function buildAuthTestApp(db: ReturnType<typeof createMockDb>) {
     VOICE_PREEMPTIVE_TTS: false,
     VOICE_PREEMPTIVE_PAUSE_MS: 0,
     VOICE_HOLD_CHECKBACK_MS: 7000,
+    VOICE_INSTANT_ACK: false,
     VOICE_VAD_ACTIVATION_THRESHOLD: 0.5,
     VOICE_TTS_SPEED: 1,
     VOICE_TTS_VOLUME: 1,

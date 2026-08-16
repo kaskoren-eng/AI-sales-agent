@@ -28,6 +28,7 @@ import * as openai from '@livekit/agents-plugin-openai';
 import { loadEnv } from '../../../../config/env.js';
 import { cartesiaOptions } from './speech.js';
 import { SYSTEM_PROMPT_HE } from '../prompts/system-prompt.he.js';
+import { guardStream } from '../speech-guard.js';
 import { toPhoneWav, toStudioWav } from './wav.js';
 import { mkdir, writeFile } from 'node:fs/promises';
 import type { AudioFrame } from '@livekit/rtc-node';
@@ -317,6 +318,93 @@ async function benchLlm(env: Env): Promise<void> {
   console.log('\n  Check: correct feminine self-reference, no invented prices, max 2 sentences.');
 }
 
+/**
+ * `npm run bench:path` — WHERE THE REPLY IS HELD BEFORE SHE STARTS SPEAKING.
+ *
+ * The question the phone calls could not answer. Dead air is
+ * `end-of-turn + <something> + TTS first byte`, and `<something>` behaved like two different
+ * numbers on one call (2026-08-16): a SHORT reply started speaking 218ms after the LLM's first
+ * token, a LONG one took 1416ms. Either our sentence buffering holds the opener, or the delay is
+ * downstream of us — and two deploys were already spent guessing between those.
+ *
+ * This runs the LIVE model on the real prompt and pipes its output through the REAL `guardStream`,
+ * the same function the agent uses. Three numbers come out:
+ *
+ *   ttft            first token from the model
+ *   firstSentence   first text the guard hands to the TTS   <- the one that matters
+ *   fullReply       generation complete
+ *
+ * If `firstSentence` tracks `ttft`, the guard is innocent and the buffering is in the SDK or
+ * Cartesia. If it tracks `fullReply`, the guard is the cost and the fix is ours. No phone call,
+ * no waiting for Koren, and it costs cents.
+ */
+async function benchPath(env: Env): Promise<void> {
+  console.log(`SPEECH PATH — when does the first sentence actually reach the TTS? (${RUNS} runs)\n`);
+  console.log(`  caller says: "${HEBREW_TURN}"\n`);
+
+  const rows: Array<{ ttft: number; firstSentence: number; full: number; opener: string }> = [];
+
+  for (let i = 0; i < RUNS; i++) {
+    const model = new openai.LLM({
+      model: env.VOICE_LLM_MODEL ?? env.AI_MODEL,
+      ...(env.VOICE_LLM_REASONING_EFFORT ? { reasoningEffort: env.VOICE_LLM_REASONING_EFFORT } : {}),
+      ...(env.VOICE_LLM_SERVICE_TIER ? { serviceTier: env.VOICE_LLM_SERVICE_TIER } : {}),
+    });
+    const chatCtx = llmBase.ChatContext.empty();
+    chatCtx.addMessage({ role: 'system', content: SYSTEM_PROMPT_HE });
+    chatCtx.addMessage({ role: 'user', content: HEBREW_TURN });
+
+    const started = Date.now();
+    let ttft = -1;
+    let full = -1;
+
+    // The model's token stream, shaped exactly as the agent's ttsNode receives it.
+    const tokens = async function* (): AsyncIterable<string> {
+      const stream = model.chat({ chatCtx });
+      for await (const chunk of stream) {
+        const delta = chunk.delta?.content ?? '';
+        if (!delta) continue;
+        if (ttft < 0) ttft = Date.now() - started;
+        yield delta;
+      }
+      full = Date.now() - started;
+      await stream.close?.();
+    };
+
+    let firstSentence = -1;
+    let opener = '';
+    for await (const out of guardStream(tokens())) {
+      if (firstSentence < 0) {
+        firstSentence = Date.now() - started;
+        opener = out.trim();
+      }
+    }
+    rows.push({ ttft, firstSentence, full, opener });
+    console.log(
+      `  run ${i + 1}   ttft ${String(ttft).padStart(4)}ms   firstSentence ${String(firstSentence).padStart(4)}ms   fullReply ${String(full).padStart(4)}ms   "${opener.slice(0, 40)}"`,
+    );
+  }
+
+  const ttft = median(rows.map((r) => r.ttft)) ?? 0;
+  const first = median(rows.map((r) => r.firstSentence)) ?? 0;
+  const full = median(rows.map((r) => r.full)) ?? 0;
+
+  console.log(`\n  medians:  ttft ${ttft}ms   firstSentence ${first}ms   fullReply ${full}ms`);
+  console.log(`  the guard held the opener for ${first - ttft}ms after the first token`);
+
+  // The verdict, stated rather than left to interpretation — this bench exists because the same
+  // ambiguity was misread twice already.
+  const towardFull = Math.abs(first - full) < Math.abs(first - ttft);
+  console.log(
+    towardFull
+      ? '\n  VERDICT: the guard waits for (nearly) the WHOLE reply. The buffering is OURS — fix it here.'
+      : '\n  VERDICT: the guard releases the opener promptly. The delay on a real call is DOWNSTREAM of us.',
+  );
+  console.log(
+    `\n  For reference, dead air on a call is end-of-turn (~400ms) + this + TTS first byte (~217ms).\n  Budget for <1s leaves ~380ms for the middle term.`,
+  );
+}
+
 function median(v: number[]): number | null {
   if (v.length === 0) return null;
   const s = [...v].sort((a, b) => a - b);
@@ -332,6 +420,7 @@ async function main(): Promise<void> {
   if (what === 'tts' || what === 'all') await benchTts(env);
   if (what === 'all') console.log(`\n${'='.repeat(90)}\n`);
   if (what === 'llm' || what === 'all') await benchLlm(env);
+  if (what === 'path') await benchPath(env);
 }
 
 main().catch((err) => {

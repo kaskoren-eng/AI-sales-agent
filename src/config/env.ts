@@ -256,6 +256,17 @@ const envSchema = z.object({
   // Costs a little: once the filler starts, the real reply queues behind it. That is the trade —
   // it makes the wait feel HUMAN, not shorter. Set to 0 to switch it off entirely.
   VOICE_THINKING_FILLER_MS: z.coerce.number().int().nonnegative().default(2500),
+  // Say "אוקיי" the instant the turn ends, before the model has written a word.
+  //
+  // THE ONLY THING THAT PUTS FIRST AUDIO UNDER A SECOND. Measured budget: end-of-turn ~400ms +
+  // LLM time-to-first-token ~974ms + TTS first byte ~217ms (`npm run bench:path`). The middle term
+  // is not tunable — the speech guard releases the opener 25ms after the first token, so the
+  // pipeline already streams correctly and the wait is simply how long gpt-5.4 takes to start.
+  // A real answer cannot arrive before ~1.6s; an acknowledgement arrives at ~620ms.
+  //
+  // This changes how she sounds on EVERY turn, so it is one env var to switch off. If it reads as
+  // a tic rather than as listening, that is the knob — do not start editing the phrase list first.
+  VOICE_INSTANT_ACK: envBool(true),
   // How long she may stay deliberately silent before checking back in.
   //
   // The caller asking her to hold makes the model emit NO_RESPONSE_NEEDED, the guard strips it,

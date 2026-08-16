@@ -26,7 +26,8 @@ import {
   MAX_FILLERS_PER_CALL,
   pickThinkingFiller,
 } from './prompts/thinking-fillers.he.js';
-import { guardStream, notifyIfSilent, withFiller } from './speech-guard.js';
+import { pickAcknowledgement } from './prompts/acknowledgements.he.js';
+import { dropAckEcho, guardStream, notifyIfSilent, timeFirstChunk, withFiller } from './speech-guard.js';
 import { ShadowSTT } from './stt/shadow-stt.js';
 import { DeepdubTTS } from './tts/deepdub.tts.js';
 import { buildAgentTools } from './tools/index.js';
@@ -111,9 +112,17 @@ class ClickScalesAgent extends voice.Agent {
   /** Null when the per-tenant tool gate is closed — the guard then behaves exactly as pre-Phase-4. */
   readonly toolRuntime: ToolRuntimeContext | null;
 
-  constructor(opts: ConstructorParameters<typeof voice.Agent>[0], toolRuntime: ToolRuntimeContext | null = null) {
+  /** Speak an instant acknowledgement at the start of every reply. See llmNode below. */
+  readonly instantAck: boolean;
+
+  constructor(
+    opts: ConstructorParameters<typeof voice.Agent>[0],
+    toolRuntime: ToolRuntimeContext | null = null,
+    instantAck = false,
+  ) {
     super(opts);
     this.toolRuntime = toolRuntime;
+    this.instantAck = instantAck;
   }
 
   /**
@@ -148,6 +157,63 @@ class ClickScalesAgent extends voice.Agent {
    * "קבעתי לך" is still a lie and is still rewritten. After it, rewriting the truth would itself
    * be the lie. The control-token removal and the pronunciation fix stay unconditional forever.
    */
+  /** The acknowledgement spoken on this reply, so ttsNode can drop the model's echo of it. */
+  #spokenAck: string | null = null;
+
+  #lastAck: string | null = null;
+
+  /**
+   * SAYS "אוקיי" THE INSTANT THE TURN ENDS, BEFORE THE MODEL HAS WRITTEN A WORD.
+   *
+   * This is the change that puts first audio under a second, and llmNode is the only place it can
+   * live. Measured budget: end-of-turn ~400ms + LLM first token ~974ms + TTS first byte ~217ms.
+   * The middle term cannot be tuned away — `npm run bench:path` shows the speech guard releasing
+   * the opener 25ms after the first token, so the pipeline is already streaming correctly and the
+   * wait is simply how long gpt-5.4 takes to start. A real answer cannot beat ~1.6s.
+   *
+   * WHY NOT `session.say()`, WHICH IS THE OBVIOUS WAY. Because it would land the acknowledgement
+   * at the END of her reply, which is the exact bug this project already shipped once. The speech
+   * queue is `[priority, insertion-time]` (agent_activity.js:2926) and `say()` has no priority
+   * parameter, while the reply's handle is scheduled BEFORE `_updateAgentState('thinking')` fires
+   * (agent_activity.js:~2035) — so anything we schedule from that event is behind it. Read the
+   * scheduler, do not test this by ear on a phone call.
+   *
+   * llmNode has no such problem: its output IS the reply's text stream, so a string yielded here
+   * is the first thing the TTS sees, in the same segment, ordered by construction. It also runs at
+   * reply start rather than at first token, which is the whole point — Cartesia begins
+   * synthesising while OpenAI is still thinking.
+   */
+  override async llmNode(
+    chatCtx: Parameters<voice.Agent['llmNode']>[0],
+    toolCtx: Parameters<voice.Agent['llmNode']>[1],
+    modelSettings: Parameters<voice.Agent['llmNode']>[2],
+  ): ReturnType<voice.Agent['llmNode']> {
+    const inner = await voice.Agent.default.llmNode(this, chatCtx, toolCtx, modelSettings);
+    if (!this.instantAck || inner === null) {
+      this.#spokenAck = null;
+      return inner;
+    }
+
+    const ack = pickAcknowledgement(this.#lastAck);
+    this.#lastAck = ack;
+    this.#spokenAck = ack;
+
+    const reader = inner.getReader();
+    const withAck = new ReadableStream({
+      // Enqueued before the first read, so it reaches the TTS without waiting on the model at all.
+      start: (controller) => controller.enqueue(`${ack} `),
+      pull: async (controller) => {
+        const { done, value } = await reader.read();
+        if (done) controller.close();
+        else controller.enqueue(value as string);
+      },
+      cancel: (reason) => reader.cancel(reason),
+    });
+    // The SDK types this channel as ChatChunk | string | FlushSentinel; we only ever add a string,
+    // and pass every model chunk through untouched. The cast is over the union, not over behaviour.
+    return withAck as unknown as NonNullable<Awaited<ReturnType<voice.Agent['llmNode']>>>;
+  }
+
   override async ttsNode(
     text: Parameters<voice.Agent['ttsNode']>[0],
     modelSettings: voice.ModelSettings,
@@ -157,14 +223,43 @@ class ClickScalesAgent extends voice.Agent {
     const filler = this.pendingFiller;
     this.pendingFiller = null;
 
+    // Both ends of the speech path, on one line per reply. See timeFirstChunk() for why: dead air
+    // is end-of-turn + <something> + TTS first byte, and `<something>` behaved differently on a
+    // short reply (218ms after the LLM's first token) than on a long one (1416ms). This says
+    // whether our sentence buffering is the cost or whether the delay is downstream of us.
+    const startedAt = Date.now();
+    let llmFirstChunk = -1;
+
+    // The acknowledgement is already committed to audio by the time the model writes its opener,
+    // so if the model opens with the same word we cannot un-say ours — we drop theirs instead.
+    const ack = this.#spokenAck;
+    this.#spokenAck = null;
+
     return voice.Agent.default.ttsNode(
       this,
       notifyIfSilent(
-        guardStream(
-          withFiller(filler, text as AsyncIterable<string>),
-          // Read PER SENTENCE: book_meeting can succeed mid-reply, and the very next sentence
-          // ("קבעתי לך ליום ראשון") must already be allowed through.
-          () => this.toolRuntime?.bookingCompleted === true,
+        timeFirstChunk(
+          guardStream(
+            dropAckEcho(
+              ack,
+              timeFirstChunk(
+                withFiller(filler, text as AsyncIterable<string>),
+                startedAt,
+                (ms) => {
+                  llmFirstChunk = ms;
+                },
+              ),
+            ),
+            // Read PER SENTENCE: book_meeting can succeed mid-reply, and the very next sentence
+            // ("קבעתי לך ליום ראשון") must already be allowed through.
+            () => this.toolRuntime?.bookingCompleted === true,
+          ),
+          startedAt,
+          (ms) => {
+            console.log(
+              `latency audio_path llmFirstChunk=${llmFirstChunk} guardFirstOut=${ms} heldMs=${ms - llmFirstChunk}`,
+            );
+          },
         ),
         () => this.onSilentReply?.(),
       ),
@@ -615,6 +710,7 @@ export default defineAgent({
         ...(runtime ? { tools: buildAgentTools(runtime) } : {}),
       },
       runtime,
+      env.VOICE_INSTANT_ACK,
     );
 
     // Now that she exists, give her deliberate silence a way out. See the MUTE WATCHDOG above.
@@ -688,6 +784,11 @@ export default defineAgent({
     session.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
       if (ev.newState !== 'away' || callState.isTerminal()) return;
       if (session.agentState === 'speaking' || session.agentState === 'thinking') return;
+      // AND NOT WHILE HE IS TALKING. This guard checked only whether SHE was busy, so on
+      // 2026-08-16 she cut across Koren mid-sentence with "רגע, אתה עוד על הקו?" — asking whether
+      // he was still there while he was in the middle of answering her. A nudge is for silence;
+      // if there is speech on the line there is nothing to nudge.
+      if (session.userState === 'speaking') return;
       const action = decideSilenceAction(callState.onSilenceStrike(), callState.stage);
       // Past the nudge cap: hold the line quietly and keep waiting — never hang up on silence.
       if (!action) return;

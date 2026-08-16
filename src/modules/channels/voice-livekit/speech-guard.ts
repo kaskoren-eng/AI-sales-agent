@@ -1,3 +1,5 @@
+import { dropEchoedOpener } from './prompts/acknowledgements.he.js';
+
 /**
  * The last thing between the LLM and the caller's ear.
  *
@@ -200,6 +202,102 @@ export async function* guardStream(
 
   // The tail: a final sentence with no terminator, or a bare control token (which has none).
   if (buffer.trim()) yield* flush(buffer);
+}
+
+/**
+ * Stopwatch on one reply's trip through the speech path.
+ *
+ * WHY THIS EXISTS. Dead air is `end-of-turn + <something> + TTS first byte`, and we could not say
+ * what `<something>` was. On the 2026-08-16 call a SHORT reply started speaking 218ms after the
+ * LLM's first token — correct streaming — while a LONG one took 1416ms, as if it had waited for
+ * the whole generation. Both went through this exact code. Two deploys were spent guessing between
+ * "the guard buffers" and "the SDK buffers"; this settles it by measuring both ends.
+ *
+ * `firstIn` is the LLM's first token reaching us. `firstOut` is the first text we hand the TTS.
+ * If they are close the guard is innocent and the delay is downstream; if `firstOut` lags, our
+ * sentence buffering is the cost and the fix is here.
+ */
+/**
+ * Lets the injected acknowledgement through immediately, then removes the model's echo of it.
+ *
+ * The acknowledgement ("אוקיי.") is enqueued by `llmNode` before the model has written anything,
+ * so by the time the model opens with "אוקיי, בהחלט" the caller has ALREADY heard our version and
+ * we cannot take it back. The old prepended filler could peek the opener and decline to speak;
+ * this one cannot, so the duplicate is removed from the model's side instead.
+ *
+ * THE ACK IS YIELDED BEFORE ANY BUFFERING. That ordering is the entire feature — holding it even
+ * briefly to inspect what follows would give back the ~1s this exists to win. Only the model's
+ * first word is buffered, and only after the acknowledgement is already on its way to Cartesia,
+ * where the wait is free.
+ */
+export async function* dropAckEcho(
+  ack: string | null,
+  stream: AsyncIterable<string>,
+): AsyncIterable<string> {
+  if (!ack) {
+    yield* stream;
+    return;
+  }
+
+  const prefix = `${ack} `;
+  const wordBoundary = /[\s.,!?…׃]/u;
+  const iterator = stream[Symbol.asyncIterator]();
+  let buffer = '';
+  let ackSent = false;
+  let done = false;
+
+  while (buffer.length <= 60) {
+    const next = await iterator.next();
+    if (next.done) {
+      done = true;
+      break;
+    }
+    buffer += next.value;
+
+    if (!ackSent && buffer.startsWith(prefix)) {
+      yield prefix; // out the door first, always
+      ackSent = true;
+      buffer = buffer.slice(prefix.length);
+    }
+    if (ackSent && wordBoundary.test(buffer)) break;
+  }
+
+  // No prefix found — llmNode did not inject after all. Emit verbatim rather than guess.
+  if (!ackSent) {
+    if (buffer) yield buffer;
+  } else {
+    const cleaned = dropEchoedOpener(ack, buffer);
+    if (cleaned) yield cleaned;
+  }
+
+  if (!done) {
+    for (;;) {
+      const next = await iterator.next();
+      if (next.done) break;
+      yield next.value;
+    }
+  }
+}
+
+/**
+ * Wraps a text stream and reports when its first non-empty chunk arrived, relative to `startedAt`.
+ *
+ * Deliberately a passthrough with a counter rather than anything cleverer: instrumentation that
+ * changes the timing it is measuring is worse than none.
+ */
+export async function* timeFirstChunk(
+  stream: AsyncIterable<string>,
+  startedAt: number,
+  onFirst: (elapsedMs: number) => void,
+): AsyncIterable<string> {
+  let seen = false;
+  for await (const chunk of stream) {
+    if (!seen && chunk.trim()) {
+      seen = true;
+      onFirst(Date.now() - startedAt);
+    }
+    yield chunk;
+  }
 }
 
 /**
