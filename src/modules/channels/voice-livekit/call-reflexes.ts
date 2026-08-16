@@ -46,7 +46,14 @@ export function decideSilenceAction(strike: number, stage: CallStage): ReflexAct
  * An answering machine picked up (AMD). Leave the voicemail message and hang up — never run a
  * discovery call into a beep. `_category` (AMD's classification) is accepted for future
  * message-by-category tuning; today one message covers every machine.
+ *
+ * `message` is the tenant's own, built from their persona by the caller. It defaults to
+ * ClickScales' so benches and the existing reflex tests are unaffected — but a live call always
+ * passes one, because this is the only line the agent speaks that outlives the call.
  */
-export function decideVoicemailAction(_category?: string): ReflexAction {
-  return { say: VOICEMAIL_MESSAGE_HE, teardown: true, endReason: 'voicemail' };
+export function decideVoicemailAction(
+  _category?: string,
+  message: string = VOICEMAIL_MESSAGE_HE,
+): ReflexAction {
+  return { say: message, teardown: true, endReason: 'voicemail' };
 }

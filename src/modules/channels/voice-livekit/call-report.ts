@@ -208,6 +208,23 @@ export class CallReport {
   }
 
   /**
+   * Correct the recorded config after the tenant is known.
+   *
+   * The report is constructed at the top of the call, from env — before we know whose call this
+   * is. A tenant running their own TTS voice would otherwise have every latency figure in this
+   * report filed under the PLATFORM default voice, which is worse than not recording it: the TTS
+   * numbers are exactly what these reports are read for, and they would be attributed to a voice
+   * that never spoke on the call.
+   */
+  updateConfig(patch: Partial<CallReportJson['config']>): void {
+    for (const [key, value] of Object.entries(patch)) {
+      if (value !== undefined) {
+        (this.#config as Record<string, unknown>)[key] = value;
+      }
+    }
+  }
+
+  /**
    * Counts cut-offs by watching what LiveKit logs.
    *
    * Yes, this reads the framework's log output, which is not how one would normally detect

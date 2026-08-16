@@ -13,13 +13,15 @@ import { TelephonyBackgroundVoiceCancellation } from '@livekit/noise-cancellatio
 import { type AudioFrame, RoomEvent, type RemoteAudioTrack, TrackKind } from '@livekit/rtc-node';
 import { loadEnv } from '../../../config/env.js';
 import { callLearnings } from '../../../db/schema/index.js';
-import { buildSessionComponents } from './agent.config.js';
+import { buildSessionComponents, buildTTS, describeTtsModel } from './agent.config.js';
 import { CallReport } from './call-report.js';
 import { CallStateMachine } from './call-state.js';
 import { decideSilenceAction, decideVoicemailAction } from './call-reflexes.js';
 import { hasAiDisclosure } from './compliance/ai-disclosure.js';
 import { playRecordingNotice } from './compliance/recording-notice.js';
-import { GREETING_HE, buildSystemPrompt, readBusinessProfile } from './prompts/system-prompt.he.js';
+import { buildSystemPrompt, readBusinessProfile } from './prompts/system-prompt.he.js';
+import { buildGreeting, isDefaultPersona, readAgentPersona } from './persona.js';
+import { buildVoicemailMessage } from './call-state-lines.he.js';
 import {
   FILLER_COOLDOWN_MS,
   MAX_FILLERS_PER_CALL,
@@ -286,7 +288,7 @@ export default defineAgent({
     // and the objection prompt section all fall away, running Keren exactly as she was before it.
     const callState = env.VOICE_STATE_MACHINE_ENABLED ? new CallStateMachine() : undefined;
 
-    const { runtime, disabledReason } = await buildToolRuntime(env, {
+    const { runtime, disabledReason, settings: tenantSettings } = await buildToolRuntime(env, {
       callId: ctx.room.name ?? 'unknown',
       callerPhone: caller.callerPhone,
       participantMetadata: participant.metadata,
@@ -526,16 +528,56 @@ export default defineAgent({
     // of the hard-coded ClickScales copy. No profile → readBusinessProfile returns null → the
     // prompt is byte-for-byte the previous one. (No runtime = gate closed = no settings loaded.)
     const businessProfile = runtime ? readBusinessProfile(runtime.settings) : null;
+
+    // WHO SHE IS on this call. Same source as the prompt's Role section, the greeting and the
+    // voicemail message, so a tenant cannot end up correctly named in one and stale in another.
+    //
+    // The tenant's settings arrive on call metadata (sanitizeSettingsForAgent ships agent_persona),
+    // so this is a local read, not a cross-region DB hop at pickup.
+    //
+    // NOT `runtime.settings` — `tenantSettings`, which buildToolRuntime returns even when the tool
+    // gate is CLOSED. Reading it off the runtime meant a tenant who had simply not enabled booking
+    // got ClickScales' name, company, FAQ and voicemail message. Identity does not depend on tools.
+    //
+    // Genuinely absent settings — a console call, or an unidentifiable tenant — resolve to
+    // DEFAULT_PERSONA, which renders the prompt byte-for-byte as it was before this file existed
+    // (system-prompt.persona.test.ts).
+    const persona = readAgentPersona(tenantSettings);
     const agent = new ClickScalesAgent(
       {
         instructions: buildSystemPrompt({
           toolsEnabled: runtime !== null,
           businessProfile,
           objectionHandling: env.VOICE_STATE_MACHINE_ENABLED,
+          persona,
         }),
         ...(runtime ? { tools: buildAgentTools(runtime) } : {}),
+        // A per-tenant VOICE, and ONLY when the tenant actually configured one.
+        //
+        // The default tenant therefore constructs nothing extra and runs the identical code path
+        // it runs today — which matters more here than anywhere else in this change, because the
+        // TTS is the component whose latency has been tuned by ear over months of real calls.
+        // A custom-voice tenant pays one object construction (no network) plus a cold socket that
+        // the recording-notice pre-roll already covers.
+        ...(persona.tts ? { tts: buildTTS(env, persona.tts) } : {}),
       },
       runtime,
+    );
+    if (persona.tts) {
+      // Otherwise the CallReport names the PLATFORM default engine for a call that used a
+      // different one — the same mistake the ttsModel comment above was written to prevent, just
+      // arriving from the tenant rather than from env.
+      report.updateConfig({ ttsModel: describeTtsModel(env, persona.tts) });
+    }
+    console.log(
+      'persona_resolved',
+      JSON.stringify({
+        agentName: persona.agentName,
+        company: persona.companyName,
+        gender: persona.agentGender,
+        isDefault: isDefaultPersona(persona),
+        customVoice: persona.tts !== null,
+      }),
     );
 
     // SHE HESITATES WHEN SHE IS THINKING — AT THE START OF HER REPLY, NEVER AFTER IT.
@@ -640,7 +682,9 @@ export default defineAgent({
             if (!prediction.isMachine || callState.isTerminal()) return;
             callState.noteSituation('voicemail', prediction.category);
             callState.markTerminal();
-            const action = decideVoicemailAction(prediction.category);
+            // Persona-derived: this message is left ON the lead's phone, so a wrong name here is
+            // the one identity mistake that persists after the call ends.
+            const action = decideVoicemailAction(prediction.category, buildVoicemailMessage(persona));
             if (runtime && action.endReason) runtime.endReason = action.endReason;
             console.log('reflex_voicemail', JSON.stringify({ category: prediction.category }));
             const handle = session.say(action.say, { allowInterruptions: false });
@@ -689,7 +733,7 @@ export default defineAgent({
     // Speak the greeting verbatim rather than letting the LLM improvise one: deterministic
     // wording, and no LLM round-trip before the caller hears anything.
     // allowInterruptions:false so a cough or line noise doesn't swallow the greeting.
-    await session.say(GREETING_HE, { allowInterruptions: false }).waitForPlayout();
+    await session.say(buildGreeting(persona), { allowInterruptions: false }).waitForPlayout();
   },
 });
 

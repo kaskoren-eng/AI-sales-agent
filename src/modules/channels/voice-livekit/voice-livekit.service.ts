@@ -169,6 +169,11 @@ export const AGENT_SETTINGS_KEYS = [
   'toll_fraud',
   'reminders',
   'businessProfile',
+  // WHO THE AGENT IS — name, gender, company, FAQ, voice. Without this key on the metadata the
+  // agent resolves DEFAULT_PERSONA and every tenant's leads are greeted as "קרן מ-ClickScales".
+  // It carries no secrets (voice ids and names are not credentials), and the caller is the
+  // authenticated tenant anyway.
+  'agent_persona',
 ] as const;
 
 export function sanitizeSettingsForAgent(settings: unknown): Record<string, unknown> | undefined {

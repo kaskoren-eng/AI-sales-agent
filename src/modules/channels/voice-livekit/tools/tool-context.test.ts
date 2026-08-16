@@ -173,7 +173,28 @@ describe('buildToolRuntime — fail-closed matrix', () => {
       { ...callOpts(), participantMetadata: undefined },
       deps(ENABLED_SETTINGS).deps,
     );
-    expect(result).toEqual({ runtime: null, disabledReason: 'no_tenant' });
+    expect(result).toEqual({ runtime: null, disabledReason: 'no_tenant', settings: null });
+  });
+
+  it('returns the tenant settings even when the tool gate is CLOSED', async () => {
+    // The agent reads its persona — name, gender, company, FAQ, greeting, voicemail — from these
+    // settings. They used to be discarded along with the runtime whenever the gate said no, so a
+    // tenant who had simply not enabled booking had their agent introduce itself as ClickScales.
+    const settings = { ...ENABLED_SETTINGS, functions_enabled: false, agent_persona: { agentName: 'מיכל' } };
+    const result = await buildToolRuntime(baseEnv, callOpts(), deps(settings).deps);
+    expect(result.runtime).toBeNull();
+    expect(result.disabledReason).toBe('functions_disabled');
+    expect(result.settings).toEqual(settings);
+  });
+
+  it('returns the tenant settings even when the calendar is not configured', async () => {
+    // Same reasoning, and this one also required moving the calendar check to AFTER the settings
+    // read — it used to return before the tenant's identity had been loaded at all.
+    const env = { ...baseEnv, GOOGLE_CALENDAR_PRIVATE_KEY: undefined } as unknown as Env;
+    const settings = { ...ENABLED_SETTINGS, agent_persona: { agentName: 'מיכל' } };
+    const result = await buildToolRuntime(env, callOpts(), deps(settings).deps);
+    expect(result.disabledReason).toBe('calendar_not_configured');
+    expect(result.settings).toEqual(settings);
   });
 
   it('inbound call falls back to VOICE_WEBHOOK_TENANT_ID with no lead', async () => {

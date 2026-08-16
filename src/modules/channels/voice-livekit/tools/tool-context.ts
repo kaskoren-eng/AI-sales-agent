@@ -96,9 +96,18 @@ export interface ToolRuntimeContext {
   callState: CallStateMachine | undefined;
 }
 
+/**
+ * `settings` is returned SEPARATELY from `runtime`, and on every path including the failures.
+ *
+ * The tool gate and the agent's IDENTITY are different questions that happen to need the same row.
+ * When they shared a return value, a tenant with `functions_enabled: false` got `runtime: null` —
+ * and with it, ClickScales' name, company, FAQ and greeting, because the settings that said who
+ * they were had been thrown away along with the tools. "You have not enabled booking" must never
+ * mean "your agent now introduces itself as someone else's".
+ */
 export type ToolRuntimeResult =
-  | { runtime: ToolRuntimeContext; disabledReason: null }
-  | { runtime: null; disabledReason: string };
+  | { runtime: ToolRuntimeContext; disabledReason: null; settings: unknown }
+  | { runtime: null; disabledReason: string; settings: unknown };
 
 /** Injection seam for tests — the default deps hit the real DB/Redis. */
 export interface ToolRuntimeDeps {
@@ -168,14 +177,13 @@ export async function buildToolRuntime(
   const identity = parseOutboundMetadata(opts.participantMetadata) ?? (env.VOICE_WEBHOOK_TENANT_ID
     ? { tenantId: env.VOICE_WEBHOOK_TENANT_ID, leadId: null, conversationId: null }
     : null);
-  if (!identity) return { runtime: null, disabledReason: 'no_tenant' };
+  if (!identity) return { runtime: null, disabledReason: 'no_tenant', settings: null };
 
-  // 2. Tools without a calendar can only disappoint — the prompt promises booking. Gate on creds.
-  if (!env.GOOGLE_CALENDAR_ID || !env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL || !env.GOOGLE_CALENDAR_PRIVATE_KEY) {
-    return { runtime: null, disabledReason: 'calendar_not_configured' };
-  }
+  // Whatever the dispatcher already shipped. Held separately so every failure path below can still
+  // hand the agent its identity — see the note on ToolRuntimeResult.
+  const metadataSettings = 'settings' in identity ? identity.settings : undefined;
 
-  // 3. One settings read, timeboxed — the greeting must not wait on a hung database.
+  // 2. One settings read, timeboxed — the greeting must not wait on a hung database.
   const connect = deps.connectDb ?? (() => {
     const { db, pool } = createDatabase(env.DATABASE_URL);
     return { db, close: () => pool.end() };
@@ -195,7 +203,7 @@ export async function buildToolRuntime(
     connection = connect();
   } catch (err) {
     console.error('tool_runtime_db_connect_failed', err instanceof Error ? err.message : String(err));
-    return { runtime: null, disabledReason: 'db_connect_failed' };
+    return { runtime: null, disabledReason: 'db_connect_failed', settings: metadataSettings ?? null };
   }
 
   // 3. The gate config. PREFER the settings the dispatcher already resolved and shipped in the
@@ -204,8 +212,8 @@ export async function buildToolRuntime(
   //    back to the timeboxed agent-side read. Tenant id is logged on failure so a mis-stamped or
   //    missing tenant is diagnosable instead of a silent "settings_read_failed".
   let settings: unknown;
-  if ('settings' in identity && identity.settings !== undefined) {
-    settings = identity.settings;
+  if (metadataSettings !== undefined) {
+    settings = metadataSettings;
     // Warm the pool off the hot path so the first mid-call tool WRITE isn't cold. Errors are
     // irrelevant here — the gate already has its answer; writes degrade gracefully (invariant 2).
     void load(connection.db, identity.tenantId).catch(() => undefined);
@@ -219,15 +227,25 @@ export async function buildToolRuntime(
         'tool_runtime_settings_failed',
         JSON.stringify({ tenantId: identity.tenantId, error: err instanceof Error ? err.message : String(err) }),
       );
-      return { runtime: null, disabledReason: reason };
+      return { runtime: null, disabledReason: reason, settings: null };
     }
   }
 
-  // 4. The per-tenant kill switch.
+  // 4. Tools without a calendar can only disappoint — the prompt promises booking. Gate on creds.
+  //
+  //    This check used to run BEFORE the settings read, which was cheaper and wrong: it returned
+  //    before the tenant's identity had been loaded, so a missing calendar credential silently
+  //    renamed the agent. The gate is about tools; it must not decide who is speaking.
+  if (!env.GOOGLE_CALENDAR_ID || !env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL || !env.GOOGLE_CALENDAR_PRIVATE_KEY) {
+    await connection.close().catch(() => undefined);
+    return { runtime: null, disabledReason: 'calendar_not_configured', settings };
+  }
+
+  // 5. The per-tenant kill switch.
   const gate = evaluateToolGate(settings);
   if (!gate.enabled) {
     await connection.close().catch(() => undefined);
-    return { runtime: null, disabledReason: gate.reason! };
+    return { runtime: null, disabledReason: gate.reason!, settings };
   }
 
   // Messaging queues — best-effort: a dead Redis degrades the messaging TOOLS (they refuse
@@ -254,6 +272,7 @@ export async function buildToolRuntime(
   const privateKey = env.GOOGLE_CALENDAR_PRIVATE_KEY.replace(/\\n/g, '\n');
   return {
     disabledReason: null,
+    settings,
     runtime: {
       tenantId: identity.tenantId,
       leadId: identity.leadId,

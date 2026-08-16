@@ -7,6 +7,7 @@ import { cartesiaOptions } from './testing/speech.js';
 import { createSonioxSTT } from './stt/soniox.stt.js';
 import { DeepdubTTS, deepdubOptions } from './tts/deepdub.tts.js';
 import type { Env } from '../../../config/env.js';
+import type { PersonaTts } from './persona.js';
 
 /**
  * Builds the cascade pipeline: STT -> LLM -> TTS.
@@ -155,7 +156,48 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
  *
  * The ROUTE is the only thing left to tune: same model and voice either way.
  */
-function buildTTS(env: Env): ttsBase.TTS {
+/**
+ * A tenant's own voice, layered over the platform defaults.
+ *
+ * Only the fields a tenant actually set are overridden — a tenant who picked a voice but not a
+ * speed keeps the speed that was tuned for the 8kHz phone line, which is the setting most likely
+ * to be got wrong by anyone choosing a voice from a list.
+ */
+export function resolveVoiceProfile(env: Env, override?: PersonaTts | null): Env {
+  if (!override) return env;
+  return {
+    ...env,
+    ...(override.provider ? { VOICE_TTS_PROVIDER: override.provider } : {}),
+    ...(override.voiceId
+      ? override.provider === 'elevenlabs'
+        ? { ELEVENLABS_VOICE_ID: override.voiceId }
+        : { CARTESIA_VOICE_ID_PRIMARY: override.voiceId }
+      : {}),
+    ...(override.speed !== undefined ? { VOICE_TTS_SPEED: override.speed } : {}),
+    ...(override.volume !== undefined ? { VOICE_TTS_VOLUME: override.volume } : {}),
+  };
+}
+
+/** What the CallReport should call this engine, so latency data names the voice that spoke. */
+export function describeTtsModel(env: Env, override?: PersonaTts | null): string {
+  const e = resolveVoiceProfile(env, override);
+  if (e.VOICE_TTS_PROVIDER === 'deepdub') return `deepdub/${e.DEEPDUB_MODEL}`;
+  if (e.VOICE_TTS_PROVIDER === 'elevenlabs') return `elevenlabs/${e.ELEVENLABS_MODEL}`;
+  return override?.voiceId ? `${e.CARTESIA_MODEL} (${override.voiceId})` : e.CARTESIA_MODEL;
+}
+
+/**
+ * `override` is a tenant's configured voice. Absent — which is every call today — this behaves
+ * exactly as it did when it took only `env`, so the tuned default path is untouched.
+ */
+export function buildTTS(env: Env, override?: PersonaTts | null): ttsBase.TTS {
+  if (override) {
+    return buildTTSFromEnv(resolveVoiceProfile(env, override));
+  }
+  return buildTTSFromEnv(env);
+}
+
+function buildTTSFromEnv(env: Env): ttsBase.TTS {
   // DeepDub, behind the flag. Won a blind Hebrew A/B (6:1) on quality + native gender at cost parity,
   // realtime model ~125ms. NOT default — this branch only fires on VOICE_TTS_PROVIDER=deepdub, so
   // Cartesia keeps serving until a decision is made. One env var to revert. See tts/deepdub.tts.ts.

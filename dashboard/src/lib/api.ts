@@ -222,3 +222,53 @@ export function createWebCall(): Promise<WebCallSession> {
   // rejects a JSON content-type with a zero-length body.
   return apiFetch<WebCallSession>('/voice/web-call', { method: 'POST', body: '{}' })
 }
+
+// --- Agent persona (who the agent is on this tenant's calls) ---
+
+export interface PersonaFaqEntry {
+  topic: string
+  answer: string
+}
+
+export interface AgentPersona {
+  agentName: string
+  agentNameLatin: string
+  agentGender: 'female' | 'male'
+  companyName: string
+  companyDescription: string
+  handoffPerson: string
+  greeting: string
+  faq: PersonaFaqEntry[]
+  nameDisambiguation: string
+  mindsetRebuttal: string
+  tts: { provider?: string; voiceId?: string; speed?: number; volume?: number } | null
+}
+
+export interface AgentPersonaResponse {
+  persona: AgentPersona
+  /**
+   * False means this tenant has never set a persona and is inheriting the platform default — i.e.
+   * their agent is currently introducing itself to their leads as ClickScales' agent. The page
+   * shows that as an unmissable warning rather than as a filled-in form.
+   */
+  configured: boolean
+  /** What a lead actually hears, whether it was written or generated. */
+  resolvedGreeting: string
+  tts: AgentPersona['tts']
+}
+
+/** The fields a tenant may set. Voice is operator-managed and deliberately absent. */
+export type AgentPersonaPatch = Pick<
+  AgentPersona,
+  'agentName' | 'agentGender' | 'companyName' | 'companyDescription' | 'handoffPerson' | 'greeting' | 'faq'
+>
+
+export function fetchAgentPersona(): Promise<AgentPersonaResponse> {
+  return apiFetch<AgentPersonaResponse>('/settings/agent-persona')
+}
+
+export function saveAgentPersona(
+  patch: AgentPersonaPatch,
+): Promise<{ ok: boolean; persona: AgentPersona; resolvedGreeting: string }> {
+  return apiFetch('/settings/agent-persona', { method: 'PUT', body: JSON.stringify(patch) })
+}

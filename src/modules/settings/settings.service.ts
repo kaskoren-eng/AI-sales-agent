@@ -9,6 +9,7 @@ import {
 } from '../channels/whatsapp/whatsapp-window.js';
 import { resolveTollFraudSettings, type TollFraudSettings } from '../calls/spend-guard.js';
 import { resolveCrmSyncSettings, type CrmSyncSettings } from '../integrations/crm-sync.settings.js';
+import { readAgentPersona, type AgentPersona } from '../channels/voice-livekit/persona.js';
 
 export interface BusinessProfile {
   companyName: string;
@@ -52,6 +53,67 @@ export class SettingsService {
 
     const settings = getTenantSettings(tenant.settings);
     return (settings.businessProfile as BusinessProfile | undefined) ?? null;
+  }
+
+  /**
+   * The tenant's agent persona, resolved — every unset field filled from `DEFAULT_PERSONA` — plus
+   * a flag for whether they have actually configured one.
+   *
+   * `configured` is what the dashboard needs to tell "this tenant chose to call their agent קרן"
+   * apart from "this tenant has never been through onboarding and is inheriting our defaults".
+   * The resolved persona alone cannot distinguish those, and they are very different states: the
+   * second one means a live agent is introducing itself as ClickScales to somebody else's leads.
+   */
+  async getAgentPersona(tenantId: string): Promise<{ persona: AgentPersona; configured: boolean }> {
+    const [tenant] = await this.db
+      .select({ settings: tenants.settings })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+
+    if (!tenant) throw new NotFoundError('Tenant', tenantId);
+
+    const settings = getTenantSettings(tenant.settings);
+    return {
+      persona: readAgentPersona(settings),
+      configured: !!settings.agent_persona && typeof settings.agent_persona === 'object',
+    };
+  }
+
+  /**
+   * Writes the CONTENT half of the persona, merged over whatever is stored.
+   *
+   * `tts` is deliberately not writable here and is preserved untouched: a voice id is operator
+   * territory (`settings-policy.ts`), because a wrong one produces a silent audio stream on a live
+   * call rather than an error. A tenant editing their agent's name must not be able to mute it.
+   */
+  async saveAgentPersona(
+    tenantId: string,
+    patch: Partial<Omit<AgentPersona, 'tts'>>,
+  ): Promise<AgentPersona> {
+    const [tenant] = await this.db
+      .select({ settings: tenants.settings })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+
+    if (!tenant) throw new NotFoundError('Tenant', tenantId);
+
+    const settings = getTenantSettings(tenant.settings);
+    const stored = (settings.agent_persona ?? {}) as Record<string, unknown>;
+
+    // `tts` is stripped from the PATCH, not merely overwritten by the stored value. Re-applying
+    // the stored one only guarded the case where a voice already existed — a tenant with no voice
+    // configured could still introduce one, which is the same hole in the direction nobody checks.
+    const { tts: _rejected, ...content } = patch as Record<string, unknown>;
+    settings.agent_persona = { ...stored, ...content, ...(stored.tts ? { tts: stored.tts } : {}) };
+
+    await this.db
+      .update(tenants)
+      .set({ settings, updatedAt: new Date() })
+      .where(eq(tenants.id, tenantId));
+
+    return readAgentPersona(settings);
   }
 
   async saveBusinessProfile(tenantId: string, profile: BusinessProfile): Promise<BusinessProfile> {
