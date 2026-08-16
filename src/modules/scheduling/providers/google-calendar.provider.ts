@@ -2,7 +2,31 @@ import { google } from 'googleapis';
 import type { SchedulingProvider, TimeSlot, BookingResult } from './provider.interface.js';
 import { CircuitBreaker } from '../../../shared/circuit-breaker.js';
 
-const gcalCircuit = new CircuitBreaker({ name: 'google-calendar', failureThreshold: 5, cooldownMs: 30_000 });
+/**
+ * ONE CIRCUIT BREAKER PER CALENDAR, not one for the whole process.
+ *
+ * It used to be a single module-level breaker. With one customer that is correct — there is one
+ * calendar, and five failures against it genuinely mean "Google is unreachable, stop trying". With
+ * two customers it is a cross-tenant outage: tenant A revokes our OAuth grant, five bookings fail,
+ * the breaker opens, and tenant B — whose calendar is perfectly healthy — cannot book for the next
+ * thirty seconds because of a problem in someone else's Google account.
+ *
+ * Keyed by credential scope, so a broken calendar only breaks its own.
+ */
+const circuits = new Map<string, CircuitBreaker>();
+
+function circuitFor(scope: string): CircuitBreaker {
+  let breaker = circuits.get(scope);
+  if (!breaker) {
+    breaker = new CircuitBreaker({
+      name: `google-calendar:${scope}`,
+      failureThreshold: 5,
+      cooldownMs: 30_000,
+    });
+    circuits.set(scope, breaker);
+  }
+  return breaker;
+}
 
 /** Matches Google's 403 "Service accounts cannot invite attendees without Domain-Wide Delegation". */
 function isForbiddenForServiceAccounts(err: unknown): boolean {
@@ -16,11 +40,33 @@ function isForbiddenForServiceAccounts(err: unknown): boolean {
 
 export class GoogleCalendarProvider implements SchedulingProvider {
   /**
-   * Process-wide: the 403 above is a property of the deployment (no Domain-Wide Delegation),
-   * not of one request. Once seen, every subsequent booking skips attendees immediately instead
-   * of burning a failed API call (and a circuit-breaker strike) per booking.
+   * Which credential scopes have been proven unable to invite attendees.
+   *
+   * The 403 is a property of a SET OF CREDENTIALS — a service account without Domain-Wide
+   * Delegation — not of the process. As one process-wide boolean it was a genuine cross-tenant
+   * bug waiting for customer #2: the first service-account tenant to hit the 403 would
+   * permanently disable attendee invites for every OAuth tenant in the same worker, silently
+   * downgrading their bookings to attendee-less events with `inviteSent: false`. Their leads would
+   * simply stop receiving calendar invitations, and nothing would say why.
+   *
+   * Cached per scope, so the optimisation still works and stays where it belongs.
    */
-  static attendeeInvitesBlocked = false;
+  private static blockedScopes = new Set<string>();
+
+  /** Visible for tests — process-wide caches make tests order-dependent otherwise. */
+  static _resetCredentialCaches(): void {
+    GoogleCalendarProvider.blockedScopes.clear();
+    circuits.clear();
+  }
+
+  /**
+   * Identifies the CREDENTIALS this instance uses, for the per-scope caches above.
+   *
+   * Deliberately built from the calendar and the identity acting on it, not from a tenant id: two
+   * tenants sharing one service account genuinely do share the 403, and one tenant that later
+   * reconnects with different credentials genuinely deserves a fresh attempt.
+   */
+  private readonly scope: string;
 
   private calendar: ReturnType<typeof google.calendar>;
 
@@ -51,6 +97,15 @@ export class GoogleCalendarProvider implements SchedulingProvider {
       ...(config.impersonateUser ? { subject: config.impersonateUser } : {}),
     });
     this.calendar = google.calendar({ version: 'v3', auth });
+    this.scope = `${config.serviceAccountEmail}|${config.impersonateUser ?? ''}|${config.calendarId}`;
+  }
+
+  private get circuit(): CircuitBreaker {
+    return circuitFor(this.scope);
+  }
+
+  private get attendeeInvitesBlocked(): boolean {
+    return GoogleCalendarProvider.blockedScopes.has(this.scope);
   }
 
   async getAvailableSlots(params: {
@@ -66,7 +121,7 @@ export class GoogleCalendarProvider implements SchedulingProvider {
     const timeMin = new Date(`${params.startDate}T00:00:00Z`).toISOString();
     const timeMax = new Date(`${params.endDate}T23:59:59Z`).toISOString();
 
-    const freebusyRes = await gcalCircuit.execute(() =>
+    const freebusyRes = await this.circuit.execute(() =>
       this.calendar.freebusy.query({
         requestBody: {
           timeMin,
@@ -121,7 +176,7 @@ export class GoogleCalendarProvider implements SchedulingProvider {
     const endDt = new Date(startDt.getTime() + this.config.slotMinutes * 60_000);
 
     const insert = (withAttendees: boolean) =>
-      gcalCircuit.execute(() =>
+      this.circuit.execute(() =>
         this.calendar.events.insert({
           calendarId,
           sendUpdates: 'all',
@@ -152,14 +207,14 @@ export class GoogleCalendarProvider implements SchedulingProvider {
     // and BookingResult.inviteSent tells the caller not to claim an email was sent.
     // THE REAL FIX is granting the service account Domain-Wide Delegation (or moving to OAuth
     // on Koren's account) — pending decision, see Phase 4 notes.
-    const tryAttendees = !GoogleCalendarProvider.attendeeInvitesBlocked;
+    const tryAttendees = !this.attendeeInvitesBlocked;
     let eventRes;
     let inviteSent = tryAttendees;
     try {
       eventRes = await insert(tryAttendees);
     } catch (err) {
       if (tryAttendees && isForbiddenForServiceAccounts(err)) {
-        GoogleCalendarProvider.attendeeInvitesBlocked = true;
+        GoogleCalendarProvider.blockedScopes.add(this.scope);
         inviteSent = false;
         console.error(
           'gcal_attendee_invites_blocked — falling back to attendee-less events. Grant the service account Domain-Wide Delegation to fix.',
@@ -185,7 +240,7 @@ export class GoogleCalendarProvider implements SchedulingProvider {
   }
 
   async cancelBooking(bookingUid: string): Promise<void> {
-    await gcalCircuit.execute(() =>
+    await this.circuit.execute(() =>
       this.calendar.events.delete({
         calendarId: this.config.calendarId,
         eventId: bookingUid,
