@@ -1,121 +1,137 @@
-import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, SlidersHorizontal, Mic, ArrowUp, Info, UserPlus, Phone, Clock, Sparkles } from 'lucide-react'
+import { Sparkles, Lock } from 'lucide-react'
 
-/** Copilot — the Grok-style landing. Never-empty composer with real-state suggestions.
- *  Conversation + confirm-before-apply flow lands in a follow-up step. */
+/**
+ * Copilot — deliberately a COMING SOON page.
+ *
+ * What it was: a Grok-style landing with a live-looking composer, an attach button, a Skills
+ * button, a mic button, a send button and four clickable suggestion chips. None of them did
+ * anything — `/chat` has no backend endpoint at all. A customer typing a question and pressing send
+ * got silence, which reads as a broken product rather than an unfinished one.
+ *
+ * Building it for real means an agentic assistant with read AND write access to the tenant's leads,
+ * calls and agent settings. That is a product, not a wiring job, and it is not needed for early
+ * production — so the honest thing is to say so.
+ *
+ * The composer is kept as a non-interactive PREVIEW: it shows what the page will be without
+ * pretending to be it. `aria-hidden` and `inert` so nothing here is reachable by keyboard or
+ * screen reader — a disabled control a user can still tab into is the same lie in a quieter voice.
+ */
 export function Copilot() {
   const { t } = useTranslation()
-  const [draft, setDraft] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
 
-  const suggestions = [
-    { key: 's1', icon: <UserPlus size={15} strokeWidth={1.7} /> },
-    { key: 's2', icon: <Phone size={15} strokeWidth={1.7} /> },
-    { key: 's3', icon: <SlidersHorizontal size={15} strokeWidth={1.7} /> },
-    { key: 's4', icon: <Clock size={15} strokeWidth={1.7} /> },
-  ]
+  const examples = ['s1', 's2', 's3', 's4'] as const
 
   return (
-    <div style={{ minBlockSize: 'calc(100vh - 60px - 56px)', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'stretch', maxInlineSize: '720px', marginInline: 'auto', gap: '20px', paddingBlock: '24px' }}>
-      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-        <div style={{ inlineSize: '52px', blockSize: '52px', borderRadius: '50%', background: 'var(--accent)', color: 'var(--text-on-accent)', display: 'grid', placeItems: 'center' }}>
+    <div
+      style={{
+        minBlockSize: 'calc(100vh - 60px - 56px)',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        maxInlineSize: '640px',
+        marginInline: 'auto',
+        gap: '22px',
+        paddingBlock: '24px',
+      }}
+    >
+      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px' }}>
+        <div
+          style={{
+            inlineSize: '52px',
+            blockSize: '52px',
+            borderRadius: '50%',
+            background: 'var(--surface-sunken)',
+            border: '1px solid var(--border-default)',
+            color: 'var(--text-tertiary)',
+            display: 'grid',
+            placeItems: 'center',
+          }}
+        >
           <Sparkles size={24} strokeWidth={1.8} />
         </div>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '30px', letterSpacing: '-0.02em', color: 'var(--text-primary)' }} className="uppercase-track">
-          {t('copilot.title')}
+
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '5px 12px',
+            borderRadius: 'var(--r-full)',
+            background: 'var(--surface-sunken)',
+            border: '1px solid var(--border-default)',
+            fontSize: '11.5px',
+            fontWeight: 600,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            color: 'var(--text-tertiary)',
+          }}
+        >
+          <Lock size={12} strokeWidth={2} />
+          {t('copilot.soon')}
+        </span>
+
+        <h1
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontWeight: 700,
+            fontSize: '28px',
+            letterSpacing: '-0.02em',
+            color: 'var(--text-primary)',
+            margin: 0,
+          }}
+        >
+          {t('copilot.soonTitle')}
         </h1>
-        <p style={{ fontSize: '13.5px', color: 'var(--text-tertiary)', maxInlineSize: '440px' }}>{t('copilot.subtitle')}</p>
+        <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', maxInlineSize: '460px', margin: 0, lineHeight: 1.6 }}>
+          {t('copilot.soonNote')}
+        </p>
       </div>
 
-      {/* composer */}
-      <div style={{ border: '1px solid var(--border-strong)', borderRadius: '26px', background: 'var(--surface-card)', boxShadow: 'var(--shadow-card)', padding: '8px' }}>
-        <input
-          ref={inputRef}
-          type="text"
-          dir="auto"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={t('copilot.placeholder')}
-          aria-label={t('copilot.placeholder')}
-          style={{ inlineSize: '100%', border: 0, outline: 'none', background: 'transparent', fontFamily: 'var(--font-body)', fontSize: '16px', color: 'var(--text-primary)', padding: '12px 12px 8px' }}
-        />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '2px 4px' }}>
-          <button aria-label="Attach" style={ctrlRound}>
-            <Plus size={18} strokeWidth={1.8} />
-          </button>
-          <button style={{ ...ctrlPill }}>
-            <SlidersHorizontal size={15} strokeWidth={1.7} /> {t('copilot.skills')}
-          </button>
-          <span style={{ marginInlineStart: 'auto' }} />
-          <button aria-label="Voice" style={ctrlRound}>
-            <Mic size={18} strokeWidth={1.7} />
-          </button>
-          <button aria-label="Send" style={{ inlineSize: '40px', blockSize: '40px', display: 'grid', placeItems: 'center', border: 0, background: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: '50%', cursor: 'pointer', flexShrink: 0 }}>
-            <ArrowUp size={18} strokeWidth={1.9} />
-          </button>
+      {/* A preview of the composer, inert. Shows the shape of the thing without offering it. */}
+      <div
+        aria-hidden="true"
+        // @ts-expect-error -- `inert` is valid HTML; React's types lag behind it in this version.
+        inert=""
+        style={{
+          border: '1px dashed var(--border-strong)',
+          borderRadius: '26px',
+          background: 'var(--surface-sunken)',
+          padding: '18px 20px',
+          color: 'var(--text-tertiary)',
+          fontSize: '15px',
+          opacity: 0.7,
+          userSelect: 'none',
+        }}
+        dir="auto"
+      >
+        {t('copilot.placeholder')}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <span style={{ fontSize: '11.5px', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-tertiary)', textAlign: 'center' }}>
+          {t('copilot.examplesLabel')}
+        </span>
+        <div style={{ display: 'flex', gap: '9px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          {examples.map((key) => (
+            <span
+              key={key}
+              dir="auto"
+              style={{
+                fontFamily: 'var(--font-body)',
+                fontSize: '13px',
+                padding: '8px 14px',
+                borderRadius: 'var(--r-full)',
+                border: '1px solid var(--border-default)',
+                background: 'var(--surface-card)',
+                color: 'var(--text-tertiary)',
+              }}
+            >
+              {t(`copilot.${key}`)}
+            </span>
+          ))}
         </div>
-      </div>
-
-      {/* suggestions */}
-      <div style={{ display: 'flex', gap: '9px', flexWrap: 'wrap', justifyContent: 'center' }}>
-        {suggestions.map((s) => (
-          <button
-            key={s.key}
-            dir="auto"
-            style={ctrlSuggest}
-            onClick={() => { setDraft(t(`copilot.${s.key}`)); inputRef.current?.focus() }}
-          >
-            <span style={{ color: 'var(--accent-fg)', display: 'inline-flex' }}>{s.icon}</span>
-            {t(`copilot.${s.key}`)}
-          </button>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11.5px', color: 'var(--text-tertiary)' }}>
-        <Info size={13} strokeWidth={1.7} />
-        <span>{t('copilot.note')}</span>
       </div>
     </div>
   )
-}
-
-const ctrlRound: React.CSSProperties = {
-  inlineSize: '36px',
-  blockSize: '36px',
-  display: 'grid',
-  placeItems: 'center',
-  border: '1px solid var(--border-default)',
-  borderRadius: '50%',
-  background: 'transparent',
-  color: 'var(--text-secondary)',
-  cursor: 'pointer',
-}
-const ctrlPill: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '6px',
-  padding: '7px 12px',
-  border: '1px solid var(--border-default)',
-  borderRadius: 'var(--r-full)',
-  background: 'transparent',
-  color: 'var(--text-secondary)',
-  fontFamily: 'var(--font-body)',
-  fontSize: '12.5px',
-  fontWeight: 500,
-  cursor: 'pointer',
-}
-const ctrlSuggest: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '7px',
-  fontFamily: 'var(--font-body)',
-  fontSize: '13px',
-  fontWeight: 500,
-  padding: '9px 14px',
-  borderRadius: 'var(--r-full)',
-  border: '1px solid var(--border-default)',
-  background: 'var(--surface-card)',
-  color: 'var(--text-secondary)',
-  cursor: 'pointer',
 }

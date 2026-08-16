@@ -108,15 +108,15 @@
     "error": "Could not load meetings."
   },
   "copilot": {
-    "title": "What would you like to know?",
-    "subtitle": "Ask about your leads and calls, or tell the agent to work differently.",
     "placeholder": "Ask about your leads and calls, or tell the agent what to change",
-    "skills": "Skills",
     "s1": "How many new leads this week?",
     "s2": "Summarize today's calls",
     "s3": "Be a little less formal",
     "s4": "Which leads are waiting for follow-up?",
-    "note": "On the house from ClickScales. This chat does not use your call minutes."
+    "soon": "Coming soon",
+    "soonTitle": "Your copilot is on the way",
+    "soonNote": "Soon you will be able to ask about your leads and calls in plain language, and tell the agent to work differently — without touching a settings page. We are building it now.",
+    "examplesLabel": "What you will be able to ask"
   },
   "agent": {
     "sub": "Set who your agent is. Everything here changes what your leads hear on the next call.",
