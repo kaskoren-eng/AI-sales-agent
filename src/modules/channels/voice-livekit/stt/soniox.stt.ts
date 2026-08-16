@@ -111,7 +111,7 @@ export function createSonioxSTT(env: Env): soniox.STT {
  * (`preemptive.chatCtx.isEquivalent(chatCtx)`). `MAX_PREFLIGHTS_PER_TURN` caps the waste at
  * three drafts per turn; the best case is the whole LLM TTFT hiding behind the endpoint wait.
  */
-export function withPausePreflight(inner: soniox.STT, pauseMs: number): soniox.STT {
+export function withPreflightSurvival(inner: soniox.STT, pauseMs: number): soniox.STT {
   // Instance-level shadow of `stream`, NOT a Proxy. The first attempt at this used a Proxy over
   // the STT and its SpeechStream, and it broke the agent outright — "AgentSession is not running"
   // before the greeting — because the SDK's classes use JS private fields (`#private`), which
@@ -122,10 +122,43 @@ export function withPausePreflight(inner: soniox.STT, pauseMs: number): soniox.S
     ...args: unknown[]
   ) => {
     const stream = originalStream(...(args as []));
-    patchQueueWithPausePreflight(stream, pauseMs);
+    patchQueue(stream, pauseMs);
     return stream;
   };
   return inner;
+}
+
+/**
+ * Terminal punctuation Soniox appends when it finalises an utterance.
+ *
+ * THIS SINGLE CHARACTER WAS COSTING ~850ms ON EVERY TURN. Measured on a real call (2026-08-16):
+ * three preemptive drafts, and the two that died differed from the committed transcript by
+ * exactly one trailing mark —
+ *
+ *     drafted "תגידי, את יודעת"      committed "תגידי, את יודעת."
+ *     drafted "את יודעת להביע רגש"    committed "את יודעת להביע רגש?"
+ *     drafted "אממ,"                 committed "אממ,"              <- identical, draft SURVIVED
+ *
+ * The survivor's turn had 248ms of dead air. The two that lost their drafts had 2222ms and
+ * 2958ms. Same pipeline, same call — the entire difference is whether a full stop landed after
+ * the draft was taken.
+ *
+ * Not a general "clean the transcript" list: `…` and `!` are included because Soniox emits them
+ * in the same position, and nothing else is touched. Internal punctuation is never stripped —
+ * "אממ," keeps its comma, which is why that draft matched in the first place.
+ */
+const TERMINAL_PUNCTUATION = /[.?!…]+$/u;
+
+/** Returns `text` with any trailing terminal punctuation removed. Internal marks are untouched. */
+function stripTerminal(text: string): string {
+  return text.replace(TERMINAL_PUNCTUATION, '').trimEnd();
+}
+
+/** Rebuilds an event with different primary text, leaving every other field alone. */
+function withText(ev: sttBase.SpeechEvent, text: string): sttBase.SpeechEvent {
+  const [primary, ...rest] = ev.alternatives ?? [];
+  if (!primary) return ev;
+  return { ...ev, alternatives: [{ ...primary, text }, ...rest] } as sttBase.SpeechEvent;
 }
 
 /**
@@ -160,7 +193,7 @@ function eventText(ev: sttBase.SpeechEvent): string {
  * patching `put` on that one object intercepts the whole event stream without touching the
  * stream class itself. That is why this works where the Proxy did not.
  */
-function patchQueueWithPausePreflight(stream: sttBase.SpeechStream, pauseMs: number): void {
+function patchQueue(stream: sttBase.SpeechStream, pauseMs: number): void {
   const holder = stream as unknown as {
     queue?: { put: (ev: sttBase.SpeechEvent) => void; closed?: boolean };
   };
@@ -168,15 +201,35 @@ function patchQueueWithPausePreflight(stream: sttBase.SpeechStream, pauseMs: num
   if (!queue || typeof queue.put !== 'function') {
     // Plugin internals changed shape. Do nothing rather than crash the call: the cost is the
     // lost overlap we are trying to win, not a dead agent.
-    console.warn('pause_preflight_disabled', JSON.stringify({ reason: 'queue_not_found' }));
-    return;
-  }
-  if (pauseMs <= 0) {
-    console.warn('pause_preflight_disabled', JSON.stringify({ reason: 'pause_ms_zero' }));
+    console.warn('preflight_patch_disabled', JSON.stringify({ reason: 'queue_not_found' }));
     return;
   }
 
   const originalPut = queue.put.bind(queue);
+
+  // ── The punctuation rescue ────────────────────────────────────────────────────────────────
+  // Remembers the text of the last PREFLIGHT so a FINAL that differs from it ONLY by trailing
+  // punctuation can be handed over in the form the draft was built on. See TERMINAL_PUNCTUATION.
+  //
+  // DELIBERATELY NARROW. It never edits a FINAL whose words changed — if the caller kept talking
+  // after the draft was taken, that draft SHOULD die, and it does. The only rewrite it can make
+  // is deleting a mark the caller did not say out loud. The cost is that on a rescued turn the
+  // LLM sees "את יודעת להביע רגש" without its question mark; the gain is that turn arriving in
+  // ~250ms instead of ~2900ms.
+  let lastPreflight: string | null = null;
+  const rescue = (ev: sttBase.SpeechEvent): sttBase.SpeechEvent => {
+    const pending = lastPreflight;
+    lastPreflight = null;
+    if (pending === null) return ev;
+    const finalText = eventText(ev).trim();
+    if (!finalText || finalText === pending) return ev;
+    if (stripTerminal(finalText) !== pending) return ev; // words changed — let the draft die
+    console.log(
+      'preflight_punctuation_rescue',
+      JSON.stringify({ drafted: pending, committed: finalText }),
+    );
+    return withText(ev, pending);
+  };
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pending: sttBase.SpeechEvent | null = null;
   let flaggedText: string | null = null;
@@ -190,11 +243,17 @@ function patchQueueWithPausePreflight(stream: sttBase.SpeechStream, pauseMs: num
     pending = null;
   };
 
-  /** Ends the turn's draft window. Called on every non-interim event. */
+  /**
+   * Ends the turn's draft window. Called on every non-interim event.
+   *
+   * Clears `lastPreflight` too: a draft that never reached a FINAL (the caller started a new turn,
+   * or the stream ended) must not have its text applied to some later utterance's transcript.
+   */
   const resetTurn = (): void => {
     disarm();
     flaggedText = null;
     preflights = 0;
+    lastPreflight = null;
   };
 
   const fire = (): void => {
@@ -207,6 +266,7 @@ function patchQueueWithPausePreflight(stream: sttBase.SpeechStream, pauseMs: num
     if (queue.closed) return;
     const text = eventText(ev).trim();
     flaggedText = text;
+    lastPreflight = text;
     preflights++;
     try {
       originalPut({ ...ev, type: sttBase.SpeechEventType.PREFLIGHT_TRANSCRIPT });
@@ -216,8 +276,23 @@ function patchQueueWithPausePreflight(stream: sttBase.SpeechStream, pauseMs: num
   };
 
   queue.put = (ev: sttBase.SpeechEvent) => {
-    // Any non-interim event ends the current draft window — the next turn starts fresh. This
-    // includes FINAL and END_OF_SPEECH, which is what makes the counters per-turn.
+    // The plugin's OWN preflight — emitted when every token is final and the endpoint has not
+    // fired. These are the drafts most likely to survive, so their text is what the rescue below
+    // compares against.
+    if (ev.type === sttBase.SpeechEventType.PREFLIGHT_TRANSCRIPT) {
+      lastPreflight = eventText(ev).trim() || null;
+      return originalPut(ev);
+    }
+
+    // The turn's committed text. Last chance to hand the SDK the exact string its draft was built
+    // on, before it compares the two and throws the draft away.
+    if (ev.type === sttBase.SpeechEventType.FINAL_TRANSCRIPT) {
+      const rescued = rescue(ev);
+      resetTurn();
+      return originalPut(rescued);
+    }
+
+    // Any other non-interim event ends the current draft window — the next turn starts fresh.
     if (ev.type !== sttBase.SpeechEventType.INTERIM_TRANSCRIPT) {
       resetTurn();
       return originalPut(ev);
@@ -232,7 +307,10 @@ function patchQueueWithPausePreflight(stream: sttBase.SpeechStream, pauseMs: num
     // the caller has already moved past.
     disarm();
 
+    // pauseMs 0 = the injector is off (the default). The punctuation rescue above still runs —
+    // it works on the plugin's OWN preflights and does not need this at all.
     const worthDrafting =
+      pauseMs > 0 &&
       text.length >= MIN_PREFLIGHT_CHARS &&
       text !== flaggedText &&
       preflights < MAX_PREFLIGHTS_PER_TURN;

@@ -4,7 +4,7 @@ import * as elevenlabs from '@livekit/agents-plugin-elevenlabs';
 import * as openai from '@livekit/agents-plugin-openai';
 import type * as silero from '@livekit/agents-plugin-silero';
 import { cartesiaOptions } from './testing/speech.js';
-import { createSonioxSTT, withPausePreflight } from './stt/soniox.stt.js';
+import { createSonioxSTT, withPreflightSurvival } from './stt/soniox.stt.js';
 import { DeepdubTTS, deepdubOptions } from './tts/deepdub.tts.js';
 import type { Env } from '../../../config/env.js';
 
@@ -30,11 +30,11 @@ export function buildSTT(env: Env, vad: silero.VAD): sttBase.STT {
     const stt = createSonioxSTT(env);
     // Under 'stt' turn detection LiveKit's preemptive generation never fires: its FINAL path is
     // gated on vadBaseTurnDetection, and the PREFLIGHT path needs an event Soniox effectively
-    // never emits. withPausePreflight injects a PREFLIGHT once the caller has stopped adding
+    // never emits. withPreflightSurvival injects a PREFLIGHT once the caller has stopped adding
     // words for VOICE_PREEMPTIVE_PAUSE_MS, so the LLM drafts during the endpoint wait instead of
     // after it. 'vad' already gets preemptive via the FINAL path, so it is left alone.
     return resolveTurnDetection(env) === 'stt'
-      ? withPausePreflight(stt, env.VOICE_PREEMPTIVE_PAUSE_MS)
+      ? withPreflightSurvival(stt, env.VOICE_PREEMPTIVE_PAUSE_MS)
       : stt;
   }
   return buildOpenAISTT(env, vad);
