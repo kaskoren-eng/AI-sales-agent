@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import * as Dialog from '@radix-ui/react-dialog'
@@ -13,6 +13,7 @@ import { Skeleton } from '../components/ui/Skeleton.js'
 import {
   fetchAirtableStatus, configureAirtable, disconnectAirtable,
   fetchMondayStatus, disconnectMonday,
+  fetchGoogleCalendarStatus, startGoogleCalendarConnect, disconnectGoogleCalendar,
 } from '../lib/api.js'
 
 /**
@@ -63,7 +64,6 @@ const PROVISIONED = [
   { id: 'voice', name: 'Voice', description: 'Hebrew-first AI calls — Zadarma SIP, LiveKit, Cartesia', icon: <Phone size={22} strokeWidth={1.5} />, color: 'var(--accent-fg)' },
   { id: 'whatsapp', name: 'WhatsApp', description: 'Inbound and outbound messaging', icon: <MessageSquare size={22} strokeWidth={1.5} />, color: '#25D366' },
   { id: 'email', name: 'Email', description: 'Send and receive email', icon: <Mail size={22} strokeWidth={1.5} />, color: 'var(--data-1)' },
-  { id: 'google_calendar', name: 'Google Calendar', description: 'Meetings booked straight into the calendar', icon: <CalendarDays size={22} strokeWidth={1.5} />, color: '#4285F4' },
   { id: 'google_sheets', name: 'Google Sheets', description: 'Import leads from a sheet', icon: <FileSpreadsheet size={22} strokeWidth={1.5} />, color: '#34A853' },
   { id: 'trafft', name: 'Trafft', description: 'Alternate booking provider', icon: <Calendar size={22} strokeWidth={1.5} />, color: 'var(--data-1)' },
   { id: 'csv_import', name: 'CSV Import', description: 'Bulk import — on the Leads page', icon: <FileUp size={22} strokeWidth={1.5} />, color: 'var(--status-warning)' },
@@ -327,6 +327,7 @@ export function Integrations() {
           {t('integrations.yours', 'Your tools')}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }} role="list">
+          <GoogleCalendarCard />
           {CONNECTABLE.map((meta) => {
             const q = statusFor(meta.id)
             const connected = q.data?.connected === true
@@ -418,5 +419,145 @@ export function Integrations() {
 
       <AirtableDialog open={airtableOpen} onOpenChange={setAirtableOpen} />
     </div>
+  )
+}
+
+/**
+ * Google Calendar — the one integration where getting it wrong is invisible.
+ *
+ * It used to sit under "Run by ClickScales" with a permanent green tick, because a single service
+ * account in env served every tenant. That was true for exactly one customer and a lie for the
+ * next: their agent would agree a time with a lead and write the meeting into ClickScales'
+ * calendar. Nothing errored, the agent said it was booked, and the only symptom was a meeting the
+ * customer's salesperson never saw.
+ *
+ * So it is self-service now, and the card's job is to make the connection state unambiguous —
+ * including the state where a grant was revoked, which otherwise presents as "bookings quietly
+ * stopped working".
+ *
+ * Its own card rather than a row in CONNECTABLE because the mechanics genuinely differ: a consent
+ * popup instead of a credentials dialog, an account email to show, and a reconnect state.
+ */
+function GoogleCalendarCard() {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const q = useQuery({ queryKey: ['gcal-status'], queryFn: fetchGoogleCalendarStatus })
+
+  const connect = useMutation({
+    mutationFn: startGoogleCalendarConnect,
+    onSuccess: ({ url }) => {
+      // A popup rather than a redirect: the consent flow can take a while (account chooser, 2FA)
+      // and losing the dashboard's in-memory access token to a full navigation would sign them out
+      // on the way back. The callback page posts a message and the popup closes itself.
+      const popup = window.open(url, 'gcal-connect', 'width=520,height=680')
+      if (!popup) {
+        // Popup blocked — fall back rather than leaving the button doing nothing at all.
+        window.location.href = url
+      }
+    },
+  })
+
+  const disconnect = useMutation({
+    mutationFn: disconnectGoogleCalendar,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['gcal-status'] }),
+  })
+
+  // The popup tells us when it is done; refetch so the card updates without a manual reload.
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.source === 'clickscales' && event.data?.type === 'gcal') {
+        void queryClient.invalidateQueries({ queryKey: ['gcal-status'] })
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [queryClient])
+
+  const status = q.data
+  const connected = status?.connected === true
+  const platform = status?.usesPlatformCredentials === true
+
+  return (
+    <Card role="listitem" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+        <div style={iconTile('#4285F4')} aria-hidden><CalendarDays size={22} strokeWidth={1.5} /></div>
+        {q.isLoading ? (
+          <Skeleton height="20px" width="88px" />
+        ) : platform ? (
+          <Badge variant="success">{t('integrations.gcal.managed', 'Managed')}</Badge>
+        ) : status?.needsReconnect ? (
+          <Badge variant="warning">{t('integrations.gcal.expired', 'Needs reconnect')}</Badge>
+        ) : (
+          <Badge variant={connected ? 'success' : 'default'}>
+            {connected
+              ? t('integrations.connected', 'Connected')
+              : t('integrations.notConnected', 'Not connected')}
+          </Badge>
+        )}
+      </div>
+
+      <div style={{ flex: 1 }}>
+        <h3 style={cardTitle}>Google Calendar</h3>
+        <p style={cardBody}>
+          {t('integrations.gcal.blurb', 'The agent books meetings straight into your calendar.')}
+        </p>
+      </div>
+
+      {connected && status?.accountEmail && <DataStrip rows={[['account', status.accountEmail]]} />}
+
+      {/* Bookings silently stopped. Say so plainly — this is the state a customer would otherwise
+          discover by noticing an empty diary. */}
+      {status?.needsReconnect && (
+        <p style={{ ...cardBody, fontSize: '12.5px', color: 'var(--status-warning)' }}>
+          {t(
+            'integrations.gcal.expiredNote',
+            'Google revoked access, so new meetings are not being added. Reconnect to fix it.',
+          )}
+        </p>
+      )}
+
+      {/* ClickScales' own workspace runs on the service account — there is nothing to connect. */}
+      {platform ? (
+        <p style={{ ...cardBody, fontSize: '12.5px' }}>
+          {t('integrations.gcal.platformNote', 'This workspace uses the ClickScales service account.')}
+        </p>
+      ) : status && !status.available ? (
+        <p style={{ ...cardBody, fontSize: '12.5px' }}>
+          {t('integrations.gcal.unavailable', 'Not available on this server yet — ask ClickScales to enable it.')}
+        </p>
+      ) : (
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <Button
+            variant={connected ? 'secondary' : 'primary'}
+            size="sm"
+            loading={connect.isPending}
+            onClick={() => connect.mutate()}
+          >
+            {connected || status?.needsReconnect
+              ? t('integrations.reconnect', 'Reconnect')
+              : t('integrations.connect', 'Connect')}
+          </Button>
+          {(connected || status?.needsReconnect) && (
+            <Button variant="secondary" size="sm" loading={disconnect.isPending} onClick={() => disconnect.mutate()}>
+              {t('integrations.disconnect', 'Disconnect')}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Without a calendar the agent has no booking tools at all — worth saying, because the
+          consequence is not "a feature is off" but "the calls stop achieving anything". */}
+      {!platform && !connected && !status?.needsReconnect && status?.available && (
+        <p style={{ ...cardBody, fontSize: '12.5px', color: 'var(--status-warning)' }}>
+          {t('integrations.gcal.required', 'Until this is connected the agent cannot book meetings.')}
+        </p>
+      )}
+
+      {q.isError && (
+        <p role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)' }}>
+          {t('integrations.statusFailed', 'Could not load status')}
+        </p>
+      )}
+    </Card>
   )
 }

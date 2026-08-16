@@ -38,6 +38,45 @@ function isForbiddenForServiceAccounts(err: unknown): boolean {
   );
 }
 
+/**
+ * HOW this provider is allowed to act on a calendar.
+ *
+ * `service_account` is ClickScales' own arrangement: one Google service account, one calendar,
+ * optionally impersonating a Workspace user via Domain-Wide Delegation. It cannot work for a
+ * customer — we would need admin rights in THEIR Google Workspace to grant delegation.
+ *
+ * `oauth` is what a customer can actually do: click Connect, consent once, and we hold a refresh
+ * token for their account. It also invites attendees without the 403, because the events are
+ * created as a real user rather than a service account.
+ */
+export type GoogleCalendarAuth =
+  | {
+      kind: 'service_account';
+      serviceAccountEmail: string;
+      privateKey: string;
+      /** Workspace user to impersonate. Requires Domain-Wide Delegation for the client id. */
+      impersonateUser?: string;
+    }
+  | {
+      kind: 'oauth';
+      clientId: string;
+      clientSecret: string;
+      refreshToken: string;
+      accessToken?: string;
+      accessTokenExpiresAt?: Date | null;
+      /** Identifies the grant for the per-scope caches; not used to authenticate. */
+      accountEmail?: string;
+      /**
+       * Called when googleapis mints a new access token, so it can be persisted.
+       *
+       * WITHOUT THIS the refresh happens in memory and is thrown away when the call ends, so every
+       * single call pays a token round-trip before it can read the calendar — and on the agent,
+       * that latency lands between the lead saying a day and the agent answering. It must never
+       * throw: a failed write is a slower next call, not a failed booking.
+       */
+      onTokensRefreshed?: (tokens: { accessToken: string; expiresAt: Date | null }) => void;
+    };
+
 export class GoogleCalendarProvider implements SchedulingProvider {
   /**
    * Which credential scopes have been proven unable to invite attendees.
@@ -73,11 +112,20 @@ export class GoogleCalendarProvider implements SchedulingProvider {
   constructor(
     private config: {
       calendarId: string;
-      serviceAccountEmail: string;
-      privateKey: string;
       slotMinutes: number;
       workStart: string;
       workEnd: string;
+      /**
+       * How to authenticate. Omit and the legacy service-account fields below are used instead,
+       * so every existing construction site keeps working unchanged.
+       */
+      auth?: GoogleCalendarAuth;
+      /** @deprecated Pass `auth: { kind: 'service_account', ... }`. Kept so the many existing
+       * call sites — bench scripts, the scheduling module, tests — did not all have to change in
+       * the same commit as the OAuth work. */
+      serviceAccountEmail?: string;
+      /** @deprecated see `serviceAccountEmail`. */
+      privateKey?: string;
       /**
        * Workspace user to impersonate (e.g. koren@clickscales.com). Requires Domain-Wide
        * Delegation granted to this service account's CLIENT ID in the Google Admin Console
@@ -86,18 +134,57 @@ export class GoogleCalendarProvider implements SchedulingProvider {
        * with a subject, events are created AS the user, invites email out, and the auto Meet
        * link comes back. Without it (or before the grant), the attendee-less fallback below
        * keeps bookings alive.
+       *
+       * @deprecated see `serviceAccountEmail`.
        */
       impersonateUser?: string;
     },
   ) {
-    const auth = new google.auth.JWT({
-      email: config.serviceAccountEmail,
-      key: config.privateKey,
-      scopes: ['https://www.googleapis.com/auth/calendar'],
-      ...(config.impersonateUser ? { subject: config.impersonateUser } : {}),
-    });
-    this.calendar = google.calendar({ version: 'v3', auth });
-    this.scope = `${config.serviceAccountEmail}|${config.impersonateUser ?? ''}|${config.calendarId}`;
+    const auth: GoogleCalendarAuth =
+      config.auth ??
+      ({
+        kind: 'service_account',
+        serviceAccountEmail: config.serviceAccountEmail!,
+        privateKey: config.privateKey!,
+        ...(config.impersonateUser ? { impersonateUser: config.impersonateUser } : {}),
+      } as GoogleCalendarAuth);
+
+    if (auth.kind === 'oauth') {
+      const client = new google.auth.OAuth2(auth.clientId, auth.clientSecret);
+      client.setCredentials({
+        refresh_token: auth.refreshToken,
+        ...(auth.accessToken ? { access_token: auth.accessToken } : {}),
+        ...(auth.accessTokenExpiresAt ? { expiry_date: auth.accessTokenExpiresAt.getTime() } : {}),
+      });
+      // googleapis refreshes lazily and tells us here. Persisting it is what stops every call
+      // paying a token round-trip before it can read the calendar.
+      client.on('tokens', (tokens) => {
+        if (!tokens.access_token || !auth.onTokensRefreshed) return;
+        try {
+          auth.onTokensRefreshed({
+            accessToken: tokens.access_token,
+            expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+          });
+        } catch (err) {
+          // A failed write means the next call refreshes again. It must never fail this booking.
+          console.error(
+            'gcal_token_persist_failed',
+            err instanceof Error ? err.message : String(err),
+          );
+        }
+      });
+      this.calendar = google.calendar({ version: 'v3', auth: client });
+      this.scope = `oauth|${auth.accountEmail ?? auth.clientId}|${config.calendarId}`;
+    } else {
+      const jwt = new google.auth.JWT({
+        email: auth.serviceAccountEmail,
+        key: auth.privateKey,
+        scopes: ['https://www.googleapis.com/auth/calendar'],
+        ...(auth.impersonateUser ? { subject: auth.impersonateUser } : {}),
+      });
+      this.calendar = google.calendar({ version: 'v3', auth: jwt });
+      this.scope = `${auth.serviceAccountEmail}|${auth.impersonateUser ?? ''}|${config.calendarId}`;
+    }
   }
 
   private get circuit(): CircuitBreaker {

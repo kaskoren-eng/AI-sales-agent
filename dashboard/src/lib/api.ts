@@ -314,3 +314,30 @@ export function updateMemberRole(userId: string, role: TenantRole): Promise<{ ok
 export function removeMember(userId: string): Promise<void> {
   return apiFetch(`/members/${userId}`, { method: 'DELETE' })
 }
+
+// --- Integrations: Google Calendar (per-tenant OAuth) ---
+
+export interface GoogleCalendarStatus {
+  connected: boolean
+  accountEmail: string | null
+  calendarId: string | null
+  /** A previous grant was revoked by Google — "reconnect", not "connect". */
+  needsReconnect: boolean
+  /** False when this deployment has no OAuth app configured; don't offer the button. */
+  available: boolean
+  /** ClickScales' own tenant, which uses a service account rather than OAuth. */
+  usesPlatformCredentials: boolean
+}
+
+export function fetchGoogleCalendarStatus(): Promise<GoogleCalendarStatus> {
+  return apiFetch<GoogleCalendarStatus>('/integrations/google-calendar/status')
+}
+
+/** Returns the Google consent URL to send the customer to. */
+export function startGoogleCalendarConnect(): Promise<{ url: string }> {
+  return apiFetch('/integrations/google-calendar/connect', { method: 'POST', body: '{}' })
+}
+
+export function disconnectGoogleCalendar(): Promise<{ ok: boolean }> {
+  return apiFetch('/integrations/google-calendar', { method: 'DELETE' })
+}

@@ -386,7 +386,12 @@ const envSchema = z.object({
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),
 
-  // Scheduling (Google Calendar) — uses a service account; share the target calendar with the service account email
+  // Scheduling (Google Calendar) — ClickScales' OWN service account.
+  //
+  // ⚠️ These are ONE TENANT'S credentials, not the platform's. They apply only to the tenant named
+  // by PLATFORM_TENANT_ID; every other tenant connects their own Google account via OAuth
+  // (GOOGLE_CALENDAR_OAUTH_* below). Treating them as a global default is what had customer #2's
+  // meetings landing in ClickScales' calendar.
   GOOGLE_CALENDAR_ID: z.string().min(1).optional(),
   GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: z.string().email().optional(),
   // PEM private key — store with literal \n, the provider will unescape them
@@ -399,6 +404,20 @@ const envSchema = z.object({
   GOOGLE_CALENDAR_SLOT_MINUTES: z.coerce.number().int().positive().optional(),
   GOOGLE_CALENDAR_WORK_START: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   GOOGLE_CALENDAR_WORK_END: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+
+  // Per-tenant Google Calendar via OAuth — how a CUSTOMER connects their own calendar.
+  //
+  // A service account cannot be used for a customer: impersonating a user in their Workspace needs
+  // Domain-Wide Delegation, which needs admin rights in their Google account. OAuth is what a
+  // customer can actually grant. One Google Cloud OAuth client serves every tenant; the per-tenant
+  // grants live in the `oauth_connections` table.
+  //
+  // The redirect URI must match the Google console entry EXACTLY, including scheme and trailing
+  // path — Google compares it as a literal string and a mismatch fails at the callback, after the
+  // customer has already consented.
+  GOOGLE_CALENDAR_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+  GOOGLE_CALENDAR_OAUTH_REDIRECT_URI: z.string().url().optional(),
 
   // AI (OpenAI)
   OPENAI_API_KEY: z.string().min(1).optional(),

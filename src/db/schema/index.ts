@@ -11,3 +11,5 @@ export { auditEvents } from './audit-events.js';
 export type { AuditEvent, NewAuditEvent } from './audit-events.js';
 export { phoneNumbers } from './phone-numbers.js';
 export type { PhoneNumber, NewPhoneNumber } from './phone-numbers.js';
+export { oauthConnections } from './oauth-connections.js';
+export type { OAuthConnection, NewOAuthConnection } from './oauth-connections.js';

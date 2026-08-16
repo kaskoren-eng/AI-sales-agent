@@ -231,6 +231,14 @@ describe('buildToolRuntime — inbound routing end to end', () => {
       connectDb: () => ({ db: {} as Database, close: vi.fn(async () => undefined) }),
       lookupNumber,
       loadSettings: async () => ({ functions_enabled: true }),
+      loadCalendarConnection: async () => ({
+        calendarId: 'tenant@group.calendar.google.com',
+        auth: {
+          kind: 'service_account' as const,
+          serviceAccountEmail: 'svc@proj.iam.gserviceaccount.com',
+          privateKey: 'key',
+        },
+      }),
     });
     expect(result.runtime).toBeNull();
     expect(result.disabledReason).toBe('unmapped_did');
@@ -246,6 +254,14 @@ describe('buildToolRuntime — inbound routing end to end', () => {
       connectDb: () => ({ db: {} as Database, close }),
       lookupNumber,
       loadSettings: async () => ({ functions_enabled: true }),
+      loadCalendarConnection: async () => ({
+        calendarId: 'tenant@group.calendar.google.com',
+        auth: {
+          kind: 'service_account' as const,
+          serviceAccountEmail: 'svc@proj.iam.gserviceaccount.com',
+          privateKey: 'key',
+        },
+      }),
     });
     expect(close).toHaveBeenCalledTimes(1);
   });
@@ -256,6 +272,14 @@ describe('buildToolRuntime — inbound routing end to end', () => {
       connectDb: () => ({ db: {} as Database, close: vi.fn(async () => undefined) }),
       lookupNumber,
       loadSettings: async () => ({ functions_enabled: true }),
+      loadCalendarConnection: async () => ({
+        calendarId: 'tenant@group.calendar.google.com',
+        auth: {
+          kind: 'service_account' as const,
+          serviceAccountEmail: 'svc@proj.iam.gserviceaccount.com',
+          privateKey: 'key',
+        },
+      }),
       makeQueues: () => ({
         outboundQueue: { add: vi.fn() } as never,
         remindersQueue: { add: vi.fn() } as never,

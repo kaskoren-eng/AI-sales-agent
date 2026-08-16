@@ -492,7 +492,16 @@
     "reconnect": "Reconnect",
     "disconnect": "Disconnect",
     "viaApi": "Connect via the API — board picker lands here next",
-    "statusFailed": "Could not load status"
+    "statusFailed": "Could not load status",
+    "gcal": {
+      "blurb": "The agent books meetings straight into your calendar.",
+      "managed": "Managed",
+      "expired": "Needs reconnect",
+      "expiredNote": "Google revoked access, so new meetings are not being added. Reconnect to fix it.",
+      "platformNote": "This workspace uses the ClickScales service account.",
+      "unavailable": "Not available on this server yet — ask ClickScales to enable it.",
+      "required": "Until this is connected the agent cannot book meetings."
+    }
   },
   "members": {
     "sub": "Everyone who can sign in to this workspace. Invite the people who work your leads — they each get their own login.",

@@ -56,6 +56,17 @@ function deps(settings: unknown, close = vi.fn(async () => undefined)) {
     deps: {
       connectDb: () => ({ db: {} as Database, close }),
       loadSettings: async () => settings,
+      // The calendar is per-tenant now. Without this these tests would all fail at
+      // `calendar_not_configured` — which is the correct new behaviour for a tenant that has not
+      // connected one, and is asserted directly in calendar-isolation.test.ts.
+      loadCalendarConnection: async () => ({
+        calendarId: 'tenant@group.calendar.google.com',
+        auth: {
+          kind: 'service_account' as const,
+          serviceAccountEmail: 'svc@proj.iam.gserviceaccount.com',
+          privateKey: 'key',
+        },
+      }),
       // Stubbed so unit tests never dial a real Redis through the default factory.
       makeQueues: q.makeQueues,
     },
@@ -192,7 +203,10 @@ describe('buildToolRuntime — fail-closed matrix', () => {
     // read — it used to return before the tenant's identity had been loaded at all.
     const env = { ...baseEnv, GOOGLE_CALENDAR_PRIVATE_KEY: undefined } as unknown as Env;
     const settings = { ...ENABLED_SETTINGS, agent_persona: { agentName: 'מיכל' } };
-    const result = await buildToolRuntime(env, callOpts(), deps(settings).deps);
+    const result = await buildToolRuntime(env, callOpts(), {
+      ...deps(settings).deps,
+      loadCalendarConnection: async () => null,
+    });
     expect(result.disabledReason).toBe('calendar_not_configured');
     expect(result.settings).toEqual(settings);
   });
@@ -209,8 +223,13 @@ describe('buildToolRuntime — fail-closed matrix', () => {
   });
 
   it('missing calendar creds → calendar_not_configured (tools that cannot book must not exist)', async () => {
+    // "Missing creds" now means "this tenant has no calendar" — no connection of their own AND
+    // not the platform tenant. The env vars alone are no longer enough for anybody.
     const env = { ...baseEnv, GOOGLE_CALENDAR_PRIVATE_KEY: undefined } as unknown as Env;
-    const result = await buildToolRuntime(env, callOpts(), deps(ENABLED_SETTINGS).deps);
+    const result = await buildToolRuntime(env, callOpts(), {
+      ...deps(ENABLED_SETTINGS).deps,
+      loadCalendarConnection: async () => null,
+    });
     expect(result.disabledReason).toBe('calendar_not_configured');
   });
 
@@ -228,7 +247,15 @@ describe('buildToolRuntime — fail-closed matrix', () => {
     const result = await buildToolRuntime(
       baseEnv,
       { ...callOpts(), participantMetadata: metaWithSettings },
-      { connectDb: () => ({ db: {} as Database, close: vi.fn(async () => undefined) }), loadSettings, makeQueues: q.makeQueues },
+      {
+        connectDb: () => ({ db: {} as Database, close: vi.fn(async () => undefined) }),
+        loadSettings,
+        loadCalendarConnection: async () => ({
+          calendarId: 'tenant@group.calendar.google.com',
+          auth: { kind: 'service_account' as const, serviceAccountEmail: 'svc@x.com', privateKey: 'k' },
+        }),
+        makeQueues: q.makeQueues,
+      },
     );
     expect(result.disabledReason).toBeNull();
     expect(result.runtime?.tenantId).toBe('tenant-meta');

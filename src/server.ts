@@ -45,6 +45,10 @@ import adminModule from './modules/admin/index.js';
 import metricsModule from './modules/metrics/index.js';
 import authModule from './modules/auth/index.js';
 import { membersRoutes } from './modules/auth/members.routes.js';
+import {
+  googleCalendarRoutes,
+  googleCalendarPublicRoutes,
+} from './modules/integrations/google-calendar/google-calendar.routes.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -155,6 +159,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     // registered in the Zadarma portal, and changing it would silently break call analysis.
     await webhookScope.register(zadarmaModule, { prefix: '/webhooks/voice' });
     await webhookScope.register(leadIntakeModule, { prefix: '/webhooks/leads' });
+    // Google's OAuth redirect lands here. It is a top-level browser navigation, so there is no
+    // Authorization header to authenticate with — the tenant travels in a signed, expiring `state`
+    // parameter instead, verified in the route. See google-calendar.routes.ts.
+    await webhookScope.register(googleCalendarPublicRoutes, { prefix: '/webhooks/google-calendar' });
   });
 
   // --- Auth routes ---
@@ -182,6 +190,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     await apiScope.register(settingsModule, { prefix: '/api/v1/settings' });
     await apiScope.register(metricsModule, { prefix: '/api/v1/metrics' });
     await apiScope.register(membersRoutes, { prefix: '/api/v1/members' });
+    await apiScope.register(googleCalendarRoutes, { prefix: '/api/v1/integrations/google-calendar' });
     // Browser voice simulation with the LiveKit agent — see web-call.routes.ts.
     await apiScope.register(webCallRoutes, { prefix: '/api/v1/voice' });
   });
