@@ -4,7 +4,7 @@ import * as elevenlabs from '@livekit/agents-plugin-elevenlabs';
 import * as openai from '@livekit/agents-plugin-openai';
 import type * as silero from '@livekit/agents-plugin-silero';
 import { cartesiaOptions } from './testing/speech.js';
-import { createSonioxSTT } from './stt/soniox.stt.js';
+import { createSonioxSTT, withSettledPreflight } from './stt/soniox.stt.js';
 import { DeepdubTTS, deepdubOptions } from './tts/deepdub.tts.js';
 import type { Env } from '../../../config/env.js';
 
@@ -27,13 +27,13 @@ import type { Env } from '../../../config/env.js';
  */
 export function buildSTT(env: Env, vad: silero.VAD): sttBase.STT {
   if (env.STT_PROVIDER === 'soniox') {
-    // NOT WIRED UP — see withSettledPreflight in stt/soniox.stt.ts. The diagnosis there is
-    // correct and measured, but the Proxy implementation breaks AgentSession startup
-    // ("AgentSession is not running" before the greeting): the SDK's STT/SpeechStream use
-    // JS private fields, which throw when accessed through a Proxy. It needs a SUBCLASS, not a
-    // Proxy. Left in place, unused, so the next attempt starts from the analysis and not from
-    // scratch.
-    return createSonioxSTT(env);
+    const stt = createSonioxSTT(env);
+    // Under 'stt' turn detection LiveKit's preemptive generation never fires: its FINAL path is
+    // gated on vadBaseTurnDetection, and the PREFLIGHT path needs an event Soniox effectively
+    // never emits. withSettledPreflight promotes a settled interim to PREFLIGHT so the LLM drafts
+    // during the endpoint wait instead of after it. 'vad' already gets preemptive via the FINAL
+    // path, so it is left alone.
+    return resolveTurnDetection(env) === 'stt' ? withSettledPreflight(stt) : stt;
   }
   return buildOpenAISTT(env, vad);
 }

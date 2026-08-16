@@ -105,18 +105,20 @@ export function createSonioxSTT(env: Env): soniox.STT {
  * behind the endpoint wait.
  */
 export function withSettledPreflight(inner: soniox.STT): soniox.STT {
-  return new Proxy(inner, {
-    get(target, prop, receiver) {
-      if (prop === 'stream') {
-        return (...args: unknown[]) => {
-          const innerStream = (target.stream as (...a: unknown[]) => sttBase.SpeechStream)(...args);
-          return wrapSettledPreflight(innerStream);
-        };
-      }
-      const value = Reflect.get(target, prop, receiver);
-      return typeof value === 'function' ? value.bind(target) : value;
-    },
-  });
+  // Instance-level shadow of `stream`, NOT a Proxy. The first attempt at this used a Proxy over
+  // the STT and its SpeechStream, and it broke the agent outright — "AgentSession is not running"
+  // before the greeting — because the SDK's classes use JS private fields (`#private`), which
+  // throw when touched through a Proxy receiver. Assigning an own property here shadows the
+  // prototype method while `this` stays the real instance, so private fields keep working.
+  const originalStream = inner.stream.bind(inner);
+  (inner as unknown as { stream: (...a: unknown[]) => sttBase.SpeechStream }).stream = (
+    ...args: unknown[]
+  ) => {
+    const stream = originalStream(...(args as []));
+    patchQueueWithSettledPreflight(stream);
+    return stream;
+  };
+  return inner;
 }
 
 /** Extracts the primary alternative's text, or '' when the event carries none. */
@@ -124,47 +126,52 @@ function eventText(ev: sttBase.SpeechEvent): string {
   return ev.alternatives?.[0]?.text ?? '';
 }
 
-function wrapSettledPreflight(inner: sttBase.SpeechStream): sttBase.SpeechStream {
+/**
+ * Rewrites events on their way out of the plugin.
+ *
+ * EVERY event the Soniox plugin produces goes through `this.queue.put(...)` (its private `#put`,
+ * plugin dist/stt.js:216). `queue` is a plain AsyncIterableQueue held in a normal property, so
+ * patching `put` on that one object intercepts the whole event stream without touching the
+ * stream class itself. That is why this works where the Proxy did not.
+ */
+function patchQueueWithSettledPreflight(stream: sttBase.SpeechStream): void {
+  const holder = stream as unknown as {
+    queue?: { put: (ev: sttBase.SpeechEvent) => void; closed?: boolean };
+  };
+  const queue = holder.queue;
+  if (!queue || typeof queue.put !== 'function') {
+    // Plugin internals changed shape. Do nothing rather than crash the call: the cost is the
+    // lost overlap we are trying to win, not a dead agent.
+    console.warn('settled_preflight_disabled', JSON.stringify({ reason: 'queue_not_found' }));
+    return;
+  }
+
   let lastInterim: string | null = null;
   let alreadyFlagged = false;
+  const originalPut = queue.put.bind(queue);
 
-  const transform = (ev: sttBase.SpeechEvent): sttBase.SpeechEvent => {
+  queue.put = (ev: sttBase.SpeechEvent) => {
     // Any non-interim event ends the current settle window — the next turn starts fresh.
     if (ev.type !== sttBase.SpeechEventType.INTERIM_TRANSCRIPT) {
       lastInterim = null;
       alreadyFlagged = false;
-      return ev;
+      return originalPut(ev);
     }
 
     const text = eventText(ev).trim();
-    if (!text) return ev;
+    if (!text) return originalPut(ev);
 
     const settled = text === lastInterim;
     lastInterim = text;
 
     // Only the FIRST settled repeat is promoted. Later identical interims add nothing and would
-    // just burn preemptive retries that a genuinely new transcript should get.
+    // burn preemptive retries (maxRetries defaults to 2) that a genuinely new transcript should get.
     if (settled && !alreadyFlagged) {
       alreadyFlagged = true;
-      return { ...ev, type: sttBase.SpeechEventType.PREFLIGHT_TRANSCRIPT };
+      return originalPut({ ...ev, type: sttBase.SpeechEventType.PREFLIGHT_TRANSCRIPT });
     }
-    return ev;
+    return originalPut(ev);
   };
-
-  return new Proxy(inner, {
-    get(target, prop, receiver) {
-      if (prop === 'next') {
-        return async () => {
-          const res = await target.next();
-          if (res.done || res.value === undefined) return res;
-          return { done: false, value: transform(res.value) } as IteratorResult<sttBase.SpeechEvent>;
-        };
-      }
-      if (prop === Symbol.asyncIterator) return () => receiver;
-      const value = Reflect.get(target, prop, receiver);
-      return typeof value === 'function' ? value.bind(target) : value;
-    },
-  }) as sttBase.SpeechStream;
 }
 
 /** Splits the Whisper-style biasing prompt ("קורן, ClickScales, פגישה") into Soniox's term array. */
