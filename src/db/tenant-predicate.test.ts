@@ -35,36 +35,19 @@ const TENANT_SCOPED = [
 ];
 
 /**
- * Writes that do not currently carry a tenant predicate, with the reason each is tolerated.
+ * Writes that are allowed to have no tenant predicate, each with the reason.
  *
- * ALL of these update a row by its UUID primary key, obtained from a tenant-scoped read or a job
- * payload earlier in the same function. None is a live cross-tenant write: guessing a v4 uuid is
- * not an attack. They are on this list rather than fixed because every one of them lives in the
- * VOICE session's territory (`modules/channels/voice*`, `modules/calls/*` services, the
- * call-analysis worker) and this session does not edit those files — see the TERRITORY RULES in
- * CLAUDE.md.
- *
- * They are worth fixing when VOICE next touches them. The Monday webhook had exactly this shape,
- * was equally "safe because of how the id is obtained", and became an unauthenticated
- * cross-tenant write the moment the id started arriving in a request body.
+ * Empty is the goal. An entry here is a promise that the id being written can only ever have come
+ * from a tenant-scoped read — a promise nobody re-checks once it is written down, which is exactly
+ * how the Monday webhook stayed "safe" right up until the id started arriving in a request body.
  */
 const ACKNOWLEDGED: Array<{ file: string; reason: string }> = [
-  {
-    file: 'modules/calls/monitor-call.service.ts',
-    reason: 'VOICE territory — updates call_learnings by id from a row it just inserted',
-  },
-  {
-    file: 'modules/channels/voice/voice.routes.ts',
-    reason: 'VOICE territory — updates conversations by id resolved from the Retell call id',
-  },
-  {
-    file: 'modules/channels/voice-livekit/stt/shadow-stt.ts',
-    reason: 'VOICE territory — writes the shadow transcript by call_learnings id held in memory',
-  },
-  {
-    file: 'queues/workers/call-analysis.worker.ts',
-    reason: 'VOICE territory — marks a learning failed by the id carried in the BullMQ job',
-  },
+  // Empty, and worth keeping that way.
+  //
+  // It briefly held four entries — writes in the voice session's files that this session did not
+  // own. Once `feature/crm-automation` merged (2026-08-16) the territory split stopped applying and
+  // all four were fixed properly: two gained a tenant predicate, one turned out to already have
+  // one, and `shadow-stt.persist()` turned out to have no callers at all.
 ];
 
 function walk(dir: string, out: string[] = []): string[] {

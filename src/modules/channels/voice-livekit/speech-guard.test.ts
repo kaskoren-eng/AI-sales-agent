@@ -4,7 +4,7 @@ import { forceMasculineAddress, guardSpeech, guardStream, withFiller } from './s
 /**
  * These are the ACTUAL sentences the agent said to Koren on a real call. Not hypotheticals.
  */
-describe('speech guard — the Retell control token', () => {
+describe('speech guard — the silence control token', () => {
   it('never lets NO_RESPONSE_NEEDED reach the caller', () => {
     // She said this out loud, in English, to a Hebrew caller who had just asked her to hold on.
     const r = guardSpeech('NO_RESPONSE_NEEDED');

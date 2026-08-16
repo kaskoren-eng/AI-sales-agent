@@ -3,15 +3,16 @@
  * TWO VARIANTS by `buildSystemPrompt({ toolsEnabled })`:
  *
  *   toolsEnabled: false  →  the pre-Phase-4 prompt, verbatim. Still what every call gets when the
- *                           per-tenant gate (voice_engine + functions_enabled) says no. Still
- *                           carries the deploy blockers documented below.
+ *                           per-tenant gate (functions_enabled) says no. Still carries the deploy
+ *                           blockers documented below.
  *   toolsEnabled: true   →  Phase 4. The three REAL tools (check_calendar_availability,
- *                           book_meeting, end_call) replace the Retell-era names, booking follows
+ *                           book_meeting, end_call) replace the legacy names, booking follows
  *                           tool-enforced mechanics, and "קבעתי לך" is permitted — only after
  *                           book_meeting succeeds.
  *
  * ============================================================================================
- * THE NO-TOOLS VARIANT IS STILL NOT SAFE TO DEPLOY AS-IS. It was written for RETELL:
+ * THE NO-TOOLS VARIANT IS STILL NOT SAFE TO DEPLOY AS-IS. It was written for the previous
+ * voice platform, whose conventions our stack does not share:
  *
  * 1. IT TELLS HER TO CALL TOOLS THAT DO NOT EXIST in that mode.
  *      `end_call`, `check_availability_cal`, `book_appointment_cal`

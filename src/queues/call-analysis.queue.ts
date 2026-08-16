@@ -2,7 +2,7 @@ import type { Queue } from 'bullmq';
 
 /**
  * Two producers feed the call-analysis worker:
- *  - Retell/Twilio recording webhook → `recordingUrl` present → download + Whisper + GPT.
+ *  - Zadarma/Twilio recording webhook → `recordingUrl` present → download + Whisper + GPT.
  *  - LiveKit agent at call end → the transcript is ALREADY on the call_learnings row, so no
  *    recording/Whisper step: `source:'livekit'` + `learningId` (+ `conversationId` to finalize the
  *    dashboard conversation). Discriminated by `source`; the worker branches on it.
@@ -10,8 +10,8 @@ import type { Queue } from 'bullmq';
 export interface CallAnalysisJob {
   tenantId: string;
   learningId: string;
-  source?: 'retell' | 'livekit';
-  // Retell/Twilio path only:
+  source?: 'recording' | 'livekit';
+  // Recording path only:
   recordingUrl?: string;
   recordingSid?: string;
   durationSecs?: number;
@@ -28,7 +28,7 @@ export async function enqueueCallAnalysis(queue: Queue, data: CallAnalysisJob): 
 
 /**
  * LiveKit variant: analyze the transcript already stored on the call_learnings row and finalize the
- * conversation. Fewer retries than the Retell path — there is no flaky download, only an LLM call,
+ * conversation. Fewer retries than the recording path — there is no flaky download, only an LLM call,
  * and the transcript is safely persisted on the row either way.
  */
 export async function enqueueLiveKitCallAnalysis(

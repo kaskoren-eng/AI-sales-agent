@@ -8,12 +8,8 @@ import { ValidationError } from '../../shared/errors.js';
 import type { Database } from '../../db/client.js';
 import { tenants, leads } from '../../db/schema/index.js';
 import type { WhatsAppService } from '../../modules/channels/whatsapp/whatsapp.service.js';
-import type { VoiceService } from '../../modules/channels/voice/voice.service.js';
 import { evaluateSpend } from '../../modules/calls/spend-guard.js';
-import {
-  resolveVoiceEngine,
-  type LiveKitVoiceService,
-} from '../../modules/channels/voice-livekit/voice-livekit.service.js';
+import type { LiveKitVoiceService } from '../../modules/channels/voice-livekit/voice-livekit.service.js';
 import type { EmailService } from '../../modules/channels/email/email.service.js';
 import type { Env } from '../../config/index.js';
 import type { Redis } from 'ioredis';
@@ -32,8 +28,7 @@ interface WorkerDeps {
   flowExecutorQueue: Queue;
   deadLetterQueue?: Queue;
   whatsapp?: WhatsAppService;
-  voice?: VoiceService;
-  /** The LiveKit dialer. Used instead of `voice` when the tenant's voice_engine is 'livekit'. */
+  /** The LiveKit dialer — the only voice engine. Undefined when LiveKit isn't configured. */
   voiceLivekit?: LiveKitVoiceService;
   email?: EmailService;
   logger?: FastifyBaseLogger;
@@ -60,7 +55,7 @@ function interpolate(s: string, ctx: StepContext): string {
 }
 
 export function createFlowExecutorWorker(deps: WorkerDeps) {
-  const { db, env, redis, flowExecutorQueue, deadLetterQueue, whatsapp, voice, voiceLivekit, email, logger } = deps;
+  const { db, env, redis, flowExecutorQueue, deadLetterQueue, whatsapp, voiceLivekit, email, logger } = deps;
 
   const worker = new Worker<FlowExecutorJob>(
     'flow-executor',
@@ -181,7 +176,7 @@ export function createFlowExecutorWorker(deps: WorkerDeps) {
       }
 
       case 'make_call': {
-        // DO-NOT-CALL, checked FIRST — before engine selection, so it covers Retell and LiveKit
+        // DO-NOT-CALL, checked FIRST — before the dial, so it covers every call path
         // alike. A lead whose status is 'opted_out' (set by the voice agent's end_call tool when
         // the caller asks not to be contacted) must never be dialed again: Israeli spam law, not
         // a preference. This is the single choke point every outbound flow call passes through.
@@ -198,8 +193,7 @@ export function createFlowExecutorWorker(deps: WorkerDeps) {
           return {};
         }
 
-        // Which engine dials this lead? Per-tenant `settings.voice_engine`, default from env.
-        // This is the strangler-fig switch — see voice-livekit/voice-livekit.service.ts.
+        // Tenant settings drive the spend brake and the agent's tool gate below.
         const [engineRow] = await db
           .select({ settings: tenants.settings })
           .from(tenants)
@@ -229,18 +223,15 @@ export function createFlowExecutorWorker(deps: WorkerDeps) {
           return {};
         }
 
-        const engine = resolveVoiceEngine(engineRow?.settings, env);
-        const dialer = engine === 'livekit' ? voiceLivekit : voice;
-
-        if (!dialer) {
+        if (!voiceLivekit) {
           logger?.warn(
-            { event: 'flow_step_skip', tenantId: ctx.tenantId, stepIndex: ctx.stepIndex, engine },
+            { event: 'flow_step_skip', tenantId: ctx.tenantId, stepIndex: ctx.stepIndex },
             'Flow executor: Voice service not configured — skipping step',
           );
           return {};
         }
 
-        // Lead context — Retell takes it as dynamic variables, LiveKit as room metadata.
+        // Lead context — LiveKit takes it as room metadata.
         const leadContext: Record<string, string> = {};
         if (ctx.leadName) leadContext.name = ctx.leadName;
         if (ctx.leadEmail) leadContext.email = ctx.leadEmail;
@@ -291,17 +282,13 @@ export function createFlowExecutorWorker(deps: WorkerDeps) {
           logger?.warn({ err, leadId: ctx.leadId }, 'Monday enrichment before call failed — non-fatal');
         }
 
-        if (dialer === voiceLivekit && voiceLivekit) {
-          await voiceLivekit.initiateOutboundCall(ctx.leadPhone, ctx.tenantId, {
-            leadId: ctx.leadId,
-            name: leadContext.name,
-            email: leadContext.email,
-          });
-        } else {
-          await voice!.initiateOutboundCall(ctx.leadPhone, ctx.tenantId, leadContext);
-        }
+        await voiceLivekit.initiateOutboundCall(ctx.leadPhone, ctx.tenantId, {
+          leadId: ctx.leadId,
+          name: leadContext.name,
+          email: leadContext.email,
+        });
         logger?.info(
-          { event: 'outbound_call_placed', tenantId: ctx.tenantId, leadId: ctx.leadId, engine },
+          { event: 'outbound_call_placed', tenantId: ctx.tenantId, leadId: ctx.leadId },
           'Flow executor: outbound call placed',
         );
         return {};

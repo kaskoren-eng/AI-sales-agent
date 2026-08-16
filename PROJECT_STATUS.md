@@ -7,15 +7,14 @@
 
 ## Current Phase: Launch
 
-The voice engine migration is **done and live in production**. The work now is closing the launch gates:
-merging the two finished-but-unmerged workstreams behind the real-call gate, flipping the website's lead
-intake on, and getting through the Phase-6 verification layers.
+The voice engine migration is **done and live in production**. The work now is closing the launch
+gates: getting through the Phase-6 verification layers and flipping the website's lead intake on.
 
-Voice engine history: **ElevenLabs (POC, retired) → Retell (deprecated) → self-built LiveKit + Soniox + Cartesia (live since 2026-07-29)**. See `VOICE_MIGRATION_PLAN.md`.
+Voice engine history: **ElevenLabs (POC, retired) → Retell (deprecated, removed from the repo 2026-08-05) → self-built LiveKit + Soniox + Cartesia (live since 2026-07-29)**. See `VOICE_MIGRATION_PLAN.md`.
 
-> ⚠️ **Branch reality:** `master` is ~140 commits / 3 weeks behind (last commit 2026-07-10). Everything
-> described below from mid-July onward lives on feature branches; `feature/crm-automation` is the de-facto
-> backend/voice trunk. Merging is blocked on the real-call gates listed under Workstreams.
+> **Branch reality:** `main` is the trunk. `master` was retired and deleted in the Phase-0 cutover
+> (tagged `archive/master-2026-07-10`). `feature/crm-automation` — Workstreams B and C plus the
+> Retell removal — was merged into `main` on 2026-08-16.
 
 ---
 
@@ -27,10 +26,10 @@ Voice engine history: **ElevenLabs (POC, retired) → Retell (deprecated) → se
 | 2 | Core Channels & AI Engine | ✅ Complete |
 | 3 | Lead Intake & Automation Flows | ✅ Complete |
 | 4 | Integrations (CSV, Sheets, CRM) | ✅ Complete (Monday, Airtable, Sheets, CRM sync) |
-| 5 | Hardening, Observability & Tests | ✅ Complete (Sentry live, ~563 tests) |
+| 5 | Hardening, Observability & Tests | ✅ Complete (Sentry live, ~715 tests) |
 | 6 | SaaS Multi-tenancy & Dashboard | ✅ Complete for MVP (billing + self-serve onboarding deferred) |
-| 7 | Voice Engine Migration (Retell → LiveKit) | ✅ Live in production since 2026-07-29 (7.7 iteration loop not started) |
-| 8 | Operations & Launch | 🔄 In Progress (admin console ✅, metrics ✅, dashboard v5 ✅, website 🔄) |
+| 7 | Voice Engine Migration (Retell → LiveKit) | ✅ Live since 2026-07-29; legacy engine removed from the repo 2026-08-05 |
+| 8 | Operations & Launch | 🔄 In Progress (admin console ✅, metrics ✅, dashboard v5 ✅, accounts ✅, tenant isolation ✅, website 🔄) |
 
 ---
 
@@ -110,11 +109,11 @@ Everything needed to start building on top of.
 ## Phase 5 — Hardening, Observability & Tests ✅ Complete
 
 ### Done
-- [x] Fetch timeouts on all external APIs — UChat (10s), Retell / Google Calendar / Monday (15s) via `AbortSignal.timeout()`
+- [x] Fetch timeouts on all external APIs — UChat (10s), Google Calendar / Monday (15s) via `AbortSignal.timeout()`
 - [x] Dead Letter Queue (DLQ) — `src/queues/dead-letter.ts`; all main workers (message-processor, outbound-sender, flow-executor) move exhausted jobs to `dead-letter` queue
 - [x] Replay attack protection — `src/shared/webhook-timestamp.ts`; `isTimestampFresh()` on WhatsApp + lead-intake webhooks (5-min window)
 - [x] Per-tenant rate limiting — 200 req/min per tenant in API scope via `keyGenerator`
-- [x] Circuit breaker — `src/shared/circuit-breaker.ts`; UChat, Retell, LiveKit, Cartesia, Monday, Google Calendar, Trafft, Airtable each have their own breaker (5 failures → 30s cooldown → HALF_OPEN test)
+- [x] Circuit breaker — `src/shared/circuit-breaker.ts`; UChat, LiveKit, Cartesia, Monday, Google Calendar, Trafft, Airtable each have their own breaker (5 failures → 30s cooldown → HALF_OPEN test)
 - [x] Auth failure audit logging — every rejected auth logs `event: auth_failure` with `reason`, `ip`, `method`, `url` (never the credential)
 - [x] Tenant seed script — `scripts/seed-tenant.mjs` creates a tenant + prints a ready-to-use API key
 
@@ -182,14 +181,20 @@ Retell replaced by **LiveKit + Soniox STT + OpenAI LLM + Cartesia TTS**. Cut ove
 
 **Cutover-day bugs (found and fixed 2026-07-29):** `capture_lead_info` null-loop (gpt-5.4 sends `null`, the Zod schemas used `.optional()` → validation failed → silent retry loop, presenting as the agent going silent for 20–44s); calendar offering one slot per day instead of a range; WhatsApp E.164 normalization (Twilio 21211).
 
-**⚠️ Rollback is no longer real.** Flipping `tenants.settings.voice_engine` back to `'retell'` still executes, but Retell is deprecated and unmaintained — that path is dead, not a fallback. Fix forward.
+**Rollback plan: none, and that is now literal.** The Retell code was removed from the repo on
+2026-08-05 (merged to `main` 2026-08-16). Fix forward.
 
-**Success criteria (before decommissioning Retell) — status:**
+Note for anyone reading old docs: `tenants.settings.voice_engine` **still exists** — it was not
+deleted with the engine. It is no longer an engine selector; it is one half of the agent's
+fail-closed tool gate (tools run only when `voice_engine='livekit'` AND `functions_enabled=true`,
+see `voice-livekit/tools/tool-context.ts`). A tenant missing it gets a working call with no tools.
+
+**Success criteria (carried over from the decommissioning gate) — status:**
 - Latency P50 < 500ms ✅ / **P95 < 800ms ❌** (EOU-bound, see 7.2)
 - Blind test: 3+ humans can't reliably identify agent as bot — **not formally run**
 - 30 days of clean operation — clock started 2026-07-29, **not demonstrated**
 - Verified cost < $0.12/min — **never measured**
-- **10 real calls without incident ❌ — 4 so far, all Koren's own verification calls. No external inbound lead calls yet.**
+- **10 real calls without incident ❌ — 5 so far, all internal verification calls. No external inbound lead calls yet.**
 
 Verification layers 1–5 of `docs/phase-6-verification-checklist.md` are Koren's to run; Layer 0 is green. Layer 6 (10 real calls) is the outstanding gate.
 
@@ -200,8 +205,8 @@ Verification layers 1–5 of `docs/phase-6-verification-checklist.md` are Koren'
 | # | Workstream | Status |
 |---|---|---|
 | A | Voice tools + Tier-1 security (6 tools, injection defense, WhatsApp window/consent, toll-fraud caps) | ✅ Shipped |
-| B | **CRM automation** — B1 outcome→status→CRM push (Monday + Airtable), B2 GPT summary + captured facts | ✅ Built, 31 tests, **unmerged** on `feature/crm-automation`. **Merge gate:** one real call whose outcome lands in a connected CRM. B3 Fireberry not started; no config UI |
-| C | **Conversation state machine** — C1–C5: advisory stage machine + working memory, Hebrew stage lines, 3 reflexes (silence 2-strike nudge→hangup, barge-in analytics-only, voicemail behind `VOICE_AMD_ENABLED` default OFF), objection playbook, system-only end reasons, booking guardrails | ✅ Built, ~563 tests, **unmerged** on `feature/crm-automation`. Needs a real PSTN call to verify 4 behaviours: `UserStateChanged→'away'` fires on a live line, `OverlappingSpeech` emits in this cascade, AMD fires on real voicemail, and a `say()` nudge doesn't clip the caller |
+| B | **CRM automation** — B1 outcome→status→CRM push (Monday + Airtable), B2 GPT summary + captured facts | ✅ Merged to `main` 2026-08-16. **Still unverified end-to-end:** no real call has yet landed an outcome in a connected CRM. B3 Fireberry not started |
+| C | **Conversation state machine** — C1–C5: advisory stage machine + working memory, Hebrew stage lines, 3 reflexes (silence 2-strike nudge→hangup, barge-in analytics-only, voicemail behind `VOICE_AMD_ENABLED` default OFF), objection playbook, system-only end reasons, booking guardrails | ✅ Merged to `main` 2026-08-16. Still needs a real PSTN call to verify 4 behaviours: `UserStateChanged→'away'` fires on a live line, `OverlappingSpeech` emits in this cascade, AMD fires on real voicemail, and a `say()` nudge doesn't clip the caller |
 | C1 | Meeting reminders — DST-safe, quiet hours, per-tenant `reminders` settings (migration 0005) | ✅ Shipped |
 | D | Billing (SUMIT / Green Invoice) | ⏳ Not started. `billing_provider` key reserved only |
 
@@ -254,8 +259,6 @@ None of these are confirmed fixed.
 | `TWILIO_ACCOUNT_SID` | Voice (conference monitoring only) | ✅ Set |
 | `TWILIO_AUTH_TOKEN` | Voice (conference monitoring only) | ✅ Set |
 | `TWILIO_WHATSAPP_NUMBER` | WhatsApp (Twilio path — legacy) | — |
-| `RETELL_API_KEY` | Voice — current engine | ✅ Set |
-| `RETELL_AGENT_ID` | Voice — current engine | ✅ Set |
 | `ZADARMA_API_KEY` | Voice — SIP number / caller ID | ✅ Set |
 | `ZADARMA_API_SECRET` | Voice — SIP number / caller ID | ✅ Set |
 | `ZADARMA_PHONE_NUMBER` | Voice — the actual phone number | ✅ Set |

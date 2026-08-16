@@ -346,13 +346,9 @@ function CallDrawer({ call, onClose }: { call: CallSummary; onClose: () => void 
                 <Meta label={t('calls.drawer.duration')} value={formatDuration(call.duration_secs)} />
               </div>
 
-              {/* audio */}
-              <div>
-                <div style={secLabel}>{t('calls.drawer.audio')}</div>
-                <div style={{ ...CARD, background: 'var(--surface-sunken)', boxShadow: 'none', padding: '12px 14px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                  {data?.audio_available ? t('calls.drawer.audio') : t('calls.drawer.noAudio')}
-                </div>
-              </div>
+              {/* The audio section lived here. Recordings were streamed from Retell's API via
+                  GET /calls/:id/audio; both are gone, so this could only ever have rendered
+                  "no audio". LiveKit writes call_learnings.recording_url but nothing serves it. */}
 
               {/* outcome & analysis */}
               <div>

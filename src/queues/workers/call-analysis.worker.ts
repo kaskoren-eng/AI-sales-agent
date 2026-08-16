@@ -55,7 +55,7 @@ export function createCallAnalysisWorker(deps: WorkerDeps) {
       }
 
       const { tenantId, learningId, recordingUrl, durationSecs } = job.data;
-      if (!recordingUrl) throw new Error('call-analysis: recordingUrl required for the Retell path');
+      if (!recordingUrl) throw new Error('call-analysis: recordingUrl required for the recording path');
 
       // 1. Mark as transcribing
       await db
@@ -75,12 +75,6 @@ export function createCallAnalysisWorker(deps: WorkerDeps) {
         .set({ transcript, analysis, status: 'analyzed' })
         .where(and(eq(callLearnings.id, learningId), eq(callLearnings.tenantId, tenantId)));
 
-      // 5. Bust Retell dynamic-variables cache so the next call gets fresh learnings
-      const agentId = env.RETELL_AGENT_ID;
-      if (agentId) {
-        await redis.del(`retell:dynvars:${agentId}`);
-      }
-
       return { learningId, transcriptSegments: transcript.length };
     },
     {
@@ -91,10 +85,13 @@ export function createCallAnalysisWorker(deps: WorkerDeps) {
 
   worker.on('failed', (job, err) => {
     // Mark the learning record as failed
-    if (job?.data.learningId) {
+    if (job?.data.learningId && job.data.tenantId) {
       db.update(callLearnings)
         .set({ status: 'failed' })
-        .where(eq(callLearnings.id, job.data.learningId))
+        // Tenant-scoped like every other write to this table. The id is a uuid from our own job
+        // payload, so this is belt-and-braces — but a write with no tenant predicate is the shape
+        // that turned the Monday webhook into a cross-tenant write.
+        .where(and(eq(callLearnings.id, job.data.learningId), eq(callLearnings.tenantId, job.data.tenantId)))
         .catch(() => {});
     }
 

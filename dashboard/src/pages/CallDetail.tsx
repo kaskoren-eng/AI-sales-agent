@@ -683,35 +683,10 @@ export function CallDetail() {
         </div>
       </div>
 
-      {/* Audio player */}
-      {call.audio_available && (
-        <div
-          style={{
-            position: 'sticky',
-            bottom: '0',
-            backgroundColor: 'var(--surface-card)',
-            borderTop: '1px solid var(--border-default)',
-            padding: '12px 20px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            borderRadius: '12px',
-          }}
-        >
-          <Phone size={16} strokeWidth={1.5} style={{ color: 'var(--accent-fg)', flexShrink: 0 }} />
-          <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 600 }}>
-            Call Recording
-          </span>
-          <audio
-            controls
-            src={`/api/v1/calls/${id}/audio`}
-            style={{ flex: 1, height: '32px', minWidth: 0, colorScheme: 'dark' }}
-            aria-label="Call recording audio player"
-          >
-            Your browser does not support the audio element.
-          </audio>
-        </div>
-      )}
+      {/* The audio player lived here. It streamed GET /calls/:id/audio, which proxied the
+          recording out of Retell's API — so it went when Retell did. LiveKit calls do write a
+          `call_learnings.recording_url`, but nothing serves it yet; a player pointing at a dead
+          route is worse than no player. */}
     </div>
   )
 }

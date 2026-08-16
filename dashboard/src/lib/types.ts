@@ -66,7 +66,6 @@ export interface CallLearnings {
 export interface CallDetail extends CallSummary {
   transcript: TranscriptTurn[]
   analysis: Analysis | null
-  audio_available: boolean
   learnings: CallLearnings | null
 }
 

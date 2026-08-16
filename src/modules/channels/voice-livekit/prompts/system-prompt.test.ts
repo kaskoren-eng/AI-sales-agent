@@ -99,12 +99,13 @@ describe('Keren v2 — the call flow', () => {
 
 /**
  * ============================================================================================
- * BLOCKERS — the v2 prompt cannot go live until these are wired. It was written for RETELL.
+ * BLOCKERS — the v2 prompt cannot go live until these are wired. It was written for the
+ * previous voice platform.
  * ============================================================================================
  */
 describe('Keren v2 — DEPLOY BLOCKERS', () => {
   it('KNOWN (no-tools variant only): still instructs her to call tools that DO NOT EXIST in that mode', () => {
-    // The gate-closed prompt is the pre-Phase-4 one, Retell names and all. An LLM told to call a
+    // The gate-closed prompt is the pre-Phase-4 one, legacy tool names and all. An LLM told to call a
     // tool it has not been given does not fail cleanly: it improvises. The speech-guard is what
     // stands between that improvisation and the caller's ear in no-tools mode.
     expect(SYSTEM_PROMPT_HE).toMatch(/end_call/u);
@@ -113,7 +114,7 @@ describe('Keren v2 — DEPLOY BLOCKERS', () => {
   });
 
   it('KNOWN: contains template variables that NOTHING substitutes (both variants)', () => {
-    // Retell interpolates these. LiveKit does not. As shipped, the model literally reads
+    // The previous platform interpolated these. Our stack does not. As shipped, the model literally reads
     // "Lead name: {{lead_name}}" and will reason about it as though that were his name.
     for (const v of ['{{lead_name}}', '{{company_name}}', '{{industry}}', '{{opening_line}}', '{{call_direction}}']) {
       expect(SYSTEM_PROMPT_HE).toContain(v);
@@ -136,7 +137,7 @@ describe('Keren Phase 4 — tools-mode prompt', () => {
     }
   });
 
-  it('contains NO stale Retell-era tool names', () => {
+  it('contains NO stale legacy-era tool names', () => {
     expect(TOOLS_PROMPT).not.toMatch(/check_availability_cal/u);
     expect(TOOLS_PROMPT).not.toMatch(/book_appointment_cal/u);
   });

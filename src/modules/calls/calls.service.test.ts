@@ -128,9 +128,9 @@ function fakeRedis() {
   return { get: vi.fn(async () => null), set: vi.fn(async () => 'OK') } as unknown as Redis;
 }
 
-// No RETELL_API_KEY → the live-fetch branch is skipped entirely
+// Retell is gone; the transcript comes from `messages` and `call_learnings` only.
 function makeService(db: Database) {
-  return new CallsService({ db, redis: fakeRedis(), env: { RETELL_API_KEY: undefined } as unknown as Env });
+  return new CallsService({ db, redis: fakeRedis(), env: {} as unknown as Env });
 }
 
 // ── getCall + learnings ───────────────────────────────────────────────────

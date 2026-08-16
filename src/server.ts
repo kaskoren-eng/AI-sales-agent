@@ -27,7 +27,6 @@ import { createCallAnalysisWorker } from './queues/workers/call-analysis.worker.
 import { createMeetingRemindersWorker } from './queues/workers/meeting-reminders.worker.js';
 import { WhatsAppService } from './modules/channels/whatsapp/whatsapp.service.js';
 import { EmailService } from './modules/channels/email/email.service.js';
-import { VoiceService } from './modules/channels/voice/voice.service.js';
 import { LiveKitVoiceService } from './modules/channels/voice-livekit/voice-livekit.service.js';
 import webCallRoutes from './modules/channels/voice-livekit/web-call.routes.js';
 
@@ -35,7 +34,7 @@ import webCallRoutes from './modules/channels/voice-livekit/web-call.routes.js';
 import leadsModule from './modules/leads/index.js';
 import whatsappModule from './modules/channels/whatsapp/index.js';
 import emailModule from './modules/channels/email/index.js';
-import voiceModule from './modules/channels/voice/index.js';
+import zadarmaModule from './modules/channels/zadarma/index.js';
 import schedulingModule from './modules/scheduling/index.js';
 import integrationsModule from './modules/integrations/index.js';
 import leadIntakeModule from './modules/webhooks/index.js';
@@ -152,7 +151,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await webhookScope.register(whatsappModule, { prefix: '/webhooks/whatsapp' });
     await webhookScope.register(emailModule, { prefix: '/webhooks/email' });
-    await webhookScope.register(voiceModule, { prefix: '/webhooks/voice' });
+    // Zadarma recording notifications. Kept at the /webhooks/voice prefix: the URL is
+    // registered in the Zadarma portal, and changing it would silently break call analysis.
+    await webhookScope.register(zadarmaModule, { prefix: '/webhooks/voice' });
     await webhookScope.register(leadIntakeModule, { prefix: '/webhooks/leads' });
   });
 
@@ -223,16 +224,14 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   const whatsappService = new WhatsAppService(app);
   const emailService = new EmailService(app);
-  const voiceService = new VoiceService(app);
-
-  // The LiveKit dialer, used only by tenants whose settings.voice_engine is 'livekit'.
-  // Constructing it throws when LiveKit isn't configured, so stay undefined in that case and let
-  // the flow executor fall back to Retell rather than taking the whole app down at boot.
+  // The one and only dialer. Constructing it throws when LiveKit isn't configured, so stay
+  // undefined in that case rather than taking the whole app down at boot — the flow executor
+  // skips call steps instead. There is no second engine to fall back to.
   let voiceLivekitService: LiveKitVoiceService | undefined;
   try {
     voiceLivekitService = new LiveKitVoiceService(env, { db: app.db, redis: app.redis });
   } catch {
-    app.log.info('LiveKit voice not configured — outbound calls will use Retell');
+    app.log.warn('LiveKit voice not configured — outbound calls will be skipped');
   }
 
   const outboundSenderWorker = createOutboundSenderWorker({
@@ -251,7 +250,6 @@ export async function buildApp(): Promise<FastifyInstance> {
     flowExecutorQueue: app.queues.flowExecutor,
     deadLetterQueue: app.queues.deadLetter,
     whatsapp: whatsappService,
-    voice: voiceService,
     voiceLivekit: voiceLivekitService,
     email: emailService,
     logger: app.log,

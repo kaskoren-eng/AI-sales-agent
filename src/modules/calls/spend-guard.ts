@@ -232,30 +232,6 @@ export async function evaluateSpend(
 }
 
 /**
- * @deprecated Use `evaluateSpend` + `countDialAttempt`. Kept as a COMPATIBILITY SHIM, not as an
- * API.
- *
- * The VOICE session has unmerged work on `feature/crm-automation` (`refactor(voice): remove Retell
- * AI entirely`) which still calls this name. Deleting it outright would break their branch at
- * merge time, in a file this session does not own. This does the right thing for the one kind of
- * caller that remains on their branch — a dialer, which should both check and count — so a merge
- * without changes is still correct, just not ideal.
- *
- * Do not add new callers. A caller that is NOT the dialer wants `evaluateSpend` alone; using this
- * from a second place re-creates the double-count bug it was written to fix.
- */
-export async function checkDailySpendLimit(
-  deps: SpendGuardDeps,
-  tenantId: string,
-  settings: unknown,
-  now: Date = new Date(),
-): Promise<SpendDecision> {
-  const decision = await evaluateSpend(deps, tenantId, settings, now);
-  if (decision.allowed) await countDialAttempt(deps, tenantId, now);
-  return decision;
-}
-
-/**
  * COUNT one dial attempt. Call this EXACTLY ONCE per real attempt, from the code that dials.
  *
  * Deliberately counts attempts and not successes: the abuse this brake exists to stop is a burst

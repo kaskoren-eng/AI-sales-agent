@@ -1,3 +1,4 @@
+import { and, eq } from 'drizzle-orm';
 import { createHash, createHmac } from 'node:crypto';
 import { randomBytes } from 'node:crypto';
 import type { Database } from '../../db/client.js';
@@ -91,9 +92,7 @@ export class MonitorCallService {
       await this.db
         .update(callLearnings)
         .set({ conferenceName: zadarmaCallId })
-        .where(
-          (await import('drizzle-orm').then(({ eq }) => eq))(callLearnings.id, learning.id),
-        );
+        .where(and(eq(callLearnings.id, learning.id), eq(callLearnings.tenantId, tenantId)));
     }
 
     return {

@@ -2,7 +2,7 @@ import { stt as sttBase } from '@livekit/agents';
 import { AudioStream, type RemoteAudioTrack } from '@livekit/rtc-node';
 import * as openai from '@livekit/agents-plugin-openai';
 import * as silero from '@livekit/agents-plugin-silero';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { callLearnings, type ShadowSttTranscript } from '../../../../db/schema/call-learnings.js';
 import { sonioxCircuit, createSonioxSTT } from './soniox.stt.js';
 import type { Database } from '../../../../db/client.js';
@@ -118,7 +118,13 @@ export class ShadowSTT {
    * Returns rather than throws on failure: a shadow-mode write that fails must not take down the
    * agent's own shutdown path, which has real work to do (Phase 4: the transcript, the booking).
    */
-  async persist(db: Database, callLearningId: string): Promise<void> {
+  /**
+   * NOTE: currently unused. The live path writes the shadow transcript through
+   * `report.attachShadow(shadow.snapshot())` in agent.ts, which lands it in the same column as
+   * part of one insert. Kept for direct persistence, and tenant-scoped so reviving it cannot
+   * reintroduce an unscoped write.
+   */
+  async persist(db: Database, tenantId: string, callLearningId: string): Promise<void> {
     this.#stopped = true;
     try {
       this.#stream?.close();
@@ -133,7 +139,7 @@ export class ShadowSTT {
       await db
         .update(callLearnings)
         .set({ shadowSttTranscript: this.snapshot() })
-        .where(eq(callLearnings.id, callLearningId));
+        .where(and(eq(callLearnings.id, callLearningId), eq(callLearnings.tenantId, tenantId)));
     } catch (err) {
       // Nothing left to do but say so. Losing shadow data is an acceptable loss; failing the call
       // is not.

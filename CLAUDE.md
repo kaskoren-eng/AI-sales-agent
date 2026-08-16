@@ -102,7 +102,7 @@ The voice engine migration is **complete and live in production since 2026-07-29
 
 ### The voice stack, as built
 
-`src/modules/channels/voice-livekit/` — Zadarma SIP → LiveKit → **Soniox `stt-rt-v5`** (STT) → OpenAI `gpt-5.4` (LLM) → **Cartesia `sonic-3`** (TTS). Per-tenant `voice_engine` flag in `tenants.settings` (`'retell'` | `'livekit'`, env default still `'retell'`).
+`src/modules/channels/voice-livekit/` — Zadarma SIP → LiveKit → **Soniox `stt-rt-v5`** (STT) → OpenAI `gpt-5.4` (LLM) → **Cartesia `sonic-3`** (TTS). `tenants.settings.voice_engine` survives, but NOT as an engine selector — LiveKit is the only engine. It is now one half of the agent's fail-closed tool gate: tools run only when `voice_engine='livekit'` AND `functions_enabled=true` (see `tools/tool-context.ts`). A tenant without it gets a working call with no tools.
 
 Two divergences from the original plan that trip people up: **STT is Soniox, not OpenAI Realtime** (semantic WER 4.3% vs 34.9% on real Hebrew calls — don't "fix" it back), and **DeepDub is a fully built TTS alternative behind `VOICE_TTS_PROVIDER`** that is deliberately not the default despite winning a blind A/B 6:1.
 
@@ -142,13 +142,13 @@ Two divergences from the original plan that trip people up: **STT is Soniox, not
 - **ai-engine** is a service module (no routes) — consumed by channel workers and lead qualification
 - All DB tables have `tenant_id` — always filter by it, never skip tenant isolation
 - **Dead Letter Queue:** all 3 main workers move exhausted jobs to `dead-letter` queue
-- **Circuit breakers:** UChat, Retell, LiveKit, Cartesia, Monday, Google Calendar, Trafft, Airtable each have their own breaker (5 failures → 30s cooldown)
+- **Circuit breakers:** UChat, LiveKit, Cartesia, Monday, Google Calendar, Trafft, Airtable each have their own breaker (5 failures → 30s cooldown)
 
 ## DB Schema (7 tables)
 
 `tenants`, `leads`, `conversations`, `messages`, `scheduled_calls`, `import_jobs`, `call_learnings`
 
-- `call_learnings` — stores call recordings (LiveKit; legacy Twilio conference monitoring / Retell), Whisper transcripts, GPT sales analysis, outcome labels (`won`/`lost`/`neutral`)
+- `call_learnings` — stores call recordings (LiveKit; legacy Twilio conference monitoring), Whisper transcripts, GPT sales analysis, outcome labels (`won`/`lost`/`neutral`)
 
 ## Workers (6)
 
@@ -156,7 +156,7 @@ Two divergences from the original plan that trip people up: **STT is Soniox, not
 - `outbound-sender` — sends WhatsApp / Email outbound messages
 - `flow-executor` — runs multi-step automation flows with delays
 - `csv-import` — bulk lead creation from uploaded CSVs
-- `call-analysis` — downloads call recording → Whisper transcription → GPT sales analysis → injects learnings into the voice-livekit system prompt. Also the hook point for CRM sync (Workstream B)
+- `call-analysis` — downloads call recording → Whisper transcription → GPT sales analysis → injects learnings into the voice-livekit system prompt. Also the hook point for CRM sync
 - `meeting-reminders` — dispatches reminders before scheduled calls; DST-safe, quiet-hours aware, per-tenant `reminders` settings (migration 0005)
 
 ## Modules
@@ -164,17 +164,17 @@ Two divergences from the original plan that trip people up: **STT is Soniox, not
 - `leads` — CRUD, status workflow, score, manual flow trigger. `GET /:id/timeline` returns lead + conversations + messages + scheduled_calls in one call (consumed by the dashboard Lead Detail page at `/leads/:id`)
 - `channels/whatsapp` — UChat inbound/outbound, signature verification, 24h window fallback
 - `channels/email` — Resend inbound/outbound, svix signature verification
-- `channels/voice` — **[deprecated — NOT a rollback path]** Zadarma + Retell AI + Cartesia; outbound call initiation, learnings injection via Retell dynamic variables. The code is still on disk and the `voice_engine` flag still flips, but Retell is unmaintained here — fix forward, don't roll back. Twilio retained for the WhatsApp bridge and conference-call monitoring.
-- `channels/voice-livekit` — **[LIVE in production since 2026-07-29]** Self-built pipeline: Zadarma SIP inbound trunk → LiveKit Agents (Node.js SDK) → **Soniox `stt-rt-v5`** STT → OpenAI `gpt-5.4` LLM → **Cartesia `sonic-3`** TTS (DeepDub adapter available behind `VOICE_TTS_PROVIDER`). Six agent tools, conversation state machine + reflexes, speech-guard, compliance (recording notice + AI disclosure), per-call `CallReport`, browser web-call path for the dashboard Simulator. Enabled per tenant via `tenants.settings.voice_engine='livekit'`. Reuses `google-calendar.provider.ts`, `ai-engine.service.ts`, `SettingsService`, `CallAnalysisService`, `scheduled_calls` and `call_learnings`.
-- `scheduling` — Google Calendar (default provider, service account + Domain-Wide Delegation), Trafft provider also available; slots query, booking, cancel. ⚠️ **Known gap:** there is no `GET /scheduling/bookings` list endpoint, but the dashboard Calendar page calls one — it 404s today.
-- `integrations` — Monday.com (sync/push/webhook), Airtable, CSV import, Google Sheets, `crm-sync.service.ts` (post-call outcome + summary push, per-tenant `crm_sync`). *(Nango was removed.)*
+- `channels/voice-livekit` — **the only voice engine, live in production since 2026-07-29.** Zadarma SIP inbound trunk → LiveKit Agents (Node.js SDK) → **Soniox `stt-rt-v5`** STT → OpenAI `gpt-5.4` LLM → **Cartesia `sonic-3`** TTS (DeepDub adapter available behind `VOICE_TTS_PROVIDER`). Six agent tools, conversation state machine + reflexes, speech-guard, compliance (recording notice + AI disclosure), per-call `CallReport`, browser web-call path for the dashboard Simulator. Reuses `google-calendar.provider.ts`, `ai-engine.service.ts`, `SettingsService`, `CallAnalysisService`, `scheduled_calls` and `call_learnings`.
+- `channels/zadarma` — Zadarma recording-notification webhooks at `/webhooks/voice/zadarma`, feeding `call_learnings`. Engine-independent; Twilio retained for the WhatsApp bridge and conference monitoring.
+- `scheduling` — Google Calendar (default provider, service account + Domain-Wide Delegation), Trafft provider also available; slots query, booking, cancel, and `GET /scheduling/bookings` (tenant-scoped, upcoming-first — consumed by the dashboard Bookings page).
+- `integrations` — Monday.com (sync/push/webhook), Airtable, CSV import, Google Sheets, `crm-sync.service.ts` (post-call outcome + summary push, per-tenant `crm_sync`). *(Nango was removed.)* Airtable and Monday are self-service from the dashboard Integrations page; the global `AIRTABLE_*` env credentials are ClickScales' own and only `PLATFORM_TENANT_ID` may fall back to them.
 - `settings` — per-tenant settings read/write, business profile
 - `flows` — flow definitions consumed by the flow-executor worker
 - `metrics` — `GET /api/v1/metrics/summary?range=` — Overview KPIs, pipeline, quality, trend. Consumed by the dashboard Overview page.
-- `webhooks` — Meta Lead Ads, generic lead intake
-- `tenants` — **self-service only** now (`/me` + self-guarded `/:id`). Cross-tenant powers moved to `admin`. `PATCH /me` added (name + settings). A tenant can no longer read/mutate another tenant or create tenants.
-- `admin` — **operator console (super-admin, cross-tenant).** Gated by `ADMIN_API_KEY` env (unset → every `/api/v1/admin/*` route 503s; the console is opt-in). Own scope in `server.ts` (NOT the per-tenant `authenticate` hook), IP-rate-limited, constant-time key check. Endpoints: `GET /overview` (system KPIs), `GET /tenants` (rollup), `GET /tenants/:id` (deep stats/usage), `POST /tenants` (create), `PATCH /tenants/:id` (rename / suspend via `isActive`), `POST /tenants/:id/rotate-key`. Frontend at `/admin/*` (separate shell + admin-key gate, `dashboard/src/pages/admin/**`). No schema change (reuses `tenants.isActive`). New env key: `ADMIN_API_KEY` (in `.env.example`). **MVP** — the Ops & health pillar (queue depths, DLQ, breaker states), real admin accounts and an operator audit log are all deferred.
-- `calls` — list/detail/audio proxy. Serves both legacy Retell calls and LiveKit calls (outbound, inbound and web-call; web-call rooms use a placeholder "Web simulator" lead since the list inner-joins leads)
+- `webhooks` — Meta Lead Ads, generic lead intake, and the Monday webhook at a **signed per-tenant URL** (`/webhooks/leads/monday/<tenantId>.<hmac>` — see `webhook-tokens.ts`; the old unsigned URL returns 410).
+- `tenants` — **self-service only** now (`/me` + self-guarded `/:id`). Cross-tenant powers moved to `admin`. Settings are written one classified section at a time via `PATCH /me/settings/:namespace` and redacted on read — see `settings-policy.ts`. A tenant can no longer read/mutate another tenant or create tenants.
+- `admin` — **operator console (super-admin, cross-tenant).** Gated by `ADMIN_API_KEY` env (unset → every `/api/v1/admin/*` route 503s; the console is opt-in). Own scope in `server.ts` (NOT the per-tenant `authenticate` hook), IP-rate-limited, constant-time key check. Endpoints: `GET /overview` (system KPIs), `GET /tenants` (rollup), `GET /tenants/:id` (deep stats/usage), `POST /tenants` (create), `PATCH /tenants/:id` (rename / suspend via `isActive`), `POST /tenants/:id/rotate-key`. Frontend at `/admin/*` (separate shell + admin-key gate, `dashboard/src/pages/admin/**`). No schema change (reuses `tenants.isActive`). New env key: `ADMIN_API_KEY` (in `.env.example`). **MVP** — the Ops & health pillar (queue depths, DLQ, breaker states) is deferred; the operator audit log now exists (`audit_events`).
+- `calls` — list/detail. Serves LiveKit calls (outbound, inbound and web-call; web-call rooms use a placeholder "Web simulator" lead since the list inner-joins leads) plus historical rows from the retired engine, rendered from the DB. **No audio proxy** — `GET /:id/audio` streamed recordings out of Retell's API and went with it; LiveKit writes `call_learnings.recording_url` but nothing serves it yet.
 - `calls/monitor` — create Twilio conference calls for monitoring, label outcomes
 
 ## Frontend
