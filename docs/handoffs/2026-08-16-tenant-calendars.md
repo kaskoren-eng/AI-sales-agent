@@ -78,15 +78,48 @@ They only ever were one tenant's; they were just being treated as a default.
 Note this compounds with the DID-routing handoff: both migrations and both config steps want doing
 before the next agent deploy.
 
+## Hardening pass — because the calendar is mandatory, not optional
+
+A sales agent that cannot book a meeting has not done its job, so the two SILENT failure modes were
+closed:
+
+**1. A connection that was never really valid.** Storing tokens proves only that Google accepted an
+authorisation code. It does not prove we can read a calendar — the consent screen lets a user untick
+individual permissions, and the account may have no accessible calendar. Both produce a dashboard
+saying "Connected" and a booking that fails mid-call in front of a lead.
+
+`completeConnection` now makes one real API call (`calendarList.get`) **before** storing anything,
+and refuses the connection if it fails. Storing before verifying would be worse than not connecting
+at all, because it silences the "connect your calendar" prompt. Refusing is cheap: `prompt=consent`
+means every reconnect issues a fresh refresh token, so it costs one more click, not a lost grant.
+
+**2. A connection that stopped being valid.** `isInvalidGrant()` now recognises the four shapes
+googleapis throws it in, and `timedTool` — the seam EVERY calendar tool passes through — marks the
+connection revoked when it sees one. Whichever tool trips over the dead grant first, the dashboard
+learns about it and flips to "Needs reconnect". It is fire-and-forget: bookkeeping must never turn a
+failed booking into a failed call.
+
+Deliberately narrow: a rate limit or a backend error must NOT mark a connection revoked. Telling a
+customer to reconnect a healthy calendar teaches them the warning is noise, so the real one gets
+ignored too. Tested both ways.
+
+A revoked connection then reads as no connection (`get()` filters on `revokedAt IS NULL`), so the
+tenant fails closed to a tool-less call rather than to somebody else's calendar.
+
+9 more tests (781 total).
+
 ## Still open
 
-- **No real booking has been made through an OAuth connection.** The Phase 4 gate is: a second
-  tenant's OAuth calendar receives a booking while ClickScales' does not.
-- **The OAuth path has not been exercised against Google at all** — no client exists yet. The
-  token-exchange and refresh code is written against the googleapis contract and covered by unit
-  tests with the network stubbed, which is not the same as having worked once.
-- **`calendarId` defaults to `primary`** and there is no picker. A tenant who books into a
-  secondary calendar needs `PUT /integrations/google-calendar/calendar` by hand for now.
-- **Revocation is never detected.** `markRevoked` exists and nothing calls it — an `invalid_grant`
-  from Google during a call currently just fails the booking. Wiring it is what makes the
-  "needs reconnect" badge appear on its own rather than only after a manual disconnect.
+- **No real booking has been made through an OAuth connection**, and the OAuth path has still never
+  touched Google — no client exists yet. The code is written against the googleapis contract and
+  covered by unit tests with the network stubbed. Verify-on-connect means the FIRST customer to
+  click Connect will find out immediately rather than on their first call, which is the point, but
+  it is not the same as having worked once.
+- **`calendarId` defaults to `primary`** and there is no picker. A tenant who books into a secondary
+  calendar needs `PUT /integrations/google-calendar/calendar` by hand for now.
+- **Nobody is alerted when a live tenant's calendar dies.** Revocation logs loudly and shows in that
+  tenant's dashboard, but for a mandatory dependency an operator email is probably warranted — the
+  `sendAlert` machinery in `spend-guard.ts` is the obvious model. Left undone because who gets
+  emailed, and whether the customer is emailed too, is Koren's call.
+- **No operator-side view of which tenants lack a calendar.** The admin console shows tenant stats;
+  calendar status is not among them.

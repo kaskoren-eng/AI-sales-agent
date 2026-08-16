@@ -153,3 +153,51 @@ describe('two tenants, one process', () => {
     expect(b?.calendarId).toBe('other@example.com');
   });
 });
+
+describe('revocation is noticed the moment a tool trips over it', () => {
+  it('an invalid_grant from any calendar tool marks the connection revoked', async () => {
+    // `timedTool` is the seam EVERY calendar tool goes through, which is why the hook lives there
+    // rather than in book_meeting: whichever tool hits the dead grant first, the dashboard learns
+    // about it. Without this the customer revokes us, bookings stop, the card still says
+    // "Connected", and nobody finds out until a diary is empty.
+    const { timedTool } = await import('./tool-context.js');
+    const onCalendarRevoked = vi.fn();
+    const rt = {
+      report: { recordToolCall: vi.fn() },
+      onCalendarRevoked,
+    } as never;
+
+    await expect(
+      timedTool(rt, 'book_meeting', {}, async () => {
+        throw new Error('invalid_grant: Token has been expired or revoked.');
+      }),
+    ).rejects.toThrow(/invalid_grant/);
+
+    expect(onCalendarRevoked).toHaveBeenCalledTimes(1);
+  });
+
+  it('a transient calendar failure does NOT mark it revoked', async () => {
+    // Telling a customer to reconnect a healthy calendar is worse than saying nothing: it teaches
+    // them the warning is noise, so the real one gets ignored too.
+    const { timedTool } = await import('./tool-context.js');
+    const onCalendarRevoked = vi.fn();
+    const rt = { report: { recordToolCall: vi.fn() }, onCalendarRevoked } as never;
+
+    await expect(
+      timedTool(rt, 'check_calendar_availability', {}, async () => {
+        throw new Error('Backend Error');
+      }),
+    ).rejects.toThrow('Backend Error');
+
+    expect(onCalendarRevoked).not.toHaveBeenCalled();
+  });
+
+  it('a successful tool call never touches it', async () => {
+    const { timedTool } = await import('./tool-context.js');
+    const onCalendarRevoked = vi.fn();
+    const rt = { report: { recordToolCall: vi.fn() }, onCalendarRevoked } as never;
+
+    await timedTool(rt, 'book_meeting', {}, async () => 'ok');
+    expect(onCalendarRevoked).not.toHaveBeenCalled();
+  });
+});

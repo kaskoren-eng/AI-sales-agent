@@ -69,6 +69,36 @@ export function buildConsentUrl(config: GoogleOAuthConfig, state: string): strin
   });
 }
 
+/**
+ * Does this error mean the GRANT is dead, as opposed to the request having failed?
+ *
+ * Google says `invalid_grant` when the customer revoked us in their account settings, changed
+ * their password, deleted the Google account, or the refresh token expired through disuse. It is
+ * the one calendar error that will never succeed on retry and that the customer alone can fix.
+ *
+ * Distinguishing it matters because the two failure modes need opposite responses: a 500 or a rate
+ * limit should be retried and forgotten, while this one must surface in the dashboard as
+ * "reconnect" — otherwise bookings simply stop and the first anyone hears of it is a customer
+ * asking why their diary is empty.
+ */
+export function isInvalidGrant(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as {
+    message?: string;
+    response?: { data?: { error?: string } };
+    // googleapis surfaces the OAuth error body in a few shapes depending on where it threw.
+    data?: { error?: string };
+    error?: string | { message?: string };
+  };
+  const candidates = [
+    e.message,
+    e.response?.data?.error,
+    e.data?.error,
+    typeof e.error === 'string' ? e.error : e.error?.message,
+  ];
+  return candidates.some((value) => typeof value === 'string' && value.includes('invalid_grant'));
+}
+
 export interface StoredConnection {
   tenantId: string;
   accountEmail: string | null;
@@ -116,6 +146,33 @@ export class GoogleCalendarConnectionService {
     } catch {
       // Cosmetic — the dashboard shows "connected" without naming the account. Never fail the
       // connection over a label.
+    }
+
+    /**
+     * PROVE THE GRANT BEFORE STORING IT.
+     *
+     * Storing tokens only proves Google accepted an authorisation code. It does not prove we can
+     * read the calendar — the scopes may have been trimmed on the consent screen (Google lets a
+     * user untick individual permissions), or the account may have no accessible calendar at all.
+     * Both produce a connection that shows "Connected" in the dashboard and fails on the first
+     * real booking, mid-call, in front of a lead.
+     *
+     * So we make one real API call now. It costs a round trip at connect time and converts
+     * "we saved a token" into "we watched it work".
+     *
+     * Verification happens BEFORE the insert on purpose: a connection that cannot read the
+     * calendar is worse than no connection, because it silences the dashboard's "connect your
+     * calendar" prompt. Retrying is cheap — `prompt=consent` means every reconnect issues a fresh
+     * refresh token, so refusing costs the customer one more click, not a lost grant.
+     */
+    try {
+      await google.calendar({ version: 'v3', auth: client }).calendarList.get({ calendarId: 'primary' });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `Connected to Google, but the calendar could not be read (${detail}). ` +
+          'Make sure you allowed calendar access on the consent screen, then try again.',
+      );
     }
 
     const now = new Date();

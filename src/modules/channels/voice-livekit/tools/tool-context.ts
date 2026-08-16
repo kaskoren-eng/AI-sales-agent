@@ -11,6 +11,7 @@ import {
 } from '../../../scheduling/providers/google-calendar.provider.js';
 import {
   GoogleCalendarConnectionService,
+  isInvalidGrant,
   toProviderAuth,
 } from '../../../integrations/google-calendar/google-calendar.connection.js';
 import type { CallReport, ToolCallLog } from '../call-report.js';
@@ -97,6 +98,14 @@ export interface ToolRuntimeContext {
   callAnalysisQueue: Queue | null;
   /** Set by book_meeting on success; cleared never (one meeting per call). */
   lastBooking: LastBooking | null;
+  /**
+   * Called when a calendar tool fails because the tenant's Google grant is dead (`invalid_grant`).
+   *
+   * Fire-and-forget by contract: marking the connection revoked is bookkeeping for the dashboard,
+   * and must never turn a failed booking into a failed CALL. Undefined for the platform tenant,
+   * whose service account cannot be revoked by a customer.
+   */
+  onCalendarRevoked?: () => void;
   /** The advisory conversation state machine (stage + working memory + situations). The SAME
    * instance lives on the agent instance too — tools advance it via onToolCall / read it for
    * guardrails; the agent advances it on turns and reflex events. `undefined` when the advisory
@@ -598,6 +607,27 @@ export async function buildToolRuntime(
       remindersQueue,
       callAnalysisQueue,
       lastBooking: null,
+      // Only an OAuth grant can be revoked BY THE CUSTOMER. The platform service account fails for
+      // other reasons, and marking it "revoked" would put a reconnect prompt in ClickScales' own
+      // dashboard for a connection that has no connect button.
+      ...(calendar.source === 'tenant_oauth'
+        ? {
+            onCalendarRevoked: () => {
+              console.error(
+                'gcal_grant_revoked',
+                JSON.stringify({ tenantId: identity.tenantId, calendarId: calendar.calendarId }),
+              );
+              void new GoogleCalendarConnectionService(connection.db, env.ENCRYPTION_KEY)
+                .markRevoked(identity.tenantId)
+                .catch((err) =>
+                  console.error(
+                    'gcal_mark_revoked_failed',
+                    err instanceof Error ? err.message : String(err),
+                  ),
+                );
+            },
+          }
+        : {}),
       callState: opts.callState,
     },
   };
@@ -653,6 +683,11 @@ export async function timedTool<T>(
     return result;
   } catch (err) {
     finish(rt, entry, startedAt, false, err instanceof Error ? err.message : String(err));
+    // EVERY calendar tool comes through here, which makes this the one place that sees a dead
+    // grant regardless of which tool tripped over it. Without this, a customer who revokes us in
+    // their Google settings gets bookings that silently stop working: the agent keeps trying, the
+    // dashboard keeps saying "Connected", and the first anyone hears of it is an empty diary.
+    if (isInvalidGrant(err)) rt.onCalendarRevoked?.();
     throw err;
   }
 }
