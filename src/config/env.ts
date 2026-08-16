@@ -272,14 +272,25 @@ const envSchema = z.object({
   // How long the caller must stop producing new words before we draft a reply from what they have
   // said so far. VOICE_TURN_DETECTION=stt only — see stt/soniox.stt.ts withPausePreflight.
   //
-  // This is the hit-rate lever for preemptive generation, and preemptive generation is the ONLY
-  // route to sub-1s replies: end-of-turn + LLM + TTS run serially at ~1.47s (measured), so the
-  // reply has to be written DURING the end-of-turn wait, not after it.
+  // DEFAULT 0 = OFF, because against Soniox this cannot win, and the reason is worth knowing
+  // before anyone turns it back on.
   //
-  // Lower = drafts start sooner and more often, at the cost of drafts the caller's next word
-  // throws away (each is one LLM call). Higher = fewer wasted drafts, less overlap won. 0 disables
-  // the trigger entirely, which puts `stt` mode back to having no preemptive generation at all.
-  VOICE_PREEMPTIVE_PAUSE_MS: z.coerce.number().int().nonnegative().default(200),
+  // A preemptive draft survives only if `preemptive.info.newTranscript === userMessage.textContent`
+  // — a strict string equality against the committed transcript (agent_activity.js:1711). The
+  // Soniox plugin builds an INTERIM as `finalTokens + nonFinalTokens` and the FINAL as
+  // `finalTokens` alone (_internal.js:211). So a draft started from an interim is, by definition,
+  // built on tokens Soniox has not committed to and will still rewrite — most visibly by adding
+  // the closing punctuation. Measured on a real call at 200ms: 6 drafts started, 6 discarded,
+  // 0 used, ~6 LLM calls paid for and nothing heard by the caller.
+  //
+  // This is structural, not a tuning problem: no pause length makes non-final tokens final. The
+  // route that CAN work is Soniox's own PREFLIGHT, which it emits when every token is finalised
+  // and the endpoint has not fired yet — see SONIOX_MAX_ENDPOINT_DELAY_MS, which is what opens
+  // that window.
+  //
+  // Kept, not deleted: the mechanism is sound against an STT whose interims are stable, and it is
+  // covered by tests. It is the trigger's premise that Soniox violates.
+  VOICE_PREEMPTIVE_PAUSE_MS: z.coerce.number().int().nonnegative().default(0),
   // How loud a sound must be before Silero calls it speech. THE lever for phone lines: a phone
   // is never digitally silent (hiss, comfort noise), so at the default 0.5 the VAD keeps hearing
   // "speech" and the end-of-turn silence timer never fires — measured 1030ms on a real call even

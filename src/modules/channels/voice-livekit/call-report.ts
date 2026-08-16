@@ -158,6 +158,19 @@ export interface CallReportJson {
     llmTtftMedianMs: number | null;
     ttsTtfbMedianMs: number | null;
     /**
+     * Preemptive drafts the SDK threw away — LLM calls paid for and never heard.
+     *
+     * A draft survives only if `preemptive.info.newTranscript === userMessage.textContent`
+     * (agent_activity.js:1711) — a STRICT string equality against the committed transcript. The
+     * Soniox plugin builds an interim as `finalTokens + nonFinalTokens` but the FINAL as
+     * `finalTokens` alone, so a draft started from an interim carries text Soniox has not
+     * committed to yet and almost never matches: on 2026-08-16, 6 drafts, 6 discarded, 0 used.
+     *
+     * If this is non-zero and `deadAir` is not falling, drafting is costing money and buying
+     * nothing. Both numbers have to be read together.
+     */
+    draftsDiscarded: number;
+    /**
      * Sum of the three medians: the worst case, if no stage overlapped any other.
      *
      * NOT WHAT THE CALLER HEARS, and it has been read that way. It is a synthetic figure built
@@ -409,9 +422,16 @@ export class CallReport {
     const eou = this.#metrics
       .map((m) => m.endOfUtteranceDelayMs)
       .filter((v): v is number => typeof v === 'number' && v > 0);
+    // -1 is LiveKit's sentinel for a generation that was CANCELLED before its first token — a
+    // preemptive draft the caller's next word invalidated. Averaging those in does not measure a
+    // fast LLM, it measures a wasted one, and it drags the median toward zero in exactly the
+    // situation where the caller is waiting longest. It reported 314ms on a call whose real
+    // time-to-first-token was 820-950ms on every turn that actually produced speech, and I read
+    // that as the fix working. Cancelled drafts are counted separately, as `draftsDiscarded`.
     const ttft = this.#metrics
       .map((m) => m.ttftMs)
-      .filter((v): v is number => typeof v === 'number');
+      .filter((v): v is number => typeof v === 'number' && v >= 0);
+    const draftsDiscarded = this.#metrics.filter((m) => m.ttftMs === -1).length;
     const ttfb = this.#metrics
       .map((m) => m.ttfbMs)
       .filter((v): v is number => typeof v === 'number');
@@ -460,6 +480,7 @@ export class CallReport {
         fragmentedTurns,
         duplicateReplies,
         promptCacheHitPct,
+        draftsDiscarded,
         endOfTurnMedianMs: eouMed,
         llmTtftMedianMs: ttftMed,
         ttsTtfbMedianMs: ttfbMed,

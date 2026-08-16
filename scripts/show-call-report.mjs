@@ -82,6 +82,11 @@ console.log(`  LLM first token  ${bar(s.llmTtftMedianMs)}  ${ms(s.llmTtftMedianM
 console.log(`  TTS first audio  ${bar(s.ttsTtfbMedianMs)}  ${ms(s.ttsTtfbMedianMs)}   how long until she starts speaking`);
 console.log(`  ${'-'.repeat(60)}`);
 console.log(`  serial total     ${' '.repeat(20)}  ${ms(s.worstCaseMs)}   if no stage overlapped another`);
+if (s.draftsDiscarded > 0) {
+  console.log(`\n  drafts thrown away  ${s.draftsDiscarded}   <-- LLM calls paid for, never heard`);
+  console.log('      A draft survives only if its transcript matches the committed one EXACTLY.');
+  console.log('      If this is high and the silence above is not falling, drafting is pure cost.');
+}
 console.log('\n  Preemptive generation writes the reply DURING the end-of-turn wait, so the real');
 console.log('  silence is smaller than this sum when it fires — and equal to it when it misses.');
 
