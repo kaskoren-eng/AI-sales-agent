@@ -203,6 +203,29 @@ export async function* guardStream(
 }
 
 /**
+ * Passes a reply through untouched, and reports when it carried no speech at all.
+ *
+ * Wraps the guard's OUTPUT, not the model's. The question is not "did the model write something"
+ * but "will the caller hear anything", and only what comes out of `guardStream` answers that: a
+ * reply that was nothing but a `NO_RESPONSE_NEEDED` control token arrives here as zero chunks.
+ *
+ * That deliberate silence is a real feature — the caller asked her to hold — but it has no exit of
+ * its own, and on 2026-08-16 it ran for twenty seconds of a live call before the caller asked
+ * whether anyone was still there. This is how the agent finds out it happened.
+ */
+export async function* notifyIfSilent(
+  stream: AsyncIterable<string>,
+  onSilent: () => void,
+): AsyncIterable<string> {
+  let spoke = false;
+  for await (const chunk of stream) {
+    if (chunk.trim()) spoke = true;
+    yield chunk;
+  }
+  if (!spoke) onSilent();
+}
+
+/**
  * Index of the first sentence terminator, or -1.
  *
  * Requires whitespace/end after the mark so a decimal or a time ("10:30", "ב-10.") does not split

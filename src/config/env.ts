@@ -139,7 +139,20 @@ const envSchema = z.object({
   SONIOX_MODEL: z.string().default('stt-rt-v5'),
   // How long Soniox waits after speech stops before declaring an endpoint. Only used when
   // VOICE_TURN_DETECTION=stt, which you should not turn on — see below.
-  SONIOX_MAX_ENDPOINT_DELAY_MS: z.coerce.number().int().min(500).max(3000).default(500),
+  // RAISED FROM THE 500ms FLOOR ON PURPOSE — it is not the latency lever it looks like.
+  //
+  // The intuition says shorter = faster, and that is why it sat at the floor. What it actually
+  // controls is how long Soniox waits after speech stops before declaring the endpoint, and that
+  // window is the ONLY place preemptive generation can happen: the plugin emits its own PREFLIGHT
+  // exactly when every token is final and the endpoint has not fired yet (_internal.js:211), and
+  // a draft built from THAT text is the only kind that survives the SDK's equality check against
+  // the committed transcript (agent_activity.js:1711). At 500ms Soniox finalises and endpoints
+  // almost simultaneously, the window is ~0, and no draft is ever started — so the LLM's ~900ms
+  // lands on top of the wait instead of inside it.
+  //
+  // Trading ~500ms of endpoint delay for ~900ms of hidden LLM is the deal. It also stops Hebrew
+  // mid-clause pauses being read as end-of-turn, which shredded one caller sentence into three.
+  SONIOX_MAX_ENDPOINT_DELAY_MS: z.coerce.number().int().min(500).max(3000).default(1000),
   // How the turn ends. LEAVE THIS ON 'vad'.
   //
   // 'stt' drives end-of-turn from Soniox's own endpoint instead of the Silero silence timer. It
@@ -243,6 +256,16 @@ const envSchema = z.object({
   // Costs a little: once the filler starts, the real reply queues behind it. That is the trade —
   // it makes the wait feel HUMAN, not shorter. Set to 0 to switch it off entirely.
   VOICE_THINKING_FILLER_MS: z.coerce.number().int().nonnegative().default(2500),
+  // How long she may stay deliberately silent before checking back in.
+  //
+  // The caller asking her to hold makes the model emit NO_RESPONSE_NEEDED, the guard strips it,
+  // and she says nothing — correct, and with no exit of its own. On 2026-08-16 that ran for
+  // twenty seconds of a live call before the caller asked whether anyone was still there. Nothing
+  // downstream can tell deliberate quiet from a dead agent, so this is the timer that ends it.
+  //
+  // Long enough that a caller who genuinely said "רגע" is not nagged; short enough that the call
+  // never feels dropped. 0 disables the watchdog and restores the indefinite silence.
+  VOICE_HOLD_CHECKBACK_MS: z.coerce.number().int().nonnegative().default(7000),
 
   // Agent spoken language (ISO 639-1) — drives both STT and TTS
   VOICE_LANGUAGE: z.string().default('he'),

@@ -426,9 +426,19 @@ ${slots.endCallOptOut} Do not continue qualifying, pitching, or asking further q
 
 ## Hold Handling
 
-If the lead says "רגע," "שנייה," "חכה," "hold on," or "one moment," respond exactly with:
+Only when the lead's ENTIRE turn is a request to wait — nothing else in it — respond exactly with:
 
 \`NO_RESPONSE_NEEDED\`
+
+Examples that qualify: "רגע." · "שנייה בבקשה." · "חכה רגע." · "hold on." · "one moment."
+
+**A hold word followed by anything else is NOT a hold request — answer it normally.**
+"רגע, מה אתם עושים?" is a question. "שנייה, לא הבנתי" is a request to clarify. "רגע, אתה
+אמרת מחר?" is a correction. In every one of these the lead is waiting for you to speak, and
+silence reads as a dropped call.
+
+If you are ever unsure whether a turn is a pure hold request, ANSWER IT. Saying something
+harmless costs a sentence; saying nothing costs the call.
 `.trim();
 }
 

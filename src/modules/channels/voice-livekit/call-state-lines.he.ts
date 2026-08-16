@@ -25,6 +25,20 @@ export const SILENCE_NUDGE_HE: Record<CallStage, string> = {
  * the line so the lead can take a moment; after this she simply waits quietly. */
 export const SILENCE_WRAP_HE = 'אני כאן, אין לחץ — קח את הזמן שאתה צריך ואני מחכה.';
 
+/**
+ * Spoken when a whole reply was guarded down to nothing and she would otherwise stay mute.
+ *
+ * THIS EXISTS BECAUSE SHE WENT SILENT FOR TWENTY SECONDS ON A REAL CALL (2026-08-16). The caller
+ * said "רגע, מה..." — a question opening with a hold word — the model answered with the
+ * NO_RESPONSE_NEEDED control token, the guard stripped it to an empty string, and nothing in the
+ * stack ever brought her back. He waited, then asked "הלו, מישהו שם?", then told her
+ * "נעלמת לי ממש". From his side the call had dropped.
+ *
+ * Deliberately says she is present without demanding anything: if he really did ask her to hold,
+ * this must not read as nagging him.
+ */
+export const HOLD_CHECKBACK_HE = 'אני כאן, קח את הזמן שאתה צריך.';
+
 /** Left on an answering machine when voicemail detection fires (outbound only). */
 export const VOICEMAIL_MESSAGE_HE =
   'שלום, מדברת קרן מ-ClickScales. התקשרתי בעקבות פנייה שהתקבלה. אחזור אליך שוב, ואפשר גם לחזור אלינו בכל עת. תודה ויום נעים!';

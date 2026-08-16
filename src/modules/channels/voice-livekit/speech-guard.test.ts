@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { forceMasculineAddress, guardSpeech, guardStream, withFiller } from './speech-guard.js';
+import { forceMasculineAddress, guardSpeech, guardStream, notifyIfSilent, withFiller } from './speech-guard.js';
 
 /**
  * These are the ACTUAL sentences the agent said to Koren on a real call. Not hypotheticals.
@@ -237,5 +237,41 @@ describe('withFiller — the hesitation goes FIRST, never last', () => {
 
   it('adds nothing at all when she did not need to think', async () => {
     expect(await drain(withFiller(null, chunks('כן, בשמחה.')))).toBe('כן, בשמחה.');
+  });
+});
+
+describe('notifyIfSilent — deliberate silence must be detectable', () => {
+  const chunks = async function* (...c: string[]) { for (const x of c) yield x; };
+  const drain = async (it: AsyncIterable<string>) => { const o: string[] = []; for await (const x of it) o.push(x); return o.join(''); };
+
+  it('reports a reply that the guard emptied — the twenty-second silence', async () => {
+    // The exact shape of the 2026-08-16 failure: the caller opened with a hold word, the model
+    // answered with nothing but the control token, the guard stripped it, and she stayed mute
+    // until HE rescued the call ("הלו, מישהו שם?"). Somebody has to notice.
+    let silent = false;
+    const out = await drain(notifyIfSilent(guardStream(chunks('NO_RESPONSE_NEEDED')), () => { silent = true; }));
+
+    expect(out.trim()).toBe('');
+    expect(silent).toBe(true);
+  });
+
+  it('stays quiet when she actually said something', async () => {
+    let silent = false;
+    const out = await drain(notifyIfSilent(guardStream(chunks('כן, ', 'אני כאן.')), () => { silent = true; }));
+
+    expect(out).toContain('אני כאן');
+    expect(silent).toBe(false);
+  });
+
+  it('does not count whitespace as speech', async () => {
+    let silent = false;
+    await drain(notifyIfSilent(chunks('   ', '\n'), () => { silent = true; }));
+
+    expect(silent).toBe(true);
+  });
+
+  it('passes the reply through byte for byte — it observes, it does not edit', async () => {
+    const spoken = 'מעולה. לפני הכל — עם מי אני מדברת?';
+    expect(await drain(notifyIfSilent(chunks(spoken), () => {}))).toBe(spoken);
   });
 });

@@ -17,6 +17,7 @@ import { buildSessionComponents } from './agent.config.js';
 import { CallReport } from './call-report.js';
 import { CallStateMachine } from './call-state.js';
 import { decideSilenceAction, decideVoicemailAction } from './call-reflexes.js';
+import { HOLD_CHECKBACK_HE } from './call-state-lines.he.js';
 import { hasAiDisclosure } from './compliance/ai-disclosure.js';
 import { playRecordingNotice } from './compliance/recording-notice.js';
 import { GREETING_HE, buildSystemPrompt, readBusinessProfile } from './prompts/system-prompt.he.js';
@@ -25,7 +26,7 @@ import {
   MAX_FILLERS_PER_CALL,
   pickThinkingFiller,
 } from './prompts/thinking-fillers.he.js';
-import { guardStream, withFiller } from './speech-guard.js';
+import { guardStream, notifyIfSilent, withFiller } from './speech-guard.js';
 import { ShadowSTT } from './stt/shadow-stt.js';
 import { DeepdubTTS } from './tts/deepdub.tts.js';
 import { buildAgentTools } from './tools/index.js';
@@ -98,6 +99,15 @@ class ClickScalesAgent extends voice.Agent {
    */
   pendingFiller: string | null = null;
 
+  /**
+   * Called when a whole reply was guarded down to nothing — she is about to stay silent.
+   *
+   * Deliberate silence is a REAL feature (the caller asked her to hold), but it has no exit of its
+   * own: nothing in the pipeline distinguishes "quiet on purpose" from "dead". On 2026-08-16 that
+   * cost twenty seconds of a live call. Whoever sets this arms the way back out.
+   */
+  onSilentReply: (() => void) | null = null;
+
   /** Null when the per-tenant tool gate is closed — the guard then behaves exactly as pre-Phase-4. */
   readonly toolRuntime: ToolRuntimeContext | null;
 
@@ -149,16 +159,20 @@ class ClickScalesAgent extends voice.Agent {
 
     return voice.Agent.default.ttsNode(
       this,
-      guardStream(
-        withFiller(filler, text as AsyncIterable<string>),
-        // Read PER SENTENCE: book_meeting can succeed mid-reply, and the very next sentence
-        // ("קבעתי לך ליום ראשון") must already be allowed through.
-        () => this.toolRuntime?.bookingCompleted === true,
+      notifyIfSilent(
+        guardStream(
+          withFiller(filler, text as AsyncIterable<string>),
+          // Read PER SENTENCE: book_meeting can succeed mid-reply, and the very next sentence
+          // ("קבעתי לך ליום ראשון") must already be allowed through.
+          () => this.toolRuntime?.bookingCompleted === true,
+        ),
+        () => this.onSilentReply?.(),
       ),
       modelSettings,
     );
   }
 }
+
 
 /**
  * Keeps the conversation history bounded, WITHOUT invalidating a preemptive draft.
@@ -384,6 +398,47 @@ export default defineAgent({
       if (ev.newState === 'speaking') report.noteAgentStartedSpeaking();
     });
 
+    // ── MUTE WATCHDOG ─────────────────────────────────────────────────────────────────────────
+    // Deliberate silence needs a way back out, and it did not have one.
+    //
+    // When the caller asks her to hold, the model answers with the NO_RESPONSE_NEEDED control
+    // token and the guard strips it to an empty reply. That is correct — and terminal. Nothing
+    // downstream can tell "quiet on purpose" from "dead", so she stays mute until the CALLER
+    // rescues the call. On 2026-08-16 he waited twenty seconds, asked "הלו, מישהו שם?", and told
+    // her "נעלמת לי ממש". A hold that never ends is indistinguishable from a dropped call.
+    //
+    // The existing silence reflex does not cover this: it keys off the user going 'away', which
+    // needs the user's own turn to have ended, and the turn that provoked the silence had not.
+    // This one keys off HER saying nothing, which is the actual condition.
+    let muteTimer: ReturnType<typeof setTimeout> | null = null;
+    const cancelMuteWatchdog = (): void => {
+      if (muteTimer) {
+        clearTimeout(muteTimer);
+        muteTimer = null;
+      }
+    };
+    // Armed below, once the agent exists (it is constructed further down this function).
+    const armMuteWatchdog = (): void => {
+      if (env.VOICE_HOLD_CHECKBACK_MS === 0) return;
+      cancelMuteWatchdog();
+      muteTimer = setTimeout(() => {
+        muteTimer = null;
+        // Anything that made noise in the meantime already ended the silence.
+        if (session.agentState === 'speaking' || session.agentState === 'thinking') return;
+        if (callState?.isTerminal()) return;
+        console.log('reflex_mute_checkback', JSON.stringify({ afterMs: env.VOICE_HOLD_CHECKBACK_MS }));
+        session.say(HOLD_CHECKBACK_HE, { allowInterruptions: true });
+      }, env.VOICE_HOLD_CHECKBACK_MS);
+      muteTimer.unref?.();
+    };
+    // The caller speaking, or her speaking, is the silence ending — whichever comes first.
+    session.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
+      if (ev.newState === 'speaking') cancelMuteWatchdog();
+    });
+    session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) => {
+      if (ev.newState === 'speaking') cancelMuteWatchdog();
+    });
+
     // Per-call usage, so cost is a measured number and not an estimate. LiveKit tallies LLM
     // tokens, STT audio seconds and TTS characters for us; we just have to listen. Without this
     // the only way to cost a call is to guess at token counts from the transcript.
@@ -561,6 +616,9 @@ export default defineAgent({
       },
       runtime,
     );
+
+    // Now that she exists, give her deliberate silence a way out. See the MUTE WATCHDOG above.
+    agent.onSilentReply = armMuteWatchdog;
 
     // SHE HESITATES WHEN SHE IS THINKING — AT THE START OF HER REPLY, NEVER AFTER IT.
     //

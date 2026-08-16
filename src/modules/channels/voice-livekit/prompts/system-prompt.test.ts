@@ -95,6 +95,26 @@ describe('Keren v2 — the call flow', () => {
   it('stays silent when the caller asks her to hold', () => {
     expect(SYSTEM_PROMPT_HE).toMatch(/NO_RESPONSE_NEEDED/u);
   });
+
+  /**
+   * THE RULE THAT MUTED HER FOR TWENTY SECONDS ON A LIVE CALL (2026-08-16).
+   *
+   * It used to read: if the lead says "רגע"/"שנייה"/"חכה", answer with NO_RESPONSE_NEEDED. The
+   * caller said "רגע, מה..." — a QUESTION that happens to open with a hold word — and got silence.
+   * He waited, asked "הלו, מישהו שם?", then told her "נעלמת לי ממש".
+   *
+   * `רגע` is one of the most common things an Israeli says mid-sentence, so a rule that matches it
+   * anywhere in the turn mutes the agent on a large share of real calls. The scope ("the lead's
+   * ENTIRE turn") and the tie-breaker ("if unsure, ANSWER IT") are the fix, and both are load
+   * bearing — this test exists so neither is tidied away by someone shortening the prompt.
+   */
+  it('only holds when the hold request is the WHOLE turn, and answers when unsure', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/ENTIRE turn/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/NOT a hold request/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/unsure.*ANSWER IT/su);
+    // The counter-example that actually happened, kept in the prompt so the model sees the shape.
+    expect(SYSTEM_PROMPT_HE).toMatch(/רגע, מה אתם עושים/u);
+  });
 });
 
 /**
