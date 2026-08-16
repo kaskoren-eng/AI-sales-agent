@@ -58,14 +58,32 @@ console.log(`      STT ${r.config.sttProvider} (${r.config.sttModel})  |  turn d
 console.log(`      LLM ${r.config.llmModel}  |  TTS ${r.config.ttsModel}`);
 line();
 
-console.log('\nLATENCY (median per stage)\n');
+// THE HEADLINE NUMBER, and it goes first because for a while the stage medians below were read
+// as the answer. They are not: they sum to a figure that assumes nothing overlaps, which is
+// wrong exactly when preemptive generation is doing its job. Reported 1466ms on a call the
+// caller experienced as 2535ms.
+const d = s.deadAir;
+if (d && d.samples > 0) {
+  console.log('\nWHAT THE CALLER SAT THROUGH  (you stopped talking -> you heard something)\n');
+  const verdict = (v) => (v === null ? '' : v < 1000 ? '   <-- under the 1s target' : '');
+  console.log(`  typical turn     ${bar(d.medianMs)}  ${ms(d.medianMs)}${verdict(d.medianMs)}`);
+  console.log(`  worst 1 in 10    ${bar(d.p90Ms)}  ${ms(d.p90Ms)}`);
+  console.log(`  best / worst     ${' '.repeat(20)}  ${ms(d.minMs)} / ${ms(d.maxMs)}   over ${d.samples} turns`);
+  if (d.samples < 6) {
+    console.log(`\n  Only ${d.samples} turns — too few to call a result. Take another call.`);
+  }
+} else {
+  console.log('\nWHAT THE CALLER SAT THROUGH\n  not measured (report predates the dead-air metric)');
+}
+
+console.log('\nPIPELINE STAGES (median each — these do NOT add up to the number above)\n');
 console.log(`  end-of-turn      ${bar(s.endOfTurnMedianMs)}  ${ms(s.endOfTurnMedianMs)}   how long she waits before deciding you finished`);
 console.log(`  LLM first token  ${bar(s.llmTtftMedianMs)}  ${ms(s.llmTtftMedianMs)}   how long GPT thinks`);
 console.log(`  TTS first audio  ${bar(s.ttsTtfbMedianMs)}  ${ms(s.ttsTtfbMedianMs)}   how long until she starts speaking`);
 console.log(`  ${'-'.repeat(60)}`);
-console.log(`  worst case       ${' '.repeat(20)}  ${ms(s.worstCaseMs)}   if no stage overlapped another`);
-console.log('\n  You feel LESS than the worst case: preemptive generation runs the LLM during the');
-console.log('  end-of-turn wait, so those two overlap instead of stacking.');
+console.log(`  serial total     ${' '.repeat(20)}  ${ms(s.worstCaseMs)}   if no stage overlapped another`);
+console.log('\n  Preemptive generation writes the reply DURING the end-of-turn wait, so the real');
+console.log('  silence is smaller than this sum when it fires — and equal to it when it misses.');
 
 console.log('\nHEALTH\n');
 console.log(`  turns she heard     ${s.turnsHeard}`);

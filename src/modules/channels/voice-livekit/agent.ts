@@ -360,6 +360,30 @@ export default defineAgent({
       }
     });
 
+    // PERCEIVED DEAD AIR — the caller stopped talking; how long until they heard anything back.
+    //
+    // The stage metrics above cannot answer that question. They measure our pipeline one piece at
+    // a time and their sum (`worstCaseMs`) assumes nothing overlaps — which is false precisely
+    // when things go WELL, because preemptive generation's whole job is to run the LLM and TTS
+    // inside the end-of-turn wait. On the 2026-08-16 call the stage maths said 1466ms and the
+    // caller sat through a median of 2535ms. We optimised against an instrument that could not
+    // see the thing we were optimising.
+    //
+    // Session state transitions can. 'speaking' → not-speaking on the user side is the caller
+    // stopping; 'speaking' on the agent side is audio actually going out. The gap between them is
+    // the silence, whatever caused it — including the causes we have no metric for (a discarded
+    // draft, a fragmented turn, queueing).
+    //
+    // Deliberately NOT inside the `if (callState)` block below: this is instrumentation, and it
+    // must keep working when the state machine kill-switch is off.
+    session.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
+      if (ev.newState === 'speaking') report.noteUserStartedSpeaking();
+      else if (ev.oldState === 'speaking') report.noteUserStoppedSpeaking();
+    });
+    session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) => {
+      if (ev.newState === 'speaking') report.noteAgentStartedSpeaking();
+    });
+
     // Per-call usage, so cost is a measured number and not an estimate. LiveKit tallies LLM
     // tokens, STT audio seconds and TTS characters for us; we just have to listen. Without this
     // the only way to cost a call is to guess at token counts from the transcript.

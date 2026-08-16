@@ -269,6 +269,17 @@ const envSchema = z.object({
   // Run TTS on the draft reply before the turn is confirmed, so Cartesia's ~390ms doesn't land
   // on top of the endpointing wait. Costs Cartesia characters on drafts we discard.
   VOICE_PREEMPTIVE_TTS: envBool(false),
+  // How long the caller must stop producing new words before we draft a reply from what they have
+  // said so far. VOICE_TURN_DETECTION=stt only — see stt/soniox.stt.ts withPausePreflight.
+  //
+  // This is the hit-rate lever for preemptive generation, and preemptive generation is the ONLY
+  // route to sub-1s replies: end-of-turn + LLM + TTS run serially at ~1.47s (measured), so the
+  // reply has to be written DURING the end-of-turn wait, not after it.
+  //
+  // Lower = drafts start sooner and more often, at the cost of drafts the caller's next word
+  // throws away (each is one LLM call). Higher = fewer wasted drafts, less overlap won. 0 disables
+  // the trigger entirely, which puts `stt` mode back to having no preemptive generation at all.
+  VOICE_PREEMPTIVE_PAUSE_MS: z.coerce.number().int().nonnegative().default(200),
   // How loud a sound must be before Silero calls it speech. THE lever for phone lines: a phone
   // is never digitally silent (hiss, comfort noise), so at the default 0.5 the VAD keeps hearing
   // "speech" and the end-of-turn silence timer never fires — measured 1030ms on a real call even

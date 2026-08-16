@@ -92,19 +92,26 @@ export function createSonioxSTT(env: Env): soniox.STT {
  * Measured on the deployed agent — 0 "starting preemptive generation" across a whole call in
  * `stt`, 4 in `vad`, with every other setting identical.
  *
- * THE FIX. Re-label a *settled* interim as PREFLIGHT. Soniox re-emits its interim transcript
- * periodically; when two consecutive interims carry identical text, the caller has stopped
- * producing new words and the transcript is as good as it will get before the endpoint. That is
- * exactly the moment worth drafting from, and it arrives several hundred ms before `<end>`.
+ * THE FIX: DRAFT ON A PAUSE. When no new interim text has arrived for
+ * `VOICE_PREEMPTIVE_PAUSE_MS`, the caller has stopped producing words, and we inject a
+ * PREFLIGHT_TRANSCRIPT carrying the text so far. That moment arrives a few hundred ms before
+ * Soniox's `<end>`, which is exactly the window the LLM needs.
  *
- * WHY THIS IS SAFE. It changes only the event LABEL, never the text, and only ever upgrades
- * INTERIM → PREFLIGHT (never touches FINAL, END_OF_SPEECH, or START_OF_SPEECH). A draft built
- * from a transcript that the caller then extends is discarded by the SDK's own context check,
- * and `preemptiveGeneration.maxRetries` (default 2) caps how many drafts a single turn can spawn.
- * The worst case is two wasted LLM drafts per turn; the best case is the whole LLM TTFT hiding
- * behind the endpoint wait.
+ * THE FIRST VERSION OF THIS TRIGGERED ON TEXT EQUALITY — two consecutive interims carrying
+ * identical text — and it almost never fired: 1 preemptive start across a whole 135s call
+ * (2026-08-16), because Soniox rarely re-emits an interim verbatim. It keeps revising
+ * punctuation and word endings right up to the endpoint, so "settled" in the string-equality
+ * sense is not a state real speech passes through. A pause is: it is measured on the CLOCK,
+ * not on the text, so it cannot be defeated by the recogniser fiddling with the tail.
+ *
+ * WHY THIS IS SAFE. It only ever ADDS a PREFLIGHT event carrying text the plugin already
+ * emitted as an interim — it never edits, drops or reorders the plugin's own events, and never
+ * touches FINAL, END_OF_SPEECH or START_OF_SPEECH. A draft built from a transcript the caller
+ * then extends is discarded by the SDK's own context check
+ * (`preemptive.chatCtx.isEquivalent(chatCtx)`). `MAX_PREFLIGHTS_PER_TURN` caps the waste at
+ * three drafts per turn; the best case is the whole LLM TTFT hiding behind the endpoint wait.
  */
-export function withSettledPreflight(inner: soniox.STT): soniox.STT {
+export function withPausePreflight(inner: soniox.STT, pauseMs: number): soniox.STT {
   // Instance-level shadow of `stream`, NOT a Proxy. The first attempt at this used a Proxy over
   // the STT and its SpeechStream, and it broke the agent outright — "AgentSession is not running"
   // before the greeting — because the SDK's classes use JS private fields (`#private`), which
@@ -115,11 +122,30 @@ export function withSettledPreflight(inner: soniox.STT): soniox.STT {
     ...args: unknown[]
   ) => {
     const stream = originalStream(...(args as []));
-    patchQueueWithSettledPreflight(stream);
+    patchQueueWithPausePreflight(stream, pauseMs);
     return stream;
   };
   return inner;
 }
+
+/**
+ * Most drafts a single caller turn may spawn.
+ *
+ * Each one is an LLM call that the caller's next word can invalidate, so this is the ceiling on
+ * wasted spend per turn. Three is deliberately above LiveKit's own `maxRetries` default of 2:
+ * the SDK is the real limiter, and this only stops a pathological turn (a caller pausing every
+ * other word) from queueing drafts indefinitely.
+ */
+const MAX_PREFLIGHTS_PER_TURN = 3;
+
+/**
+ * Interims shorter than this never arm the timer.
+ *
+ * A draft written from "אה" costs a full LLM call and cannot possibly survive the caller's next
+ * word. The threshold is in characters rather than words because Hebrew filler syllables are
+ * short and one real word already carries enough for a useful draft.
+ */
+const MIN_PREFLIGHT_CHARS = 3;
 
 /** Extracts the primary alternative's text, or '' when the event carries none. */
 function eventText(ev: sttBase.SpeechEvent): string {
@@ -134,7 +160,7 @@ function eventText(ev: sttBase.SpeechEvent): string {
  * patching `put` on that one object intercepts the whole event stream without touching the
  * stream class itself. That is why this works where the Proxy did not.
  */
-function patchQueueWithSettledPreflight(stream: sttBase.SpeechStream): void {
+function patchQueueWithPausePreflight(stream: sttBase.SpeechStream, pauseMs: number): void {
   const holder = stream as unknown as {
     queue?: { put: (ev: sttBase.SpeechEvent) => void; closed?: boolean };
   };
@@ -142,33 +168,81 @@ function patchQueueWithSettledPreflight(stream: sttBase.SpeechStream): void {
   if (!queue || typeof queue.put !== 'function') {
     // Plugin internals changed shape. Do nothing rather than crash the call: the cost is the
     // lost overlap we are trying to win, not a dead agent.
-    console.warn('settled_preflight_disabled', JSON.stringify({ reason: 'queue_not_found' }));
+    console.warn('pause_preflight_disabled', JSON.stringify({ reason: 'queue_not_found' }));
+    return;
+  }
+  if (pauseMs <= 0) {
+    console.warn('pause_preflight_disabled', JSON.stringify({ reason: 'pause_ms_zero' }));
     return;
   }
 
-  let lastInterim: string | null = null;
-  let alreadyFlagged = false;
   const originalPut = queue.put.bind(queue);
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let pending: sttBase.SpeechEvent | null = null;
+  let flaggedText: string | null = null;
+  let preflights = 0;
+
+  const disarm = (): void => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    pending = null;
+  };
+
+  /** Ends the turn's draft window. Called on every non-interim event. */
+  const resetTurn = (): void => {
+    disarm();
+    flaggedText = null;
+    preflights = 0;
+  };
+
+  const fire = (): void => {
+    timer = null;
+    const ev = pending;
+    pending = null;
+    if (!ev) return;
+    // The stream can close inside the pause window (caller hung up mid-sentence). Putting to a
+    // closed queue throws, and a throw here lands on the timer's stack where nothing can catch it.
+    if (queue.closed) return;
+    const text = eventText(ev).trim();
+    flaggedText = text;
+    preflights++;
+    try {
+      originalPut({ ...ev, type: sttBase.SpeechEventType.PREFLIGHT_TRANSCRIPT });
+    } catch {
+      // A late close between the guard above and here. Losing the draft is the correct outcome.
+    }
+  };
 
   queue.put = (ev: sttBase.SpeechEvent) => {
-    // Any non-interim event ends the current settle window — the next turn starts fresh.
+    // Any non-interim event ends the current draft window — the next turn starts fresh. This
+    // includes FINAL and END_OF_SPEECH, which is what makes the counters per-turn.
     if (ev.type !== sttBase.SpeechEventType.INTERIM_TRANSCRIPT) {
-      lastInterim = null;
-      alreadyFlagged = false;
+      resetTurn();
       return originalPut(ev);
     }
 
     const text = eventText(ev).trim();
+    // Empty interims are keep-alives, not speech: they must not re-arm the timer, or a silent
+    // stream would draft off stale text forever.
     if (!text) return originalPut(ev);
 
-    const settled = text === lastInterim;
-    lastInterim = text;
+    // New words arrived. Cancel the armed draft — it would have been written from a transcript
+    // the caller has already moved past.
+    disarm();
 
-    // Only the FIRST settled repeat is promoted. Later identical interims add nothing and would
-    // burn preemptive retries (maxRetries defaults to 2) that a genuinely new transcript should get.
-    if (settled && !alreadyFlagged) {
-      alreadyFlagged = true;
-      return originalPut({ ...ev, type: sttBase.SpeechEventType.PREFLIGHT_TRANSCRIPT });
+    const worthDrafting =
+      text.length >= MIN_PREFLIGHT_CHARS &&
+      text !== flaggedText &&
+      preflights < MAX_PREFLIGHTS_PER_TURN;
+
+    if (worthDrafting) {
+      pending = ev;
+      timer = setTimeout(fire, pauseMs);
+      // Node would hold the process open for this timer through a shutdown that is otherwise
+      // finished. It is a latency optimisation, never a reason to stay alive.
+      timer.unref?.();
     }
     return originalPut(ev);
   };
