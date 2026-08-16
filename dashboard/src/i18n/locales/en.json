@@ -20,7 +20,8 @@
     "settings": "Settings",
     "billing": "Billing & Subscription",
     "mainNavigation": "Main navigation",
-    "openMenu": "Open menu"
+    "openMenu": "Open menu",
+    "members": "Team"
   },
   "navgroup": {
     "monitor": "Monitor",
@@ -492,5 +493,42 @@
     "disconnect": "Disconnect",
     "viaApi": "Connect via the API — board picker lands here next",
     "statusFailed": "Could not load status"
+  },
+  "members": {
+    "sub": "Everyone who can sign in to this workspace. Invite the people who work your leads — they each get their own login.",
+    "invite": "Invite someone",
+    "inviteTitle": "Invite someone",
+    "email": "Email address",
+    "role": "Role",
+    "sendInvite": "Send invite",
+    "cancel": "Cancel",
+    "close": "Close",
+    "done": "Done",
+    "you": "You",
+    "remove": "Remove from workspace",
+    "lastSeen": "Last signed in {{when}}",
+    "neverSignedIn": "Has not signed in yet",
+    "readOnly": "You can see the team but not change it. Ask an owner or admin to invite or remove people.",
+    "inviteSent": "Invite sent",
+    "inviteFailed": "Could not send the invite",
+    "inviteManualTitle": "Send this link yourself",
+    "inviteManualNote": "The invite was created, but this server has no email address configured to send from, so nothing was emailed. Send this link to them directly — it works for seven days.",
+    "copyLink": "Copy link",
+    "copied": "Copied",
+    "roleChanged": "Role updated",
+    "roleFailed": "Could not change the role",
+    "removed": "Removed from the workspace",
+    "removeFailed": "Could not remove them",
+    "roles": {
+      "owner": "Owner",
+      "admin": "Admin",
+      "member": "Member",
+      "viewer": "Viewer"
+    },
+    "roleHints": {
+      "admin": "Can do everything except transfer ownership, including inviting and removing people.",
+      "member": "Can work leads, calls and the calendar, and change the agent. Cannot manage the team.",
+      "viewer": "Can look at everything and change nothing."
+    }
   }
 }

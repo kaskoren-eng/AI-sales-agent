@@ -11,6 +11,7 @@ import { CallDetail } from './pages/CallDetail.js'
 import { Bookings } from './pages/Bookings.js'
 import { Integrations } from './pages/Integrations.js'
 import { Settings } from './pages/Settings.js'
+import { Members } from './pages/Members.js'
 import { AgentPersonality } from './pages/AgentPersonality.js'
 import { Copilot } from './pages/Copilot.js'
 import { Simulator } from './pages/Simulator.js'
@@ -50,6 +51,7 @@ function TenantShell() {
           <Route path="/bookings" element={<Bookings />} />
           <Route path="/integrations" element={<Integrations />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/members" element={<Members />} />
           {/* Phase 3 targets — interim placeholders until each page is migrated to its v5 preview. */}
           <Route path="/chat" element={<Copilot />} />
           <Route path="/agent" element={<AgentPersonality />} />

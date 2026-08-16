@@ -272,3 +272,45 @@ export function saveAgentPersona(
 ): Promise<{ ok: boolean; persona: AgentPersona; resolvedGreeting: string }> {
   return apiFetch('/settings/agent-persona', { method: 'PUT', body: JSON.stringify(patch) })
 }
+
+// --- Team members and invites ---
+
+export type TenantRole = 'owner' | 'admin' | 'member' | 'viewer'
+
+/** Roles an invite may carry. `owner` is absent on purpose: ownership is transferred by an existing
+ * owner through a role change, never handed out by emailing a link. Mirrors `inviteSchema`. */
+export const INVITABLE_ROLES: TenantRole[] = ['admin', 'member', 'viewer']
+
+export interface Member {
+  userId: string
+  email: string
+  name: string | null
+  role: TenantRole
+  lastLoginAt: string | null
+  joinedAt: string
+}
+
+export function fetchMembers(): Promise<{ members: Member[] }> {
+  return apiFetch<{ members: Member[] }>('/members')
+}
+
+/**
+ * `sent: false` comes back with a raw `token` when the server has no `DASHBOARD_BASE_URL` and
+ * therefore could not mail the link. That is not an error and must not be swallowed — it is the
+ * only way the invite can still be completed, so the UI shows the link instead of claiming success.
+ * (This is the same class of failure as the password-reset emails that silently went nowhere.)
+ */
+export function inviteMember(input: {
+  email: string
+  role: TenantRole
+}): Promise<{ sent: true } | { sent: false; token: string }> {
+  return apiFetch('/members/invites', { method: 'POST', body: JSON.stringify(input) })
+}
+
+export function updateMemberRole(userId: string, role: TenantRole): Promise<{ ok: boolean }> {
+  return apiFetch(`/members/${userId}`, { method: 'PATCH', body: JSON.stringify({ role }) })
+}
+
+export function removeMember(userId: string): Promise<void> {
+  return apiFetch(`/members/${userId}`, { method: 'DELETE' })
+}

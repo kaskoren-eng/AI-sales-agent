@@ -14,6 +14,7 @@ const PAGE_TITLE_KEYS: Record<string, string> = {
   '/voice': 'nav.testKeren',
   '/integrations': 'nav.integrations',
   '/settings': 'nav.settings',
+  '/members': 'nav.members',
   '/billing': 'nav.billing',
 }
 

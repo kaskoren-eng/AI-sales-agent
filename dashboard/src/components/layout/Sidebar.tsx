@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Sparkles,
   Users,
+  Users2,
   Phone,
   CalendarDays,
   SlidersHorizontal,
@@ -52,6 +53,7 @@ const NAV_GROUPS: NavGroup[] = [
     capKey: 'navgroup.general',
     items: [
       { to: '/settings', labelKey: 'nav.settings', icon: <Settings size={18} strokeWidth={1.6} /> },
+      { to: '/members', labelKey: 'nav.members', icon: <Users2 size={18} strokeWidth={1.6} /> },
       { to: '/integrations', labelKey: 'nav.integrations', icon: <Plug size={18} strokeWidth={1.6} /> },
       { to: '/billing', labelKey: 'nav.billing', icon: <CreditCard size={18} strokeWidth={1.6} />, disabled: true },
     ],
