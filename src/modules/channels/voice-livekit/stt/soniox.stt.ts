@@ -1,3 +1,4 @@
+import { stt as sttBase } from '@livekit/agents';
 import * as soniox from '@livekit/agents-plugin-soniox';
 import { CircuitBreaker } from '../../../../shared/circuit-breaker.js';
 import { type MeasureOptions, type Measurement, measureStream } from './measure.js';
@@ -72,6 +73,98 @@ export function createSonioxSTT(env: Env): soniox.STT {
     enableSpeakerDiarization: false,
     enableLanguageIdentification: true,
   });
+}
+
+/**
+ * Makes preemptive generation work under `VOICE_TURN_DETECTION=stt`.
+ *
+ * THE BUG THIS EXISTS TO FIX. LiveKit only starts drafting a reply early from two places
+ * (agents/dist/voice/audio_recognition.js):
+ *
+ *   FINAL_TRANSCRIPT     → gated on `vadBaseTurnDetection || userTurnCommitted`
+ *   PREFLIGHT_TRANSCRIPT → gated on `turnDetectionMode !== 'manual' || userTurnCommitted`
+ *
+ * In `stt` mode `vadBaseTurnDetection` is FALSE and the turn is not yet committed, so the FINAL
+ * path never fires. That leaves the PREFLIGHT path — and the Soniox plugin only emits PREFLIGHT
+ * when it holds final text with NO non-final token pending, which on a live call is a window of
+ * approximately zero: Soniox finalizes its tokens at the same moment it emits the `<end>`
+ * endpoint. Net effect: switching to `stt` silently disabled preemptive generation entirely.
+ * Measured on the deployed agent — 0 "starting preemptive generation" across a whole call in
+ * `stt`, 4 in `vad`, with every other setting identical.
+ *
+ * THE FIX. Re-label a *settled* interim as PREFLIGHT. Soniox re-emits its interim transcript
+ * periodically; when two consecutive interims carry identical text, the caller has stopped
+ * producing new words and the transcript is as good as it will get before the endpoint. That is
+ * exactly the moment worth drafting from, and it arrives several hundred ms before `<end>`.
+ *
+ * WHY THIS IS SAFE. It changes only the event LABEL, never the text, and only ever upgrades
+ * INTERIM → PREFLIGHT (never touches FINAL, END_OF_SPEECH, or START_OF_SPEECH). A draft built
+ * from a transcript that the caller then extends is discarded by the SDK's own context check,
+ * and `preemptiveGeneration.maxRetries` (default 2) caps how many drafts a single turn can spawn.
+ * The worst case is two wasted LLM drafts per turn; the best case is the whole LLM TTFT hiding
+ * behind the endpoint wait.
+ */
+export function withSettledPreflight(inner: soniox.STT): soniox.STT {
+  return new Proxy(inner, {
+    get(target, prop, receiver) {
+      if (prop === 'stream') {
+        return (...args: unknown[]) => {
+          const innerStream = (target.stream as (...a: unknown[]) => sttBase.SpeechStream)(...args);
+          return wrapSettledPreflight(innerStream);
+        };
+      }
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
+/** Extracts the primary alternative's text, or '' when the event carries none. */
+function eventText(ev: sttBase.SpeechEvent): string {
+  return ev.alternatives?.[0]?.text ?? '';
+}
+
+function wrapSettledPreflight(inner: sttBase.SpeechStream): sttBase.SpeechStream {
+  let lastInterim: string | null = null;
+  let alreadyFlagged = false;
+
+  const transform = (ev: sttBase.SpeechEvent): sttBase.SpeechEvent => {
+    // Any non-interim event ends the current settle window — the next turn starts fresh.
+    if (ev.type !== sttBase.SpeechEventType.INTERIM_TRANSCRIPT) {
+      lastInterim = null;
+      alreadyFlagged = false;
+      return ev;
+    }
+
+    const text = eventText(ev).trim();
+    if (!text) return ev;
+
+    const settled = text === lastInterim;
+    lastInterim = text;
+
+    // Only the FIRST settled repeat is promoted. Later identical interims add nothing and would
+    // just burn preemptive retries that a genuinely new transcript should get.
+    if (settled && !alreadyFlagged) {
+      alreadyFlagged = true;
+      return { ...ev, type: sttBase.SpeechEventType.PREFLIGHT_TRANSCRIPT };
+    }
+    return ev;
+  };
+
+  return new Proxy(inner, {
+    get(target, prop, receiver) {
+      if (prop === 'next') {
+        return async () => {
+          const res = await target.next();
+          if (res.done || res.value === undefined) return res;
+          return { done: false, value: transform(res.value) } as IteratorResult<sttBase.SpeechEvent>;
+        };
+      }
+      if (prop === Symbol.asyncIterator) return () => receiver;
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  }) as sttBase.SpeechStream;
 }
 
 /** Splits the Whisper-style biasing prompt ("קורן, ClickScales, פגישה") into Soniox's term array. */

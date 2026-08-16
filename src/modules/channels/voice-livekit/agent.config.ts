@@ -27,6 +27,12 @@ import type { Env } from '../../../config/env.js';
  */
 export function buildSTT(env: Env, vad: silero.VAD): sttBase.STT {
   if (env.STT_PROVIDER === 'soniox') {
+    // NOT WIRED UP — see withSettledPreflight in stt/soniox.stt.ts. The diagnosis there is
+    // correct and measured, but the Proxy implementation breaks AgentSession startup
+    // ("AgentSession is not running" before the greeting): the SDK's STT/SpeechStream use
+    // JS private fields, which throw when accessed through a Proxy. It needs a SUBCLASS, not a
+    // Proxy. Left in place, unused, so the next attempt starts from the analysis and not from
+    // scratch.
     return createSonioxSTT(env);
   }
   return buildOpenAISTT(env, vad);
