@@ -24,7 +24,7 @@ they differ is the thing most likely to trip you up:
 
 | Thing | ID | Notes |
 |---|---|---|
-| Inbound trunk | `ST_V5CXE6L5539t` | Accepts `+972555070922` and `972555070922` — Zadarma's number format is not guaranteed. **IP-allowlisted, no credentials.** |
+| Inbound trunk | `ST_V5CXE6L5539t` | `"numbers": []` — accepts ANY dialled number from the allow-listed addresses. See the warning below. **IP-allowlisted, no credentials.** |
 | Dispatch rule | `SDR_GHNgzGi4CB4n` | One room per call (`call-*`); the agent auto-dispatches. Bound to the inbound trunk only. |
 | Outbound trunk | `ST_8s6N3DqUVtWw` | Dials via `sip.zadarma.com`. Authenticates as Zadarma **direct SIP line `744650`** — credentials live inside the trunk on LiveKit, not in our `.env` |
 
@@ -58,6 +58,42 @@ invisible until someone places a call and gets a 500.
 Do not remove them. An unrestricted inbound trunk is a SIP endpoint anyone on the internet can
 dial, and every call spends real OpenAI + Cartesia credits. If Zadarma adds a range, inbound
 starts failing for some calls only — check this list first.
+
+## Multiple numbers — `"numbers": []` and what it costs
+
+`inbound-trunk.json` used to name one number. Every customer needs their own DID, and re-listing
+every number on the trunk each time a customer is onboarded is a deploy-shaped step in what should
+be a database-shaped one — so the trunk now accepts **any** dialled number and the application
+decides who it belongs to (`phone_numbers` table, `resolveCallIdentity`).
+
+⚠️ **This makes the IP allowlist the ONLY security boundary on this trunk.** Previously a stranger
+who reached our SIP endpoint was rejected unless they dialled the one listed number; now the
+allowlist above is what stands between us and anyone who can send an INVITE. Do not widen it, and
+do not remove entries "to debug" — an unrestricted inbound trunk is a SIP endpoint anyone on the
+internet can dial, and every answered call spends real OpenAI and Cartesia credits.
+
+The second line of defence is in the app: a number with no `phone_numbers` row is answered with a
+short "not in service" announcement and hung up, creating no lead, no conversation and no call
+record. That is deliberate — a scanner sweeping DID ranges gets a few seconds of audio, not a sales
+call and not a database row.
+
+**Onboarding a number is now:**
+
+```bash
+node scripts/provision-number.mjs --number +972XXXXXXXXX --tenant <uuid> --label "Acme main"
+# then point that number's forwarding at the SIP URI below, in the Zadarma portal
+node scripts/provision-number.mjs --list   # what is mapped where
+```
+
+Do the script first. A forwarded number with no row gives the caller a dead line; a row with no
+forwarding is merely inert.
+
+**Applying the trunk change** (once, by hand — nothing in CI touches LiveKit):
+
+```bash
+lk sip inbound update ST_V5CXE6L5539t infra/livekit-sip/inbound-trunk.json
+lk sip inbound list    # confirm numbers is empty and the address list is intact
+```
 
 ## Zadarma side
 

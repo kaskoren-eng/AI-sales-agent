@@ -9,3 +9,5 @@ export { users, tenantMembers, authSessions, invites, authTokens, TENANT_ROLES, 
 export type { TenantRole, AuthTokenPurpose } from './users.js';
 export { auditEvents } from './audit-events.js';
 export type { AuditEvent, NewAuditEvent } from './audit-events.js';
+export { phoneNumbers } from './phone-numbers.js';
+export type { PhoneNumber, NewPhoneNumber } from './phone-numbers.js';

@@ -78,6 +78,13 @@
       "when": 1785954083582,
       "tag": "0010_shiny_lyja",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1786881152231,
+      "tag": "0011_sour_mister_fear",
+      "breakpoints": true
     }
   ]
 }

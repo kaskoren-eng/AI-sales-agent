@@ -35,7 +35,9 @@
     "bench:llm": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/latency-bench.ts llm",
     "call:fetch": "node scripts/fetch-cloud-calls.mjs",
     "agent:deploy": "node scripts/deploy-agent.mjs deploy",
-    "agent:logs": "lk agent logs"
+    "agent:logs": "lk agent logs",
+    "provision:number": "node scripts/provision-number.mjs",
+    "announcements:generate": "node scripts/generate-system-announcements.mjs"
   },
   "engines": {
     "node": ">=20"

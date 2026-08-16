@@ -1,9 +1,10 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import type { Env } from '../../../../config/env.js';
 import { createDatabase, type Database } from '../../../../db/client.js';
-import { tenants } from '../../../../db/schema/index.js';
+import { phoneNumbers, tenants } from '../../../../db/schema/index.js';
+import { didCandidates } from '../../../../shared/phone-number.js';
 import { GoogleCalendarProvider } from '../../../scheduling/providers/google-calendar.provider.js';
 import type { CallReport, ToolCallLog } from '../call-report.js';
 import type { CallStateMachine } from '../call-state.js';
@@ -113,6 +114,8 @@ export type ToolRuntimeResult =
 export interface ToolRuntimeDeps {
   connectDb?: () => { db: Database; close: () => Promise<void> };
   loadSettings?: (db: Database, tenantId: string) => Promise<unknown>;
+  /** Overrides the `phone_numbers` lookup used to route inbound calls. */
+  lookupNumber?: PhoneNumberLookup;
   makeQueues?: (env: Env) => {
     outboundQueue: Queue;
     remindersQueue: Queue;
@@ -148,6 +151,138 @@ export function parseOutboundMetadata(
 }
 
 /**
+ * WHOSE CALL IS THIS, and how do we know.
+ *
+ * `source` is not diagnostics decoration — it is the answer to the only question that matters when
+ * a call ends up in the wrong place. Before this existed, every inbound call on every number
+ * resolved to `env.VOICE_WEBHOOK_TENANT_ID`, so with two customers tenant #2's caller reached
+ * tenant #1's agent and any lead created landed in tenant #1's data. There was nothing in the logs
+ * to say that had happened, because from the code's point of view nothing unusual had.
+ */
+export type CallIdentitySource =
+  /** An outbound dial we placed — the dispatcher stamped the tenant on the participant. */
+  | 'outbound_metadata'
+  /** An inbound PSTN call matched to a `phone_numbers` row by the dialled DID. */
+  | 'did_lookup'
+  /** No DID matched, and the single-tenant env var stood in. NON-PRODUCTION ONLY — see below. */
+  | 'env_fallback';
+
+export interface CallIdentity {
+  tenantId: string;
+  leadId: string | null;
+  conversationId: string | null;
+  settings?: unknown;
+  source: CallIdentitySource;
+}
+
+/** Why a call could not be attributed to a tenant. Each one answers the phone and hangs up. */
+export type CallIdentityRefusal = 'no_tenant' | 'unmapped_did' | 'number_unassigned' | 'number_inactive';
+
+/**
+ * The refusals that mean "a real person dialled a real number and we will not serve them".
+ *
+ * The agent answers these with the not-in-service announcement and hangs up, creating no lead, no
+ * conversation and no call record. Distinguished from `no_tenant` — which is a misconfigured
+ * console session, not a caller — because only these should ever reach a human ear.
+ */
+export const DID_REFUSALS: readonly CallIdentityRefusal[] = [
+  'unmapped_did',
+  'number_unassigned',
+  'number_inactive',
+];
+
+export function isDidRefusal(reason: string | null): boolean {
+  return reason !== null && (DID_REFUSALS as readonly string[]).includes(reason);
+}
+
+export type CallIdentityResult =
+  | { identity: CallIdentity; refusal: null }
+  | { identity: null; refusal: CallIdentityRefusal };
+
+/**
+ * The `phone_numbers` lookup, as an injectable seam — same pattern as `loadSettings` above.
+ *
+ * It is a function rather than a `Database` because the routing decision deserves a test that
+ * asserts on the CANDIDATES it asked for, not on drizzle's query object. The first version of the
+ * test tried to reach into the `inArray` fragment to recover them; that structure is circular and
+ * internal, so the test was really asserting on drizzle's shape rather than on our routing.
+ */
+export type PhoneNumberLookup = (
+  candidates: string[],
+) => Promise<{ tenantId: string | null; isActive: boolean } | null>;
+
+/** The real lookup: exact match over the candidate spellings, one row. */
+export function makePhoneNumberLookup(db: Database): PhoneNumberLookup {
+  return async (candidates) => {
+    const [row] = await db
+      .select({ tenantId: phoneNumbers.tenantId, isActive: phoneNumbers.isActive })
+      .from(phoneNumbers)
+      .where(inArray(phoneNumbers.e164, candidates))
+      .limit(1);
+    return row ?? null;
+  };
+}
+
+/**
+ * Resolve the tenant for a call, in priority order.
+ *
+ * 1. OUTBOUND METADATA — we placed the call, so we already know. Nothing can override this.
+ * 2. DID LOOKUP — an inbound PSTN call, matched on the number that was dialled. Exact match over
+ *    candidate spellings (see `shared/phone-number.ts`); a suffix match could route across tenants.
+ * 3. ENV FALLBACK — `VOICE_WEBHOOK_TENANT_ID`, and ONLY when no DID was dialled at all. That means
+ *    console calls and the browser Simulator, which have no dialled number by definition.
+ *
+ * THE CRITICAL RULE IS WHAT DOES *NOT* HAPPEN: a call that dialled a real number we cannot map
+ * NEVER falls through to the env tenant. Falling through is how tenant #2's caller ends up in
+ * tenant #1's data, and it is indistinguishable from working correctly until a customer notices.
+ * An unmapped number is refused, and the agent answers with "not in service".
+ */
+export async function resolveCallIdentity(
+  env: Env,
+  opts: { participantMetadata: string | undefined; calledNumber: string | null },
+  deps: { lookupNumber?: PhoneNumberLookup } = {},
+): Promise<CallIdentityResult> {
+  const fromMetadata = parseOutboundMetadata(opts.participantMetadata);
+  if (fromMetadata) {
+    return { identity: { ...fromMetadata, source: 'outbound_metadata' }, refusal: null };
+  }
+
+  const candidates = didCandidates(opts.calledNumber);
+
+  if (candidates.length > 0) {
+    // A number WAS dialled. From here the only acceptable answers are "this tenant" or "refuse" —
+    // never the env fallback.
+    if (!deps.lookupNumber) return { identity: null, refusal: 'unmapped_did' };
+
+    const row = await deps.lookupNumber(candidates);
+
+    if (!row) return { identity: null, refusal: 'unmapped_did' };
+    if (!row.isActive) return { identity: null, refusal: 'number_inactive' };
+    // Bought but not yet assigned to a customer. A real state, and not one to guess about.
+    if (!row.tenantId) return { identity: null, refusal: 'number_unassigned' };
+
+    return {
+      identity: { tenantId: row.tenantId, leadId: null, conversationId: null, source: 'did_lookup' },
+      refusal: null,
+    };
+  }
+
+  // No dialled number: a console session or a browser web-call that carried no metadata.
+  if (env.VOICE_WEBHOOK_TENANT_ID) {
+    return {
+      identity: {
+        tenantId: env.VOICE_WEBHOOK_TENANT_ID,
+        leadId: null,
+        conversationId: null,
+        source: 'env_fallback',
+      },
+      refusal: null,
+    };
+  }
+  return { identity: null, refusal: 'no_tenant' };
+}
+
+/**
  * The pure gate decision, separated from I/O so the fail-closed matrix is unit-testable.
  *
  * There is only one voice engine now, so the gate rests entirely on `functions_enabled`:
@@ -164,6 +299,8 @@ export async function buildToolRuntime(
   opts: {
     callId: string;
     callerPhone: string | null;
+    /** The DID the caller dialled — OURS, not theirs. Null for console and web calls. */
+    calledNumber?: string | null;
     participantMetadata: string | undefined;
     report: CallReport;
     /** The per-call state machine, constructed in agent.ts and shared with the agent instance.
@@ -172,22 +309,64 @@ export async function buildToolRuntime(
   },
   deps: ToolRuntimeDeps = {},
 ): Promise<ToolRuntimeResult> {
-  // 1. Who is this call for? Outbound dials carry it in metadata; inbound falls back to the
-  //    single-tenant env var. No tenant, no tools.
-  const identity = parseOutboundMetadata(opts.participantMetadata) ?? (env.VOICE_WEBHOOK_TENANT_ID
-    ? { tenantId: env.VOICE_WEBHOOK_TENANT_ID, leadId: null, conversationId: null }
-    : null);
-  if (!identity) return { runtime: null, disabledReason: 'no_tenant', settings: null };
+  // The DB is opened BEFORE identity is resolved, because resolving an inbound call now requires a
+  // `phone_numbers` lookup. Outbound calls never reach that query — their tenant is on the metadata
+  // — so the dialer's hot path is unchanged.
+  const connect = deps.connectDb ?? (() => {
+    const { db, pool } = createDatabase(env.DATABASE_URL);
+    return { db, close: () => pool.end() };
+  });
+
+  let identityConnection: { db: Database; close: () => Promise<void> } | null = null;
+  try {
+    identityConnection = connect();
+  } catch (err) {
+    console.error('tool_runtime_db_connect_failed', err instanceof Error ? err.message : String(err));
+    // Without a DB an inbound DID cannot be mapped. Refusing beats guessing a tenant.
+    if (!parseOutboundMetadata(opts.participantMetadata)) {
+      return { runtime: null, disabledReason: 'db_connect_failed', settings: null };
+    }
+  }
+
+  // 1. Who is this call for? See `resolveCallIdentity` — the important part is that an inbound call
+  //    to a number we cannot map is REFUSED rather than handed to the env-var tenant.
+  const resolved = await resolveCallIdentity(
+    env,
+    { participantMetadata: opts.participantMetadata, calledNumber: opts.calledNumber ?? null },
+    {
+      ...(deps.lookupNumber
+        ? { lookupNumber: deps.lookupNumber }
+        : identityConnection
+          ? { lookupNumber: makePhoneNumberLookup(identityConnection.db) }
+          : {}),
+    },
+  );
+
+  if (!resolved.identity) {
+    await identityConnection?.close().catch(() => undefined);
+    console.warn(
+      'call_identity_refused',
+      JSON.stringify({ reason: resolved.refusal, calledNumber: opts.calledNumber ?? null }),
+    );
+    // `unmapped_did` and friends surface to the agent, which plays the not-in-service notice.
+    return { runtime: null, disabledReason: resolved.refusal, settings: null };
+  }
+
+  const identity = resolved.identity;
+  console.log(
+    'call_identity',
+    JSON.stringify({
+      tenantId: identity.tenantId,
+      source: identity.source,
+      calledNumber: opts.calledNumber ?? null,
+    }),
+  );
 
   // Whatever the dispatcher already shipped. Held separately so every failure path below can still
   // hand the agent its identity — see the note on ToolRuntimeResult.
   const metadataSettings = 'settings' in identity ? identity.settings : undefined;
 
   // 2. One settings read, timeboxed — the greeting must not wait on a hung database.
-  const connect = deps.connectDb ?? (() => {
-    const { db, pool } = createDatabase(env.DATABASE_URL);
-    return { db, close: () => pool.end() };
-  });
   const load = deps.loadSettings ?? (async (db: Database, tenantId: string) => {
     const rows = await db
       .select({ settings: tenants.settings })
@@ -198,12 +377,19 @@ export async function buildToolRuntime(
     return rows[0]!.settings;
   });
 
+  // REUSE the pool opened for the identity lookup. Opening a second one here would mean two pools
+  // per call, and only one of them ever gets closed — a leak that only shows up under call volume,
+  // which is the worst time to find it.
   let connection: { db: Database; close: () => Promise<void> };
-  try {
-    connection = connect();
-  } catch (err) {
-    console.error('tool_runtime_db_connect_failed', err instanceof Error ? err.message : String(err));
-    return { runtime: null, disabledReason: 'db_connect_failed', settings: metadataSettings ?? null };
+  if (identityConnection) {
+    connection = identityConnection;
+  } else {
+    try {
+      connection = connect();
+    } catch (err) {
+      console.error('tool_runtime_db_connect_failed', err instanceof Error ? err.message : String(err));
+      return { runtime: null, disabledReason: 'db_connect_failed', settings: metadataSettings ?? null };
+    }
   }
 
   // 3. The gate config. PREFER the settings the dispatcher already resolved and shipped in the
