@@ -93,12 +93,12 @@ Two agents work this repo simultaneously. Respect your lane:
 
 The voice engine migration is **complete and live in production since 2026-07-29** (ClickScales tenant `613d826c`). The current work is closing the launch gates:
 
-- **Workstream B — CRM automation:** built + tested, **unmerged** on `feature/crm-automation`. Merge gate: one real call whose outcome lands in a connected CRM.
-- **Workstream C — conversation state machine + reflexes:** built + tested, **unmerged** on the same branch. Four behaviours need a live PSTN call to verify.
+- **Workstream B — CRM automation:** built, tested and **on `main`**. Still unproven end to end: no real call has yet landed an outcome in a connected CRM.
+- **Workstream C — conversation state machine + reflexes:** built, tested and **on `main`**. Four behaviours still need a live PSTN call to verify.
 - **Website go-live:** `website/netlify/functions/lead.js` is deployed but inert, awaiting the flip.
 - **Verification:** Layer 6 of `docs/phase-6-verification-checklist.md` — 10 real calls. Only 4 production calls so far, all internal.
 
-⚠️ **`master` is ~140 commits behind** (last commit 2026-07-10). `feature/crm-automation` is the de-facto backend/voice trunk.
+**`main` is the trunk.** `master` was retired and deleted in the Phase-0 cutover (tagged `archive/master-2026-07-10`); `feature/crm-automation` was merged into `main` on 2026-08-16 and is done.
 
 ### The voice stack, as built
 
@@ -219,7 +219,7 @@ All four root docs were refreshed on **2026-08-02** and are current as of that d
 - `voice-ai-learning-resources.md` — 30 curated engineering guides & case studies with reading order
 
 **`docs/` subfolders:**
-- `handoffs/` — end-of-session summaries, one per workstream per day. ⚠️ Split across branches: the voice handoffs live on `feature/crm-automation`, the dashboard ones on `feature/website-clickscales-v2`.
+- `handoffs/` — end-of-session summaries, one per workstream per day. All on `main` since the 2026-08-16 merge.
 - `go-live-plan.md` + `risk/` — the A/B/C/D workstream plan and the launch gap/risk register
 - `gtm/` — ICP, messaging, pricing, sales process, client onboarding (Hebrew)
 - `legal-drafts/` — privacy policy, ToS, DPA, accessibility statement, voice-AI disclosure (Hebrew drafts)

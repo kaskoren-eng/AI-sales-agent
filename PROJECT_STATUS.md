@@ -13,8 +13,9 @@ gates: getting through the Phase-6 verification layers and flipping the website'
 Voice engine history: **ElevenLabs (POC, retired) → Retell (deprecated, removed from the repo 2026-08-05) → self-built LiveKit + Soniox + Cartesia (live since 2026-07-29)**. See `VOICE_MIGRATION_PLAN.md`.
 
 > **Branch reality:** `main` is the trunk. `master` was retired and deleted in the Phase-0 cutover
-> (tagged `archive/master-2026-07-10`). `feature/crm-automation` — Workstreams B and C plus the
-> Retell removal — was merged into `main` on 2026-08-16.
+> (tagged `archive/master-2026-07-10`). `feature/crm-automation` was merged into `main` on
+> 2026-08-16; despite what earlier revisions of this file said, Workstreams B and C were ALREADY on
+> `main` before that merge — its actual content was the Retell removal.
 
 ---
 
@@ -205,8 +206,8 @@ Verification layers 1–5 of `docs/phase-6-verification-checklist.md` are Koren'
 | # | Workstream | Status |
 |---|---|---|
 | A | Voice tools + Tier-1 security (6 tools, injection defense, WhatsApp window/consent, toll-fraud caps) | ✅ Shipped |
-| B | **CRM automation** — B1 outcome→status→CRM push (Monday + Airtable), B2 GPT summary + captured facts | ✅ Merged to `main` 2026-08-16. **Still unverified end-to-end:** no real call has yet landed an outcome in a connected CRM. B3 Fireberry not started |
-| C | **Conversation state machine** — C1–C5: advisory stage machine + working memory, Hebrew stage lines, 3 reflexes (silence 2-strike nudge→hangup, barge-in analytics-only, voicemail behind `VOICE_AMD_ENABLED` default OFF), objection playbook, system-only end reasons, booking guardrails | ✅ Merged to `main` 2026-08-16. Still needs a real PSTN call to verify 4 behaviours: `UserStateChanged→'away'` fires on a live line, `OverlappingSpeech` emits in this cascade, AMD fires on real voicemail, and a `say()` nudge doesn't clip the caller |
+| B | **CRM automation** — B1 outcome→status→CRM push (Monday + Airtable), B2 GPT summary + captured facts | ✅ On `main`. **Still unverified end-to-end:** no real call has yet landed an outcome in a connected CRM. B3 Fireberry not started |
+| C | **Conversation state machine** — C1–C5: advisory stage machine + working memory, Hebrew stage lines, 3 reflexes (silence 2-strike nudge→hangup, barge-in analytics-only, voicemail behind `VOICE_AMD_ENABLED` default OFF), objection playbook, system-only end reasons, booking guardrails | ✅ On `main`. Still needs a real PSTN call to verify 4 behaviours: `UserStateChanged→'away'` fires on a live line, `OverlappingSpeech` emits in this cascade, AMD fires on real voicemail, and a `say()` nudge doesn't clip the caller |
 | C1 | Meeting reminders — DST-safe, quiet hours, per-tenant `reminders` settings (migration 0005) | ✅ Shipped |
 | D | Billing (SUMIT / Green Invoice) | ⏳ Not started. `billing_provider` key reserved only |
 
