@@ -3,6 +3,7 @@ import { leads, conversations, messages, scheduledCalls } from '../../db/schema/
 import type { Database } from '../../db/client.js';
 import type { CreateLeadInput, UpdateLeadInput } from './lead.schemas.js';
 import { NotFoundError } from '../../shared/errors.js';
+import { meterLead } from '../billing/usage.service.js';
 
 export class LeadService {
   constructor(private db: Database) {}
@@ -12,6 +13,9 @@ export class LeadService {
       .insert(leads)
       .values({ tenantId, ...input })
       .returning();
+    // BILLABLE. Idempotent on the lead id, so a retried request that somehow reaches here twice
+    // counts once. Never throws — see meterLead.
+    if (lead) await meterLead(this.db, { tenantId, leadId: lead.id, source: lead.source });
     return lead;
   }
 

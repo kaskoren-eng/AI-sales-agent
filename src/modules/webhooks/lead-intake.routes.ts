@@ -6,6 +6,7 @@ import { flowDefinitionSchema } from '../flows/flow.schemas.js';
 import { enqueueFlowStep } from '../../queues/flow-executor.queue.js';
 import { verifyMetaSignature, normalizeMetaLeadPayload } from './meta.utils.js';
 import { isTimestampFresh } from '../../shared/webhook-timestamp.js';
+import { meterLead } from '../billing/usage.service.js';
 
 /**
  * Generic lead intake webhook.
@@ -159,6 +160,11 @@ export async function leadIntakeRoutes(app: FastifyInstance) {
         })
         .returning();
       lead = created;
+      // BILLABLE — the website form and Meta Lead Ads both land here, so this is the meter for the
+      // top of the funnel. Only in the `!lead` branch: a returning prospect who submits the form
+      // again is the same lead, and charging twice for one person is the complaint that ends a
+      // pilot. (The dedupe key would catch it anyway; not calling it says so explicitly.)
+      if (created) await meterLead(app.db, { tenantId, leadId: created.id, source: created.source });
     } else if (consentRecord && !(lead.whatsappConsent as { granted?: boolean } | null)?.granted) {
       // Existing lead ticked the box on a new form — record it (never downgrade existing consent).
       await app.db

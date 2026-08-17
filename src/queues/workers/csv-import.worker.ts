@@ -6,6 +6,7 @@ import type { Database } from '../../db/client.js';
 import { leads, importJobs } from '../../db/schema/index.js';
 import type { Redis } from 'ioredis';
 import type { Queue } from 'bullmq';
+import { meterLead } from '../../modules/billing/usage.service.js';
 
 interface WorkerDeps {
   db: Database;
@@ -145,14 +146,21 @@ export function createCsvImportWorker(deps: WorkerDeps) {
                 .where(and(eq(leads.id, existing.id), eq(leads.tenantId, tenantId)));
             } else {
               // Insert new lead
-              await db.insert(leads).values({
+              const [created] = await db.insert(leads).values({
                 tenantId,
                 name,
                 email,
                 phone,
                 source: 'csv',
                 status: 'new',
-              });
+              }).returning({ id: leads.id });
+
+              // BILLABLE, and the path most likely to produce a surprising invoice: a customer who
+              // uploads a 2,000-row CSV has just bought 2,000 leads' worth of overage. Metering it
+              // is what makes that visible on a usage screen instead of on a bill three weeks
+              // later. Per-row rather than batched so a partially-failed import still meters
+              // exactly the rows it actually created.
+              if (created) await meterLead(db, { tenantId, leadId: created.id, source: 'csv' });
             }
 
             processedRows++;

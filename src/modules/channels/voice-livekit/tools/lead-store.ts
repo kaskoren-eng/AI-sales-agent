@@ -1,6 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import type { Database } from '../../../../db/client.js';
 import { leads } from '../../../../db/schema/index.js';
+import { meterLead } from '../../../billing/usage.service.js';
 
 /**
  * Lead persistence shared by the voice tools — extracted from book-meeting.tool.ts once
@@ -98,7 +99,16 @@ export async function upsertLead(
       status: opts.status ?? 'new',
     })
     .returning({ id: leads.id });
-  return inserted[0]?.id ?? null;
+
+  // BILLABLE — an inbound caller nobody had on file is a new lead by any definition.
+  //
+  // NOT awaited, and this is the one place in the meter where that is deliberate: this runs
+  // MID-CALL, while a human is waiting for the agent to speak. A slow write here becomes dead air.
+  // The unawaited promise is safe because meterLead swallows its own errors, and a lost write is
+  // recoverable from `leads` by scripts/reconcile-usage.mjs.
+  const leadId = inserted[0]?.id ?? null;
+  if (leadId) void meterLead(db, { tenantId, leadId, source: 'voice-livekit' });
+  return leadId;
 }
 
 /**

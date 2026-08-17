@@ -34,6 +34,7 @@ import { buildAgentTools } from './tools/index.js';
 import { runEndCallTeardown } from './tools/end-call.tool.js';
 import { buildToolRuntime, isDidRefusal, type ToolRuntimeContext } from './tools/tool-context.js';
 import { enqueueLiveKitCallAnalysis } from '../../../queues/call-analysis.queue.js';
+import { meterCall } from '../../billing/usage.service.js';
 import { ensureAgentSideConversation } from './call-record.js';
 
 /** Where every call's report lands. Repo-root relative, gitignored — these contain caller PII. */
@@ -510,6 +511,33 @@ export default defineAgent({
           }
         } catch (err) {
           console.error('call_learnings_write_failed', err instanceof Error ? err.message : String(err));
+        }
+
+        // PHASE 5a — what this call COST, into the usage ledger.
+        //
+        // This is where `SessionUsageUpdated` finally lands. It has been collected into
+        // `report.recordUsage()` since Phase 4 and, until now, only ever `console.log`ged — so the
+        // one number that says whether the pricing model survives has been thrown away at the end
+        // of every call.
+        //
+        // Zero billable units: calls are never an invoice line (leads are). This is the margin
+        // signal, and it is the only way `docs/gtm/pricing-model.md`'s "real cost/min has never
+        // been measured" ⚠️ ever gets closed.
+        //
+        // Its OWN try/catch, separate from the call_learnings block above, because the two must not
+        // be able to lose each other: a metering failure must not cost us the transcript, and a
+        // transcript failure must not cost us the cost. `dedupeKey` is the room name, so a worker
+        // restarted mid-teardown cannot double-count.
+        try {
+          const json = report.toJson();
+          await meterCall(runtime.db, {
+            tenantId: runtime.tenantId,
+            roomName: ctx.room.name ?? 'unknown',
+            usage: json.usage,
+            durationSec: json.durationSec,
+          });
+        } catch (err) {
+          console.error('usage_meter_call_failed', err instanceof Error ? err.message : String(err));
         }
 
         // The pool closes LAST, after the row it exists to write.

@@ -37,6 +37,7 @@
     "agent:deploy": "node scripts/deploy-agent.mjs deploy",
     "agent:logs": "lk agent logs",
     "provision:number": "node scripts/provision-number.mjs",
+    "usage:reconcile": "node scripts/reconcile-usage.mjs",
     "announcements:generate": "node scripts/generate-system-announcements.mjs"
   },
   "engines": {

@@ -103,6 +103,12 @@ export async function markLeadOptedOut(
         .where(and(eq(leads.id, existing[0]!.id), eq(leads.tenantId, rt.tenantId)));
       return 'lead_updated';
     }
+    // NOT BILLABLE (usage-metering: exempt — suppression record). This row exists so we never
+    // call this number again; it is a do-not-contact entry, not a sales lead. Someone who says
+    // "take me off your list" should not appear as a billable unit on their invoice — that is a
+    // charge no customer will accept and none of us would want to defend.
+    //
+    // Reversible if Koren disagrees: it is one meterLead call. Flagged in the handoff.
     await rt.db.insert(leads).values({
       tenantId: rt.tenantId,
       phone: rt.callerPhone!,

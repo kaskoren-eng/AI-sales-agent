@@ -32,6 +32,10 @@ export async function ensureWebCallPlaceholderLead(db: Database, tenantId: strin
     .limit(1);
   if (existing) return existing.id;
 
+  // NOT BILLABLE (usage-metering: exempt — placeholder). This row is plumbing: the calls list
+  // inner-joins a lead, so a browser simulator session needs one to point at. Charging a customer
+  // ₪6 for opening the simulator to test their own agent would be indefensible, and it is exactly
+  // the kind of charge that gets found during a trial.
   const [created] = await db
     .insert(leads)
     .values({

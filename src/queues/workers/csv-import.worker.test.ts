@@ -31,8 +31,22 @@ function makeSelectChain(rows: any[]) {
   return { from: vi.fn().mockReturnThis(), where: vi.fn().mockReturnThis(), limit: vi.fn().mockResolvedValue(rows) };
 }
 
-function makeInsertChain(rows: any[] = []) {
-  return { values: vi.fn().mockResolvedValue(rows) };
+/**
+ * `values()` is awaitable AND chainable, which is what drizzle actually gives you: an insert can be
+ * awaited directly, or `.returning()` can be tacked on first. This fake used to model only the
+ * first form, so adding a `.returning({ id })` to the worker — needed to meter the new lead —
+ * failed inside the per-row try/catch and turned every imported row into an error count.
+ *
+ * A fake that supports less than the real thing does not make tests stricter; it makes them wrong
+ * about a different library.
+ */
+function makeInsertChain(rows: any[] = [{ id: 'lead-uuid' }]) {
+  const values = vi.fn().mockImplementation(() => {
+    const promise: any = Promise.resolve(rows);
+    promise.returning = vi.fn().mockResolvedValue(rows);
+    return promise;
+  });
+  return { values };
 }
 
 /**
@@ -165,8 +179,15 @@ describe('csv-import worker', () => {
       insert: vi.fn().mockImplementation(() => ({
         values: vi.fn().mockImplementation(() => {
           callCount++;
-          if (callCount === 1) return Promise.resolve([]);
-          return Promise.reject(new Error('partial error'));
+          // First row inserts cleanly, second blows up — the point of the test. Both branches have
+          // to offer `.returning()`, since the worker reads the new lead's id to meter it.
+          const promise: any =
+            callCount === 1 ? Promise.resolve([{ id: 'lead-uuid' }]) : Promise.reject(new Error('partial error'));
+          promise.returning =
+            callCount === 1
+              ? vi.fn().mockResolvedValue([{ id: 'lead-uuid' }])
+              : vi.fn().mockRejectedValue(new Error('partial error'));
+          return promise;
         }),
       })),
       update: vi.fn().mockReturnValue(makeUpdateChain()),

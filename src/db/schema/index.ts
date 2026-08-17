@@ -13,3 +13,7 @@ export { phoneNumbers } from './phone-numbers.js';
 export type { PhoneNumber, NewPhoneNumber } from './phone-numbers.js';
 export { oauthConnections } from './oauth-connections.js';
 export type { OAuthConnection, NewOAuthConnection } from './oauth-connections.js';
+export { plans } from './plans.js';
+export type { Plan, NewPlan } from './plans.js';
+export { usageEvents, usagePeriods, BILLING_STATUSES, QUOTA_ENFORCEMENT_MODES, USAGE_KINDS } from './billing.js';
+export type { UsageEvent, NewUsageEvent, UsagePeriod, NewUsagePeriod, BillingStatus, QuotaEnforcement, UsageKind } from './billing.js';

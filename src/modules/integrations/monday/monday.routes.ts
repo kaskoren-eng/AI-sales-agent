@@ -5,6 +5,7 @@ import { MondayService, type MondayColumnMap } from './monday.service.js';
 import { encrypt, decrypt } from '../../../shared/crypto.js';
 import { getTenantId } from '../../../shared/tenant-context.js';
 import { tenants, leads } from '../../../db/schema/index.js';
+import { meterLead } from '../../billing/usage.service.js';
 
 const configureSchema = z.object({
   apiToken: z.string().min(1),
@@ -188,7 +189,7 @@ export async function mondayRoutes(app: FastifyInstance) {
           ? parsed.phone.startsWith('+') ? parsed.phone : `+${parsed.phone}`
           : undefined;
 
-        await app.db.insert(leads).values({
+        const [row] = await app.db.insert(leads).values({
           tenantId,
           name: parsed.name || undefined,
           email: parsed.email,
@@ -197,7 +198,9 @@ export async function mondayRoutes(app: FastifyInstance) {
           status: 'new',
           externalId: parsed.mondayItemId,
           metadata: { mondayItemId: parsed.mondayItemId },
-        });
+        }).returning({ id: leads.id });
+        // BILLABLE — a lead pulled in from the customer's CRM is a lead the agent will work.
+        if (row) await meterLead(app.db, { tenantId, leadId: row.id, source: 'monday' });
         created++;
       } else {
         skipped++;

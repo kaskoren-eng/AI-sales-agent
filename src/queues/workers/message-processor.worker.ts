@@ -17,6 +17,7 @@ import type { FastifyBaseLogger } from 'fastify';
 // The status-transition guard is shared with the voice CRM-sync path — one source of truth.
 // The chat qualifier only ever attempts the original stepwise edges, all still allowed there.
 import { canTransition } from '../../modules/leads/lead-status.js';
+import { meterLead } from '../../modules/billing/usage.service.js';
 
 interface WorkerDeps {
   db: Database;
@@ -279,6 +280,9 @@ async function findOrCreateLead(db: Database, tenantId: string, channel: string,
       status: 'new',
     })
     .returning();
+
+  // BILLABLE — someone messaged this tenant on WhatsApp or email and was not already on file.
+  if (created) await meterLead(db, { tenantId, leadId: created.id, source: channel });
 
   return { lead: created, isNew: true };
 }

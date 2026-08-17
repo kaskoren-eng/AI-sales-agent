@@ -4,6 +4,7 @@ import { eq, and } from 'drizzle-orm';
 import { tenants, leads } from '../../db/schema/index.js';
 import { encrypt, decrypt } from '../../shared/crypto.js';
 import { NotFoundError, ValidationError } from '../../shared/errors.js';
+import { meterLead } from '../billing/usage.service.js';
 
 interface SheetCredentials {
   spreadsheetId: string;
@@ -196,14 +197,16 @@ export class GoogleSheetsService {
       }
 
       if (!existingId) {
-        await this.app.db.insert(leads).values({
+        const [row] = await this.app.db.insert(leads).values({
           tenantId,
           name: mapped['name'],
           email: mapped['email'],
           phone: mapped['phone'],
           source: mapped['source'] ?? 'google_sheets',
           status: 'new',
-        });
+        }).returning({ id: leads.id });
+        // BILLABLE — same as the CSV path, just on a schedule instead of an upload.
+        if (row) await meterLead(this.app.db, { tenantId, leadId: row.id, source: mapped['source'] ?? 'google_sheets' });
         created++;
       }
     }
