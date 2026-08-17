@@ -155,7 +155,24 @@ export interface CallReportJson {
      */
     promptCacheHitPct: number | null;
     endOfTurnMedianMs: number | null;
+    /**
+     * Time to the first chunk out of `llmNode` — WHICH IS NOT THE MODEL when the instant
+     * acknowledgement is on.
+     *
+     * `performLLMInference` stamps its ttft on whatever comes out of `llmNode` first
+     * (generation.js:381), and with VOICE_INSTANT_ACK that is our own "אוקיי." emitted before the
+     * model has done anything. So this reads near zero and tells you nothing about GPT. Read
+     * `modelTtftMedianMs` for that. Both are kept because their DIFFERENCE is the point: it is
+     * how much of the model's thinking the acknowledgement is hiding.
+     */
     llmTtftMedianMs: number | null;
+    /**
+     * The model's real time-to-first-token, measured in `llmNode` from reply start.
+     *
+     * Null when the instant acknowledgement is off — there is nothing to disentangle then, and
+     * `llmTtftMedianMs` already is the model's number.
+     */
+    modelTtftMedianMs: number | null;
     ttsTtfbMedianMs: number | null;
     /**
      * Preemptive drafts the SDK threw away — LLM calls paid for and never heard.
@@ -438,6 +455,13 @@ export class CallReport {
 
     const eouMed = median(eou);
     const ttftMed = median(ttft);
+    // Recorded by llmNode under its own stage so it can never mix with the SDK's ttft above.
+    const modelTtftMed = median(
+      this.#metrics
+        .filter((m) => m.stage === 'model_ttft')
+        .map((m) => m.durationMs)
+        .filter((v): v is number => typeof v === 'number'),
+    );
     const ttfbMed = median(ttfb);
 
     // Cache hit rate across the whole call, weighted by tokens (not a mean of per-turn ratios —
@@ -483,11 +507,14 @@ export class CallReport {
         draftsDiscarded,
         endOfTurnMedianMs: eouMed,
         llmTtftMedianMs: ttftMed,
+        modelTtftMedianMs: modelTtftMed,
         ttsTtfbMedianMs: ttfbMed,
+        // Uses the MODEL's ttft when we have it. Otherwise the instant acknowledgement would
+        // silently shave ~840ms off this figure without a single stage getting faster.
         worstCaseMs:
-          eouMed === null || ttftMed === null || ttfbMed === null
+          eouMed === null || (modelTtftMed ?? ttftMed) === null || ttfbMed === null
             ? null
-            : Math.round(eouMed + ttftMed + ttfbMed),
+            : Math.round(eouMed + (modelTtftMed ?? ttftMed)! + ttfbMed),
         deadAir: {
           medianMs: median(this.#deadAir),
           p90Ms: percentile(this.#deadAir, 90),

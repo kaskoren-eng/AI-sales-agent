@@ -82,7 +82,15 @@ if (d && d.samples > 0) {
 
 console.log('\nPIPELINE STAGES (median each — these do NOT add up to the number above)\n');
 console.log(`  end-of-turn      ${bar(s.endOfTurnMedianMs)}  ${ms(s.endOfTurnMedianMs)}   how long she waits before deciding you finished`);
-console.log(`  LLM first token  ${bar(s.llmTtftMedianMs)}  ${ms(s.llmTtftMedianMs)}   how long GPT thinks`);
+// With the instant acknowledgement on, the SDK's ttft measures OUR "אוקיי." rather than GPT, so
+// the real number is reported separately. Showing only the SDK's would read as a 840ms win that
+// no stage actually made.
+if (s.modelTtftMedianMs != null) {
+  console.log(`  LLM first token  ${bar(s.modelTtftMedianMs)}  ${ms(s.modelTtftMedianMs)}   how long GPT thinks`);
+  console.log(`  first sound out  ${bar(s.llmTtftMedianMs)}  ${ms(s.llmTtftMedianMs)}   the acknowledgement, ahead of GPT`);
+} else {
+  console.log(`  LLM first token  ${bar(s.llmTtftMedianMs)}  ${ms(s.llmTtftMedianMs)}   how long GPT thinks`);
+}
 console.log(`  TTS first audio  ${bar(s.ttsTtfbMedianMs)}  ${ms(s.ttsTtfbMedianMs)}   how long until she starts speaking`);
 console.log(`  ${'-'.repeat(60)}`);
 console.log(`  serial total     ${' '.repeat(20)}  ${ms(s.worstCaseMs)}   if no stage overlapped another`);

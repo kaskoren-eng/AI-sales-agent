@@ -109,6 +109,20 @@ class ClickScalesAgent extends voice.Agent {
    */
   onSilentReply: (() => void) | null = null;
 
+  /**
+   * The MODEL's real time-to-first-token, which the SDK's own metric can no longer see.
+   *
+   * `performLLMInference` stamps `data.ttft` on the first chunk out of `llmNode`
+   * (generation.js:381) — and with VOICE_INSTANT_ACK that chunk is OUR acknowledgement, emitted
+   * before the model has done anything. So `llmTtftMedianMs` in the call report reads ~0ms and the
+   * ~840ms it used to report vanishes from the instrument.
+   *
+   * That is the exact failure this session spent three days undoing (a metric that flatters the
+   * change being measured), so it is not acceptable to introduce one. This reports the real
+   * number, measured from reply start to the model's first chunk.
+   */
+  onModelFirstToken: ((ms: number) => void) | null = null;
+
   /** Null when the per-tenant tool gate is closed — the guard then behaves exactly as pre-Phase-4. */
   readonly toolRuntime: ToolRuntimeContext | null;
 
@@ -188,6 +202,7 @@ class ClickScalesAgent extends voice.Agent {
     toolCtx: Parameters<voice.Agent['llmNode']>[1],
     modelSettings: Parameters<voice.Agent['llmNode']>[2],
   ): ReturnType<voice.Agent['llmNode']> {
+    const startedAt = Date.now();
     const inner = await voice.Agent.default.llmNode(this, chatCtx, toolCtx, modelSettings);
     if (!this.instantAck || inner === null) {
       this.#spokenAck = null;
@@ -199,13 +214,23 @@ class ClickScalesAgent extends voice.Agent {
     this.#spokenAck = ack;
 
     const reader = inner.getReader();
+    let sawModelToken = false;
     const withAck = new ReadableStream({
       // Enqueued before the first read, so it reaches the TTS without waiting on the model at all.
       start: (controller) => controller.enqueue(`${ack} `),
       pull: async (controller) => {
         const { done, value } = await reader.read();
-        if (done) controller.close();
-        else controller.enqueue(value as string);
+        if (done) {
+          controller.close();
+          return;
+        }
+        // The model's real first token — see onModelFirstToken. The SDK's own ttft is now measuring
+        // the acknowledgement above, so this is the only place the true number still exists.
+        if (!sawModelToken) {
+          sawModelToken = true;
+          this.onModelFirstToken?.(Date.now() - startedAt);
+        }
+        controller.enqueue(value as string);
       },
       cancel: (reason) => reader.cancel(reason),
     });
@@ -715,6 +740,14 @@ export default defineAgent({
 
     // Now that she exists, give her deliberate silence a way out. See the MUTE WATCHDOG above.
     agent.onSilentReply = armMuteWatchdog;
+
+    // The model's REAL first-token time. The SDK's own ttft now measures our acknowledgement, so
+    // without this the ~840ms GPT actually takes would simply disappear from the report and every
+    // future reading would flatter the change that hid it.
+    agent.onModelFirstToken = (ms) => {
+      report.recordMetric('model_ttft', { durationMs: ms });
+      console.log(`latency model_ttft ${ms}ms`);
+    };
 
     // SHE HESITATES WHEN SHE IS THINKING — AT THE START OF HER REPLY, NEVER AFTER IT.
     //
