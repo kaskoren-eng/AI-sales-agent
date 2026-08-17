@@ -49,6 +49,69 @@ const HEBREW_TURN = 'תגידי, כמה זה עולה ואיך אתם יכולי
 const RUNS = 3;
 const OUT_DIR = 'voice-samples/bench';
 
+/**
+ * ⚠️ `bench:tts` ABSOLUTE NUMBERS DO NOT MATCH PRODUCTION. Read it for RANKING only.
+ *
+ * Run 2026-08-16: the live config (direct Cartesia) measured **1637ms** here against **217ms** on
+ * real calls the same day — a 7x disagreement. The bench pushes one long line and flushes, while a
+ * real turn streams a short first sentence into an already-open socket. Same trap as the LLM arm,
+ * which "proved" gpt-5.4-mini was faster and then lost on a real call (known-issues §3): a bench
+ * whose input does not match production measures a call that never happens.
+ *
+ * Also on that run, EVERY `inference.TTS` row returned NO AUDIO while the direct row worked. The
+ * printed hint blames a missing voice id, and for these rows that is wrong — the voice is passed.
+ * It is the LiveKit inference gateway itself. Production does not use that path
+ * (`VOICE_TTS_ROUTE=cartesia` goes direct), so it is a bench problem, not a live one.
+ *
+ * TTS is also the SMALLEST term in the budget (217ms of ~1.6s). Do not spend time here before
+ * end-of-turn and the LLM.
+ */
+
+/**
+ * How long one synthesis may take before the candidate is written off as hung.
+ *
+ * A real TTS answers in a few hundred ms. This is generous enough that a slow-but-working vendor
+ * still scores, and short enough that a broken one costs a few seconds rather than the run —
+ * `bench:tts` sat for 20+ minutes on a single ElevenLabs row on 2026-08-16 and returned nothing
+ * for any of the candidates that would have come after it.
+ */
+const SYNTH_TIMEOUT_MS = 20_000;
+
+/**
+ * Drains a TTS stream, giving up if the vendor stops sending and never closes.
+ *
+ * `for await (const ev of stream)` cannot express this: an iterator that simply never resolves
+ * hangs forever with no way out. Racing each `next()` against a timer is the only shape that can
+ * abandon a dead stream, so it is worth the extra lines.
+ */
+async function drainWithTimeout(
+  stream: AsyncIterable<{ frame: AudioFrame } | typeof ttsBase.SynthesizeStream.END_OF_STREAM>,
+  started: number,
+): Promise<{ ttfb: number | null; got: AudioFrame[]; timedOut: boolean }> {
+  const iterator = stream[Symbol.asyncIterator]();
+  const got: AudioFrame[] = [];
+  let ttfb: number | null = null;
+
+  for (;;) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<'TIMEOUT'>((resolve) => {
+      timer = setTimeout(() => resolve('TIMEOUT'), SYNTH_TIMEOUT_MS);
+      // Never hold the process open for a timer whose only job is to abandon something.
+      timer.unref?.();
+    });
+
+    const next = await Promise.race([iterator.next(), deadline]);
+    clearTimeout(timer);
+
+    if (next === 'TIMEOUT') return { ttfb, got, timedOut: true };
+    if (next.done) break;
+    if (next.value === ttsBase.SynthesizeStream.END_OF_STREAM) break;
+    ttfb ??= Date.now() - started;
+    got.push((next.value as { frame: AudioFrame }).frame);
+  }
+  return { ttfb, got, timedOut: false };
+}
+
 // ---------------------------------------------------------------------------------------------
 // TTS candidates. Hebrew is the filter that kills most of them: Deepgram Aura and Rime are
 // English-only, so they are not here. A model that cannot speak Hebrew is not a fast model, it is
@@ -210,15 +273,17 @@ async function benchTts(env: Env): Promise<void> {
         stream.flush();
         stream.endInput();
 
-        let ttfb: number | null = null;
-        const got: AudioFrame[] = [];
-        for await (const ev of stream) {
-          if (ev === ttsBase.SynthesizeStream.END_OF_STREAM) break;
-          ttfb ??= Date.now() - started;
-          got.push(ev.frame);
-        }
+        const { ttfb, got, timedOut } = await drainWithTimeout(stream, started);
         stream.close();
 
+        if (timedOut) {
+          // A CANDIDATE THAT HANGS MUST NOT TAKE THE BENCH WITH IT. On 2026-08-16 this run sat for
+          // 20+ minutes on one row and produced nothing at all for the six that would have
+          // followed — so the answer to "which TTS is fastest" was lost to a vendor that simply
+          // never closed its stream. An empty result for one row is a finding; no results is not.
+          err = `HUNG — no end-of-stream after ${SYNTH_TIMEOUT_MS}ms (vendor never closed it)`;
+          break;
+        }
         if (got.length === 0) {
           // AN EMPTY STREAM IS A BUG IN OUR REQUEST, NOT PROOF THE MODEL CANNOT SPEAK HEBREW.
           // This is the single most expensive lesson in this codebase (known-issues §2): sonic-turbo
