@@ -42,8 +42,15 @@ describe('LeadService', () => {
       select: vi.fn(),
       insert: vi.fn(),
       update: vi.fn(),
+      delete: vi.fn(),
+      transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(db)),
     };
     service = new LeadService(db);
+    // `create` meters the new lead, and metering deliberately swallows its own failures against
+    // these bare mocks. Silenced so a real error in this file is not lost in the noise — the
+    // meter's own behaviour is covered in src/modules/billing/usage.service.test.ts, and the fact
+    // that a metering failure cannot fail lead creation is asserted in lead.routes.test.ts.
+    vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   describe('create', () => {

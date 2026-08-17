@@ -453,4 +453,68 @@ export class CallsService {
       learnings,
     };
   }
+
+  /**
+   * ERASE A CALL: the transcript, the recording reference, the analysis, and the messages.
+   *
+   * The privacy policy promises deletion, and a call is the densest personal data this system
+   * holds — a recorded human voice is biometric data, and the transcript is everything they said.
+   * "Delete my data" that leaves the transcript behind is not deletion.
+   *
+   * THE LEAD SURVIVES. Deleting one call must not silently destroy the person's record and every
+   * other conversation with them; a caller asking to erase one recording has not asked to be
+   * forgotten entirely. `DELETE /leads/:id` is the endpoint for that, and it deletes the calls too.
+   *
+   * Returns null when the call does not exist for this tenant, so the route can 404 rather than
+   * confirm the existence of somebody else's call.
+   */
+  async deleteCall(tenantId: string, id: string): Promise<CallDeletionSummary | null> {
+    const [row] = await this.db
+      .select({ id: conversations.id, channelRef: conversations.channelRef, channel: conversations.channel })
+      .from(conversations)
+      .where(and(eq(conversations.tenantId, tenantId), eq(conversations.id, id)))
+      .limit(1);
+
+    if (!row || row.channel !== 'voice') return null;
+
+    const summary: CallDeletionSummary = { callId: id, messages: 0, learnings: 0, recordingRefs: [] };
+
+    await this.db.transaction(async (tx) => {
+      // `call_learnings` is matched on the ROOM NAME, not a foreign key — that is how the two
+      // tables have always been joined. Skipping this when channelRef is null is deliberate: an
+      // unconstrained delete here would take every learnings row whose conference_name is null.
+      if (row.channelRef) {
+        const gone = await tx
+          .delete(callLearnings)
+          .where(and(eq(callLearnings.tenantId, tenantId), eq(callLearnings.conferenceName, row.channelRef)))
+          .returning({ id: callLearnings.id, recordingUrl: callLearnings.recordingUrl });
+        summary.learnings = gone.length;
+        summary.recordingRefs = gone.map((g) => g.recordingUrl).filter((u): u is string => Boolean(u));
+      }
+
+      const deletedMessages = await tx
+        .delete(messages)
+        .where(and(eq(messages.tenantId, tenantId), eq(messages.conversationId, id)))
+        .returning({ id: messages.id });
+      summary.messages = deletedMessages.length;
+
+      await tx.delete(conversations).where(and(eq(conversations.tenantId, tenantId), eq(conversations.id, id)));
+    });
+
+    return summary;
+  }
+}
+
+export interface CallDeletionSummary {
+  callId: string;
+  messages: number;
+  learnings: number;
+  /**
+   * Recording URLs that were referenced by the deleted rows.
+   *
+   * The AUDIO ITSELF IS NOT DELETED — it lives with the provider, not in this database, and this
+   * method cannot reach it. Returned so the caller can say so plainly rather than let a "deleted"
+   * response imply an erasure that did not happen.
+   */
+  recordingRefs: string[];
 }

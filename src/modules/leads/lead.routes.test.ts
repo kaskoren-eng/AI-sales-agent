@@ -59,6 +59,9 @@ describe('lead routes', () => {
     const db = createMockDb();
     const builder = makeQueryBuilder([SAMPLE_LEAD]);
     db.insert.mockReturnValue(builder);
+    // Metering runs on this path and logs against a bare mock; the next test is the one that
+    // asserts on that. Silenced here so it does not drown the output of a genuine failure.
+    vi.spyOn(console, 'error').mockImplementation(() => {});
 
     app = await buildTestApp(withLeadRoutes(db));
 
@@ -71,6 +74,32 @@ describe('lead routes', () => {
 
     expect(res.statusCode).toBe(201);
     expect(res.json().id).toBe(LEAD_ID);
+  });
+
+  it('still creates the lead when usage metering fails', async () => {
+    // Creating a lead is the customer's core product event. A counter that cannot be written must
+    // never be able to fail it — that would trade a recoverable accounting gap (reconcilable from
+    // the `leads` table itself) for an unrecoverable business one.
+    //
+    // This db mock has no `select` configured, so the meter's period lookup throws. The route must
+    // not notice. It must, however, be LOUD about it: the log line is the signal that
+    // `npm run usage:reconcile` has work to do, and silence there would make under-billing
+    // undetectable.
+    const db = createMockDb();
+    db.insert.mockReturnValue(makeQueryBuilder([SAMPLE_LEAD]));
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    app = await buildTestApp(withLeadRoutes(db));
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/leads',
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Jane Doe', email: 'jane@example.com' }),
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(logged).toHaveBeenCalledWith('usage_meter_failed', expect.stringContaining(LEAD_ID));
+    logged.mockRestore();
   });
 
   it('GET / lists leads', async () => {

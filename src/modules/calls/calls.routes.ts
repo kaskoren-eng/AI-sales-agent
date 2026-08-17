@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { CallsService } from './calls.service.js';
 import { LiveKitVoiceService } from '../channels/voice-livekit/voice-livekit.service.js';
+import { recordAudit, actorFromRequest } from '../../shared/audit.js';
 
 // ---------------------------------------------------------------------------
 // Query / param schemas
@@ -134,6 +135,55 @@ async function callsRoutes(app: FastifyInstance) {
       return reply.status(200).send(call);
     },
   );
+
+  // -------------------------------------------------------------------------
+  // DELETE /:id — erase a call: transcript, analysis, messages, recording reference
+  // -------------------------------------------------------------------------
+  //
+  // A call is the densest personal data this system holds: a recorded human voice is biometric
+  // data and the transcript is everything the person said. `docs/legal-drafts/` promises deletion
+  // on request, and nothing implemented it — so the honest answer was a hand-written SQL statement.
+  //
+  // THE LEAD SURVIVES. Someone asking to erase one recording has not asked to be forgotten
+  // entirely, and destroying their whole record plus every other conversation would be a
+  // destructive over-reach. `DELETE /leads/:id` is the endpoint for that.
+  app.delete('/:id', async (request, reply) => {
+    const params = callIdParamSchema.safeParse(request.params);
+    if (!params.success) return reply.status(404).send({ error: 'Call not found' });
+
+    const { id } = params.data;
+    const tenantId = request.tenantId;
+
+    const summary = await service.deleteCall(tenantId, id);
+    // 404 rather than 403 on someone else's call: a distinct status would confirm that the id
+    // exists, which is exactly what an enumeration attempt is looking for.
+    if (!summary) return reply.status(404).send({ error: 'Call not found' });
+
+    await recordAudit(app.db, {
+      tenantId,
+      ...actorFromRequest(request),
+      action: 'call.deleted',
+      targetType: 'call',
+      targetId: id,
+      // Counts, never content. An audit trail that accumulates the transcript it just erased is
+      // simply a second copy of the thing that was deleted.
+      metadata: {
+        messages: summary.messages,
+        learnings: summary.learnings,
+        recordingsLeftWithProvider: summary.recordingRefs.length,
+      },
+    });
+
+    return reply.status(200).send({
+      deleted: true,
+      callId: id,
+      messages: summary.messages,
+      learnings: summary.learnings,
+      // Named so a "deleted" response cannot be read as an erasure that did not happen: the audio
+      // lives with the provider, not in this database, and this endpoint cannot reach it.
+      recordingsNotDeleted: summary.recordingRefs,
+    });
+  });
 
   // -------------------------------------------------------------------------
   // POST /outbound — initiate an outbound call via the LiveKit agent

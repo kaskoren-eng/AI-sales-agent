@@ -11,6 +11,7 @@ export type MockDb = {
   insert: ReturnType<typeof vi.fn>;
   update: ReturnType<typeof vi.fn>;
   delete: ReturnType<typeof vi.fn>;
+  transaction: ReturnType<typeof vi.fn>;
 };
 
 export type MockQueue = {
@@ -18,12 +19,18 @@ export type MockQueue = {
 };
 
 export function createMockDb(): MockDb {
-  return {
+  const db: MockDb = {
     select: vi.fn(),
     insert: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+    // Runs the callback against the SAME mock, which is what drizzle's transaction does for a
+    // caller's purposes. Without it, any route touching a transaction — usage metering, lead
+    // deletion — fails inside its own try/catch and the test passes while logging an error nobody
+    // reads. A fake that supports less than the real client makes tests quietly wrong.
+    transaction: vi.fn(async (cb: (tx: MockDb) => Promise<unknown>) => cb(db)),
   };
+  return db;
 }
 
 export function createMockQueue(): MockQueue {

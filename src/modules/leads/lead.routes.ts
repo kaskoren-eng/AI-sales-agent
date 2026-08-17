@@ -6,6 +6,8 @@ import { enqueueFlowStep } from '../../queues/flow-executor.queue.js';
 import { eq, and } from 'drizzle-orm';
 import { leads, tenants } from '../../db/schema/index.js';
 import { flowDefinitionSchema } from '../flows/flow.schemas.js';
+import { recordAudit, actorFromRequest } from '../../shared/audit.js';
+import { cancelMeetingReminders } from '../../queues/meeting-reminders.queue.js';
 
 export async function leadRoutes(app: FastifyInstance) {
   const service = new LeadService(app.db);
@@ -44,6 +46,72 @@ export async function leadRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const input = updateLeadSchema.parse(request.body);
     return service.update(tenantId, id, input);
+  });
+
+  /**
+   * DELETE /:id — erase a lead and everything written about them.
+   *
+   * `docs/legal-drafts/privacy-policy` promises deletion on request. Nothing implemented it, which
+   * meant the only honest answer to "please delete my data" was a manual SQL statement — and the
+   * only record of it having happened was that someone remembered doing it.
+   *
+   * Three deliberate boundaries, all visible in the response rather than buried:
+   *
+   *   1. THE USAGE LEDGER SURVIVES. `usage_events` keeps a row keyed on the lead id, and it stays.
+   *      It holds a count and an id, never a name, a phone or a transcript — so it is not personal
+   *      data — and erasing it would let anyone delete their way out of an invoice. Deletion must
+   *      not be a billing operation.
+   *   2. CALENDAR EVENTS ARE NOT CANCELLED. Deleting a database row must not silently cancel a
+   *      real meeting in the customer's diary; that is destructive, outward-facing, and not what
+   *      "delete this lead" asks for. The event ids are returned so the operator can act on them
+   *      knowingly. (If the deletion is a privacy erasure, they DO need cancelling — hence
+   *      surfacing them instead of staying quiet.)
+   *   3. REMINDERS ARE CANCELLED. Those are ours and internal, and a reminder firing about a
+   *      deleted lead would be both a bug and a privacy leak — it would send their name onward
+   *      after erasure.
+   */
+  app.delete('/:id', async (request, reply) => {
+    const tenantId = getTenantId(request);
+    const { id } = request.params as { id: string };
+
+    const summary = await service.delete(tenantId, id);
+
+    // Best-effort, and AFTER the rows are gone: a queue hiccup must not leave the lead undeleted.
+    // The reminder worker re-checks its scheduled_calls row at fire time and finds nothing, so a
+    // missed cancellation degrades to a no-op rather than to a message about a deleted person.
+    if (summary.reminderJobIds.length > 0 && app.queues?.meetingReminders) {
+      await cancelMeetingReminders(app.queues.meetingReminders, summary.reminderJobIds).catch(() => 0);
+    }
+
+    // The audit row carries the blast radius and the lead's NAME, captured before deletion —
+    // "lead.deleted 3f2a…" answers nothing six months later when the row it points at is gone.
+    // It deliberately carries no phone, email or transcript: an audit trail that accumulates the
+    // very data that was erased is a new copy of it.
+    await recordAudit(app.db, {
+      tenantId,
+      ...actorFromRequest(request),
+      action: 'lead.deleted',
+      targetType: 'lead',
+      targetId: id,
+      metadata: {
+        name: summary.name ?? null,
+        conversations: summary.conversations,
+        messages: summary.messages,
+        scheduledCalls: summary.scheduledCalls,
+        remindersCancelled: summary.reminderJobIds.length,
+        calendarEventsLeftInPlace: summary.calendarEventRefs.length,
+      },
+    });
+
+    return reply.send({
+      deleted: true,
+      leadId: id,
+      conversations: summary.conversations,
+      messages: summary.messages,
+      scheduledCalls: summary.scheduledCalls,
+      // Named so the caller cannot mistake it for "we cancelled these".
+      calendarEventsNotCancelled: summary.calendarEventRefs,
+    });
   });
 
   // POST /:id/trigger-flow — manually kick off a named flow for a lead
