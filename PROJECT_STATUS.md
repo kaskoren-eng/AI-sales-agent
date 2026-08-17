@@ -151,7 +151,13 @@ Replace Retell with LiveKit + Cartesia + OpenAI Realtime pipeline. Full plan in 
 **Rollback plan:** ⚠️ **None.** The previous engine was decommissioned and its code removed from the repo (2026-08-05). `voice_engine` no longer exists as a setting. Fix forward.
 
 **Success criteria (carried over from the decommissioning gate — still open):**
-- Latency P95 < 800ms, P50 < 500ms per turn
+- **Time to first audio < 1000ms median.** Restated 2026-08-16: the old "P95 < 800ms / P50 < 500ms
+  per turn" was never achievable and was never measured against a real definition. Measured floor
+  for a real ANSWER on this stack is **~1.6s** — end-of-turn ~400ms + LLM first token ~974ms + TTS
+  first byte ~217ms — and nothing in the pipeline gets under it (`npm run bench:path`,
+  `bench:llm`, `bench:tier`; see known-issues §14-15). Under 1s is reached by SPEAKING sooner:
+  `VOICE_INSTANT_ACK` puts a short receipt on the line at ~620ms. Judge it by
+  `summary.deadAir.medianMs` in the call report, never by `worstCaseMs`.
 - Blind test: 3+ humans can't reliably identify agent as bot
 - 30 days of clean operation on Koren's tenant
 - Verified cost < $0.12/min

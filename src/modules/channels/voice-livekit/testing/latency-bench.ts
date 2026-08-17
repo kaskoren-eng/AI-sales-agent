@@ -3,15 +3,20 @@
  *
  *   npm run bench:tts     time-to-first-AUDIO for every Hebrew-capable TTS
  *   npm run bench:llm     time-to-first-TOKEN for every candidate LLM, on our real prompt
+ *   npm run bench:path    WHERE the reply is held before she starts speaking (guard vs downstream)
+ *   npm run bench:tier    is VOICE_LLM_SERVICE_TIER=priority worth ~2x the token price?
  *
  * WHAT WE ARE ACTUALLY OPTIMISING. After the caller stops speaking he waits through three things:
  *
- *   end-of-turn   ~496ms   deciding he finished          (Silero + endpointing)
- *   LLM ttft      ~848ms   GPT thinking                  (mostly hidden by preemptive generation)
- *   TTS ttfb      ~455ms   Cartesia starting to speak    (partly hidden by preemptive TTS)
+ *   end-of-turn   ~400ms   deciding he finished          (Soniox endpoint, delay 1000ms)
+ *   LLM ttft      ~974ms   GPT thinking                  (the dominant term — and irreducible)
+ *   TTS ttfb      ~217ms   Cartesia starting to speak    (sonic-3.5)
  *
- * Only the first is unavoidable dead air. The other two are what this bench attacks, and they are
- * the ONLY two we can change by swapping a model.
+ * RE-MEASURED 2026-08-16, and the conclusion changed. The old note here said preemptive generation
+ * hid the LLM and preemptive TTS hid Cartesia. Neither survives contact with Soniox (known-issues
+ * §14), and `bench:llm` finds NO faster model — gpt-5.4 at 808ms beats gemini-3-flash, both
+ * minis, and grok-non-reasoning. So ~1.6s is the floor for a real ANSWER, and the sub-second
+ * number comes from VOICE_INSTANT_ACK speaking before the model does, not from a faster stage.
  *
  * WHY THIS BENCH AND NOT A PHONE CALL. A real call costs Koren's time and gives one sample of one
  * config. This measures every candidate, several times each, in a couple of minutes, for cents —
@@ -405,6 +410,81 @@ async function benchPath(env: Env): Promise<void> {
   );
 }
 
+/**
+ * `npm run bench:tier` — is `VOICE_LLM_SERVICE_TIER=priority` actually buying anything?
+ *
+ * It is set on the live agent and it roughly DOUBLES the token price, justified in agent.config.ts
+ * as "faster time-to-first-token". That claim has never been measured against the alternative on
+ * this prompt. The suspicion came from two of our own benches disagreeing: `bench:llm` measured
+ * 808ms with no tier set, `bench:path` measured 974ms with priority on.
+ *
+ * RUNS ARE INTERLEAVED, not grouped. OpenAI's latency drifts over minutes, so measuring six of one
+ * and then six of the other measures the drift as much as the setting — which is exactly how an
+ * earlier endpointing A/B here produced a confident result from two identical arms.
+ */
+async function benchTier(env: Env): Promise<void> {
+  const model = env.VOICE_LLM_MODEL ?? env.AI_MODEL;
+  const PAIRS = 6;
+  console.log(`SERVICE TIER — is 'priority' worth ~2x the token price? (${model}, ${PAIRS} interleaved pairs)\n`);
+
+  const samples: Record<string, number[]> = { priority: [], default: [] };
+
+  const once = async (tier: 'priority' | 'default'): Promise<number | null> => {
+    const llm = new openai.LLM({
+      model,
+      ...(env.VOICE_LLM_REASONING_EFFORT ? { reasoningEffort: env.VOICE_LLM_REASONING_EFFORT } : {}),
+      ...(tier === 'priority' ? { serviceTier: 'priority' as const } : {}),
+    });
+    const chatCtx = llmBase.ChatContext.empty();
+    chatCtx.addMessage({ role: 'system', content: SYSTEM_PROMPT_HE });
+    chatCtx.addMessage({ role: 'user', content: HEBREW_TURN });
+
+    const started = Date.now();
+    try {
+      const stream = llm.chat({ chatCtx });
+      for await (const chunk of stream) {
+        if (chunk.delta?.content) {
+          const ttft = Date.now() - started;
+          await stream.close?.();
+          return ttft;
+        }
+      }
+      await stream.close?.();
+    } catch (e) {
+      console.log(`    ${tier} FAILED — ${e instanceof Error ? e.message.slice(0, 60) : String(e)}`);
+    }
+    return null;
+  };
+
+  for (let i = 0; i < PAIRS; i++) {
+    // Order flipped each pair so neither arm systematically gets the warmer cache.
+    const order: Array<'priority' | 'default'> = i % 2 === 0 ? ['priority', 'default'] : ['default', 'priority'];
+    const row: Record<string, number | null> = {};
+    for (const tier of order) {
+      const ms = await once(tier);
+      if (ms !== null) samples[tier]!.push(ms);
+      row[tier] = ms;
+    }
+    console.log(`  pair ${i + 1}   priority ${String(row.priority ?? '—').padStart(4)}ms   default ${String(row.default ?? '—').padStart(4)}ms`);
+  }
+
+  const p = median(samples.priority!);
+  const d = median(samples.default!);
+  console.log(`\n  medians:  priority ${p}ms   default ${d}ms`);
+  if (p !== null && d !== null) {
+    const delta = d - p;
+    console.log(
+      Math.abs(delta) < 75
+        ? `\n  VERDICT: ${Math.abs(delta)}ms apart — INSIDE THE NOISE. 'priority' is not buying\n  measurable latency here, and it is charging ~2x per token for it. Koren's call.`
+        : delta > 0
+          ? `\n  VERDICT: priority is ${delta}ms faster. Worth the ~2x token price on voice turns.`
+          : `\n  VERDICT: priority is ${-delta}ms SLOWER. It is costing money and time both.`,
+    );
+  }
+  console.log('\n  Note: ~50-token voice replies, so ~2x on output tokens is pennies per call either way.');
+  console.log('  Judge it on latency, not on the bill.');
+}
+
 function median(v: number[]): number | null {
   if (v.length === 0) return null;
   const s = [...v].sort((a, b) => a - b);
@@ -421,6 +501,7 @@ async function main(): Promise<void> {
   if (what === 'all') console.log(`\n${'='.repeat(90)}\n`);
   if (what === 'llm' || what === 'all') await benchLlm(env);
   if (what === 'path') await benchPath(env);
+  if (what === 'tier') await benchTier(env);
 }
 
 main().catch((err) => {
