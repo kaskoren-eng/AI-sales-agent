@@ -172,7 +172,23 @@ is not a request to be forgotten entirely.
 - **Do opt-out suppression records bill?** I said no. Reversible in one line.
 - **Who is alerted when a live tenant's calendar is revoked?** Still open from yesterday — the
   `sendAlert` machinery in `spend-guard.ts` is the model. Operator, customer, or both.
-- **Nothing has run against a real database yet.** Migration 0013 is generated but unapplied, and
-  the metering write path has only ever run against mocks. First real lead and first real call after
-  migrating are the proof — `npm run usage:reconcile` (dry run) is the fastest way to see whether
-  the ledger and the tables agree.
+- ~~Nothing has run against a real database yet.~~ **Verified against real Postgres 17.** I built a
+  throwaway database (`migration_check`) on the local docker instance — the dev database was not
+  touched — applied all 14 migrations from scratch, and ran the real metering path against it:
+
+  | check | result |
+  |---|---|
+  | all migrations apply from an empty database | ✅ |
+  | plans seeded: base / growth / custom / internal | ✅ |
+  | a repeated lead and a repeated call are rejected by the unique index | ✅ 3 rows, not 5 |
+  | `leads_used` and `measured_cost` equal the ledger | ✅ |
+  | plan snapshot frozen into the period (`base`, 150 included) | ✅ |
+  | period boundary for anchor day 12 | `2026-08-11 21:00Z` = **2026-08-12 00:00 Israel** ✅ |
+
+  The one number worth your eye: a 1-minute call priced out at **₪0.2368 ≈ $0.064/min**, against
+  `pricing-model.md`'s conservative $0.12/min ceiling and its $0.08 target. That is an estimate
+  built on unverified list prices, not a measurement — but it is the right order of magnitude,
+  which is the first time that has been checkable at all.
+
+  Still untested against a real database: the two DELETE endpoints (mocks only), and the OAuth
+  calendar path (unchanged from yesterday — no client exists yet).
