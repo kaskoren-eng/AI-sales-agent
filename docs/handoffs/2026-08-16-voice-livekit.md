@@ -1,6 +1,7 @@
 # 2026-08-16 — voice-livekit: Retell removal, then the latency hunt
 
-Branch: `feature/crm-automation`. Agent deployed to LiveKit Cloud (`CA_azGQ9uaLxpot`).
+Branch: `feature/retell-removal`, fast-forwards cleanly onto `feature/crm-automation` (the voice
+trunk) — 7 commits, no divergence. Agent deployed to LiveKit Cloud (`CA_azGQ9uaLxpot`).
 
 ## What shipped
 
@@ -98,6 +99,22 @@ sessions:
    the first call after idle carries a cold start and an empty prompt cache. Ignore turn 1 when
    reading any call report.
 5. `OPENAI_API_KEY` rotation — deferred by Koren to the production phase.
+
+## Security check — less bad than the plan assumed
+
+The removal plan claimed `.playwright-cli/` captures contained **real** `RETELL_API_KEY` /
+`RETELL_AGENT_ID` values scraped from a host env panel, and that the directory was not gitignored.
+Re-checked, and the first half is wrong:
+
+- **No credential VALUES are present.** Across all 150 captures, zero matches for `key_…` /
+  `agent_…` / `sk-proj-…` / `sk_car_…` / `re_…`. One file contains the literal string
+  `RETELL_API_KEY` — the variable name from a masked panel, not its value.
+- `.playwright-cli/` **is** gitignored on `feature/crm-automation`. It is **not** on
+  `feature/website-clickscales-v2`, where the main worktree sits with 150 untracked files. A
+  `git add -A` there would commit screenshots of dashboards.
+
+Not fixed here: that is the other session's branch, and rule 2 says do not commit to it. One line
+in `.gitignore` on their side closes it. No rotation needed — nothing live leaked.
 
 ## Merge note
 
