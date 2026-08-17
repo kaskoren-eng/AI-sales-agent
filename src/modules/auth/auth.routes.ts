@@ -93,6 +93,25 @@ export async function authRoutes(app: FastifyInstance) {
   // ── Registration ──────────────────────────────────────────────────────────────────────────
 
   app.post('/register', async (request, reply) => {
+    // WHO MAY MINT A WORKSPACE. This endpoint creates a TENANT, not just a user, and it is
+    // unauthenticated by necessity — obtaining a credential cannot require one. Open, it means
+    // anyone who finds the API owns a workspace on a paid product, and since Phase 5a a
+    // `usage_period` opens with it.
+    //
+    // Refused BEFORE parsing the body: a validation error on a closed endpoint tells an anonymous
+    // caller which fields a workspace takes, and there is no reason to answer that question.
+    //
+    // Closed locks nobody out — see the SIGNUP_MODE comment in env.ts for the two ways in.
+    if (app.env.SIGNUP_MODE !== 'open') {
+      request.log.warn({ audit: true, event: 'registration_refused', ip: request.ip }, 'signup is invite-only');
+      return reply.status(403).send({
+        error: 'SIGNUP_CLOSED',
+        // Says what to do instead. "Forbidden" alone reads as a bug to the customer you just told
+        // to go and sign up, and they will email you rather than wait for an invite.
+        message: 'Creating a workspace is invite-only. Ask your administrator for an invitation.',
+      });
+    }
+
     const parsed = registerSchema.safeParse(request.body);
     if (!parsed.success) throw new ValidationError(parsed.error.issues[0]?.message ?? 'Invalid input');
 

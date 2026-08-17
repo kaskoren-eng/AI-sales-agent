@@ -61,6 +61,9 @@ export async function buildTestApp(
     REDIS_URL: 'redis://localhost:6379',
     ENCRYPTION_KEY: 'a'.repeat(64), // 32 bytes in hex
     JWT_SECRET: 'test-jwt-secret-minimum-16-chars',
+    // Production's default. Registration is invite-only; the tests that exercise the open
+    // mode set it explicitly, so nothing accidentally depends on signup being reachable.
+    SIGNUP_MODE: 'invite_only' as const,
     CORS_ORIGINS: 'http://localhost:3001',
     AI_MODEL: 'gpt-5.4',
     CARTESIA_MODEL: 'sonic-3',

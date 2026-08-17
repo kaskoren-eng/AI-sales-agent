@@ -56,6 +56,27 @@ const envSchema = z.object({
   // chars so a weak value can't gate cross-tenant powers. Rotate by changing the env and redeploying.
   ADMIN_API_KEY: z.string().min(24).optional(),
 
+  /**
+   * Who may create a workspace: `invite_only` (default) or `open`.
+   *
+   * `POST /auth/register` creates a TENANT plus an owner account, and it sits outside the
+   * authenticate hook because obtaining a credential cannot itself require one. Left open, anyone
+   * who finds the API gets a workspace on a paid product — and since Phase 5a, a `usage_period`
+   * with it.
+   *
+   * That contradicts how this product is actually sold: provisioning is HYBRID (CLAUDE.md) —
+   * ClickScales buys the DID, assigns it, and onboards the customer. Nobody self-serves into a
+   * working agent, because a workspace with no number and no calendar cannot do anything.
+   *
+   * DEFAULTS CLOSED, and closed locks nobody out: existing owners invite their colleagues
+   * (`/auth/accept-invite`), and the first human on a new workspace comes from
+   * `scripts/bootstrap-user.mjs`, which needs database access. That is the right property — the
+   * power to mint a workspace should require the thing only an operator has.
+   *
+   * Flip to `open` the day self-serve trials become the plan; it is one env var, no code change.
+   */
+  SIGNUP_MODE: z.enum(['invite_only', 'open']).default('invite_only'),
+
   // Lead intake webhooks
   META_APP_SECRET: z.string().min(1).optional(),
   LEAD_WEBHOOK_SECRET: z.string().min(1).optional(),
