@@ -247,6 +247,18 @@ describe('Keren Phase 4 — tools-mode prompt', () => {
     }
   });
 
+  it('forbids her own opener when VOICE_INSTANT_ACK speaks one for her', () => {
+    // Both rules on is what the 2026-08-17 call sounded like: our acknowledgement, then hers, then
+    // a third from the reply itself — "בסדר. שומעת מצוין. כן, אני שומעת אותכה טוב." Three receipts
+    // before a single fact. The short-first-sentence rule survives; the reaction word does not.
+    const acked = buildSystemPrompt({ toolsEnabled: true, instantAck: true });
+
+    expect(acked).toMatch(/NEVER an acknowledgment/u);
+    expect(acked).toMatch(/Do NOT begin your reply with an acknowledgment/u);
+    expect(acked).toMatch(/SHORT/u); // the latency rule it replaces must not be lost with it
+    expect(acked).not.toMatch(/2 to 4 words/u); // …and the old instruction must be GONE, not merely contradicted
+  });
+
   it('shared guarantees hold in BOTH variants', () => {
     for (const prompt of [SYSTEM_PROMPT_HE, TOOLS_PROMPT]) {
       expect(prompt).toMatch(/קרן \(Keren\)/u);

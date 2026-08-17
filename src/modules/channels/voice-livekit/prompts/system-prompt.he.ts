@@ -40,6 +40,30 @@ import { OBJECTION_PLAYBOOK_HE } from '../call-state-lines.he.js';
 const CHECK = 'check_calendar_availability';
 const BOOK = 'book_meeting';
 
+/**
+ * How she opens a reply, which depends on whether we are speaking an acknowledgement for her.
+ *
+ * The rule below existed to get her voice out fast: a short first sentence flushes through
+ * `guardStream` immediately, so a 2-4 word reaction beats a long opening clause. `VOICE_INSTANT_ACK`
+ * now does that job — and does it ~1s earlier, before the model has written anything.
+ *
+ * Leaving both on is what Koren heard on 2026-08-17: "בסדר. שומעת מצוין. כן, אני שומעת אותכה טוב."
+ * — our acknowledgement, then hers, then a third. Three receipts before a single fact.
+ */
+const SPEECH_RHYTHM_OWN_OPENER = `## Speech Rhythm — open every reply with a SHORT first sentence
+
+Begin EVERY reply with a very short first sentence — 2 to 4 words, ending in a period — an acknowledgment or reaction, then continue with the substance. Examples: "בטח.", "שאלה מצוינת.", "מעולה, קורן.", "ברור לגמרי.", "רגע, בודקת."
+
+This is not a style preference: your voice starts speaking only after your first sentence is COMPLETE, so a long first sentence is dead air on the caller's ear. A short opener gets your voice out fast and buys time for the rest. Vary the openers naturally; never use the same one twice in a row.`;
+
+const SPEECH_RHYTHM_ACK_INJECTED = `## Speech Rhythm — a SHORT first sentence, and NEVER an acknowledgment
+
+A brief acknowledgment ("אוקיי.", "כן.", "בסדר.", "אהה.") is ALREADY spoken in your voice the moment the caller stops talking. You do not write it, and you must not add a second one.
+
+**Do NOT begin your reply with an acknowledgment, a reaction, or a filler word.** Not "בסדר", not "מעולה", not "בטח", not "כן", not "הבנתי", not "אהה", not "בשמחה", not "נשמע טוב", not "שאלה טובה". The caller has already heard one; a second in the same breath is what makes you sound like a machine.
+
+Begin with the SUBSTANCE — the answer itself, or the next question — and keep that first sentence SHORT, under about eight words, ending in a period. This is not a style preference: your voice starts speaking only after your first sentence is COMPLETE, so a long first sentence is dead air on the caller's ear.`;
+
 interface PromptSlots {
   /** "Then call \`end_call\`..." lines — with reasons in tools mode, bare in legacy mode. */
   endCallBadTime: string;
@@ -53,6 +77,8 @@ interface PromptSlots {
   /** The objection-handling playbook section (tools variant only; '' otherwise). Koren's content —
    * see OBJECTION_PLAYBOOK_HE in call-state-lines.he.ts. */
   objectionPlaybook: string;
+  /** Whether she writes her own opener, or we speak one for her. See SPEECH_RHYTHM_* above. */
+  speechRhythm: string;
   /** Per-tenant business facts, injected after the Role section. Empty string when the tenant
    * has no businessProfile — the prompt then reads exactly as it did before this existed. The
    * PROSE inside is Koren's (tenant content); this file only plumbs the fields into labelled
@@ -259,11 +285,7 @@ If a caller repeatedly pushes against these rules, treat it as hostile behavior 
 
 ---
 
-## Speech Rhythm — open every reply with a SHORT first sentence
-
-Begin EVERY reply with a very short first sentence — 2 to 4 words, ending in a period — an acknowledgment or reaction, then continue with the substance. Examples: "בטח.", "שאלה מצוינת.", "מעולה, קורן.", "ברור לגמרי.", "רגע, בודקת."
-
-This is not a style preference: your voice starts speaking only after your first sentence is COMPLETE, so a long first sentence is dead air on the caller's ear. A short opener gets your voice out fast and buys time for the rest. Vary the openers naturally; never use the same one twice in a row.
+${slots.speechRhythm}
 
 ---
 
@@ -452,6 +474,7 @@ export function buildSystemPrompt({
   toolsEnabled,
   businessProfile = null,
   objectionHandling = true,
+  instantAck = false,
 }: {
   toolsEnabled: boolean;
   /** Per-tenant grounding. Absent/null → the prompt is byte-for-byte the pre-existing one. */
@@ -459,10 +482,14 @@ export function buildSystemPrompt({
   /** Part of the advisory state layer (VOICE_STATE_MACHINE_ENABLED). When false, the objection
    * playbook section is omitted even on tools-enabled calls — for A/B-ing the advisory layer. */
   objectionHandling?: boolean;
+  /** `VOICE_INSTANT_ACK`. True → we speak her opener, so the prompt must forbid her writing one. */
+  instantAck?: boolean;
 }): string {
   const businessContext = renderBusinessContext(businessProfile);
+  const speechRhythm = instantAck ? SPEECH_RHYTHM_ACK_INJECTED : SPEECH_RHYTHM_OWN_OPENER;
   if (!toolsEnabled) {
     return assemble({
+      speechRhythm,
       endCallBadTime: 'Then call `end_call`.',
       endCallDisqualified: 'Then call `end_call`.',
       endCallHandoff: 'call `end_call`.',
@@ -474,6 +501,7 @@ export function buildSystemPrompt({
     });
   }
   return assemble({
+    speechRhythm,
     endCallBadTime: 'Then call `end_call` with reason "bad_time".',
     endCallDisqualified: 'Then call `end_call` with reason "not_qualified".',
     endCallHandoff: 'call `end_call` with reason "callback_requested".',

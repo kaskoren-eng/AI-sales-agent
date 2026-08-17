@@ -314,4 +314,31 @@ describe('dropAckEcho — the acknowledgement must never be delayed', () => {
     // llmNode decided not to inject (instant ack off, or a realtime model). Never guess.
     expect(await drain(dropAckEcho('אוקיי.', chunks('בשמחה. אנחנו בונים.')))).toBe('בשמחה. אנחנו בונים.');
   });
+
+  // EVERY TEST ABOVE FEEDS THE ACK WITH ITS TRAILING SPACE, WHICH IS WHY THEY ALL PASSED WHILE
+  // PRODUCTION WAS BROKEN. Text is re-chunked between llmNode and ttsNode, so the injected
+  // "אוקיי. " arrives as "אוקיי." — the old `startsWith(ack + ' ')` missed, and the function then
+  // waited for 60 characters of model text. Measured on the 2026-08-17 call: the acknowledgement
+  // was held 743-1944ms and came out WITH the reply it was supposed to precede.
+  it('recognises the acknowledgement however the SDK re-chunked it', async () => {
+    for (const shape of [['אוקיי.'], ['אוקיי.', ' בשמחה. אנחנו בונים.'], ['או', 'קיי.', 'בשמחה. אנחנו בונים.']]) {
+      const out = await drain(dropAckEcho('אוקיי.', chunks(...shape, ' אנחנו בונים.')));
+      expect(out.startsWith('אוקיי. ')).toBe(true);
+    }
+  });
+
+  it('does not wait for the model to produce its first word', async () => {
+    // The failure this file missed, stated as a clock: the model takes 200ms to say anything and
+    // the acknowledgement must already be gone. It is the entire <1s mechanism.
+    const model = async function* () {
+      yield 'אוקיי.'; // no trailing space — as production actually delivers it
+      await new Promise((r) => setTimeout(r, 200));
+      yield 'אנחנו בונים סוכני AI לשיחות קוליות ולוואטסאפ, שעוזרים לעסקים לענות לפניות.';
+    };
+    const startedAt = Date.now();
+    const first = await dropAckEcho('אוקיי.', model())[Symbol.asyncIterator]().next();
+
+    expect(first.value).toBe('אוקיי. ');
+    expect(Date.now() - startedAt).toBeLessThan(100);
+  });
 });

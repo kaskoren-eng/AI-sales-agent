@@ -731,6 +731,9 @@ export default defineAgent({
           toolsEnabled: runtime !== null,
           businessProfile,
           objectionHandling: env.VOICE_STATE_MACHINE_ENABLED,
+          // Must track the same flag the ack itself reads. If the prompt forbids her opener while
+          // no acknowledgement is being spoken, she starts every reply cold.
+          instantAck: env.VOICE_INSTANT_ACK,
         }),
         ...(runtime ? { tools: buildAgentTools(runtime) } : {}),
       },

@@ -229,6 +229,19 @@ export async function* guardStream(
  * briefly to inspect what follows would give back the ~1s this exists to win. Only the model's
  * first word is buffered, and only after the acknowledgement is already on its way to Cartesia,
  * where the wait is free.
+ *
+ * THE FIRST VERSION MATCHED `buffer.startsWith(ack + ' ')` AND THAT WAS EXACTLY WRONG. Text is
+ * re-chunked between `llmNode` and `ttsNode`, so the "אוקיי. " that was injected arrives here as
+ * "אוקיי." — the match failed, and the function then sat in its own loop waiting for 60 characters
+ * of model text before emitting anything. On the 2026-08-17 call that held the acknowledgement for
+ * 743–1944ms per turn (`latency audio_path heldMs=`): it was released at the same moment as the
+ * reply it was supposed to precede, so it bought zero latency and merely added a word. The whole
+ * <1s mechanism was defeated by one trailing space.
+ *
+ * Two rules follow, and both are load-bearing:
+ *   1. Compare with whitespace REMOVED — never depend on how the SDK chunked our own string.
+ *   2. Never hold the first chunk. If it is not ours, it goes out as-is; there is no text worth
+ *      inspecting at the price of the caller's first audio.
  */
 export async function* dropAckEcho(
   ack: string | null,
@@ -239,36 +252,67 @@ export async function* dropAckEcho(
     return;
   }
 
-  const prefix = `${ack} `;
   const wordBoundary = /[\s.,!?…׃]/u;
   const iterator = stream[Symbol.asyncIterator]();
-  let buffer = '';
-  let ackSent = false;
+
+  // Rule 1: whitespace-insensitive. `compact('אוקיי. ') === compact('אוקיי.')`.
+  const compact = (s: string) => s.replace(/\s+/gu, '');
+  const ackKey = compact(ack);
+
+  // Our own string can also arrive SPLIT ("או" + "קיי."). Keep pulling only while what we have is
+  // still a strict prefix of it — those chunks are already in flight, so this costs nothing, and
+  // the moment the text diverges we stop. Never a wait on text the model has not written yet.
+  let opening = '';
+  for (;;) {
+    const next = await iterator.next();
+    if (next.done) {
+      if (opening) yield opening;
+      return;
+    }
+    opening += String(next.value);
+    const seen = compact(opening);
+    if (seen.length >= ackKey.length || !ackKey.startsWith(seen)) break;
+  }
+
+  if (!compact(opening).startsWith(ackKey)) {
+    // Rule 2: not our injection — get out of the way rather than inspect it.
+    yield opening;
+    for (;;) {
+      const next = await iterator.next();
+      if (next.done) return;
+      yield next.value;
+    }
+  }
+
+  yield `${ack} `; // out the door first, always
+
+  // Everything after the acknowledgement inside that same chunk, found by counting non-space
+  // characters rather than by slicing a length that assumed a particular spacing.
+  let consumed = 0;
+  let cut = 0;
+  for (const ch of opening) {
+    if (consumed >= ackKey.length) break;
+    if (!/\s/u.test(ch)) consumed += 1;
+    cut += ch.length;
+  }
+  // `${ack} ` already carried the separating space; whatever spacing the chunk used is redundant.
+  let buffer = opening.slice(cut).replace(/^\s+/u, '');
   let done = false;
 
-  while (buffer.length <= 60) {
+  // Now — and only now, with the acknowledgement already on its way to Cartesia — buffer the
+  // model's first word so an echoed opener can be removed. Bounded, because this wait is free
+  // only for as long as it stays short.
+  while (buffer.length <= 40 && !wordBoundary.test(buffer)) {
     const next = await iterator.next();
     if (next.done) {
       done = true;
       break;
     }
     buffer += next.value;
-
-    if (!ackSent && buffer.startsWith(prefix)) {
-      yield prefix; // out the door first, always
-      ackSent = true;
-      buffer = buffer.slice(prefix.length);
-    }
-    if (ackSent && wordBoundary.test(buffer)) break;
   }
 
-  // No prefix found — llmNode did not inject after all. Emit verbatim rather than guess.
-  if (!ackSent) {
-    if (buffer) yield buffer;
-  } else {
-    const cleaned = dropEchoedOpener(ack, buffer);
-    if (cleaned) yield cleaned;
-  }
+  const cleaned = dropEchoedOpener(ack, buffer);
+  if (cleaned) yield cleaned;
 
   if (!done) {
     for (;;) {
