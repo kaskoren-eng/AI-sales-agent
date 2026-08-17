@@ -22,10 +22,18 @@
  */
 const DISCLOSURE_PATTERNS: RegExp[] = [
   /סוכנת\s+AI/u, // "אני סוכנת AI" — the prompt's own phrasing
+  /סוכן\s+AI/u,
   // ה? — the definite article rides the adjective too: "העוזרת הדיגיטלית של קורן".
   /עוזרת\s+ה?דיגיטלית/u,
   /עוזרת\s+ה?אוטומטית/u,
   /סוכנת\s+ה?וירטואלית/u,
+  // Masculine forms, because an agent's gender is a tenant setting. Without these, a male agent
+  // could disclose perfectly and still be recorded as `missed` — a compliance report that is wrong
+  // in the direction of alarm, which is how a real finding gets dismissed as a known false positive.
+  // The (?!ת) stops the masculine pattern from also matching the feminine spelling.
+  /עוזר\s+ה?דיגיטלי(?!ת)/u,
+  /עוזר\s+ה?אוטומטי(?!ת)/u,
+  /סוכן\s+ה?וירטואלי(?!ת)/u,
   /בינה\s+מלאכותית/u,
   /(?<![֐-׿])AI(?![֐-׿A-Za-z])\s+(של|מ)/u, // "ה-AI של ClickScales"
 ];

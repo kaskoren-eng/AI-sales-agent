@@ -47,7 +47,18 @@ describe('the default persona reproduces the pre-persona prompt exactly', () => 
     );
   });
 
-  it('the opening line is byte-for-byte unchanged', () => {
+  it('the opening line matches the golden file — which CHANGED ONCE, deliberately, on 2026-08-17', () => {
+    // This assertion used to say "byte-for-byte unchanged", and it earned its keep by failing when
+    // the AI disclosure moved into the greeting. That was the intended change, not a regression:
+    // `docs/risk/measured-findings-from-call-reports.md` measured the disclosure as not spoken on
+    // 10 of 10 real calls while it was merely an instruction to the model, so it moved into the one
+    // line that is spoken verbatim.
+    //
+    //   was:  שלום, מדברת קרן מ-ClickScales. איך אני יכולה לעזור?
+    //   now:  שלום, מדברת קרן, העוזרת הדיגיטלית של ClickScales. איך אני יכולה לעזור?
+    //
+    // Everything else about the default persona is still pinned byte-for-byte, including the whole
+    // system prompt — this is the only line that moved, and it moved for a reason recorded above.
     expect(GREETING_HE).toBe(golden('greeting-default.txt'));
     expect(buildGreeting(DEFAULT_PERSONA)).toBe(golden('greeting-default.txt'));
   });
@@ -118,7 +129,8 @@ describe('a custom persona replaces every ClickScales-specific string', () => {
     expect(prompt).toContain('You are male.');
     expect(prompt).toContain('masculine forms (e.g. "אני שמח", "מצטער", "אני יכול", "אני סוכן")');
     expect(prompt).toContain('- **Yourself** — masculine singular: "אני יכול", "מצטער", "אני סוכן"');
-    expect(buildGreeting(CUSTOM)).toBe('שלום, מדבר דניאל מ-מוסך הצפון. איך אני יכול לעזור?');
+    // Masculine throughout, INCLUDING the AI disclosure: "העוזר הדיגיטלי", not "העוזרת הדיגיטלית".
+    expect(buildGreeting(CUSTOM)).toBe('שלום, מדבר דניאל, העוזר הדיגיטלי של מוסך הצפון. איך אני יכול לעזור?');
   });
 
   it('keeps the security rules, which no tenant setting may touch', () => {
@@ -131,8 +143,16 @@ describe('a custom persona replaces every ClickScales-specific string', () => {
     expect(solo).toContain('בוא נקבע שיחת דמו קצרה שבה תראה איך זה עובד בפועל.');
   });
 
-  it('an explicit greeting wins over the generated one', () => {
-    expect(buildGreeting({ ...CUSTOM, greeting: 'היי, דניאל מהמוסך.' })).toBe('היי, דניאל מהמוסך.');
+  it('an explicit greeting wins over the generated one — but still has to disclose', () => {
+    // The tenant's wording survives untouched; one sentence is appended because theirs does not say
+    // she is an AI. See persona.disclosure.test.ts for why that is not negotiable.
+    expect(buildGreeting({ ...CUSTOM, greeting: 'היי, דניאל מהמוסך.' })).toBe(
+      'היי, דניאל מהמוסך. אני העוזר הדיגיטלי של מוסך הצפון.',
+    );
+    // A tenant line that already discloses is passed through verbatim, with nothing appended.
+    expect(buildGreeting({ ...CUSTOM, greeting: 'היי, אני הסוכן הוירטואלי של המוסך.' })).toBe(
+      'היי, אני הסוכן הוירטואלי של המוסך.',
+    );
   });
 });
 
@@ -184,7 +204,7 @@ describe('readAgentPersona merges field by field', () => {
     // the agent in the dashboard, and it keeps introducing itself by the old name on every call.
     const persona = readAgentPersona({ agent_persona: { agentName: 'מיכל', companyName: 'סטודיו מיכל' } });
     expect(persona.greeting).toBe('');
-    expect(buildGreeting(persona)).toBe('שלום, מדברת מיכל מ-סטודיו מיכל. איך אני יכולה לעזור?');
+    expect(buildGreeting(persona)).toBe('שלום, מדברת מיכל, העוזרת הדיגיטלית של סטודיו מיכל. איך אני יכולה לעזור?');
   });
 
   it('ignores a garbage gender rather than throwing', () => {

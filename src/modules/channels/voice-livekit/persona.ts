@@ -104,7 +104,11 @@ export const DEFAULT_PERSONA: AgentPersona = {
   companyDescription:
     'an Israeli agency that builds AI voice and WhatsApp sales agents for small and medium businesses',
   handoffPerson: 'קורן',
-  greeting: 'שלום, מדברת קרן מ-ClickScales. איך אני יכולה לעזור?',
+  // Discloses that she is an AI, in the opening line. See buildGreeting's header: this was measured
+  // as NOT SAID on 10 of 10 real calls while it was merely a prompt instruction. The wording is the
+  // smallest change to Koren's tuned greeting that carries it — "מ-ClickScales" became
+  // "העוזרת הדיגיטלית של ClickScales", four extra syllables, same rhythm.
+  greeting: 'שלום, מדברת קרן, העוזרת הדיגיטלית של ClickScales. איך אני יכולה לעזור?',
   faq: [
     {
       topic: 'Does the agent sound robotic?',
@@ -154,6 +158,13 @@ const GENDER_FORMS: Record<AgentGender, {
   speaking: string;
   /** "יכולה" / "יכול" — "how can I help". */
   can: string;
+  /**
+   * "העוזרת הדיגיטלית" / "העוזר הדיגיטלי" — the AI disclosure, inside the greeting.
+   *
+   * The disclosure lives in the GREETING rather than in a prompt instruction because a model can
+   * skip an instruction and a spoken line cannot. See `compliance/ai-disclosure.ts`.
+   */
+  digitalAssistant: string;
 }> = {
   female: {
     english: 'female',
@@ -162,6 +173,7 @@ const GENDER_FORMS: Record<AgentGender, {
     selfList: 'feminine singular: "אני יכולה", "מצטערת", "אני סוכנת"',
     speaking: 'מדברת',
     can: 'יכולה',
+    digitalAssistant: 'העוזרת הדיגיטלית',
   },
   male: {
     english: 'male',
@@ -170,6 +182,7 @@ const GENDER_FORMS: Record<AgentGender, {
     selfList: 'masculine singular: "אני יכול", "מצטער", "אני סוכן"',
     speaking: 'מדבר',
     can: 'יכול',
+    digitalAssistant: 'העוזר הדיגיטלי',
   },
 };
 
@@ -216,13 +229,65 @@ export function renderFaq(persona: AgentPersona): string {
  * An explicit `greeting` wins — a tenant who wrote their own line means it. Otherwise it is
  * generated from name, company and gender, which is what keeps a male agent from opening with
  * "מדברת".
+ *
+ * ── EVERY GREETING DISCLOSES THAT SHE IS AN AI ────────────────────────────────────────────────
+ *
+ * `docs/risk/measured-findings-from-call-reports.md` measured the disclosure as NOT SPOKEN on 10
+ * of 10 real calls. The machinery was all there — a detector, a report field, an end-of-call
+ * instruction — and it faithfully recorded its own 100% failure rate, because the disclosure was
+ * only ever a request to the model: say this in your goodbye. When nobody asked, nothing said it.
+ *
+ * So it moved here, into the one line that is not generated but SPOKEN VERBATIM. A model can skip
+ * an instruction; `session.say()` cannot. That is the whole fix, and it is why enforcement lives
+ * in the greeting builder rather than in a validator: a validator guards one write path, while
+ * every call on every code path goes through this function.
+ *
+ * The disclosure is also EARLY rather than at the goodbye, which is what the EU AI Act (Art. 50)
+ * and California SB 1001 require and what the website's Voice-AI disclosure page already promises.
+ * Israel has no statute yet, so this was defensible before; the exposure was the gap between the
+ * published promise and the measurement.
  */
 export function buildGreeting(persona: AgentPersona): string {
-  const explicit = persona.greeting.trim();
-  if (explicit) return explicit;
   const g = GENDER_FORMS[persona.agentGender];
-  return `שלום, ${g.speaking} ${persona.agentName} מ-${persona.companyName}. איך אני ${g.can} לעזור?`;
+  const explicit = persona.greeting.trim();
+  if (!explicit) {
+    return `שלום, ${g.speaking} ${persona.agentName}, ${g.digitalAssistant} של ${persona.companyName}. איך אני ${g.can} לעזור?`;
+  }
+
+  // A tenant's own line is kept as written — unless it does not disclose, in which case one short
+  // sentence is appended. Appending is deliberately visible and slightly blunt: the dashboard
+  // preview renders exactly this, so a tenant who dislikes the seam can fold the disclosure into
+  // their own wording and the appended sentence disappears. Silently rewriting their sentence
+  // would be worse; silently omitting the disclosure is not an option.
+  if (discloses(explicit)) return explicit;
+  return `${explicit} אני ${g.digitalAssistant} של ${persona.companyName}.`;
 }
+
+/**
+ * Does this text disclose that the speaker is an AI?
+ *
+ * Duplicated from `compliance/ai-disclosure.ts` rather than imported: that module belongs to the
+ * voice runtime and importing it here would drag call-report types into the settings API, which
+ * reads personas to render a preview. The two lists are pinned to each other by
+ * `persona.disclosure.test.ts` — if they ever diverge, that test fails rather than a live call
+ * silently going undisclosed.
+ */
+function discloses(text: string): boolean {
+  return DISCLOSURE_PATTERNS.some((p) => p.test(text));
+}
+
+const DISCLOSURE_PATTERNS: RegExp[] = [
+  /סוכנת\s+AI/u,
+  /סוכן\s+AI/u,
+  /עוזרת\s+ה?דיגיטלית/u,
+  /עוזר\s+ה?דיגיטלי(?!ת)/u,
+  /עוזרת\s+ה?אוטומטית/u,
+  /עוזר\s+ה?אוטומטי(?!ת)/u,
+  /סוכנת\s+ה?וירטואלית/u,
+  /סוכן\s+ה?וירטואלי(?!ת)/u,
+  /בינה\s+מלאכותית/u,
+  /(?<![֐-׿])AI(?![֐-׿A-Za-z])\s+(של|מ)/u,
+];
 
 const str = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 

@@ -77,13 +77,42 @@ const EMPTY_DRAFT: Draft = {
  * price of a live preview; it is bounded (one sentence, one gender table) and the server's value
  * is always authoritative — `resolvedGreeting` from the API overwrites this the moment you save.
  */
+/**
+ * Patterns that count as disclosing the agent is an AI. Mirrors `src/.../persona.ts` and
+ * `compliance/ai-disclosure.ts`. The server is the authority — this copy exists so the preview
+ * shows the appended sentence AS YOU TYPE, rather than surprising the tenant after they save.
+ */
+const DISCLOSURE_PATTERNS = [
+  /סוכנת\s+AI/u, /סוכן\s+AI/u,
+  /עוזרת\s+ה?דיגיטלית/u, /עוזר\s+ה?דיגיטלי(?!ת)/u,
+  /עוזרת\s+ה?אוטומטית/u, /עוזר\s+ה?אוטומטי(?!ת)/u,
+  /סוכנת\s+ה?וירטואלית/u, /סוכן\s+ה?וירטואלי(?!ת)/u,
+  /בינה\s+מלאכותית/u,
+]
+
+export function greetingDiscloses(text: string): boolean {
+  return DISCLOSURE_PATTERNS.some((p) => p.test(text))
+}
+
+/**
+ * Exactly what the agent will say, including the AI disclosure.
+ *
+ * The disclosure is not optional and not a prompt instruction — it is part of the spoken opening,
+ * because it was measured as never actually said when it was only an instruction. A custom greeting
+ * that does not disclose gets one sentence appended, and the tenant SEES that here: the seam is
+ * visible so they can fold the disclosure into their own wording and make it disappear.
+ */
 function previewGreeting(draft: Draft): string {
-  if (draft.greeting.trim()) return draft.greeting.trim()
   const speaking = draft.agentGender === 'male' ? 'מדבר' : 'מדברת'
   const can = draft.agentGender === 'male' ? 'יכול' : 'יכולה'
+  const assistant = draft.agentGender === 'male' ? 'העוזר הדיגיטלי' : 'העוזרת הדיגיטלית'
   const name = draft.agentName.trim() || '—'
   const company = draft.companyName.trim() || '—'
-  return `שלום, ${speaking} ${name} מ-${company}. איך אני ${can} לעזור?`
+
+  const custom = draft.greeting.trim()
+  if (!custom) return `שלום, ${speaking} ${name}, ${assistant} של ${company}. איך אני ${can} לעזור?`
+  if (greetingDiscloses(custom)) return custom
+  return `${custom} אני ${assistant} של ${company}.`
 }
 
 export function AgentPersonality() {
