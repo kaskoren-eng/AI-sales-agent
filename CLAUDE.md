@@ -77,7 +77,7 @@ Two agents work this repo simultaneously. Respect your lane:
 - `src/db/schema/**` + migrations — **migration numbers are claimed in the table below BEFORE generating.** Never renumber someone else's migration.
 - `CLAUDE.md`, `tenants` settings keys — announce in the claims lists below before changing.
 
-**Migration number claims:** 0004 = leads whatsapp fields (VOICE, applied) · 0005 = scheduled_calls.reminders (VOICE, applied) · next free: 0006.
+**Migration number claims:** 0004 = leads whatsapp fields · 0005 = scheduled_calls.reminders · 0006–0010 = identity/audit/monday-lookup · 0011 = `phone_numbers` (DID→tenant routing) · 0012 = `oauth_connections` (per-tenant Google Calendar) · 0013 = billing (`plans`, `usage_events`, `usage_periods`, tenant billing columns) · **next free: 0014.**
 
 **tenants.settings key claims:** `voice_engine` (VOICE) · `functions_enabled` (VOICE) · `whatsapp_templates` (VOICE) · `toll_fraud` (VOICE) · `reminders` (VOICE) · `crm_sync` (VOICE, Workstream B) · `businessProfile` (shared) · `zadarma` (VOICE) · `monday` (shared) · `airtable` (shared) · `flows` (pre-existing, shared) · `billing_provider` (reserved, Workstream D) · `agent_persona` (**CLAIMED 2026-08-16, VOICE-owned** — agent name/gender/company/FAQ/voice. Operator-only through the generic settings escape hatch, because a wrong TTS `voiceId` makes Cartesia and ElevenLabs return a *silent stream* rather than an error. Tenants edit the CONTENT half through the typed route `PUT /settings/agent-persona`, which has no `tts` field and is `.strict()`. See `src/modules/channels/voice-livekit/persona.ts`) · `ui_locale` (**reserved** for dashboard interface language — never `language`). New keys → add here in the same commit.
 
@@ -126,6 +126,7 @@ Two divergences from the original plan that trip people up: **STT is Soniox, not
 - `npm run db:studio` — Drizzle Studio (visual DB browser)
 - `docker compose up -d` — start Postgres + Redis
 - `node scripts/seed-tenant.mjs` — create first tenant + print ready-to-use API key
+- `npm run usage:reconcile` — rebuild missing `usage_events` from `leads` + `call_learnings`, and recompute period counters from the ledger. **Dry run by default**; `--apply` writes.
 - `npm run screenshot` — screenshot all dashboard routes → `screenshots/*.png` (targets the **voice** session's dashboard on `:3001`)
 - `npm run screenshot:dash` — same, against the **dashboard** session's instance on `:3002`
 - `node scripts/screenshot.mjs <route>` — screenshot a single route (overview, calls, call-detail)
@@ -144,9 +145,12 @@ Two divergences from the original plan that trip people up: **STT is Soniox, not
 - **Dead Letter Queue:** all 3 main workers move exhausted jobs to `dead-letter` queue
 - **Circuit breakers:** UChat, LiveKit, Cartesia, Monday, Google Calendar, Trafft, Airtable each have their own breaker (5 failures → 30s cooldown)
 
-## DB Schema (7 tables)
+## DB Schema
 
-`tenants`, `leads`, `conversations`, `messages`, `scheduled_calls`, `import_jobs`, `call_learnings`
+Core: `tenants`, `leads`, `conversations`, `messages`, `scheduled_calls`, `import_jobs`, `call_learnings`
+Accounts: `users`, `tenant_members`, `auth_sessions`, `invites`, `auth_tokens`, `audit_events`
+Provisioning: `phone_numbers` (DID→tenant, 0011), `oauth_connections` (per-tenant Google Calendar, 0012)
+Billing (0013): `plans`, `usage_events`, `usage_periods` + billing columns on `tenants`
 
 - `call_learnings` — stores call recordings (LiveKit; legacy Twilio conference monitoring), Whisper transcripts, GPT sales analysis, outcome labels (`won`/`lost`/`neutral`)
 
@@ -161,7 +165,8 @@ Two divergences from the original plan that trip people up: **STT is Soniox, not
 
 ## Modules
 
-- `leads` — CRUD, status workflow, score, manual flow trigger. `GET /:id/timeline` returns lead + conversations + messages + scheduled_calls in one call (consumed by the dashboard Lead Detail page at `/leads/:id`)
+- `billing` — **usage metering write path (Phase 5a: meters run silently — no enforcement, no UI).** `usage_events` is an append-only ledger; `usage_periods` is a CACHE of it, and drift is always resolved TOWARDS the ledger. Billable unit is the LEAD (₪1,490/150, ₪2,490/400 + overage); calls are recorded at **zero billable units** as a cost signal only (`pricing.ts`, milli-agorot, versioned rate card whose numbers are **unverified list prices**). Idempotency is the `(tenant_id, kind, dedupe_key)` unique index, not application logic. `meterLead`/`meterCall` never throw — safe only because both units are rebuildable by `npm run usage:reconcile`. A new `insert(leads)` site that neither meters nor carries a `usage-metering: exempt` marker fails `metering-coverage.test.ts`.
+- `leads` — CRUD, status workflow, score, manual flow trigger. `GET /:id/timeline` returns lead + conversations + messages + scheduled_calls in one call (consumed by the dashboard Lead Detail page at `/leads/:id`). **`DELETE /:id`** erases the lead, its conversations, messages and bookings and writes an `audit_events` row — the usage ledger and any Google Calendar events deliberately SURVIVE (see the route comment).
 - `channels/whatsapp` — UChat inbound/outbound, signature verification, 24h window fallback
 - `channels/email` — Resend inbound/outbound, svix signature verification
 - `channels/voice-livekit` — **the only voice engine, live in production since 2026-07-29.** Zadarma SIP inbound trunk → LiveKit Agents (Node.js SDK) → **Soniox `stt-rt-v5`** STT → OpenAI `gpt-5.4` LLM → **Cartesia `sonic-3`** TTS (DeepDub adapter available behind `VOICE_TTS_PROVIDER`). Six agent tools, conversation state machine + reflexes, speech-guard, compliance (recording notice + AI disclosure), per-call `CallReport`, browser web-call path for the dashboard Simulator. Reuses `google-calendar.provider.ts`, `ai-engine.service.ts`, `SettingsService`, `CallAnalysisService`, `scheduled_calls` and `call_learnings`.
@@ -174,7 +179,7 @@ Two divergences from the original plan that trip people up: **STT is Soniox, not
 - `webhooks` — Meta Lead Ads, generic lead intake, and the Monday webhook at a **signed per-tenant URL** (`/webhooks/leads/monday/<tenantId>.<hmac>` — see `webhook-tokens.ts`; the old unsigned URL returns 410).
 - `tenants` — **self-service only** now (`/me` + self-guarded `/:id`). Cross-tenant powers moved to `admin`. Settings are written one classified section at a time via `PATCH /me/settings/:namespace` and redacted on read — see `settings-policy.ts`. A tenant can no longer read/mutate another tenant or create tenants.
 - `admin` — **operator console (super-admin, cross-tenant).** Gated by `ADMIN_API_KEY` env (unset → every `/api/v1/admin/*` route 503s; the console is opt-in). Own scope in `server.ts` (NOT the per-tenant `authenticate` hook), IP-rate-limited, constant-time key check. Endpoints: `GET /overview` (system KPIs), `GET /tenants` (rollup), `GET /tenants/:id` (deep stats/usage), `POST /tenants` (create), `PATCH /tenants/:id` (rename / suspend via `isActive`), `POST /tenants/:id/rotate-key`. Frontend at `/admin/*` (separate shell + admin-key gate, `dashboard/src/pages/admin/**`). No schema change (reuses `tenants.isActive`). New env key: `ADMIN_API_KEY` (in `.env.example`). **MVP** — the Ops & health pillar (queue depths, DLQ, breaker states) is deferred; the operator audit log now exists (`audit_events`).
-- `calls` — list/detail. Serves LiveKit calls (outbound, inbound and web-call; web-call rooms use a placeholder "Web simulator" lead since the list inner-joins leads) plus historical rows from the retired engine, rendered from the DB. **No audio proxy** — `GET /:id/audio` streamed recordings out of Retell's API and went with it; LiveKit writes `call_learnings.recording_url` but nothing serves it yet.
+- `calls` — list/detail. Serves LiveKit calls (outbound, inbound and web-call; web-call rooms use a placeholder "Web simulator" lead since the list inner-joins leads) plus historical rows from the retired engine, rendered from the DB. **No audio proxy** — `GET /:id/audio` streamed recordings out of Retell's API and went with it; LiveKit writes `call_learnings.recording_url` but nothing serves it yet. **`DELETE /:id`** erases one call's transcript, analysis and messages, audited; the LEAD survives, and provider-side audio is reported as `recordingsNotDeleted` rather than silently implied gone.
 - `calls/monitor` — create Twilio conference calls for monitoring, label outcomes
 
 ## Frontend
