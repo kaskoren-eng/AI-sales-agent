@@ -111,6 +111,62 @@ export function createSonioxSTT(env: Env): soniox.STT {
  * (`preemptive.chatCtx.isEquivalent(chatCtx)`). `MAX_PREFLIGHTS_PER_TURN` caps the waste at
  * three drafts per turn; the best case is the whole LLM TTFT hiding behind the endpoint wait.
  */
+/**
+ * The live SpeechStream for an STT, so end-of-speech can force Soniox to finalise.
+ *
+ * WHY THIS EXISTS. Silero and Soniox run on tee'd copies of the same audio and neither tells the
+ * other anything (`audio_recognition.js`: `primaryInputStream.tee()`), but a turn cannot commit
+ * without BOTH — the VAD's stop time and the STT's final transcript. So the reply waits on the
+ * slower one, and it is always Soniox. Measured on the 2026-08-18 call, 17 turns:
+ *
+ *     end-of-turn median  565ms
+ *     of which SILERO         1ms
+ *     of which transcript   565ms   <- 98% of it
+ *
+ * And on the two turns where the transcript happened to already be there, end-of-turn was 128ms —
+ * exactly VOICE_VAD_MIN_SILENCE_MS and nothing else. That is the number every turn could have.
+ *
+ * Soniox supports `{"type":"finalize"}`, which commits every pending token immediately instead of
+ * waiting for its own endpoint detection. The LiveKit plugin never sends it — it receives the
+ * base class's FLUSH_SENTINEL and drops it (`continue`). One patch in patches/ forwards it, and
+ * this hands the agent the stream handle to trigger it, because the SDK flushes only the VAD
+ * stream and never the STT's.
+ */
+const ACTIVE_STREAM = new WeakMap<sttBase.STT, sttBase.SpeechStream>();
+
+/** Wraps `stream()` to remember the live stream. Same instance-shadowing trick as below — never a
+ * Proxy, which breaks the SDK's `#private` fields. */
+export function withFinalizeOnEndOfSpeech(inner: soniox.STT): soniox.STT {
+  const originalStream = inner.stream.bind(inner);
+  (inner as unknown as { stream: (...a: unknown[]) => sttBase.SpeechStream }).stream = (
+    ...args: unknown[]
+  ) => {
+    const stream = originalStream(...(args as []));
+    ACTIVE_STREAM.set(inner, stream);
+    return stream;
+  };
+  return inner;
+}
+
+/**
+ * Tell the STT the caller has stopped — commit what you have, now.
+ *
+ * Safe to call spuriously: `flush()` throws once the stream is closed or its input has ended, and
+ * a failed finalize must never take a live call down with it.
+ */
+export function finalizeTranscriptNow(stt: unknown): void {
+  // `unknown` because AgentSessionOptions types `stt` as STT | ModelWithLanguage | undefined, and
+  // the OpenAI path has no stream to finalise. A non-Soniox STT simply misses the WeakMap.
+  if (typeof stt !== 'object' || stt === null) return;
+  const stream = ACTIVE_STREAM.get(stt as sttBase.STT);
+  if (!stream) return;
+  try {
+    stream.flush();
+  } catch {
+    // stream already closed between end-of-speech and here — nothing to finalise.
+  }
+}
+
 export function withPreflightSurvival(inner: soniox.STT, pauseMs: number): soniox.STT {
   // Instance-level shadow of `stream`, NOT a Proxy. The first attempt at this used a Proxy over
   // the STT and its SpeechStream, and it broke the agent outright — "AgentSession is not running"

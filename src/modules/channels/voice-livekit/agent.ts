@@ -14,6 +14,7 @@ import { type AudioFrame, RoomEvent, type RemoteAudioTrack, TrackKind } from '@l
 import { loadEnv } from '../../../config/env.js';
 import { callLearnings } from '../../../db/schema/index.js';
 import { buildSessionComponents } from './agent.config.js';
+import { finalizeTranscriptNow } from './stt/soniox.stt.js';
 import { CallReport } from './call-report.js';
 import { CallStateMachine } from './call-state.js';
 import { decideSilenceAction, decideVoicemailAction } from './call-reflexes.js';
@@ -585,7 +586,19 @@ export default defineAgent({
     // must keep working when the state machine kill-switch is off.
     session.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
       if (ev.newState === 'speaking') report.noteUserStartedSpeaking();
-      else if (ev.oldState === 'speaking') report.noteUserStoppedSpeaking();
+      else if (ev.oldState === 'speaking') {
+        report.noteUserStoppedSpeaking();
+        // MAKE SILERO AND SONIOX TALK TO EACH OTHER. They run on tee'd copies of the same audio
+        // and never exchange a word, yet a turn needs both: the VAD's stop time AND the final
+        // transcript. So every turn waits on Soniox re-deriving, from the audio alone, the thing
+        // Silero just decided. Measured on 17 turns (2026-08-18): end-of-turn median 565ms, of
+        // which Silero's share was 1ms. On the turns whose transcript happened to be ready
+        // already, end-of-turn was 128ms — the VAD timer and nothing else.
+        //
+        // Soniox's own docs recommend exactly this: wait ~200ms of silence after speech ends,
+        // then finalise. VOICE_VAD_MIN_SILENCE_MS is what defines "after speech ends" here.
+        finalizeTranscriptNow(components.stt);
+      }
     });
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) => {
       if (ev.newState === 'speaking') report.noteAgentStartedSpeaking();

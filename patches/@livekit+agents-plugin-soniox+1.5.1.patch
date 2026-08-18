@@ -1,0 +1,38 @@
+diff --git a/node_modules/@livekit/agents-plugin-soniox/dist/stt.cjs b/node_modules/@livekit/agents-plugin-soniox/dist/stt.cjs
+index 56fe826..6c753d1 100644
+--- a/node_modules/@livekit/agents-plugin-soniox/dist/stt.cjs
++++ b/node_modules/@livekit/agents-plugin-soniox/dist/stt.cjs
+@@ -222,6 +222,14 @@ class SpeechStream extends import_agents.stt.SpeechStream {
+       }
+       const data = result.value;
+       if (data === SpeechStream.FLUSH_SENTINEL) {
++        // PATCHED (see patches/): forward flush() to Soniox as manual finalization.
++        // Silero already knows the caller stopped; without this Soniox re-derives it from scratch
++        // and the turn waits on its endpoint detection. Measured 2026-08-18: transcriptionDelayMs
++        // was 98% of end-of-turn (median 565ms) while Silero's own share was 1ms. On the turns
++        // where the transcript happened to be ready, end-of-turn was 128ms.
++        if (ws.readyState === WebSocket.OPEN) {
++          ws.send('{"type":"finalize"}');
++        }
+         continue;
+       }
+       ws.send(Buffer.from(data.data.buffer, data.data.byteOffset, data.data.byteLength));
+diff --git a/node_modules/@livekit/agents-plugin-soniox/dist/stt.js b/node_modules/@livekit/agents-plugin-soniox/dist/stt.js
+index aa40b17..84b72c0 100644
+--- a/node_modules/@livekit/agents-plugin-soniox/dist/stt.js
++++ b/node_modules/@livekit/agents-plugin-soniox/dist/stt.js
+@@ -206,6 +206,14 @@ class SpeechStream extends stt.SpeechStream {
+       }
+       const data = result.value;
+       if (data === SpeechStream.FLUSH_SENTINEL) {
++        // PATCHED (see patches/): forward flush() to Soniox as manual finalization.
++        // Silero already knows the caller stopped; without this Soniox re-derives it from scratch
++        // and the turn waits on its endpoint detection. Measured 2026-08-18: transcriptionDelayMs
++        // was 98% of end-of-turn (median 565ms) while Silero's own share was 1ms. On the turns
++        // where the transcript happened to be ready, end-of-turn was 128ms.
++        if (ws.readyState === WebSocket.OPEN) {
++          ws.send('{"type":"finalize"}');
++        }
+         continue;
+       }
+       ws.send(Buffer.from(data.data.buffer, data.data.byteOffset, data.data.byteLength));

@@ -4,7 +4,11 @@ import * as elevenlabs from '@livekit/agents-plugin-elevenlabs';
 import * as openai from '@livekit/agents-plugin-openai';
 import type * as silero from '@livekit/agents-plugin-silero';
 import { cartesiaOptions } from './testing/speech.js';
-import { createSonioxSTT, withPreflightSurvival } from './stt/soniox.stt.js';
+import {
+  createSonioxSTT,
+  withFinalizeOnEndOfSpeech,
+  withPreflightSurvival,
+} from './stt/soniox.stt.js';
 import { DeepdubTTS, deepdubOptions } from './tts/deepdub.tts.js';
 import type { Env } from '../../../config/env.js';
 
@@ -33,6 +37,10 @@ export function buildSTT(env: Env, vad: silero.VAD): sttBase.STT {
     // never emits. withPreflightSurvival injects a PREFLIGHT once the caller has stopped adding
     // words for VOICE_PREEMPTIVE_PAUSE_MS, so the LLM drafts during the endpoint wait instead of
     // after it. 'vad' already gets preemptive via the FINAL path, so it is left alone.
+    // Under 'vad' turn detection Silero decides the turn is over, but the reply still waits for
+    // Soniox's final transcript — measured at 98% of end-of-turn. This exposes the live stream so
+    // end-of-speech can force finalisation. See withFinalizeOnEndOfSpeech.
+    withFinalizeOnEndOfSpeech(stt);
     return resolveTurnDetection(env) === 'stt'
       ? withPreflightSurvival(stt, env.VOICE_PREEMPTIVE_PAUSE_MS)
       : stt;
