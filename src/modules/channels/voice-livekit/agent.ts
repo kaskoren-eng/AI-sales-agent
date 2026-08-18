@@ -129,6 +129,19 @@ class ClickScalesAgent extends voice.Agent {
   /** Speak an instant acknowledgement at the start of every reply. See llmNode below. */
   readonly instantAck: boolean;
 
+  /**
+   * How long the CALLER has been waiting, asked at the moment we hand text to the voice.
+   *
+   * `latency audio_path` measures the reply against its own start, and by that clock the
+   * acknowledgement leaves in 1-2ms. That reads as success and is not: on the 2026-08-18 call dead
+   * air ran to a median of 1254ms while end-of-turn (200ms) + TTS (229ms) predicts ~430ms. The
+   * ~800ms is unaccounted for because no instrument spans the join — one clock starts when the
+   * reply starts, the other when the caller stops, and nothing measured the distance between them.
+   * This closes it: if the guard's first chunk is already 1000ms into the caller's silence, the
+   * reply was STARTED late and no amount of pipeline tuning will help.
+   */
+  msSinceUserStopped: (() => number | null) | null = null;
+
   constructor(
     opts: ConstructorParameters<typeof voice.Agent>[0],
     toolRuntime: ToolRuntimeContext | null = null,
@@ -281,8 +294,10 @@ class ClickScalesAgent extends voice.Agent {
           ),
           startedAt,
           (ms) => {
+            const waited = this.msSinceUserStopped?.() ?? null;
             console.log(
-              `latency audio_path llmFirstChunk=${llmFirstChunk} guardFirstOut=${ms} heldMs=${ms - llmFirstChunk}`,
+              `latency audio_path llmFirstChunk=${llmFirstChunk} guardFirstOut=${ms} ` +
+                `heldMs=${ms - llmFirstChunk} sinceCallerStopped=${waited ?? -1}`,
             );
           },
         ),
@@ -751,6 +766,9 @@ export default defineAgent({
       report.recordMetric('model_ttft', { durationMs: ms });
       console.log(`latency model_ttft ${ms}ms`);
     };
+
+    // The caller's clock, readable from inside ttsNode. See ClickScalesAgent.msSinceUserStopped.
+    agent.msSinceUserStopped = () => report.msSinceUserStopped();
 
     // SHE HESITATES WHEN SHE IS THINKING — AT THE START OF HER REPLY, NEVER AFTER IT.
     //

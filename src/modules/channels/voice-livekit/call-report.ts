@@ -371,6 +371,20 @@ export class CallReport {
   }
 
   /**
+   * How long the caller has been waiting right now, or null if they are still talking.
+   *
+   * THE MEASUREMENT THAT WAS MISSING. `latency audio_path` timed the reply from the moment the
+   * reply STARTED, and by that clock the acknowledgement leaves in 1-2ms — which looked like
+   * success. But dead air on the same call ran to a median of 1254ms when end-of-turn (200ms) plus
+   * TTS (229ms) predicts ~430ms. Both numbers were right; neither could see the ~800ms BEFORE
+   * `llmNode` was ever called. Stamping the same log line against the caller's clock is what
+   * distinguishes "our pipeline is slow" from "our pipeline was started late".
+   */
+  msSinceUserStopped(): number | null {
+    return this.#userStoppedAt === null ? null : Date.now() - this.#userStoppedAt;
+  }
+
+  /**
    * The agent's first audio of a reply reached the caller. Closes the stopwatch.
    *
    * Only the FIRST speech after a stop counts: the stopwatch is cleared here, so the second and

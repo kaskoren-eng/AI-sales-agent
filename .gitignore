@@ -14,8 +14,11 @@ voice-samples/
 # Call reports — contain caller phone numbers and transcripts (PII). Never commit.
 call-reports/
 
-# Agent deploy secrets — never commit
+# Agent deploy secrets — never commit.
+# The GLOB matters: `.env.agent` alone does not match `.env.agent.bak-stt`, and a rollback backup
+# of a secrets file is still a secrets file. One was staged on 2026-08-18 before this line existed.
 .env.agent
+.env.agent.*
 .agent-build/
 .agent-secrets.env
 
