@@ -340,20 +340,31 @@ function timeFirstAudioFrame(
   frames: ReadableStream<AudioFrame>,
   waited: () => number | null,
 ): ReadableStream<AudioFrame> {
+  // EAGER, and that is the entire point. The first version used `pull`, which only advances when
+  // the CONSUMER asks — so it timed when LiveKit played the frame, not when Cartesia produced it,
+  // and duly reported a number identical to dead air on every single turn. That looked like proof
+  // that nothing holds finished audio. It was proof of nothing but the shape of the wrapper.
+  //
+  // The SDK's own ttsNode drains its TTS with an eager `start` loop (agent.js:353), so consuming
+  // eagerly here changes no buffering that was not already happening one layer down.
   const reader = frames.getReader();
-  let seen = false;
   return new ReadableStream<AudioFrame>({
-    pull: async (controller) => {
-      const { done, value } = await reader.read();
-      if (done) {
+    start: async (controller) => {
+      let seen = false;
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (!seen) {
+            seen = true;
+            console.log(`latency first_audio_frame sinceCallerStopped=${waited() ?? -1}`);
+          }
+          controller.enqueue(value as AudioFrame);
+        }
         controller.close();
-        return;
+      } catch (err) {
+        controller.error(err);
       }
-      if (!seen) {
-        seen = true;
-        console.log(`latency first_audio_frame sinceCallerStopped=${waited() ?? -1}`);
-      }
-      controller.enqueue(value as AudioFrame);
     },
     cancel: (reason) => reader.cancel(reason),
   });
