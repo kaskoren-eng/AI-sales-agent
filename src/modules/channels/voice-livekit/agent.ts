@@ -273,7 +273,7 @@ class ClickScalesAgent extends voice.Agent {
     const ack = this.#spokenAck;
     this.#spokenAck = null;
 
-    return voice.Agent.default.ttsNode(
+    const synthesized = await voice.Agent.default.ttsNode(
       this,
       notifyIfSilent(
         timeFirstChunk(
@@ -305,7 +305,57 @@ class ClickScalesAgent extends voice.Agent {
       ),
       modelSettings,
     );
+
+    // THE LAST BLIND SPOT, and the reason two theories in a row were wrong.
+    //
+    // We know the acknowledgement's TEXT reaches the voice ~530ms after the caller stops, and that
+    // Cartesia reports ~240ms to first byte. That predicts sound at ~770ms. The caller waits
+    // ~1690ms. Turning preemptive TTS off moved that by 180ms — i.e. it was not the cause, and I
+    // had no instrument that could have told me so beforehand.
+    //
+    // `ttfbMs` is the TTS plugin's own stopwatch, started when IT decides to open the request. It
+    // cannot see time spent before that, and neither could we. This times the first AUDIO FRAME
+    // leaving the node against the CALLER's clock, which brackets the gap from both sides:
+    //
+    //   firstFrame ~= 800ms  -> audio exists on time and something downstream sits on it
+    //   firstFrame ~= 1700ms -> the synthesis never started when we thought it did
+    if (synthesized === null) return null;
+    // `as unknown as` for the same reason llmNode does it: the SDK types this as node:stream/web's
+    // ReadableStream while the global one is DOM's. Structurally identical, nominally not.
+    return timeFirstAudioFrame(
+      synthesized as unknown as ReadableStream<AudioFrame>,
+      () => this.msSinceUserStopped?.() ?? null,
+    ) as unknown as NonNullable<Awaited<ReturnType<voice.Agent['ttsNode']>>>;
   }
+}
+
+/**
+ * Reports when the first audio frame of a reply left the TTS node, on the caller's clock.
+ *
+ * A passthrough with a counter — instrumentation that changes the timing it measures is worse
+ * than none.
+ */
+function timeFirstAudioFrame(
+  frames: ReadableStream<AudioFrame>,
+  waited: () => number | null,
+): ReadableStream<AudioFrame> {
+  const reader = frames.getReader();
+  let seen = false;
+  return new ReadableStream<AudioFrame>({
+    pull: async (controller) => {
+      const { done, value } = await reader.read();
+      if (done) {
+        controller.close();
+        return;
+      }
+      if (!seen) {
+        seen = true;
+        console.log(`latency first_audio_frame sinceCallerStopped=${waited() ?? -1}`);
+      }
+      controller.enqueue(value as AudioFrame);
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
 }
 
 
