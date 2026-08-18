@@ -533,7 +533,15 @@ export default defineAgent({
     session.on(voice.AgentSessionEventTypes.MetricsCollected, (ev) => {
       const m = ev.metrics as Record<string, unknown>;
       const stage = String(m.type ?? 'unknown');
-      const timings = (['endOfUtteranceDelayMs', 'ttftMs', 'ttfbMs', 'durationMs'] as const)
+      // `transcriptionDelayMs` is how long the turn waited for SONIOX's final transcript after
+      // Silero already said the caller stopped. The two run on tee'd copies of the same audio
+      // (audio_recognition.js: `primaryInputStream.tee()`) and the turn commits on the LATER of
+      // them — so with the VAD timer at 100ms and end-of-turn measuring ~600ms, this is the number
+      // that says whether the missing 500ms is Soniox finalising. The SDK has always emitted it;
+      // we simply never read it.
+      const timings = (
+        ['endOfUtteranceDelayMs', 'transcriptionDelayMs', 'ttftMs', 'ttfbMs', 'durationMs'] as const
+      )
         .filter((k) => typeof m[k] === 'number')
         .map((k) => `${k}=${Math.round(m[k] as number)}`);
 
