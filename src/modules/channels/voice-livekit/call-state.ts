@@ -43,6 +43,10 @@ const STAGE_RANK: Record<CallStage, number> = {
  * a `capture_lead_info` qualification read is the primary one). */
 const DISCOVERY_TO_QUALIFYING_TURNS = 4;
 
+/** Committed user turns without a scheduling-path tool before RAG is allowed back on. Two, not one:
+ * a single turn is the caller answering "which slot suits you?", which is still booking. */
+const BOOKING_STALL_TURNS = 2;
+
 /** "What we know so far" — mirrors the sales-relevant fields of capture_lead_info. */
 export interface KnownFacts {
   name?: string;
@@ -76,6 +80,9 @@ export class CallStateMachine {
   private _userTurns = 0;
   private _agentTurns = 0;
   private _silenceStrikes = 0;
+  /** User-turn count when a scheduling-path tool last fired — the seam `ragActive` uses to
+   * notice an abandoned booking without regressing the monotonic stage. */
+  private _userTurnsAtLastSchedulingTool = 0;
   private readonly _facts: KnownFacts = {};
   private readonly _stageHistory: StageEntry[];
   private readonly _situations: SituationEntry[] = [];
@@ -105,6 +112,37 @@ export class CallStateMachine {
     return this._stage === 'terminal';
   }
 
+  /**
+   * Phase gate for voice RAG (Layer 1 of the two-layer gate): should knowledge retrieval run now?
+   *
+   * DERIVED, NEVER STORED, and deliberately NOT a second stage field. `stage` is monotonic and is now
+   * an analytics contract persisted to `call_learnings.analysis`; implementing the RAG plan's "return
+   * to discovery if the booking is abandoned" by regressing `stage` would corrupt every stage_history
+   * this machine writes. So the re-entry lives here, as a read-only view over the same signals.
+   *
+   *  - `opening` — off. She is greeting; there is no question yet, and a DB hit buys nothing.
+   *  - `discovery` / `qualifying` — ON. This is where callers ask what it does and what it costs.
+   *  - `scheduling` / `closing` — off while the booking is live: those turns collect a date, a name and
+   *    an email, and injected product prose both dilutes them and slows the turns that most need speed.
+   *  - ...unless the booking has STALLED — no scheduling-path tool for two committed user turns. That
+   *    is the abandoned-booking case: the caller has gone back to asking questions, and refusing to
+   *    answer them because a `check_calendar_availability` once fired would be perverse.
+   *  - `terminal` — off. The call is over.
+   */
+  get ragActive(): boolean {
+    switch (this._stage) {
+      case 'opening':
+      case 'terminal':
+        return false;
+      case 'discovery':
+      case 'qualifying':
+        return true;
+      case 'scheduling':
+      case 'closing':
+        return this._userTurns - this._userTurnsAtLastSchedulingTool >= BOOKING_STALL_TURNS;
+    }
+  }
+
   /** A committed user (caller) turn. First one leaves the greeting; enough of them imply qualifying. */
   onUserTurn(): void {
     this._userTurns += 1;
@@ -132,9 +170,11 @@ export class CallStateMachine {
         if (facts?.qualification) this.advanceTo('qualifying');
         break;
       case 'check_calendar_availability':
+        this._userTurnsAtLastSchedulingTool = this._userTurns;
         this.advanceTo('scheduling');
         break;
       case 'book_meeting':
+        this._userTurnsAtLastSchedulingTool = this._userTurns;
         this.advanceTo('closing');
         break;
       case 'end_call':

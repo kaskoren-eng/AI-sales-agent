@@ -17,6 +17,11 @@ import { buildSessionComponents, buildTTS, describeTtsModel } from './agent.conf
 import { CallReport } from './call-report.js';
 import { CallStateMachine } from './call-state.js';
 import { decideSilenceAction, decideVoicemailAction } from './call-reflexes.js';
+import { decideRetrieval } from './knowledge-gate.js';
+import { KnowledgeInjector } from './knowledge-injector.js';
+import { readKnowledgeSettings } from './knowledge-settings.js';
+import { RetrievalService } from '../../knowledge/retrieval.service.js';
+import { EmbeddingService } from '../../knowledge/embedding.service.js';
 import { hasAiDisclosure } from './compliance/ai-disclosure.js';
 import { NOT_IN_SERVICE_PATH, playRecordingNotice } from './compliance/recording-notice.js';
 import { buildSystemPrompt, readBusinessProfile } from './prompts/system-prompt.he.js';
@@ -603,6 +608,42 @@ export default defineAgent({
     // DEFAULT_PERSONA, which renders the prompt byte-for-byte as it was before this file existed
     // (system-prompt.persona.test.ts).
     const persona = readAgentPersona(tenantSettings);
+
+    // ── Voice RAG (Phase R2) ────────────────────────────────────────────────────────────────────
+    // BOTH switches must be on: the global env kill-switch (flippable without database access) and
+    // the tenant's own `knowledge_base.enabled`. Either off → `injector` stays undefined, the prompt
+    // is byte-for-byte what it was before RAG existed, and not one line below this runs.
+    //
+    // Needs `runtime` for the DB handle, so a call with the tool gate closed also has no RAG. That is
+    // the right coupling: a tenant who has not enabled tools is not running the product this serves.
+    const kbSettings = readKnowledgeSettings(tenantSettings);
+    const ragEnabled = env.VOICE_RAG_ENABLED && kbSettings.enabled && runtime !== null;
+    let injector: KnowledgeInjector | undefined;
+    if (ragEnabled && runtime) {
+      try {
+        const embeddings = new EmbeddingService(env);
+        injector = new KnowledgeInjector(
+          new RetrievalService(runtime.db, embeddings),
+          runtime.tenantId,
+          { topK: kbSettings.topK, minScore: kbSettings.minScore },
+        );
+        // Pay the TLS/DNS handshake now, during the greeting, instead of inside the caller's first
+        // question. Same trick the TTS path uses for its cold socket. Steady-state embedding RTT is
+        // ~205ms regardless — that is hidden by retrieving on INTERIM transcripts, below.
+        void embeddings.warm();
+      } catch (err) {
+        // A missing OPENAI_API_KEY must not take the call down; it just means no grounding.
+        console.error('knowledge_init_failed', err instanceof Error ? err.message : String(err));
+        injector = undefined;
+      }
+    }
+    console.log('rag_resolved', JSON.stringify({
+      env: env.VOICE_RAG_ENABLED,
+      tenant: kbSettings.enabled,
+      active: injector !== undefined,
+      topK: kbSettings.topK,
+      minScore: kbSettings.minScore,
+    }));
     const agent = new ClickScalesAgent(
       {
         instructions: buildSystemPrompt({
@@ -610,6 +651,10 @@ export default defineAgent({
           businessProfile,
           objectionHandling: env.VOICE_STATE_MACHINE_ENABLED,
           persona,
+          // Tied to the INJECTOR, not to the flags: promising her `[KNOWLEDGE]` messages that never
+          // arrive would make her answer "the team will follow up" to questions she could have
+          // answered from the prompt.
+          ragEnabled: injector !== undefined,
         }),
         ...(runtime ? { tools: buildAgentTools(runtime) } : {}),
         // A per-tenant VOICE, and ONLY when the tenant actually configured one.
@@ -684,6 +729,74 @@ export default defineAgent({
         );
       }, env.VOICE_THINKING_FILLER_MS);
     });
+
+    // ── Voice RAG: speculative retrieval, ahead of the preemptive snapshot ──────────────────────
+    //
+    // WHY THIS FIRES ON INTERIM TRANSCRIPTS AND NOT IN `onUserTurnCompleted`, which is where the RAG
+    // plan put it:
+    //
+    //   LiveKit builds a DRAFT reply from the interim transcript, snapshotting `agent.chatCtx`
+    //   (`agent_activity.js` onPreemptiveGeneration). At turn commit it keeps that draft only if
+    //   `preemptive.chatCtx.isEquivalent(chatCtx)` still holds. Injecting knowledge in
+    //   `onUserTurnCompleted` mutates the context AFTER the snapshot, so the draft is thrown away and
+    //   the reply is regenerated from scratch — on EVERY grounded turn. That is the same bug the class
+    //   comment at the top of this file documents (15 discarded drafts in one 4-minute call), and it
+    //   would cost far more than the ~250ms retrieval it was meant to protect.
+    //
+    // Retrieving while the caller is still SPEAKING fixes both halves at once: the knowledge is already
+    // in the context when the snapshot is taken (so the draft survives), and the ~205ms embedding round
+    // trip is spent on speech the caller has not finished producing (so it costs no wall-clock).
+    //
+    // `prefetch` is cached by normalised text, which matters because Soniox emits many interim results
+    // per utterance, each mostly repeating the last.
+    if (injector) {
+      session.on(voice.AgentSessionEventTypes.UserInputTranscribed, (ev) => {
+        const decision = decideRetrieval({
+          enabled: true,
+          // Layer 1: the phase gate, derived from the state machine already running this call. When the
+          // advisory layer is off there is no phase signal, so RAG runs on the utterance gate alone.
+          ragActive: callState ? callState.ragActive : true,
+          transcript: ev.transcript,
+        });
+        if (!decision.retrieve) return;
+
+        if (!ev.isFinal) {
+          // Speculative: warm the result, touch nothing.
+          injector.prefetch(ev.transcript);
+          return;
+        }
+
+        // Final transcript: resolve (usually already resolved by the prefetch above) and inject.
+        void injector.inject(agent, ev.transcript).then((result) => {
+          console.log('rag_turn', JSON.stringify({
+            stage: callState?.stage ?? null,
+            reason: decision.reason,
+            injected: result.injected,
+            chunks: result.chunkIds.length,
+            deduped: result.deduped,
+            embedMs: result.timing.embedMs,
+            dbMs: result.timing.dbMs,
+            totalMs: result.timing.totalMs,
+          }));
+          injector?.clearSpeculative();
+        });
+      });
+
+      // Gate decisions that DECLINE are logged once per committed turn rather than per interim result,
+      // which would be several lines per utterance.
+      session.on(voice.AgentSessionEventTypes.ConversationItemAdded, (ev) => {
+        const item = ev.item as { role?: string; textContent?: string };
+        if (item?.role !== 'user' || !item.textContent) return;
+        const decision = decideRetrieval({
+          enabled: true,
+          ragActive: callState ? callState.ragActive : true,
+          transcript: item.textContent,
+        });
+        if (!decision.retrieve) {
+          console.log('rag_skipped', JSON.stringify({ stage: callState?.stage ?? null, reason: decision.reason }));
+        }
+      });
+    }
 
     // ── Situational reflexes ──────────────────────────────────────────────────────────────────
     // The state machine reacts to events the LLM never sees (it only ever gets committed turns).

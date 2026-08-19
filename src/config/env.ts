@@ -403,6 +403,11 @@ const envSchema = z.object({
   // Default ON. Set false to run Keren exactly as she was before the state machine — used to A/B
   // whether the advisory layer affects call behaviour. Tools and the gate are unaffected either way.
   VOICE_STATE_MACHINE_ENABLED: envBool(true),
+  // Voice RAG global kill-switch. DEFAULT FALSE, unlike the state machine above: RAG changes what
+  // she SAYS (she answers from retrieved facts), so it stays off until a real call has proved it.
+  // Deliberately separate from the per-tenant `knowledge_base.enabled` key -- BOTH must be on. An
+  // env switch can be flipped when the database is unreachable; a settings key cannot.
+  VOICE_RAG_ENABLED: envBool(false),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),

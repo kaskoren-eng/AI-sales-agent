@@ -174,6 +174,9 @@ export const AGENT_SETTINGS_KEYS = [
   // It carries no secrets (voice ids and names are not credentials), and the caller is the
   // authenticated tenant anyway.
   'agent_persona',
+  // Voice RAG (Phase R2): `{ enabled, top_k?, min_score? }`. Carries no secrets — it is a feature
+  // flag and two numbers. Absent means off, which is the default for every tenant.
+  'knowledge_base',
 ] as const;
 
 export function sanitizeSettingsForAgent(settings: unknown): Record<string, unknown> | undefined {

@@ -32,6 +32,8 @@
  * commit.
  */
 
+import { KNOWLEDGE_MARKER } from '../knowledge-injector.js';
+
 import type { BusinessProfile } from '../../../settings/settings.service.js';
 import { buildObjectionPlaybook } from '../call-state-lines.he.js';
 import {
@@ -60,6 +62,10 @@ interface PromptSlots {
   /** The objection-handling playbook section (tools variant only; '' otherwise). Koren's content —
    * see OBJECTION_PLAYBOOK_HE in call-state-lines.he.ts. */
   objectionPlaybook: string;
+  /** The grounding rules for retrieved knowledge. Empty string unless RAG is on for this call —
+   * which keeps every existing prompt variant byte-for-byte identical (the golden fixtures
+   * assert exactly that). */
+  knowledgeGrounding: string;
   /** Per-tenant business facts, injected after the Role section. Empty string when the tenant
    * has no businessProfile — the prompt then reads exactly as it did before this existed. The
    * PROSE inside is Koren's (tenant content); this file only plumbs the fields into labelled
@@ -397,7 +403,7 @@ ${slots.step4}
 
 If the lead asks any of the following (or a close variant), answer using the fixed response below, then return to whatever step you were in before the question.
 
-${slots.faq}${slots.objectionPlaybook}
+${slots.faq}${slots.objectionPlaybook}${slots.knowledgeGrounding}
 
 ---
 
@@ -442,6 +448,33 @@ If the lead says "רגע," "שנייה," "חכה," "hold on," or "one moment," r
 }
 
 /**
+ * The grounding rules for retrieved knowledge, added only when RAG is enabled for the call.
+ *
+ * Adapted from Koren's template with ONE deliberate change: the fallback is "the team will follow up,
+ * now back to booking" rather than "transfer to a live specialist". We have no live-transfer feature,
+ * and her job is booking, not support — promising a transfer would be exactly the kind of invented
+ * commitment the rest of this prompt exists to prevent.
+ *
+ * "Never mention documents or that you searched" is not cosmetic. The knowledge arrives as a visible
+ * message in her context, and a helpful model narrates what it can see ("לפי המסמך שקיבלתי...").
+ * On a phone call that is both strange and a quiet admission that she is reading rather than knowing.
+ */
+function buildKnowledgeGrounding(): string {
+  return `
+
+---
+
+## KNOWLEDGE
+
+Facts about the business may be given to you in ${'`' + KNOWLEDGE_MARKER + '`'} messages during the call.
+
+- Answer factual questions ONLY from ${'`' + KNOWLEDGE_MARKER + '`'} content or from what the lead told you.
+- If the answer is not there: say the team will follow up with the exact answer, and steer back to booking the demo. NEVER guess a price, a number, a spec or a policy.
+- Never mention documents, sources, "context", or that you looked anything up. You simply know these things.
+- If the knowledge contradicts something you said earlier, the knowledge wins — correct yourself plainly and move on.`;
+}
+
+/**
  * Builds the system prompt for a call. `toolsEnabled` mirrors the per-call tool gate in
  * agent.ts — the prompt and the tool set must always agree, or the model is instructed to use
  * capabilities it doesn't have (and improvises), or has capabilities it was never told about
@@ -452,6 +485,7 @@ export function buildSystemPrompt({
   businessProfile = null,
   objectionHandling = true,
   persona = DEFAULT_PERSONA,
+  ragEnabled = false,
 }: {
   toolsEnabled: boolean;
   /** Per-tenant grounding. Absent/null → the prompt is byte-for-byte the pre-existing one. */
@@ -462,11 +496,15 @@ export function buildSystemPrompt({
   /** Who the agent is. Absent → `DEFAULT_PERSONA`, which renders the original hardcoded text
    * byte for byte (asserted by system-prompt.persona.test.ts). */
   persona?: AgentPersona;
+  /** Voice RAG (Phase R2). Adds ONLY the grounding rules; when false the prompt is byte-for-byte what
+   * it was before RAG existed, which is what makes the flag a true rollback rather than a promise. */
+  ragEnabled?: boolean;
 }): string {
   const businessContext = renderBusinessContext(businessProfile);
   const identity = renderIdentity(persona);
   const faq = renderFaq(persona);
   const companyName = persona.companyName;
+  const knowledgeGrounding = ragEnabled ? buildKnowledgeGrounding() : '';
   const mindsetRebuttal = persona.mindsetRebuttal || GENERIC_MINDSET_REBUTTAL;
   if (!toolsEnabled) {
     return assemble({
@@ -477,6 +515,7 @@ export function buildSystemPrompt({
       captureInstruction: '',
       step4: STEP4_NO_TOOLS,
       objectionPlaybook: '',
+      knowledgeGrounding,
       businessContext,
       identity,
       faq,
@@ -495,6 +534,7 @@ export function buildSystemPrompt({
     objectionPlaybook: objectionHandling
       ? `\n\n---\n\n## Objection Handling\n\n${buildObjectionPlaybook(persona.handoffPerson)}`
       : '',
+    knowledgeGrounding,
     businessContext,
     identity,
     faq,

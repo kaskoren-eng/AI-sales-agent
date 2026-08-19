@@ -67,6 +67,7 @@ export async function buildTestApp(
     CORS_ORIGINS: 'http://localhost:3001',
     AI_MODEL: 'gpt-5.4',
     EMBEDDING_MODEL: 'text-embedding-3-small',
+    VOICE_RAG_ENABLED: false,
     CARTESIA_MODEL: 'sonic-3',
     OPENAI_REALTIME_MODEL: 'gpt-realtime-whisper',
     VOICE_LANGUAGE: 'he',
