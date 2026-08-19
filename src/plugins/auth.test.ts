@@ -90,6 +90,7 @@ async function buildAuthTestApp(db: ReturnType<typeof createMockDb>, redis = mak
     SIGNUP_MODE: 'invite_only' as const,
     CORS_ORIGINS: 'http://localhost:3001',
     AI_MODEL: 'gemini-2.5-flash',
+    EMBEDDING_MODEL: 'text-embedding-3-small',
     CARTESIA_MODEL: 'sonic-3',
     OPENAI_REALTIME_MODEL: 'gpt-realtime-whisper',
     VOICE_LANGUAGE: 'he',

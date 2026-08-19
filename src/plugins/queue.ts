@@ -11,6 +11,7 @@ declare module 'fastify' {
       csvImport: Queue;
       callAnalysis: Queue;
       meetingReminders: Queue;
+      kbIngest: Queue;
     };
   }
 }
@@ -25,8 +26,9 @@ export default fp(async (app) => {
   const csvImport = new Queue('csv-import', { connection });
   const callAnalysis = new Queue('call-analysis', { connection });
   const meetingReminders = new Queue('meeting-reminders', { connection });
+  const kbIngest = new Queue('kb-ingest', { connection });
 
-  app.decorate('queues', { messageProcessor, outboundSender, flowExecutor, deadLetter, csvImport, callAnalysis, meetingReminders });
+  app.decorate('queues', { messageProcessor, outboundSender, flowExecutor, deadLetter, csvImport, callAnalysis, meetingReminders, kbIngest });
 
   app.addHook('onClose', async () => {
     await messageProcessor.close();
@@ -36,5 +38,6 @@ export default fp(async (app) => {
     await csvImport.close();
     await callAnalysis.close();
     await meetingReminders.close();
+    await kbIngest.close();
   });
 });

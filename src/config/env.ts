@@ -443,6 +443,18 @@ const envSchema = z.object({
   // AI (OpenAI)
   OPENAI_API_KEY: z.string().min(1).optional(),
   AI_MODEL: z.string().default('gpt-5.4'),
+  // Knowledge-base embeddings (voice RAG). Multilingual and cheap enough that re-embedding a whole
+  // tenant KB costs pennies -- which is what makes the chunker safe to improve later.
+  //
+  // CHANGING THIS IS NOT A CONFIG FLIP: cosine distance across two embedding spaces is meaningless,
+  // so chunks embedded by the old model are unreachable by queries embedded with the new one.
+  // `knowledge_chunks.embedding_model` records which model wrote each row and retrieval filters on
+  // it, so a mixed KB returns FEWER results rather than wrong ones -- but a full re-ingest is still
+  // required to get them back.
+  EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
+  // Optional shrink below the model's native 1536. Leave unset: the vector column is vector(1536),
+  // so a smaller value here requires narrowing that column in a follow-up migration first.
+  EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().optional(),
 
   // Integrations - Monday.com
   MONDAY_WEBHOOK_SECRET: z.string().min(1).optional(),

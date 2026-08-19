@@ -17,3 +17,5 @@ export { plans } from './plans.js';
 export type { Plan, NewPlan } from './plans.js';
 export { usageEvents, usagePeriods, BILLING_STATUSES, QUOTA_ENFORCEMENT_MODES, USAGE_KINDS } from './billing.js';
 export type { UsageEvent, NewUsageEvent, UsagePeriod, NewUsagePeriod, BillingStatus, QuotaEnforcement, UsageKind } from './billing.js';
+export { knowledgeDocuments, knowledgeChunks, EMBEDDING_DIMENSIONS, KNOWLEDGE_SOURCE_TYPES, KNOWLEDGE_STATUSES } from './knowledge.js';
+export type { KnowledgeDocument, NewKnowledgeDocument, KnowledgeChunk, NewKnowledgeChunk, KnowledgeSourceType, KnowledgeStatus } from './knowledge.js';

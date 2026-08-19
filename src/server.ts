@@ -25,6 +25,7 @@ import { createFlowExecutorWorker } from './queues/workers/flow-executor.worker.
 import { createCsvImportWorker } from './queues/workers/csv-import.worker.js';
 import { createCallAnalysisWorker } from './queues/workers/call-analysis.worker.js';
 import { createMeetingRemindersWorker } from './queues/workers/meeting-reminders.worker.js';
+import { createKbIngestWorker } from './queues/workers/kb-ingest.worker.js';
 import { WhatsAppService } from './modules/channels/whatsapp/whatsapp.service.js';
 import { EmailService } from './modules/channels/email/email.service.js';
 import { LiveKitVoiceService } from './modules/channels/voice-livekit/voice-livekit.service.js';
@@ -287,6 +288,15 @@ export async function buildApp(): Promise<FastifyInstance> {
     logger: app.log,
   });
 
+  // The 7th worker: knowledge-base ingestion (voice RAG). Off the hot path entirely -- it embeds
+  // uploaded documents; nothing in a live call touches it.
+  const kbIngestWorker = createKbIngestWorker({
+    db: app.db,
+    env,
+    redis: app.redis,
+    deadLetterQueue: app.queues.deadLetter,
+  });
+
   app.addHook('onClose', async () => {
     await messageProcessorWorker.close();
     await outboundSenderWorker.close();
@@ -294,6 +304,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     await csvImportWorker.close();
     await callAnalysisWorker.close();
     await meetingRemindersWorker.close();
+    await kbIngestWorker.close();
   });
 
   return app;

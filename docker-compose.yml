@@ -1,6 +1,10 @@
 services:
   postgres:
-    image: postgres:17
+    # pgvector's image, not plain postgres: the voice RAG knowledge base needs the `vector`
+    # extension (migration 0014) and postgres:17 does not ship it. Same major version as before,
+    # so the existing pgdata volume is reused as-is -- but a running container must be recreated
+    # (`docker compose up -d postgres`) before 0014 will apply.
+    image: pgvector/pgvector:pg17
     ports:
       - "5432:5432"
     environment:
