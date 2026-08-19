@@ -1,10 +1,11 @@
 # ClickScales — חבילות ומחירים
 
-⚠️ NUMBERS PENDING KOREN'S CONFIRMATION. Sourced from `docs/gtm/pricing-model.md`, which is dated
-30.07.2026 and marks its own figures as an OPEN decision ("החלטה פתוחה שחוסמת את הצעת המחיר").
-Kept as a SEPARATE document from the product KB so it can be deleted or re-ingested on its own,
-without touching anything else. Nothing in a live call reads this during Phase R1 — the agent is not
-wired to the knowledge base until R2, which is gated on this confirmation.
+PROVISIONAL NUMBERS — Koren, 2026-08-19: "the pricing is not the important thing right now, use
+that, I'll update it later." So these are live for testing and the agent WILL say them on a call.
+Sourced from `docs/gtm/pricing-model.md` (dated 30.07.2026), which still marks its own figures as an
+open decision. Kept as a SEPARATE document from the product KB precisely so it can be re-ingested on
+its own when the real numbers land: edit this file and re-run `npm run kb:ingest` for this document —
+ingestion replaces a document's chunks wholesale, so nothing else in the KB is touched.
 
 ## חבילת בסיס — כמה זה עולה, המחיר
 

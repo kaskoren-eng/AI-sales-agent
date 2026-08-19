@@ -486,6 +486,7 @@ export function buildSystemPrompt({
   objectionHandling = true,
   persona = DEFAULT_PERSONA,
   ragEnabled = false,
+  slimKnowledge = false,
 }: {
   toolsEnabled: boolean;
   /** Per-tenant grounding. Absent/null → the prompt is byte-for-byte the pre-existing one. */
@@ -499,10 +500,26 @@ export function buildSystemPrompt({
   /** Voice RAG (Phase R2). Adds ONLY the grounding rules; when false the prompt is byte-for-byte what
    * it was before RAG existed, which is what makes the flag a true rollback rather than a promise. */
   ragEnabled?: boolean;
+  /**
+   * Remove the knowledge the KB now serves: the FAQ bank and the objection playbook. That is 468 of
+   * this prompt's 2,442 words — and the only 468 that are knowledge rather than behaviour.
+   *
+   * NEVER set this without `ragEnabled`. The content does not move anywhere; it disappears, and she is
+   * left unable to answer what it covered. `agent.ts` enforces the pairing rather than trusting a flag.
+   *
+   * Why this is not the 300-400 word prompt that was asked for: the security rules are 325 words and
+   * are pinned by 20 injection tests, and the booking mechanics are 519 words, each line added after a
+   * real call failure. Those two alone are 844 words, and neither may be cut.
+   */
+  slimKnowledge?: boolean;
 }): string {
-  const businessContext = renderBusinessContext(businessProfile);
+  // `businessContext` is slimmed too, and it is the single biggest win for a real tenant: it holds
+  // pricing, product description and "common objections and how to answer them" — the same facts the
+  // knowledge base now serves. Leaving both in place would give every tenant TWO sources of truth for
+  // the price the agent quotes aloud, and the prompt copy is the one nobody remembers to update.
+  const businessContext = slimKnowledge ? '' : renderBusinessContext(businessProfile);
   const identity = renderIdentity(persona);
-  const faq = renderFaq(persona);
+  const faq = slimKnowledge ? '' : renderFaq(persona);
   const companyName = persona.companyName;
   const knowledgeGrounding = ragEnabled ? buildKnowledgeGrounding() : '';
   const mindsetRebuttal = persona.mindsetRebuttal || GENERIC_MINDSET_REBUTTAL;
@@ -531,9 +548,10 @@ export function buildSystemPrompt({
     captureInstruction:
       '\nAs you learn facts about the lead — business type, pain point, budget, timeline, contact details, or your hot/warm/cold read — call `capture_lead_info` to save them. It is silent and instant: never announce it, never invent values, and call it again whenever a fact changes.',
     step4: buildStep4Tools(persona.handoffPerson),
-    objectionPlaybook: objectionHandling
-      ? `\n\n---\n\n## Objection Handling\n\n${buildObjectionPlaybook(persona.handoffPerson)}`
-      : '',
+    objectionPlaybook:
+      objectionHandling && !slimKnowledge
+        ? `\n\n---\n\n## Objection Handling\n\n${buildObjectionPlaybook(persona.handoffPerson)}`
+        : '',
     knowledgeGrounding,
     businessContext,
     identity,

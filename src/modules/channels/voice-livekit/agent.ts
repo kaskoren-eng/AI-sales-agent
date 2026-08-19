@@ -641,6 +641,7 @@ export default defineAgent({
       env: env.VOICE_RAG_ENABLED,
       tenant: kbSettings.enabled,
       active: injector !== undefined,
+      slimPrompt: injector !== undefined && env.VOICE_SLIM_PROMPT,
       topK: kbSettings.topK,
       minScore: kbSettings.minScore,
     }));
@@ -655,6 +656,12 @@ export default defineAgent({
           // arrive would make her answer "the team will follow up" to questions she could have
           // answered from the prompt.
           ragEnabled: injector !== undefined,
+          // ...and slimming is tied to the SAME object, for the mirror-image reason. VOICE_SLIM_PROMPT
+          // deletes the FAQ bank and the objection playbook; without a working injector that content
+          // does not move anywhere, it is simply gone, and she cannot answer the questions it covered.
+          // Enforced here rather than documented as an operator rule, because the failure is silent:
+          // the call sounds fine right up to the first question she should have been able to answer.
+          slimKnowledge: injector !== undefined && env.VOICE_SLIM_PROMPT,
         }),
         ...(runtime ? { tools: buildAgentTools(runtime) } : {}),
         // A per-tenant VOICE, and ONLY when the tenant actually configured one.

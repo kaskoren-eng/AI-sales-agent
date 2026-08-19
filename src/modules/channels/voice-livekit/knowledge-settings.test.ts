@@ -140,3 +140,72 @@ describe('buildSystemPrompt — the grounding block', () => {
     expect(buildSystemPrompt({ toolsEnabled: true, ragEnabled: true })).toContain(KNOWLEDGE_MARKER);
   });
 });
+
+describe('buildSystemPrompt — slimKnowledge', () => {
+  const profile = {
+    companyName: 'ClickScales',
+    description: 'סוכנת קולית',
+    product: 'סוכנת קולית דיגיטלית',
+    targetAudience: 'עסקים קטנים',
+    pricing: 'חבילת בסיס 1,490 ש"ח לחודש',
+    commonObjections: 'יקר לי',
+    toneOfVoice: 'ישיר',
+  };
+
+  it('changes nothing when off — the default path is untouched', () => {
+    expect(buildSystemPrompt({ toolsEnabled: true, slimKnowledge: false })).toBe(
+      buildSystemPrompt({ toolsEnabled: true }),
+    );
+  });
+
+  it('removes the FAQ bank and the objection playbook', () => {
+    const full = buildSystemPrompt({ toolsEnabled: true });
+    const slim = buildSystemPrompt({ toolsEnabled: true, ragEnabled: true, slimKnowledge: true });
+    expect(full).toContain('## Objection Handling');
+    expect(slim).not.toContain('## Objection Handling');
+    expect(slim.length).toBeLessThan(full.length);
+  });
+
+  it('removes the per-tenant business facts, so pricing has ONE source of truth', () => {
+    // The duplication this prevents: a price in settings.businessProfile AND in the knowledge base,
+    // where the prompt copy is the one nobody remembers to update.
+    const full = buildSystemPrompt({ toolsEnabled: true, businessProfile: profile });
+    const slim = buildSystemPrompt({
+      toolsEnabled: true,
+      businessProfile: profile,
+      ragEnabled: true,
+      slimKnowledge: true,
+    });
+    expect(full).toContain('1,490');
+    expect(slim).not.toContain('1,490');
+    expect(slim).not.toContain('Business Context');
+  });
+
+  /**
+   * THE TWO SECTIONS THAT MAY NEVER BE SLIMMED. The booking mechanics were written line by line after
+   * real call failures, and the security rules are pinned by 20 injection tests. Together they are 844
+   * of the prompt's words, which is why a 300-400 word prompt was never reachable.
+   */
+  it('keeps the security rules and the booking mechanics intact', () => {
+    const slim = buildSystemPrompt({ toolsEnabled: true, ragEnabled: true, slimKnowledge: true });
+    expect(slim).toContain('CRITICAL SECURITY RULES');
+    expect(slim).toContain('Step 4');
+    expect(slim).toContain('book_meeting');
+    expect(slim).toMatch(/NEVER claim a meeting is booked/i);
+    expect(slim).toContain('YOU MUST COLLECT HIS DETAILS BEFORE BOOKING');
+  });
+
+  it('keeps the call flow and her identity — slimming removes knowledge, not behaviour', () => {
+    const slim = buildSystemPrompt({ toolsEnabled: true, ragEnabled: true, slimKnowledge: true });
+    expect(slim).toContain('## Role');
+    expect(slim).toContain('## Call Flow Overview');
+    expect(slim).toContain('## Step 1');
+    expect(slim).toContain('## Step 2');
+    expect(slim).toContain('## Step 3');
+  });
+
+  it('still carries the grounding rules — the replacement for what it removed', () => {
+    const slim = buildSystemPrompt({ toolsEnabled: true, ragEnabled: true, slimKnowledge: true });
+    expect(slim).toContain('## KNOWLEDGE');
+  });
+});

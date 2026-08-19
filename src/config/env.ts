@@ -408,6 +408,19 @@ const envSchema = z.object({
   // Deliberately separate from the per-tenant `knowledge_base.enabled` key -- BOTH must be on. An
   // env switch can be flipped when the database is unreachable; a settings key cannot.
   VOICE_RAG_ENABLED: envBool(false),
+  // Drops the FAQ bank and the objection playbook from the prompt, on the grounds that RAG now serves
+  // that content per-turn. DEFAULT FALSE and separate from VOICE_RAG_ENABLED on purpose: RAG changes
+  // what she KNOWS, this changes what she SAYS, and bundling them would make a regression on a test
+  // call impossible to attribute to either.
+  //
+  // MEASURED CEILING, so nobody re-opens this expecting a 400-word prompt: of the 2,442-word prompt,
+  // only 468 words are knowledge. The rest is behaviour, and 844 words of THAT are the security rules
+  // (pinned by 20 injection tests) and the booking mechanics (every line written after a real call
+  // failure). A 300-400 word prompt is not reachable without cutting those two.
+  //
+  // Requires RAG: with the knowledge gone and nothing retrieving it, she simply cannot answer. agent.ts
+  // enforces the coupling rather than trusting the operator to set both.
+  VOICE_SLIM_PROMPT: envBool(false),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),
