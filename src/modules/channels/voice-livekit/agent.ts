@@ -789,26 +789,44 @@ export default defineAgent({
       });
     }
 
-    // ── Voice RAG: speculative retrieval, ahead of the preemptive snapshot ──────────────────────
+    // ── Voice RAG: speculative injection, ahead of the preemptive snapshot ─────────────────────
     //
-    // WHY THIS FIRES ON INTERIM TRANSCRIPTS AND NOT IN `onUserTurnCompleted`, which is where the RAG
-    // plan put it:
+    // WHY THIS INJECTS ON INTERIM TRANSCRIPTS AND NOT IN `onUserTurnCompleted`, where the RAG plan put
+    // it: LiveKit drafts a reply before the turn commits, snapshotting `agent.chatCtx`, and keeps that
+    // draft only if `preemptive.chatCtx.isEquivalent(chatCtx)` still holds at commit. Injecting after
+    // the snapshot throws the draft away on every grounded turn.
     //
-    //   LiveKit builds a DRAFT reply from the interim transcript, snapshotting `agent.chatCtx`
-    //   (`agent_activity.js` onPreemptiveGeneration). At turn commit it keeps that draft only if
-    //   `preemptive.chatCtx.isEquivalent(chatCtx)` still holds. Injecting knowledge in
-    //   `onUserTurnCompleted` mutates the context AFTER the snapshot, so the draft is thrown away and
-    //   the reply is regenerated from scratch — on EVERY grounded turn. That is the same bug the class
-    //   comment at the top of this file documents (15 discarded drafts in one 4-minute call), and it
-    //   would cost far more than the ~250ms retrieval it was meant to protect.
+    // The FIRST version of this code prefetched on interims but injected only on the final transcript,
+    // and the 2026-08-19 call measured the result: 4 of 6 drafts discarded with RAG on, 0 of 6 off.
+    // Warming a cache puts nothing in the context. The snapshot is taken at Soniox's PREFLIGHT event —
+    // the moment the caller pauses — which is strictly before the final transcript exists, so the
+    // catch-up was always too late. See constraint 3 in knowledge-injector.ts for the trace.
     //
-    // Retrieving while the caller is still SPEAKING fixes both halves at once: the knowledge is already
-    // in the context when the snapshot is taken (so the draft survives), and the ~205ms embedding round
-    // trip is spent on speech the caller has not finished producing (so it costs no wall-clock).
-    //
-    // `prefetch` is cached by normalised text, which matters because Soniox emits many interim results
-    // per utterance, each mostly repeating the last.
+    // Injecting during the interims, while the caller is still speaking, lands the knowledge before the
+    // snapshot AND spends the ~250ms retrieval on speech they have not finished producing. Throttled
+    // inside the injector, because Soniox emits many interims per utterance and the old
+    // prefetch-on-every-interim was quietly paying for an embedding on each one.
     if (injector) {
+      const logRagTurn = (
+        result: { injected: boolean; chunkIds: string[]; deduped: number; timing: { embedMs: number; dbMs: number; totalMs: number } },
+        reason: string,
+        speculative: boolean,
+      ): void => {
+        console.log('rag_turn', JSON.stringify({
+          stage: callState?.stage ?? null,
+          reason,
+          // `speculative:true` means the draft survived; `false` means this turn traded it for an
+          // answer. The ratio between them is the health metric for this whole design.
+          speculative,
+          injected: result.injected,
+          chunks: result.chunkIds.length,
+          deduped: result.deduped,
+          embedMs: result.timing.embedMs,
+          dbMs: result.timing.dbMs,
+          totalMs: result.timing.totalMs,
+        }));
+      };
+
       session.on(voice.AgentSessionEventTypes.UserInputTranscribed, (ev) => {
         const decision = decideRetrieval({
           enabled: true,
@@ -820,26 +838,25 @@ export default defineAgent({
         if (!decision.retrieve) return;
 
         if (!ev.isFinal) {
-          // Speculative: warm the result, touch nothing.
-          injector.prefetch(ev.transcript);
+          const speculative = injector.injectSpeculative(agent, ev.transcript);
+          if (speculative) void speculative.then((result) => logRagTurn(result, decision.reason, true));
           return;
         }
 
-        // Final transcript: resolve (usually already resolved by the prefetch above) and inject.
+        // Final transcript. Touching the context HERE is what costs the draft, so it is worth doing
+        // only when the turn would otherwise go un-grounded — never to top up a turn the speculative
+        // pass already grounded. That case is not a silent skip: `grounded` says which path ran.
+        if (injector.groundedThisTurn) {
+          injector.endTurn();
+          return;
+        }
+
         void injector.inject(agent, ev.transcript).then((result) => {
-          console.log('rag_turn', JSON.stringify({
-            stage: callState?.stage ?? null,
-            reason: decision.reason,
-            injected: result.injected,
-            chunks: result.chunkIds.length,
-            deduped: result.deduped,
-            embedMs: result.timing.embedMs,
-            dbMs: result.timing.dbMs,
-            totalMs: result.timing.totalMs,
-          }));
-          injector?.clearSpeculative();
+          logRagTurn(result, decision.reason, false);
+          injector?.endTurn();
         });
       });
+
 
       // Gate decisions that DECLINE are logged once per committed turn rather than per interim result,
       // which would be several lines per utterance.

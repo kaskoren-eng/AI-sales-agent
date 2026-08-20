@@ -15,16 +15,30 @@ import type { RetrievalService, RetrievedChunk } from '../../knowledge/retrieval
  *    injected again. Dedup does double duty — it bounds growth AND stops her hearing the same fact
  *    three times in a call.
  *
- * 3. PREEMPTIVE GENERATION. LiveKit builds a draft reply from the INTERIM transcript, snapshotting
- *    `agent.chatCtx`, then discards that draft unless the context still matches at turn commit
- *    (`agent_activity.js`: `preemptive.chatCtx.isEquivalent(chatCtx)`). Injecting after that snapshot
- *    kills the draft on every RAG turn — a far larger latency cost than the retrieval it was saving.
- *    So retrieval is SPECULATIVE: it runs on the interim transcript, while the caller is still
- *    talking, so the knowledge is already in the context when the snapshot is taken. This also hides
- *    the ~205ms embedding round trip behind speech the caller is still producing.
+ * 3. PREEMPTIVE GENERATION. LiveKit builds a draft reply BEFORE the turn commits, snapshotting
+ *    `agent.chatCtx`, then discards that draft unless the context still matches at commit
+ *    (`agent_activity.cjs:1680`: `preemptive.chatCtx.isEquivalent(chatCtx)`). Injecting after that
+ *    snapshot kills the draft on every grounded turn.
  *
- * The speculative work is cached by normalised transcript, because Soniox emits many interim results
- * per utterance and they mostly repeat their own prefix.
+ *    MEASURED, 2026-08-19: it did exactly that — 4 of 6 drafts discarded with RAG on, 0 of 6 off.
+ *    The first design PREFETCHED on interims but only INJECTED on the final transcript, on the
+ *    assumption that retrieving early was enough. It is not: warming a cache does not put anything in
+ *    the context, and the snapshot is taken before the final transcript exists.
+ *
+ *    WHERE THE SNAPSHOT ACTUALLY HAPPENS. Reading the pipeline end to end, the Soniox plugin emits
+ *    `PREFLIGHT_TRANSCRIPT` the moment the caller pauses (`_internal.cjs:239` — final text present,
+ *    no pending non-final text) and `audio_recognition.cjs:798` turns that straight into
+ *    `onPreemptiveGeneration`, which copies the context synchronously. Plain `INTERIM_TRANSCRIPT`
+ *    events, emitted while the caller is STILL SPEAKING, trigger no such thing.
+ *
+ *    So the safe window is the interim events before the pause, and the fix is to INJECT there rather
+ *    than merely prefetch. The final-transcript injection stays as a catch-up and costs nothing when
+ *    the speculative one already landed, because zero fresh chunks means the context is never touched.
+ *
+ * Speculative work is cached by normalised transcript, because Soniox emits many interim results per
+ * utterance and they mostly repeat their own prefix. Because those interims now MUTATE the context,
+ * every mutation is serialised (see `serialize`) — two concurrent injections would otherwise both copy
+ * the same base context and the second would silently overwrite the first's block.
  */
 
 /** How the retrieved block is labelled in the chat context. The prompt's grounding rules refer to this
@@ -51,11 +65,34 @@ export interface AgentLike {
   updateChatCtx(ctx: ChatContextLike): Promise<void>;
 }
 
+/**
+ * A Hebrew fragment shorter than this retrieves noise: "כמה זה" ("how much is") matches every pricing
+ * chunk equally and nothing usefully. Below it, wait for more speech.
+ */
+const MIN_SPECULATIVE_CHARS = 12;
+
+/** Re-retrieve only once the utterance has grown by this much — adjacent interims barely differ. */
+const SPECULATIVE_GROWTH_CHARS = 12;
+
+/**
+ * Speculative attempts per turn. Each costs one embedding + one query, and the caller is still
+ * speaking, so the ceiling is about spend rather than latency. Three covers the realistic shape of a
+ * spoken question (an early stab, a mid-utterance refinement, one more if they keep going).
+ */
+const MAX_SPECULATIVE_PER_TURN = 3;
+
 export class KnowledgeInjector {
   /** Chunk ids already present in the chat context — the dedup set (constraint 2). */
   private readonly injectedChunkIds = new Set<string>();
   /** Speculative results keyed by normalised transcript, so repeated interim results are free. */
   private readonly speculativeCache = new Map<string, Promise<Awaited<ReturnType<RetrievalService['search']>>>>();
+  /** Serialises chat-context mutations; see constraint 3. */
+  private mutations: Promise<unknown> = Promise.resolve();
+  /** Per-turn speculative throttle state, reset by `endTurn()`. */
+  private speculativeAttempts = 0;
+  private lastSpeculativeLength = 0;
+  /** Whether anything reached the context this turn — see `groundedThisTurn`. */
+  private injectedThisTurn = false;
 
   constructor(
     private readonly retrieval: RetrievalService,
@@ -68,21 +105,37 @@ export class KnowledgeInjector {
   }
 
   /**
-   * Start (or reuse) retrieval for an utterance without touching the chat context.
+   * Run `fn` after every mutation already queued, so read-modify-write of the chat context is atomic.
    *
-   * Called on INTERIM transcripts. Deliberately fire-and-forget from the caller's perspective: a
-   * speculative miss costs one embedding (fractions of a cent) and nothing else.
+   * A rejected mutation must not poison the queue for the next one, hence the swallowed `catch` on the
+   * stored promise — the returned promise still rejects for the caller.
    */
-  prefetch(transcript: string): void {
+  private serialize<T>(fn: () => Promise<T>): Promise<T> {
+    const next = this.mutations.then(fn, fn);
+    this.mutations = next.catch(() => undefined);
+    return next;
+  }
+
+  /**
+   * Retrieve for `transcript`, reusing an identical search that is already in flight.
+   *
+   * Soniox repeats an interim verbatim more often than not, and the same text arrives again as the
+   * FINAL transcript for short utterances — so this collapses what would otherwise be two or three
+   * identical embedding round trips per turn into one.
+   *
+   * A failed search is evicted rather than cached, so the catch-up injection gets a real retry.
+   */
+  private search(transcript: string): Promise<Awaited<ReturnType<RetrievalService['search']>>> {
     const key = KnowledgeInjector.normalize(transcript);
-    if (!key || this.speculativeCache.has(key)) return;
+    const pending = this.speculativeCache.get(key);
+    if (pending) return pending;
+
     const promise = this.retrieval.search(this.tenantId, transcript, this.options).catch((err) => {
-      // Swallowed here so an unhandled rejection can never reach the call; `inject()` retries and
-      // reports the failure properly if this result is actually needed.
       this.speculativeCache.delete(key);
       throw err;
     });
     this.speculativeCache.set(key, promise);
+    return promise;
   }
 
   /**
@@ -93,48 +146,93 @@ export class KnowledgeInjector {
    * The prompt's grounding rules already cover the un-grounded case ("I'll have the team follow up").
    */
   async inject(agent: AgentLike, transcript: string): Promise<InjectionResult> {
-    const empty: InjectionResult = {
-      injected: false,
-      chunkIds: [],
-      deduped: 0,
-      timing: { embedMs: 0, dbMs: 0, totalMs: 0 },
-    };
-
     try {
-      const key = KnowledgeInjector.normalize(transcript);
-      const pending = this.speculativeCache.get(key);
-      const result = pending
-        ? await pending
-        : await this.retrieval.search(this.tenantId, transcript, this.options);
+      const result = await this.search(transcript);
 
-      const fresh = result.chunks.filter((c) => !this.injectedChunkIds.has(c.id));
-      const deduped = result.chunks.length - fresh.length;
-      if (fresh.length === 0) {
-        return { ...empty, deduped, timing: result.timing };
-      }
+      // Retrieval above is deliberately OUTSIDE the lock so concurrent lookups still overlap; only the
+      // dedup-and-append below has to be atomic.
+      return await this.serialize(async () => {
+        const fresh = result.chunks.filter((c) => !this.injectedChunkIds.has(c.id));
+        const deduped = result.chunks.length - fresh.length;
+        if (fresh.length === 0) {
+          return { ...emptyInjection(), deduped, timing: result.timing };
+        }
 
-      const ctx = agent.chatCtx.copy();
-      ctx.addMessage({ role: 'system', content: formatKnowledgeBlock(fresh) });
-      await agent.updateChatCtx(ctx);
+        // Claimed before the await rather than after. `serialize` already makes this section atomic, so
+        // the ordering is not load-bearing today and no test fails if it is swapped — it is here so
+        // that dedup does not quietly come to depend on the lock still existing.
+        for (const chunk of fresh) this.injectedChunkIds.add(chunk.id);
 
-      for (const chunk of fresh) this.injectedChunkIds.add(chunk.id);
+        const ctx = agent.chatCtx.copy();
+        ctx.addMessage({ role: 'system', content: formatKnowledgeBlock(fresh) });
+        await agent.updateChatCtx(ctx);
 
-      return {
-        injected: true,
-        chunkIds: fresh.map((c) => c.id),
-        deduped,
-        timing: result.timing,
-      };
+        this.injectedThisTurn = true;
+
+        return {
+          injected: true,
+          chunkIds: fresh.map((c) => c.id),
+          deduped,
+          timing: result.timing,
+        };
+      });
     } catch (err) {
       console.error('knowledge_inject_failed', err instanceof Error ? err.message : String(err));
-      return empty;
+      return emptyInjection();
     }
   }
 
-  /** Interim transcripts accumulate one cache entry each; cleared when a turn commits. */
-  clearSpeculative(): void {
-    this.speculativeCache.clear();
+  /**
+   * Inject from an INTERIM transcript, while the caller is still speaking — the only window in which a
+   * mutation is free (constraint 3).
+   *
+   * Returns `null` when the throttle declined, which is the common case: Soniox emits many interims per
+   * utterance and injecting on each would buy nothing for three times the spend.
+   *
+   * Retrieving from half a sentence is deliberate and safe in a way that retrieving from half a
+   * sentence for a TOOL call would not be: the worst outcome is a chunk she did not need, sitting in
+   * context unused. The catch-up injection on the final transcript still adds anything this missed.
+   */
+  injectSpeculative(agent: AgentLike, transcript: string): Promise<InjectionResult> | null {
+    const text = KnowledgeInjector.normalize(transcript);
+    if (text.length < MIN_SPECULATIVE_CHARS) return null;
+    if (this.speculativeAttempts >= MAX_SPECULATIVE_PER_TURN) return null;
+    if (this.lastSpeculativeLength > 0 && text.length - this.lastSpeculativeLength < SPECULATIVE_GROWTH_CHARS) {
+      return null;
+    }
+
+    this.speculativeAttempts += 1;
+    this.lastSpeculativeLength = text.length;
+    return this.inject(agent, transcript);
   }
+
+  /**
+   * Did anything reach the context during this turn?
+   *
+   * This is what lets the final-transcript catch-up decide whether it may touch the context at all.
+   * Injecting at that point costs the preemptive draft (constraint 3), so it is worth doing ONLY when
+   * the alternative is an un-grounded answer — never merely to top up a turn that is already grounded.
+   */
+  get groundedThisTurn(): boolean {
+    return this.injectedThisTurn;
+  }
+
+  /**
+   * End of a user turn: drop the interim cache (one entry per interim) and re-arm the speculative
+   * throttle. The dedup set deliberately SURVIVES — it spans the whole call, which is what stops the
+   * same fact being injected again three turns later.
+   */
+  endTurn(): void {
+    this.speculativeCache.clear();
+    this.speculativeAttempts = 0;
+    this.lastSpeculativeLength = 0;
+    this.injectedThisTurn = false;
+  }
+}
+
+/** A fresh object each time: callers spread and mutate these, so a shared instance would leak state. */
+function emptyInjection(): InjectionResult {
+  return { injected: false, chunkIds: [], deduped: 0, timing: { embedMs: 0, dbMs: 0, totalMs: 0 } };
 }
 
 /**
