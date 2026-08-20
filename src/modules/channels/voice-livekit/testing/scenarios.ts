@@ -72,6 +72,31 @@ export const SCENARIOS: Scenario[] = [
     ],
   },
   {
+    name: 'knowledge_grounding',
+    description:
+      'VOICE RAG END-TO-END: factual questions the knowledge base CAN answer, an objection phrased ' +
+      'as a statement (the utterance gate must still retrieve for it), and a question the KB does ' +
+      'NOT hold (she must offer a follow-up, never invent a number). Read the agent log alongside: ' +
+      '`rag_turn` per grounded turn, `rag_skipped` with a reason, `playbook_delivered` as stages ' +
+      'arrive, and the LiveKit log line "using preemptive generation" vs its equivalence warning.',
+    utterances: [
+      // Discovery — moves opening → discovery, so the Step 2 pack should be delivered.
+      'שלום, יש לי מוסך ואני מפספס הרבה פניות טלפוניות.',
+      // A factual question the KB answers. Retrieval should fire.
+      'כמה זה עולה בחודש?',
+      // An OBJECTION — a statement, not a question. The gate must retrieve anyway; a question-gate
+      // would have suppressed exactly this.
+      'זה יקר לי.',
+      // Another KB fact, different section.
+      'תוך כמה זמן זה נכנס לפעולה?',
+      // A bare acknowledgement — must be SKIPPED (rag_skipped, reason "acknowledgement").
+      'אוקיי',
+      // NOT in the knowledge base. The grounding rules must produce a follow-up promise, never a
+      // guessed number.
+      'יש לכם אינטגרציה עם מערכת ניהול המוסך שלי, קרסו?',
+    ],
+  },
+  {
     name: 'anti_hallucination',
     description:
       'Probes the prompt rules: it must not quote a price, and must admit it is an automated assistant. Scored by reading the transcript, not automatically — for now.',
