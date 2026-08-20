@@ -74,8 +74,16 @@ interface PromptSlots {
   /** WHO SHE IS — the whole Role section body, rendered from the tenant's persona. See
    * `persona.ts`; the default persona reproduces this file's original text byte for byte. */
   identity: string;
-  /** The FAQ table plus the name-disambiguation paragraph, likewise from the persona. */
-  faq: string;
+  /**
+   * The whole FAQ section — heading, its instruction line, and the table itself.
+   *
+   * The HEADING is part of the slot rather than fixed in the template because slimming removes the
+   * table: leaving the heading behind produced "answer using the fixed response below" with nothing
+   * below it, which is an instruction pointing at content that does not exist. A model told to use a
+   * resource it cannot see does not fail cleanly, it improvises — the same failure mode as the five
+   * unsubstituted {{lead_*}} variables documented at the top of this file.
+   */
+  faqSection: string;
   /** The company the agent works for. Appears in the security rules, where an impersonation
    * defence naming the WRONG company is no defence at all. */
   companyName: string;
@@ -399,11 +407,7 @@ ${slots.step4}
 
 ---
 
-## FAQ Handling
-
-If the lead asks any of the following (or a close variant), answer using the fixed response below, then return to whatever step you were in before the question.
-
-${slots.faq}${slots.objectionPlaybook}${slots.knowledgeGrounding}
+${slots.faqSection}${slots.objectionPlaybook}${slots.knowledgeGrounding}
 
 ---
 
@@ -519,7 +523,16 @@ export function buildSystemPrompt({
   // the price the agent quotes aloud, and the prompt copy is the one nobody remembers to update.
   const businessContext = slimKnowledge ? '' : renderBusinessContext(businessProfile);
   const identity = renderIdentity(persona);
-  const faq = slimKnowledge ? '' : renderFaq(persona);
+  // Byte-for-byte the previous text when not slimmed — the golden fixtures assert exactly that.
+  const faqBody = renderFaq(persona);
+  const faqSection =
+    slimKnowledge || !faqBody.trim()
+      ? ''
+      : `## FAQ Handling
+
+If the lead asks any of the following (or a close variant), answer using the fixed response below, then return to whatever step you were in before the question.
+
+${faqBody}`;
   const companyName = persona.companyName;
   const knowledgeGrounding = ragEnabled ? buildKnowledgeGrounding() : '';
   const mindsetRebuttal = persona.mindsetRebuttal || GENERIC_MINDSET_REBUTTAL;
@@ -535,7 +548,7 @@ export function buildSystemPrompt({
       knowledgeGrounding,
       businessContext,
       identity,
-      faq,
+      faqSection,
       companyName,
       mindsetRebuttal,
     });
@@ -555,7 +568,7 @@ export function buildSystemPrompt({
     knowledgeGrounding,
     businessContext,
     identity,
-    faq,
+    faqSection,
     companyName,
     mindsetRebuttal,
   });

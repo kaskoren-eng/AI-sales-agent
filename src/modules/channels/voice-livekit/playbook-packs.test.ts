@@ -65,6 +65,17 @@ describe('splitPrompt — what leaves the resident prompt', () => {
     expect(step4.content).toContain('book_meeting');
   });
 
+  /**
+   * REGRESSION: slimming used to empty the FAQ table but leave its heading and the line "answer using
+   * the fixed response below" — pointing at content that no longer existed. A model told to use a
+   * resource it cannot see improvises, which is the same failure as the unsubstituted {{lead_*}}
+   * variables. The whole section must vanish together.
+   */
+  it('leaves no dangling FAQ heading once the table is slimmed away', () => {
+    expect(core).not.toContain('## FAQ Handling');
+    expect(core).not.toContain('answer using the fixed response below');
+  });
+
   it('is a real reduction, not a rounding error', () => {
     const words = (t: string) => t.split(/\s+/).filter(Boolean).length;
     expect(words(core)).toBeLessThan(words(slim) * 0.55);
