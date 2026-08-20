@@ -93,6 +93,7 @@ async function buildAuthTestApp(db: ReturnType<typeof createMockDb>, redis = mak
     EMBEDDING_MODEL: 'text-embedding-3-small',
     VOICE_RAG_ENABLED: false,
     VOICE_SLIM_PROMPT: false,
+    VOICE_PLAYBOOK_PACKS: false,
     CARTESIA_MODEL: 'sonic-3',
     OPENAI_REALTIME_MODEL: 'gpt-realtime-whisper',
     VOICE_LANGUAGE: 'he',

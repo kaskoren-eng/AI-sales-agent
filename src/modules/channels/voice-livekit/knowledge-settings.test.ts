@@ -150,6 +150,7 @@ describe('buildSystemPrompt — slimKnowledge', () => {
     pricing: 'חבילת בסיס 1,490 ש"ח לחודש',
     commonObjections: 'יקר לי',
     toneOfVoice: 'ישיר',
+    language: 'he',
   };
 
   it('changes nothing when off — the default path is untouched', () => {

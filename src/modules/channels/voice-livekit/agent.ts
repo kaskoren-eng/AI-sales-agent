@@ -20,6 +20,7 @@ import { decideSilenceAction, decideVoicemailAction } from './call-reflexes.js';
 import { decideRetrieval } from './knowledge-gate.js';
 import { KnowledgeInjector } from './knowledge-injector.js';
 import { readKnowledgeSettings } from './knowledge-settings.js';
+import { splitPrompt, PlaybookDeliverer, formatPlaybookMessage } from './playbook-packs.js';
 import { RetrievalService } from '../../knowledge/retrieval.service.js';
 import { EmbeddingService } from '../../knowledge/embedding.service.js';
 import { hasAiDisclosure } from './compliance/ai-disclosure.js';
@@ -645,9 +646,15 @@ export default defineAgent({
       topK: kbSettings.topK,
       minScore: kbSettings.minScore,
     }));
-    const agent = new ClickScalesAgent(
-      {
-        instructions: buildSystemPrompt({
+    // Progressive disclosure: build the full (already slimmed) prompt, then cut Steps 2-4 out of it and
+    // hand them over as the call reaches each stage. Requires the state machine — without `callState`
+    // there is no phase signal, so the packs would never be delivered and she would be missing her
+    // playbook for the whole call. Requires the slim prompt for the same reason it does: this is the
+    // same "move it out and serve it later" bet, applied to procedure instead of knowledge.
+    const packsEnabled =
+      env.VOICE_PLAYBOOK_PACKS && env.VOICE_SLIM_PROMPT && injector !== undefined && callState !== undefined;
+
+    const fullInstructions = buildSystemPrompt({
           toolsEnabled: runtime !== null,
           businessProfile,
           objectionHandling: env.VOICE_STATE_MACHINE_ENABLED,
@@ -662,7 +669,22 @@ export default defineAgent({
           // Enforced here rather than documented as an operator rule, because the failure is silent:
           // the call sounds fine right up to the first question she should have been able to answer.
           slimKnowledge: injector !== undefined && env.VOICE_SLIM_PROMPT,
-        }),
+    });
+
+    const split = packsEnabled ? splitPrompt(fullInstructions) : null;
+    const deliverer = split ? new PlaybookDeliverer(split.packs) : undefined;
+    if (split) {
+      const words = (t: string) => t.split(/\s+/).filter(Boolean).length;
+      console.log('playbook_packs', JSON.stringify({
+        residentWords: words(split.core),
+        fullWords: words(fullInstructions),
+        packs: split.packs.map((pk) => ({ stage: pk.stage, heading: pk.heading, words: words(pk.content) })),
+      }));
+    }
+
+    const agent = new ClickScalesAgent(
+      {
+        instructions: split ? split.core : fullInstructions,
         ...(runtime ? { tools: buildAgentTools(runtime) } : {}),
         // A per-tenant VOICE, and ONLY when the tenant actually configured one.
         //
@@ -736,6 +758,36 @@ export default defineAgent({
         );
       }, env.VOICE_THINKING_FILLER_MS);
     });
+
+    // ── Playbook packs: procedure delivered on arrival at its stage ─────────────────────────────
+    //
+    // Checked after every committed turn, because that is when the state machine has just advanced
+    // (onUserTurn / onToolCall both land before this fires). Delivery is append-only, exactly like the
+    // knowledge injections, so the cached prefix survives: appending leaves every earlier token in
+    // place, whereas rewriting would break the prefix at the first change and lose the cache from
+    // there onward.
+    //
+    // Failure here is loud rather than silent-and-wrong: if a pack cannot be delivered she is missing a
+    // step of her playbook, so it is logged as an error. It still must not end the call.
+    if (deliverer && callState) {
+      session.on(voice.AgentSessionEventTypes.ConversationItemAdded, () => {
+        const due = deliverer.due(callState.stage);
+        if (due.length === 0) return;
+        void (async () => {
+          try {
+            const ctx = agent.chatCtx.copy();
+            ctx.addMessage({ role: 'system', content: formatPlaybookMessage(due) });
+            await agent.updateChatCtx(ctx);
+            console.log('playbook_delivered', JSON.stringify({
+              stage: callState.stage,
+              headings: due.map((p) => p.heading),
+            }));
+          } catch (err) {
+            console.error('playbook_delivery_failed', err instanceof Error ? err.message : String(err));
+          }
+        })();
+      });
+    }
 
     // ── Voice RAG: speculative retrieval, ahead of the preemptive snapshot ──────────────────────
     //

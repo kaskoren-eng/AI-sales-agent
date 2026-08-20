@@ -421,6 +421,14 @@ const envSchema = z.object({
   // Requires RAG: with the knowledge gone and nothing retrieving it, she simply cannot answer. agent.ts
   // enforces the coupling rather than trusting the operator to set both.
   VOICE_SLIM_PROMPT: envBool(false),
+  // Progressive disclosure of the playbook: Steps 2-4 leave the resident prompt and are delivered on
+  // arrival at the stage that needs them. Selected by STAGE, never by similarity -- a retrieval query
+  // is the caller's own utterance, so anything gated behind similarity is gated behind something the
+  // caller controls. Requires the state machine (there is no phase signal without it) and the slim
+  // prompt. Measured: 2832 -> 1241 resident words (-56%).
+  //
+  // The security rules are NEVER packed. See playbook-packs.ts.
+  VOICE_PLAYBOOK_PACKS: envBool(false),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),
