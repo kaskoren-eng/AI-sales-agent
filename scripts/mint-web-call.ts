@@ -44,9 +44,16 @@ try {
   console.warn('could not create conversation row (call still proceeds):', err instanceof Error ? err.message : err);
 }
 
+/**
+ * Matches the route's TTL_TOKEN_SECONDS by default, so this script does not quietly diverge from the
+ * contract it mirrors. Overridable only because a hands-on test session is not a browser tab: racing a
+ * one-hour clock while you are trying to talk to the agent is its own kind of failure.
+ */
+const ttlSeconds = Number(process.env.WEB_CALL_TTL_SECONDS ?? 60 * 60);
+
 const token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
   identity: `web-${randomUUID().slice(0, 8)}`,
-  ttl: 60 * 60,
+  ttl: ttlSeconds,
   metadata: JSON.stringify({
     tenantId,
     direction: 'web',
@@ -60,6 +67,7 @@ const jwt = await token.toJwt();
 console.log('\nroom:   ' + roomName);
 console.log('tenant: ' + tenantId);
 console.log('gate:   ' + JSON.stringify(gateSettings));
+console.log('expires: ' + new Date(Date.now() + ttlSeconds * 1000).toLocaleTimeString());
 console.log('\nOpen this, allow the microphone, and start talking:\n');
 console.log(`https://meet.livekit.io/custom?liveKitUrl=${encodeURIComponent(LIVEKIT_URL)}&token=${jwt}\n`);
 
