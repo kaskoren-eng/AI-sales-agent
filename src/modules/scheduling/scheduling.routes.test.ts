@@ -14,6 +14,20 @@ vi.mock('./providers/google-calendar.provider.js', () => ({
   })),
 }));
 
+/**
+ * WHOSE calendar this is has its own tests — see scheduling.tenant-calendar.test.ts. Here it is a
+ * fixture, so a change to the resolution rules cannot fail a suite about reminder cleanup and send
+ * whoever is bisecting into the wrong module. Before this mock these tests passed only because the
+ * routes read `GOOGLE_CALENDAR_*` from env directly, which was the bug that suite now covers.
+ */
+vi.mock('../integrations/google-calendar/resolve-calendar-auth.js', () => ({
+  resolveCalendarAuth: vi.fn(async () => ({
+    calendarId: 'cal@group.calendar.google.com',
+    source: 'platform_service_account',
+    auth: { kind: 'service_account', serviceAccountEmail: 'svc@proj.iam.gserviceaccount.com', privateKey: 'key' },
+  })),
+}));
+
 function buildTestApp(opts: {
   reminders?: { jobIds: string[] } | null;
   removeImpl?: (id: string) => Promise<number>;

@@ -1,23 +1,49 @@
 import type { FastifyInstance } from 'fastify';
 import { getTenantId } from '../../shared/tenant-context.js';
 import { GoogleCalendarProvider } from './providers/google-calendar.provider.js';
+import { resolveCalendarAuth } from '../integrations/google-calendar/resolve-calendar-auth.js';
 import { scheduledCalls, leads } from '../../db/schema/index.js';
 import { eq, and, gte, asc, desc, count } from 'drizzle-orm';
 import { cancelMeetingReminders } from '../../queues/meeting-reminders.queue.js';
 
-function getCalendarProvider(app: FastifyInstance): GoogleCalendarProvider | null {
-  const { GOOGLE_CALENDAR_ID, GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL, GOOGLE_CALENDAR_PRIVATE_KEY } = app.env;
-  if (!GOOGLE_CALENDAR_ID || !GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL || !GOOGLE_CALENDAR_PRIVATE_KEY) return null;
-  return new GoogleCalendarProvider({
-    calendarId: GOOGLE_CALENDAR_ID,
-    serviceAccountEmail: GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL,
-    privateKey: GOOGLE_CALENDAR_PRIVATE_KEY.replace(/\\n/g, '\n'),
-    slotMinutes: app.env.GOOGLE_CALENDAR_SLOT_MINUTES ?? 30,
-    workStart: app.env.GOOGLE_CALENDAR_WORK_START ?? '09:00',
-    workEnd: app.env.GOOGLE_CALENDAR_WORK_END ?? '18:00',
-    impersonateUser: app.env.GOOGLE_CALENDAR_IMPERSONATE_USER,
-  });
+/**
+ * The calendar THIS tenant books into.
+ *
+ * This function used to read `GOOGLE_CALENDAR_*` straight out of env and hand every caller the
+ * same service-account client, pinned to `GOOGLE_CALENDAR_ID`. Those env vars are ClickScales'
+ * own credentials — they only ever were — so every tenant's booking was created in ClickScales'
+ * diary while the `scheduled_calls` row was stamped with the customer's `tenant_id`: the database
+ * saying one thing and the calendar showing another. `/slots` compounded it by offering customers
+ * ClickScales' free time.
+ *
+ * The voice agent already resolved this per tenant; the REST routes did not, so the answer
+ * depended on which door a booking came through. Both now call one resolver.
+ *
+ * Returns null when the tenant has no calendar at all — typically a customer who has not
+ * connected Google. That is a 503, NOT a silent fall back to the platform account.
+ */
+async function getCalendarProvider(
+  app: FastifyInstance,
+  tenantId: string,
+): Promise<{ provider: GoogleCalendarProvider; calendarId: string } | null> {
+  const resolved = await resolveCalendarAuth(app.env, tenantId, app.db);
+  if (!resolved) return null;
+
+  return {
+    calendarId: resolved.calendarId,
+    provider: new GoogleCalendarProvider({
+      calendarId: resolved.calendarId,
+      auth: resolved.auth,
+      slotMinutes: app.env.GOOGLE_CALENDAR_SLOT_MINUTES ?? 30,
+      workStart: app.env.GOOGLE_CALENDAR_WORK_START ?? '09:00',
+      workEnd: app.env.GOOGLE_CALENDAR_WORK_END ?? '18:00',
+    }),
+  };
 }
+
+/** Same body for "platform env incomplete" and "customer never connected": both mean this caller
+ *  cannot book, and the distinction belongs in the logs the resolver already writes. */
+const NOT_CONFIGURED = { error: 'Scheduling not configured' };
 
 export async function schedulingRoutes(app: FastifyInstance) {
   /**
@@ -80,13 +106,13 @@ export async function schedulingRoutes(app: FastifyInstance) {
     Querystring: { startDate: string; endDate: string; timezone?: string };
   }>('/slots', async (request, reply) => {
     const tenantId = getTenantId(request);
-    const provider = getCalendarProvider(app);
-    if (!provider) {
-      return reply.status(503).send({ error: 'Scheduling not configured' });
+    const calendar = await getCalendarProvider(app, tenantId);
+    if (!calendar) {
+      return reply.status(503).send(NOT_CONFIGURED);
     }
+    const { provider, calendarId } = calendar;
 
     const { startDate, endDate, timezone = 'UTC' } = request.query;
-    const calendarId = app.env.GOOGLE_CALENDAR_ID!;
 
     const slots = await provider.getAvailableSlots({
       startDate,
@@ -112,16 +138,17 @@ export async function schedulingRoutes(app: FastifyInstance) {
     };
   }>('/book', async (request, reply) => {
     const tenantId = getTenantId(request);
-    const provider = getCalendarProvider(app);
-    if (!provider) {
-      return reply.status(503).send({ error: 'Scheduling not configured' });
+    const calendar = await getCalendarProvider(app, tenantId);
+    if (!calendar) {
+      return reply.status(503).send(NOT_CONFIGURED);
     }
+    const { provider, calendarId } = calendar;
 
     const { start, name, email, phone, timezone = 'UTC', notes, leadId, conversationId } = request.body;
 
     const booking = await provider.createBooking({
       start,
-      serviceId: app.env.GOOGLE_CALENDAR_ID!,
+      serviceId: calendarId,
       attendee: { name, email, phone, timezone },
       notes,
     });
@@ -144,13 +171,16 @@ export async function schedulingRoutes(app: FastifyInstance) {
     Params: { bookingUid: string };
   }>('/cancel/:bookingUid', async (request, reply) => {
     const tenantId = getTenantId(request);
-    const provider = getCalendarProvider(app);
-    if (!provider) {
-      return reply.status(503).send({ error: 'Scheduling not configured' });
+    const calendar = await getCalendarProvider(app, tenantId);
+    if (!calendar) {
+      return reply.status(503).send(NOT_CONFIGURED);
     }
 
     const { bookingUid } = request.params;
-    await provider.cancelBooking(bookingUid);
+    // Cancelling through the tenant's OWN credentials matters as much as booking through them:
+    // the platform service account has no rights over an event in a customer's calendar, and the
+    // error it would return reads as "already gone" rather than "wrong account".
+    await calendar.provider.cancelBooking(bookingUid);
 
     // Read the row BEFORE flipping status — its reminders.jobIds is the list of pending
     // reminder jobs we can now remove by name (tenant-scoped, like every read here).
