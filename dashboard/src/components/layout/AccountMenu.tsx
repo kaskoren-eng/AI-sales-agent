@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LogOut, Check } from 'lucide-react'
 import { getSession, subscribe, logout, switchTenant, type Session } from '../../lib/auth'
+import { fetchMemberships, type Membership } from '../../lib/api'
 
 /** Initials from a display name, falling back to the email — never a hardcoded brand. */
 function initials(session: Session): string {
@@ -14,9 +15,33 @@ export function AccountMenu() {
   const { t } = useTranslation()
   const [session, setSession] = useState<Session | null>(getSession())
   const [open, setOpen] = useState(false)
+  const [tenants, setTenants] = useState<Membership[] | null>(null)
+  const [switchingTo, setSwitchingTo] = useState<string | null>(null)
   const wrapper = useRef<HTMLDivElement>(null)
 
   useEffect(() => subscribe(setSession), [])
+
+  /**
+   * Workspaces are fetched when the menu OPENS, not on mount.
+   *
+   * Most people belong to exactly one workspace and never open this menu, so paying a request on
+   * every page load to discover that would be a cost with no reader. Opening the menu is the
+   * moment the answer is actually needed, and the result is cached for the life of the component
+   * — the list only changes when someone is added to a workspace, which is not a thing that
+   * happens while you hold a dropdown open.
+   *
+   * A failure leaves the array empty rather than surfacing an error: this is a navigation
+   * convenience hanging off a menu whose real job is Sign out, and an error banner inside a
+   * 232px dropdown helps nobody.
+   */
+  useEffect(() => {
+    if (!open || tenants) return
+    let cancelled = false
+    void fetchMemberships()
+      .then((rows) => { if (!cancelled) setTenants(rows) })
+      .catch(() => { if (!cancelled) setTenants([]) })
+    return () => { cancelled = true }
+  }, [open, tenants])
 
   useEffect(() => {
     if (!open) return
@@ -36,7 +61,8 @@ export function AccountMenu() {
 
   if (!session) return null
 
-  const otherTenants: never[] = []
+  // Show the picker only when there is a choice to make. One workspace needs no switcher.
+  const showSwitcher = (tenants?.length ?? 0) > 1
 
   return (
     <div ref={wrapper} style={{ position: 'relative', flexShrink: 0 }}>
@@ -110,19 +136,60 @@ export function AccountMenu() {
             </div>
           </div>
 
-          {otherTenants.length > 0 && (
+          {showSwitcher && (
             <div style={{ borderBlockStart: '1px solid var(--border-default)', paddingBlock: '4px' }}>
-              {otherTenants.map((tenantOption: { id: string; name: string }) => (
-                <button
-                  key={tenantOption.id}
-                  role="menuitem"
-                  onClick={() => void switchTenant(tenantOption.id).then(() => window.location.reload())}
-                  style={menuItem}
-                >
-                  <Check size={14} strokeWidth={1.8} style={{ opacity: 0 }} aria-hidden />
-                  {tenantOption.name}
-                </button>
-              ))}
+              <div
+                style={{
+                  padding: '6px 10px 4px',
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  color: 'var(--text-tertiary)',
+                }}
+              >
+                {t('auth.workspaces')}
+              </div>
+              {tenants!.map((option) => {
+                const current = option.tenantId === session.tenant.id
+                const busy = switchingTo !== null
+                return (
+                  <button
+                    key={option.tenantId}
+                    role="menuitemradio"
+                    aria-checked={current}
+                    disabled={current || busy}
+                    onClick={() => {
+                      setSwitchingTo(option.tenantId)
+                      void switchTenant(option.tenantId)
+                        // Land on the root, NOT reload(). The current URL may be a detail route
+                        // (/leads/<id>) whose id belongs to the workspace being left, and every
+                        // one of those 404s under the new tenant — which reads as "switching is
+                        // broken" rather than "that lead lives somewhere else".
+                        .then(() => window.location.assign('/'))
+                        .catch(() => setSwitchingTo(null))
+                    }}
+                    style={{
+                      ...menuItem,
+                      cursor: current || busy ? 'default' : 'pointer',
+                      opacity: busy && switchingTo !== option.tenantId ? 0.45 : 1,
+                    }}
+                  >
+                    <Check
+                      size={14}
+                      strokeWidth={1.8}
+                      style={{ opacity: current ? 1 : 0, flexShrink: 0 }}
+                      aria-hidden
+                    />
+                    <span
+                      dir="auto"
+                      style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    >
+                      {option.name}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           )}
 

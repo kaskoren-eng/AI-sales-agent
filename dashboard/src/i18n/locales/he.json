@@ -479,7 +479,8 @@
     "backToSignIn": "חזרה להתחברות",
     "working": "רגע…",
     "genericError": "משהו השתבש. נסו שוב.",
-    "signOut": "התנתקות"
+    "signOut": "התנתקות",
+    "workspaces": "סביבות עבודה"
   },
   "integrations": {
     "blurb": "חברו את הכלים שלכם, וראו מה ClickScales מפעילה עבורכם.",

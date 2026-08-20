@@ -78,6 +78,29 @@ export function fetchMetricsSummary(range: 'today' | 'd7' | 'd30'): Promise<Metr
   return apiFetch<MetricsSummary>(`/metrics/summary?range=${range}`)
 }
 
+/**
+ * Every workspace this signed-in human belongs to.
+ *
+ * Lives here rather than in `lib/auth.ts` on purpose: this needs `apiFetch` for the bearer token
+ * and the 401-refresh-retry, and `apiClient` already imports from `auth`. Putting it there would
+ * close an import cycle for one GET.
+ *
+ * The server filters out suspended tenants before returning, so a workspace listed here is one
+ * the user can actually switch into — picking a dead one and 403-ing on every subsequent request
+ * is exactly the confusion this avoids.
+ */
+export interface Membership {
+  tenantId: string
+  role: 'owner' | 'admin' | 'member' | 'viewer'
+  name: string
+  slug: string
+}
+
+export async function fetchMemberships(): Promise<Membership[]> {
+  const me = await apiFetch<{ tenants?: Membership[] }>('/auth/me')
+  return me.tenants ?? []
+}
+
 export function fetchTenantMe(): Promise<TenantMe> {
   return apiFetch<TenantMe>('/tenants/me')
 }

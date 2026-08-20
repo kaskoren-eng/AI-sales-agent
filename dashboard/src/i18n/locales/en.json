@@ -479,7 +479,8 @@
     "backToSignIn": "Back to sign in",
     "working": "Working…",
     "genericError": "Something went wrong. Try again.",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "workspaces": "Workspaces"
   },
   "integrations": {
     "blurb": "Connect your own tools, and see what ClickScales runs for you.",
