@@ -770,7 +770,21 @@ export default defineAgent({
     // Failure here is loud rather than silent-and-wrong: if a pack cannot be delivered she is missing a
     // step of her playbook, so it is logged as an error. It still must not end the call.
     if (deliverer && callState) {
-      session.on(voice.AgentSessionEventTypes.ConversationItemAdded, () => {
+      session.on(voice.AgentSessionEventTypes.ConversationItemAdded, (ev) => {
+        // ONLY on the ASSISTANT item — i.e. after she has replied, when no preemptive draft is in
+        // flight to invalidate. This is the same rule trimHistory() follows, and for the same reason.
+        //
+        // The first version fired on EVERY item, including the user's. That is the turn-commit moment,
+        // where LiveKit checks `preemptive.chatCtx.isEquivalent(chatCtx)` — so delivering a pack there
+        // mutated the context out from under the draft. The 2026-08-21 real call caught it: the log has
+        // `starting preemptive generation` at 15:56:00.550 and `playbook_delivered` at 15:56:00.553,
+        // three milliseconds apart. Exactly the bug the knowledge injector was rewritten to avoid,
+        // reintroduced one handler further down the same file.
+        //
+        // Delivering after her reply means a pack lands one turn later than the stage that triggered
+        // it. That is why Step 4 is already scheduled a stage EARLY (see playbook-packs.ts): the buffer
+        // was put there for the booking rules and it absorbs this delay too.
+        if ((ev.item as { role?: string })?.role !== 'assistant') return;
         const due = deliverer.due(callState.stage);
         if (due.length === 0) return;
         void (async () => {
