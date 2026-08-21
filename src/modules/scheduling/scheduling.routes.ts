@@ -176,6 +176,9 @@ export async function schedulingRoutes(app: FastifyInstance) {
         tenantId,
         leadId: leadId ?? undefined,
         conversationId: conversationId ?? undefined,
+        // Written explicitly rather than left to the column default, which is how this ended up
+        // labelling Google Calendar bookings 'calcom' for the life of the table.
+        provider: 'google',
         providerRef: booking.uid,
         scheduledAt: new Date(booking.start),
         status: 'scheduled',

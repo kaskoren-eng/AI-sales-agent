@@ -159,7 +159,7 @@ export async function executeBookMeeting(
         tenantId: rt.tenantId,
         leadId: leadId ?? undefined,
         conversationId: rt.conversationId ?? undefined,
-        provider: 'google', // the legacy /book route leaves this defaulting to 'trafft' — a bug we don't copy
+        provider: 'google', // explicit here and in /book; the column default drifted for years
         providerRef: booking.uid,
         scheduledAt: new Date(booking.start),
         duration,

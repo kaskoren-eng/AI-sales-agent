@@ -1,0 +1,18 @@
+-- scheduled_calls.provider: align the database default with the schema, and with reality.
+--
+-- The schema declared DEFAULT 'trafft'; migration 0000 created the column DEFAULT 'calcom'. The
+-- two have disagreed since the first migration, and neither value has ever been true — no booking
+-- in this system was made by Trafft or by Cal.com. Google Calendar books every meeting.
+--
+-- Found by a schema-vs-migrations audit after scheduled_calls.lead_id turned out to have drifted
+-- the same way (see 0014). Snapshots cannot catch either one: they are generated FROM the schema,
+-- so they agree with it by construction and agreed with it throughout both bugs.
+--
+-- Both writers now set `provider` explicitly, so this default should never be reached again. It is
+-- corrected anyway: a default nobody reads is still a claim the table makes about itself, and the
+-- next person to add a booking path will trust it.
+--
+-- Existing rows are deliberately NOT rewritten. Voice bookings already say 'google'; the handful
+-- of 'calcom' rows came through the REST route and are an honest record of what the table said at
+-- the time. Rewriting history to make a report look tidy is a worse trade than a footnote.
+ALTER TABLE "scheduled_calls" ALTER COLUMN "provider" SET DEFAULT 'google';

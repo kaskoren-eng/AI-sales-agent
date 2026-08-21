@@ -18,7 +18,10 @@ export const scheduledCalls = pgTable('scheduled_calls', {
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
   leadId: uuid('lead_id').references(() => leads.id),
   conversationId: uuid('conversation_id').references(() => conversations.id),
-  provider: varchar('provider', { length: 20 }).default('trafft').notNull(),
+  // 'google' because Google Calendar is the only provider that books today. This column has
+  // drifted twice: the schema said 'trafft' while the database said 'calcom', and neither has
+  // created a booking in this system. Migration 0015 aligns the database with this line.
+  provider: varchar('provider', { length: 20 }).default('google').notNull(),
   providerRef: varchar('provider_ref', { length: 255 }),
   scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull(),
   duration: integer('duration').default(30),
