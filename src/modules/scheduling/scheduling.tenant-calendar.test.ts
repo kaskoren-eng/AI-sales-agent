@@ -27,11 +27,12 @@ const createBooking = vi.fn(async (args: { serviceId: string }) => ({
   serviceId: args.serviceId,
 }));
 const getAvailableSlots = vi.fn(async () => [{ start: '2026-09-01T09:00:00.000Z' }]);
+const cancelBooking = vi.fn(async () => undefined);
 
 vi.mock('./providers/google-calendar.provider.js', () => ({
   GoogleCalendarProvider: vi.fn((config: Record<string, unknown>) => {
     constructed.push(config);
-    return { createBooking, getAvailableSlots, cancelBooking: vi.fn(async () => undefined) };
+    return { createBooking, getAvailableSlots, cancelBooking };
   }),
 }));
 
@@ -67,12 +68,15 @@ const PLATFORM_ENV = {
 
 const inserted: Array<Record<string, unknown>> = [];
 
+let insertFails = false;
+
 function buildApp(tenantId: string, envOverrides: Record<string, unknown> = {}) {
   const app = Fastify({ logger: false });
   app.decorate('env', { ...PLATFORM_ENV, ...envOverrides } as unknown as FastifyInstance['env']);
   app.decorate('db', {
     insert: vi.fn(() => ({
       values: async (v: Record<string, unknown>) => {
+        if (insertFails) throw new Error('null value in column "lead_id" violates not-null constraint');
         inserted.push(v);
       },
     })),
@@ -101,8 +105,10 @@ beforeEach(() => {
   constructed.length = 0;
   inserted.length = 0;
   storedConnection = null;
+  insertFails = false;
   createBooking.mockClear();
   getAvailableSlots.mockClear();
+  cancelBooking.mockClear();
 });
 
 afterEach(async () => {
@@ -197,5 +203,26 @@ describe('GET /slots - the calendar availability is read from', () => {
 
     expect(res.statusCode).toBe(503);
     expect(getAvailableSlots).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /book - when the calendar write succeeds and the database write does not', () => {
+  it('cancels the event it just created, rather than leaving it in a customer calendar', async () => {
+    // How this was found: the first booking into a customer's own calendar returned 500 because
+    // lead_id was still NOT NULL in the database while the schema called it nullable. Google had
+    // already accepted the event, so a real meeting sat in a real calendar with no row pointing at
+    // it — nothing would cancel it, remind on it, or list it, and the lead would have turned up.
+    // Migration 0014 fixes that column; this covers every other reason an insert can fail.
+    storedConnection = { calendarId: 'customer@group.calendar.google.com', refreshToken: 'rt' };
+    insertFails = true;
+    app = buildApp(CUSTOMER);
+
+    const res = await app.inject({ method: 'POST', url: '/book', payload: BOOKING });
+
+    expect(res.statusCode).toBe(500);
+    expect(createBooking).toHaveBeenCalled();
+    // The event is withdrawn, and by its own id — not merely logged and abandoned.
+    expect(cancelBooking).toHaveBeenCalledWith('evt-1');
+    expect(inserted).toHaveLength(0);
   });
 });

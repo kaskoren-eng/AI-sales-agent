@@ -1,0 +1,21 @@
+-- scheduled_calls.lead_id: drop NOT NULL, so the database matches the schema it is generated from.
+--
+-- DRIFT, not a design change. Migration 0000 created this column NOT NULL. The Drizzle schema was
+-- later relaxed to nullable (`uuid('lead_id').references(...)`, no `.notNull()`) and no migration
+-- ever emitted the DROP. Since then the schema file and the live database have disagreed, and the
+-- disagreement is invisible to the test suite: tests build tables from the schema, where the
+-- column is already nullable, while production kept enforcing the original constraint.
+--
+-- It surfaced on POST /scheduling/book without a leadId: the Google Calendar event was created
+-- successfully, then the row insert failed on this constraint and the caller got a 500 — leaving
+-- a real meeting in a customer's calendar that nothing in our database knows about.
+--
+-- Nullable is the correct end state, and the code already assumes it. GET /scheduling/bookings
+-- LEFT JOINs leads specifically so a booking with no lead still appears, with a comment saying an
+-- inner join "would silently hide meetings, which is the worst failure a calendar has". Bookings
+-- genuinely arrive without a lead: a direct API booking, and the web-call simulator path.
+--
+-- Safe and instant: dropping NOT NULL rewrites no rows and takes no lock beyond a brief
+-- ACCESS EXCLUSIVE for the catalog update. No existing row is affected — every one of them has a
+-- lead_id today, by construction.
+ALTER TABLE "scheduled_calls" ALTER COLUMN "lead_id" DROP NOT NULL;

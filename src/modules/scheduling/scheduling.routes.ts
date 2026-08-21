@@ -153,14 +153,48 @@ export async function schedulingRoutes(app: FastifyInstance) {
       notes,
     });
 
-    await app.db.insert(scheduledCalls).values({
-      tenantId,
-      leadId: leadId ?? undefined,
-      conversationId: conversationId ?? undefined,
-      providerRef: booking.uid,
-      scheduledAt: new Date(booking.start),
-      status: 'scheduled',
-    });
+    /**
+     * The event now EXISTS in someone's calendar. Everything after this point is bookkeeping about
+     * a meeting that is already real, so a failure here cannot simply propagate: the caller would
+     * get a 500 and reasonably assume nothing happened, while an invitation sat in a customer's
+     * diary with no row in our database pointing at it. Nothing would ever cancel it, remind on
+     * it, or show it on the Bookings page — and the lead would turn up.
+     *
+     * This is not hypothetical. It happened on the first booking through a customer's own
+     * calendar: `lead_id` was still NOT NULL in the database despite the schema calling it
+     * nullable, the insert failed, and the event stayed. Migration 0014 fixes that particular
+     * constraint; this block covers the general case, because "the calendar write succeeded and
+     * the database write did not" has more causes than one column.
+     *
+     * So we undo the calendar side and report the failure honestly. If the compensating cancel
+     * ALSO fails there is nothing further to do automatically — but it is logged loudly enough to
+     * find, with the event id, which is the difference between a five-minute cleanup and a
+     * mystery meeting.
+     */
+    try {
+      await app.db.insert(scheduledCalls).values({
+        tenantId,
+        leadId: leadId ?? undefined,
+        conversationId: conversationId ?? undefined,
+        providerRef: booking.uid,
+        scheduledAt: new Date(booking.start),
+        status: 'scheduled',
+      });
+    } catch (err) {
+      try {
+        await provider.cancelBooking(booking.uid);
+        app.log.error(
+          { tenantId, eventId: booking.uid, err },
+          'Booking record failed — calendar event rolled back',
+        );
+      } catch (cancelErr) {
+        app.log.error(
+          { tenantId, eventId: booking.uid, calendarId, err, cancelErr },
+          'ORPHANED CALENDAR EVENT — recorded nowhere and could not be cancelled; remove it by hand',
+        );
+      }
+      throw err;
+    }
 
     app.log.info({ tenantId, booking }, 'Google Calendar booking created');
     reply.status(201).send({ booking });
