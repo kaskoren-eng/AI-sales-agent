@@ -57,8 +57,27 @@ export function cartesiaOptions(env: Env): {
   return opts;
 }
 
-/** Models that accept an explicit `language`. Others must be called without it. */
-const MODELS_ACCEPTING_LANGUAGE = new Set(['sonic-3', 'sonic-2', 'sonic', 'sonic-lite']);
+/**
+ * Models that accept an explicit `language`. Others must be called without it.
+ *
+ * `sonic-3.5` WAS MISSING HERE, and it is the configured default (CARTESIA_MODEL, since 2026-08-05).
+ * The effect: `language: 'he'` was silently dropped on every call, so Cartesia fell back to its own
+ * default and voiced Hebrew text with English phonetics. Koren, on a real call: "she don't speak
+ * hebrew".
+ *
+ * Not a guess. Probed the API directly with the greeting text, same voice, 24kHz wav:
+ *
+ *     sonic-3.5 WITH language=he     200   184,398 bytes
+ *     sonic-3.5 WITHOUT language     200   195,918 bytes
+ *
+ * Accepted, and it changes the audio — so omitting it was never a no-op.
+ *
+ * WHY A SET AND NOT A PREFIX MATCH: `model.startsWith('sonic')` would have caught 3.5 for free, and
+ * would also pass `language` to whatever Cartesia ships next — which is how this list came to exist
+ * (the older models 400 on the field). Explicit means a new model is a decision, not an inheritance.
+ * That is only safe if changing CARTESIA_MODEL means checking this line: ADD THE MODEL HERE TOO.
+ */
+const MODELS_ACCEPTING_LANGUAGE = new Set(['sonic-3.5', 'sonic-3', 'sonic-2', 'sonic', 'sonic-lite']);
 
 /**
  * Synthesizes Hebrew speech for the *synthetic caller* — i.e. this is the fake human, not the
