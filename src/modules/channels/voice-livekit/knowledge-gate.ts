@@ -127,6 +127,41 @@ const EMAIL_SHAPE = /@|שטרודל|gmail|נקודה קום|dot com|com/i;
 const ASKED_FOR_CONTACT = /מה השם|השם המלא|מספר הטלפון|מה הטלפון|כתובת המייל|מה המייל|עם מי אני מדבר/;
 
 /**
+ * Hebrew interrogatives, as whole words.
+ *
+ * These exist to keep `answering_agent` from eating a SHORT question. The rule's length guard was
+ * originally its only protection, on the assumption that an answer is short and a question is long.
+ * That assumption is false in Hebrew: "כמה זה עולה?" is three words, and so is "מה תנאי היציאה?".
+ * If she has just asked for a name, a caller who replies with a pricing question instead would have
+ * had it silently suppressed — the exact expensive failure this gate is supposed to avoid.
+ *
+ * Whole-word matching matters: "מה" is a substring of "משהו" and "כמה" of "וכמה", and a substring
+ * test would fire on ordinary answers. `normalize` already splits punctuation off, so token equality
+ * is enough.
+ *
+ * Question marks are checked separately and are NOT relied on alone — Soniox frequently drops them.
+ */
+const INTERROGATIVES = new Set([
+  'מה',
+  'כמה',
+  'איך',
+  'למה',
+  'מתי',
+  'איפה',
+  'האם',
+  'איזה',
+  'איזו',
+  'מדוע',
+  'כיצד',
+]);
+
+/** True when the utterance asks something, however short it is. */
+function looksLikeQuestion(normalized: string, raw: string): boolean {
+  if (raw.includes('?')) return true;
+  return normalized.split(' ').some((word) => INTERROGATIVES.has(word));
+}
+
+/**
  * True when the utterance is the caller handing over contact data rather than asking anything.
  *
  * Deliberately narrow. A false positive here means a real question goes un-grounded, which is the
@@ -170,10 +205,12 @@ export function decideRetrieval(opts: {
   if (isContactData(opts.transcript)) return { retrieve: false, reason: 'contact_data' };
 
   // …and the same, established from context rather than shape: she just asked for a detail, so this
-  // turn is the answer. Guarded on length, because "קורן. ומה המחיר?" is an answer AND a question,
-  // and the question is the half that matters.
+  // turn is the answer. Guarded twice, because "קורן. ומה המחיר?" is an answer AND a question, and the
+  // question is the half that matters: by length, and — since a Hebrew question can be shorter than
+  // the length guard — by whether it asks anything at all.
   if (opts.lastAgentTurn && ASKED_FOR_CONTACT.test(opts.lastAgentTurn)) {
-    if (normalize(opts.transcript).split(' ').length <= 4) {
+    const normalized = normalize(opts.transcript);
+    if (normalized.split(' ').length <= 4 && !looksLikeQuestion(normalized, opts.transcript)) {
       return { retrieve: false, reason: 'answering_agent' };
     }
   }

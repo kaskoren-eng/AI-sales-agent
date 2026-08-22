@@ -96,3 +96,53 @@ describe('decideRetrieval — the R2.1 rules do not weaken the R2 ones', () => {
     expect(on('050.').reason).toBe('contact_data');
   });
 });
+
+/**
+ * ── THE SHORT-QUESTION HOLE IN `answering_agent` ─────────────────────────────────────────────────
+ *
+ * Found on 2026-08-22 while auditing why the rule fired 11 times in one simulated call. The rule
+ * skipped any reply of four words or fewer after she asked for contact details, on the assumption
+ * that answers are short and questions are long. Hebrew does not honour that assumption:
+ *
+ *     "כמה זה עולה?"        3 words — the single most valuable question in a sales call
+ *     "מה תנאי היציאה?"     3 words
+ *     "ומה עם אנגלית?"      3 words
+ *
+ * Any of these arriving right after "מה השם המלא?" was silently un-grounded — the expensive failure
+ * the gate is written to avoid, produced by the gate itself.
+ */
+describe('decideRetrieval — answering_agent must not swallow a short question', () => {
+  const afterContactAsk = (t: string) => on(t, 'מצוין. רק לוודא — מה השם המלא?');
+
+  it('lets a three-word pricing question through', () => {
+    expect(afterContactAsk('כמה זה עולה?').reason).toBe('ok');
+  });
+
+  it('lets other short questions through', () => {
+    for (const t of ['מה תנאי היציאה?', 'ומה עם אנגלית?', 'מתי זה מתחיל?', 'איך זה עובד?']) {
+      expect(afterContactAsk(t).reason, t).toBe('ok');
+    }
+  });
+
+  /** Soniox drops question marks often enough that punctuation cannot be the only signal. */
+  it('recognises a question with no question mark', () => {
+    expect(afterContactAsk('כמה זה עולה').reason).toBe('ok');
+    expect(afterContactAsk('מה תנאי היציאה').reason).toBe('ok');
+  });
+
+  /** The rule must still do its job — these are answers, and none of them asks anything. */
+  it('still skips the answers it was written for', () => {
+    for (const t of ['קורן שטרית.', 'דני לוי.', 'שלי הוא קורן.', 'קורן.']) {
+      expect(afterContactAsk(t).reason, t).toBe('answering_agent');
+    }
+  });
+
+  /**
+   * Whole-word matching, not substring. "משהו" contains "מה" and "וכמה" contains "כמה"; a substring
+   * test would treat ordinary answers as questions and undo the rule entirely.
+   */
+  it('does not mistake a word containing an interrogative for a question', () => {
+    expect(afterContactAsk('משהו כזה.').reason).toBe('answering_agent');
+    expect(afterContactAsk('אימה גדולה.').reason).toBe('answering_agent');
+  });
+});

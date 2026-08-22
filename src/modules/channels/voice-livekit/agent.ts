@@ -861,7 +861,21 @@ export default defineAgent({
               lastAgentTurn,
             });
             if (!decision.retrieve) {
-              console.log('rag_skipped', JSON.stringify({ stage: callState?.stage ?? null, reason: decision.reason }));
+              // SHAPE, never content. Auditing why `answering_agent` fired eleven times in one call
+              // was impossible from `{stage, reason}` alone, and that blindness hid a real bug: the
+              // rule was swallowing three-word questions like "כמה זה עולה?". But the utterances this
+              // gate declines are exactly the ones most likely to BE the PII — names, phones, emails
+              // — so the transcript itself must not be logged. Word count and "did it ask something"
+              // are enough to spot a suppressed question and carry nothing identifying.
+              console.log(
+                'rag_skipped',
+                JSON.stringify({
+                  stage: callState?.stage ?? null,
+                  reason: decision.reason,
+                  words: userText.trim().split(/\s+/).filter(Boolean).length,
+                  asked: /[?]|מה|כמה|איך|למה|מתי|איפה|האם|איזה/.test(userText),
+                }),
+              );
               return null;
             }
             return injector.resolve(userText);
