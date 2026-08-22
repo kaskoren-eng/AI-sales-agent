@@ -60,7 +60,15 @@ function toE164(raw, defaultCountryCode = '972') {
   return `+${digits}`;
 }
 
-const client = new pg.Client({ connectionString: env('DATABASE_URL') });
+/**
+ * DATABASE_PUBLIC_URL first, so this works from a laptop under `railway run --service Postgres`.
+ * Railway injects DATABASE_URL as the INTERNAL host, which resolves only inside their network —
+ * off-network it fails with a DNS error that reads like the database is down. Same order as
+ * bootstrap-user.mjs, for the same reason.
+ */
+const connectionString =
+  process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL || env('DATABASE_URL');
+const client = new pg.Client({ connectionString });
 await client.connect();
 
 try {

@@ -150,6 +150,49 @@ describe('resolveCallIdentity', () => {
     expect(result.refusal).toBe('unmapped_did');
   });
 
+  it('reports a FAILED lookup as its own refusal, not as "unmapped"', async () => {
+    /**
+     * The incident this comes from: the cloud agent was deployed with DATABASE_URL=localhost, so
+     * every phone_numbers query threw. The caller heard the not-in-service announcement, the logs
+     * said `unmapped_did`, and the number was demonstrably mapped — an hour went into reconciling
+     * those two facts.
+     *
+     * `new Pool()` does not connect eagerly, so a wrong host produces a healthy-looking pool that
+     * fails on the first query. This is where that lands.
+     */
+    const result = await resolveCallIdentity(
+      ENV_WITH_FALLBACK,
+      { participantMetadata: undefined, calledNumber: '+972555070922' },
+      {
+        lookupNumber: async () => {
+          throw new Error('getaddrinfo ENOTFOUND localhost');
+        },
+      },
+    );
+
+    expect(result.identity).toBeNull();
+    expect(result.refusal).toBe('did_lookup_failed');
+    // Emphatically NOT this — that is the claim that sent the last investigation the wrong way.
+    expect(result.refusal).not.toBe('unmapped_did');
+  });
+
+  it('still refuses the caller when the lookup fails — never falls back to the env tenant', async () => {
+    // A broken database must not become a cross-tenant leak. `VOICE_WEBHOOK_TENANT_ID` is set here
+    // and must stay unused: "we cannot tell whose call this is" can only ever mean refuse.
+    const result = await resolveCallIdentity(
+      ENV_WITH_FALLBACK,
+      { participantMetadata: undefined, calledNumber: '+972555070922' },
+      {
+        lookupNumber: async () => {
+          throw new Error('connection terminated unexpectedly');
+        },
+      },
+    );
+
+    expect(result.identity).toBeNull();
+    expect(isDidRefusal(result.refusal!)).toBe(true);
+  });
+
   it('refuses a number that is bought but not yet assigned', async () => {
     const { lookupNumber } = fakeNumbers([{ e164: '+972555070922', tenantId: null, isActive: true }]);
     const result = await resolveCallIdentity(

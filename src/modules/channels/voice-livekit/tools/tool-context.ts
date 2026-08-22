@@ -200,7 +200,13 @@ export interface CallIdentity {
 }
 
 /** Why a call could not be attributed to a tenant. Each one answers the phone and hangs up. */
-export type CallIdentityRefusal = 'no_tenant' | 'unmapped_did' | 'number_unassigned' | 'number_inactive';
+export type CallIdentityRefusal =
+  | 'no_tenant'
+  | 'unmapped_did'
+  | 'number_unassigned'
+  | 'number_inactive'
+  /** The lookup itself failed — we do not know whether the number is mapped. */
+  | 'did_lookup_failed';
 
 /**
  * The refusals that mean "a real person dialled a real number and we will not serve them".
@@ -213,6 +219,10 @@ export const DID_REFUSALS: readonly CallIdentityRefusal[] = [
   'unmapped_did',
   'number_unassigned',
   'number_inactive',
+  // The caller hears the same announcement — from their side an unknown number and a broken
+  // database are identical. The distinction is for US, in the logs, because the fixes are
+  // opposites: provision a number, or repair a connection.
+  'did_lookup_failed',
 ];
 
 export function isDidRefusal(reason: string | null): boolean {
@@ -278,7 +288,32 @@ export async function resolveCallIdentity(
     // never the env fallback.
     if (!deps.lookupNumber) return { identity: null, refusal: 'unmapped_did' };
 
-    const row = await deps.lookupNumber(candidates);
+    /**
+     * A THROW HERE IS NOT AN UNMAPPED NUMBER.
+     *
+     * These two produce the same experience for the caller — the announcement, then a hang-up —
+     * and they were reported identically, as `unmapped_did`. They are opposite problems: one is
+     * fixed by provisioning a number, the other by repairing a database connection, and telling
+     * them apart from the outside took an hour of bisecting a live incident.
+     *
+     * It is not a hypothetical failure either. `new Pool()` does not connect eagerly, so a
+     * DATABASE_URL pointing at a host that does not exist builds a perfectly healthy-looking pool
+     * and fails HERE, on the first query of the first call.
+     */
+    let row: Awaited<ReturnType<PhoneNumberLookup>>;
+    try {
+      row = await deps.lookupNumber(candidates);
+    } catch (err) {
+      console.error(
+        'did_lookup_failed',
+        JSON.stringify({
+          candidates,
+          error: err instanceof Error ? err.message : String(err),
+          hint: 'the phone_numbers query threw — the database is unreachable or the schema is behind, NOT "this number is unmapped"',
+        }),
+      );
+      return { identity: null, refusal: 'did_lookup_failed' };
+    }
 
     if (!row) return { identity: null, refusal: 'unmapped_did' };
     if (!row.isActive) return { identity: null, refusal: 'number_inactive' };

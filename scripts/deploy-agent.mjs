@@ -20,7 +20,7 @@
  * variables at runtime. `.env` is excluded from the build context entirely — anything baked into an
  * image layer is permanent and extractable by anyone who can pull it.
  */
-import { cp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 
 const MODE = process.argv[2] ?? 'deploy';
@@ -48,6 +48,64 @@ await cp('livekit.toml', `${STAGE}/livekit.toml`).catch(() => {
 // The agent's build context contains no secrets and no caller data. Stated explicitly rather than
 // relied upon: `.env` and call-reports/ are simply never copied above.
 await writeFile(`${STAGE}/.dockerignore`, ['node_modules', 'dist', '.env', '.env.*'].join('\n') + '\n');
+
+/**
+ * REFUSE TO SHIP A LAPTOP CONFIG.
+ *
+ * The agent was created once with `--secrets-file .env.agent` while that file still held
+ * DATABASE_URL=localhost:5432 and REDIS_URL=redis:6379 — a docker-compose config. Inside a
+ * LiveKit Cloud container `localhost` is the container and `redis` resolves to nothing, so the
+ * agent ran for days with no database at all.
+ *
+ * It never crashed, which is what made it expensive. Every DB read failed, the tool gate failed
+ * CLOSED exactly as designed, and calls ran with no tools, wrote no call_learnings row and metered
+ * nothing. After DID routing shipped, a call could not be attributed to a tenant and was refused
+ * outright. The system behaved as though it had been configured to do that.
+ *
+ * A hostname is checkable, so check it. `--ignore-empty-secrets` is the other half of the same
+ * trap: it silently drops empty values, which is how PLATFORM_TENANT_ID never reached the cloud.
+ */
+async function assertDeployableSecrets(file) {
+  let raw;
+  try {
+    raw = await readFile(file, 'utf8');
+  } catch {
+    throw new Error(`${file} not found - create mode needs it to upload secrets`);
+  }
+
+  const LOCAL_HOST = /(^|[@/])(localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal|redis|postgres|db)(:\d+)?([/?]|$)/i;
+  const REQUIRED = ['DATABASE_URL', 'REDIS_URL', 'PLATFORM_TENANT_ID', 'OPENAI_API_KEY'];
+
+  const values = new Map();
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line || line.trimStart().startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq === -1) continue;
+    values.set(line.slice(0, eq).trim(), line.slice(eq + 1).trim());
+  }
+
+  const problems = [];
+  for (const key of REQUIRED) {
+    const value = values.get(key);
+    if (!value) {
+      problems.push(`${key} is empty or missing - --ignore-empty-secrets would drop it silently`);
+    } else if (key.endsWith('_URL') && LOCAL_HOST.test(value)) {
+      problems.push(`${key} points at a local host - unreachable from LiveKit Cloud`);
+    }
+  }
+
+  if (problems.length > 0) {
+    throw new Error(
+      `${file} is not deployable:\n` +
+        problems.map((p) => `  - ${p}`).join('\n') +
+        '\n\nThis file is for running the agent on your machine. The cloud agent needs the PUBLIC\n' +
+        'endpoints (Railway exposes DATABASE_PUBLIC_URL / REDIS_PUBLIC_URL).\n' +
+        'Fix them with: node scripts/fix-agent-secrets.mjs',
+    );
+  }
+}
+
+if (MODE === 'create') await assertDeployableSecrets('.env.agent');
 
 // `--secrets-file` resolves relative to the CWD (the repo root), NOT to the working-dir argument.
 const args = [
