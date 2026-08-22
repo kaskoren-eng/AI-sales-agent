@@ -21,5 +21,9 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  /* Tests are typechecked by vitest, not by the production build. Importing vitest pulls
+     @types/node into scope, which changes setTimeout's return type from number to Timeout
+     and breaks unrelated application files that never asked for Node types. */
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

@@ -553,6 +553,17 @@ function GoogleCalendarCard() {
         </p>
       )}
 
+      {/* A failed connect/disconnect used to produce NOTHING: no toast, no message, no change to
+          the card. The button looked inert, so the natural response was to click it again. Say what
+          happened — a visible failure is recoverable, a silent one is a support ticket. */}
+      {(connect.isError || disconnect.isError) && (
+        <p role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)' }}>
+          {connect.isError
+            ? t('integrations.gcal.connectFailed', 'Could not start the connection. Try again.')
+            : t('integrations.gcal.disconnectFailed', 'Could not disconnect. Try again.')}
+        </p>
+      )}
+
       {q.isError && (
         <p role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)' }}>
           {t('integrations.statusFailed', 'Could not load status')}

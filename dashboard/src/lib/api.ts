@@ -358,7 +358,7 @@ export function fetchGoogleCalendarStatus(): Promise<GoogleCalendarStatus> {
 
 /** Returns the Google consent URL to send the customer to. */
 export function startGoogleCalendarConnect(): Promise<{ url: string }> {
-  return apiFetch('/integrations/google-calendar/connect', { method: 'POST', body: '{}' })
+  return apiFetch('/integrations/google-calendar/connect', { method: 'POST' })
 }
 
 export function disconnectGoogleCalendar(): Promise<{ ok: boolean }> {

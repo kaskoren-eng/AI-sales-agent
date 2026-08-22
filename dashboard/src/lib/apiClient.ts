@@ -21,13 +21,25 @@ async function toError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, message)
 }
 
+/**
+ * Only declare a JSON content-type when there IS a body.
+ *
+ * Fastify's JSON parser rejects an EMPTY body that announces itself as application/json —
+ * FST_ERR_CTP_EMPTY_JSON_BODY — before the request is ever routed. So every body-less mutation
+ * sent through here failed at the parser: disconnecting Google Calendar, Airtable or Monday,
+ * removing a team member, regenerating the API key. Each one returned an error the UI had no
+ * state for, so the button simply did nothing, six times over, for one header.
+ *
+ * `lib/auth.ts` already carries this exact lesson for /refresh and /logout. It was fixed there and
+ * not here, which is why the version that survived was the one nobody had clicked yet.
+ */
 function send(path: string, options?: RequestInit): Promise<Response> {
   const token = getAccessToken()
   return fetch(`/api/v1${path}`, {
     ...options,
     credentials: 'same-origin',
     headers: {
-      'Content-Type': 'application/json',
+      ...(options?.body === undefined ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options?.headers,
     },

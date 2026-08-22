@@ -497,6 +497,8 @@
     "gcal": {
       "blurb": "The agent books meetings straight into your calendar.",
       "managed": "Managed",
+      "connectFailed": "Could not start the connection. Try again.",
+      "disconnectFailed": "Could not disconnect. Try again.",
       "expired": "Needs reconnect",
       "expiredNote": "Google revoked access, so new meetings are not being added. Reconnect to fix it.",
       "platformNote": "This workspace uses the ClickScales service account.",
