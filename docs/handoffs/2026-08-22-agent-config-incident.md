@@ -62,6 +62,12 @@ calls. Listen before trusting it to real leads.
   diagnosis. `new Pool()` does not connect eagerly, so a wrong host builds a healthy-looking pool
   that fails on the first query of the first call. The caller still hears the same announcement and
   a failed lookup still never falls back to the env tenant.
+- **Boot-time database probe** (`db-probe.ts`, `0f5727d`) — one `select 1` per worker boot, in
+  `prewarm`. Logs `agent_db_ok` with the host, or `agent_db_unreachable` with the host, the error,
+  what it costs and the command that fixes it. Never throws: it runs in `prewarm`, so a throw would
+  turn a degraded agent into no agent. **Not live until `npm run agent:deploy`** — deliberately not
+  deployed, because it would land alongside the greeting change that has never been heard on a real
+  call.
 - **`npm run db:drift`** — replays every migration into a throwaway Postgres and diffs against the
   schema. Neither the tests nor `db:generate` can catch drift: tests build tables from the schema,
   and snapshots are generated from it, so both agree with it by construction.
