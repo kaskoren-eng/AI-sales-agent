@@ -20,13 +20,21 @@ describe('readKnowledgeSettings — absent or malformed means OFF', () => {
 
   it('applies defaults when the tuning fields are absent', () => {
     const s = readKnowledgeSettings({ knowledge_base: { enabled: true } });
-    expect(s).toEqual({ enabled: true, topK: 3, minScore: 0.3 });
+    expect(s).toEqual({ enabled: true, topK: 3, minScore: 0.3, maxTokens: 1000 });
   });
 
   it('clamps top_k rather than trusting it — a huge value is the prompt-stuffing RAG replaced', () => {
     expect(readKnowledgeSettings({ knowledge_base: { enabled: true, top_k: 500 } }).topK).toBe(8);
     expect(readKnowledgeSettings({ knowledge_base: { enabled: true, top_k: 0 } }).topK).toBe(1);
     expect(readKnowledgeSettings({ knowledge_base: { enabled: true, top_k: 'lots' } }).topK).toBe(3);
+  });
+
+  /** R2.1 — the slot budget is operator-editable, so a huge value must not restore unbounded context. */
+  it('clamps max_tokens rather than trusting it', () => {
+    expect(readKnowledgeSettings({ knowledge_base: { enabled: true, max_tokens: 999999 } }).maxTokens).toBe(4000);
+    expect(readKnowledgeSettings({ knowledge_base: { enabled: true, max_tokens: 1 } }).maxTokens).toBe(100);
+    expect(readKnowledgeSettings({ knowledge_base: { enabled: true, max_tokens: 'lots' } }).maxTokens).toBe(1000);
+    expect(readKnowledgeSettings({ knowledge_base: { enabled: true, max_tokens: 1500 } }).maxTokens).toBe(1500);
   });
 
   it('clamps min_score into [0,1]', () => {
@@ -208,5 +216,49 @@ describe('buildSystemPrompt — slimKnowledge', () => {
   it('still carries the grounding rules — the replacement for what it removed', () => {
     const slim = buildSystemPrompt({ toolsEnabled: true, ragEnabled: true, slimKnowledge: true });
     expect(slim).toContain('## KNOWLEDGE');
+  });
+});
+
+/**
+ * R2.1 — the booking-stall rule, corrected.
+ *
+ * Diagnosed from the 2026-08-22 real call, where 14 retrievals fired at stage=scheduling despite the
+ * phase gate. The gate was engaging correctly; its definition of "stalled" was wrong. Between
+ * check_calendar_availability and book_meeting the caller spent ~10 turns handing over a name, a phone
+ * number and an email — every one firing capture_lead_info, none firing a scheduling tool — so the
+ * rule concluded the booking had been abandoned and reopened retrieval on pure data entry.
+ */
+describe('CallStateMachine.ragActive — capture_lead_info counts as booking progress', () => {
+  const booking = () => {
+    const m = new CallStateMachine();
+    m.onUserTurn();
+    m.onToolCall('check_calendar_availability', true);
+    return m;
+  };
+
+  it('stays off while details are still being collected', () => {
+    const m = booking();
+    for (let i = 0; i < 6; i += 1) {
+      m.onUserTurn();
+      m.onToolCall('capture_lead_info', true, { name: `turn ${i}` } as never);
+      expect(m.ragActive, `turn ${i}`).toBe(false);
+    }
+  });
+
+  /** The abandoned-booking case still works: no progress at all, and retrieval comes back. */
+  it('still reopens when nothing is progressing', () => {
+    const m = booking();
+    m.onUserTurn();
+    m.onUserTurn();
+    expect(m.ragActive).toBe(true);
+  });
+
+  it('does not touch the counter before booking has started', () => {
+    const m = new CallStateMachine();
+    m.onUserTurn();
+    m.onToolCall('capture_lead_info', true, { name: 'x' } as never);
+    // discovery — ragActive is unconditionally true here, and the stall seam is irrelevant.
+    expect(m.stage).toBe('discovery');
+    expect(m.ragActive).toBe(true);
   });
 });

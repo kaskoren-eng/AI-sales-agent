@@ -1,56 +1,18 @@
 import { describe, it, expect, vi } from 'vitest';
-import { KnowledgeInjector, formatKnowledgeBlock, KNOWLEDGE_MARKER } from './knowledge-injector.js';
+import {
+  KnowledgeInjector,
+  formatKnowledgeBlock,
+  KNOWLEDGE_MARKER,
+  DEFAULT_KNOWLEDGE_TOKEN_BUDGET,
+} from './knowledge-injector.js';
 import type { RetrievalService, RetrievedChunk } from '../../knowledge/retrieval.service.js';
 
-function chunk(id: string, content: string): RetrievedChunk {
-  return { id, documentId: 'doc', content, chunkIndex: 0, score: 0.9, vectorScore: 0.9, lexicalScore: 0.1 };
+function chunk(id: string, content: string, tokenCount = 10): RetrievedChunk {
+  return { id, documentId: 'doc', content, chunkIndex: 0, tokenCount, score: 0.9, vectorScore: 0.9, lexicalScore: 0.1 };
 }
 
-type Msg = { role: string; content: string };
-
-/**
- * A chat context with the REAL copy-then-replace semantics: `copy()` returns an independent snapshot,
- * and `updateChatCtx` swaps the live context for whatever it is handed.
- *
- * This matters more than it looks. An earlier version of this helper returned `this` from `copy()`, so
- * appends accumulated no matter how badly two injections raced — and the concurrency test below passed
- * with the mutation lock deleted. A fake that cannot lose an update cannot detect a lost update.
- *
- * `updateChatCtx` awaits once before swapping, so an interleaving actually exists to be caught.
- */
-function makeCtx(initial: Msg[]) {
-  const msgs = [...initial];
-  return {
-    msgs,
-    addMessage(msg: { role: 'system' | 'user' | 'assistant'; content: string }) {
-      msgs.push(msg);
-      return msg;
-    },
-    copy() {
-      return makeCtx(msgs);
-    },
-  };
-}
-
-function fakeAgent() {
-  let live = makeCtx([]);
-  /** A stable array that always mirrors the live context, so tests can hold on to one reference. */
-  const messages: Msg[] = [];
-  const agent = {
-    get chatCtx() {
-      return live;
-    },
-    updateChatCtx: vi.fn(async (ctx: ReturnType<typeof makeCtx>) => {
-      await Promise.resolve();
-      live = ctx;
-      messages.length = 0;
-      messages.push(...ctx.msgs);
-    }),
-  };
-  return { agent, messages };
-}
-
-function stubRetrieval(results: RetrievedChunk[][]): { service: RetrievalService; calls: string[] } {
+/** A retrieval service that hands back a scripted result per call, and records the queries. */
+function stubRetrieval(results: RetrievedChunk[][], delayMs = 0): { service: RetrievalService; calls: string[] } {
   const calls: string[] = [];
   let i = 0;
   const service = {
@@ -58,6 +20,7 @@ function stubRetrieval(results: RetrievedChunk[][]): { service: RetrievalService
       calls.push(query);
       const chunks = results[Math.min(i, results.length - 1)] ?? [];
       i += 1;
+      if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
       return { chunks, discarded: 0, timing: { embedMs: 1, dbMs: 1, totalMs: 2 } };
     }),
   } as unknown as RetrievalService;
@@ -75,245 +38,207 @@ describe('formatKnowledgeBlock', () => {
   });
 });
 
-describe('KnowledgeInjector', () => {
-  it('appends a knowledge message and reports what it injected', async () => {
-    const { service } = stubRetrieval([[chunk('c1', 'עובדת גם בשבת')]]);
-    const { agent, messages } = fakeAgent();
+describe('KnowledgeInjector.resolve — the rolling slot', () => {
+  it('returns a block for the utterance and reports what is in it', async () => {
+    const { service } = stubRetrieval([[chunk('c1', 'עובדת גם בשבת', 12)]]);
     const injector = new KnowledgeInjector(service, 'tenant-1');
 
-    const result = await injector.inject(agent, 'היא עובדת בשבת');
+    const slot = await injector.resolve('היא עובדת בשבת');
 
-    expect(result.injected).toBe(true);
-    expect(result.chunkIds).toEqual(['c1']);
-    expect(messages).toHaveLength(1);
-    expect(messages[0]!.content).toContain('עובדת גם בשבת');
-    expect(agent.updateChatCtx).toHaveBeenCalledOnce();
+    expect(slot.block).toContain('עובדת גם בשבת');
+    expect(slot.chunkIds).toEqual(['c1']);
+    expect(slot.tokens).toBe(12);
+    expect(slot.deadlineExpired).toBe(false);
   });
 
   /**
-   * CONSTRAINT 2 — the same chunk is never injected twice. This bounds token growth (injections are
-   * append-only for cache reasons and are never removed) and stops her repeating a fact she has
-   * already been given.
+   * THE WHOLE POINT OF R2.1. R2 appended to `agent.chatCtx` and context grew 2,742 -> 8,306 tokens
+   * across four minutes. This class must have no way to mutate anything: it returns a block, and the
+   * caller decides where to put it (inside `llmNode`, on a per-inference copy).
    */
-  it('never injects a chunk that is already in the context', async () => {
-    const { service } = stubRetrieval([[chunk('c1', 'פעם ראשונה')], [chunk('c1', 'פעם ראשונה')]]);
-    const { agent, messages } = fakeAgent();
-    const injector = new KnowledgeInjector(service, 'tenant-1');
-
-    await injector.inject(agent, 'שאלה');
-    const second = await injector.inject(agent, 'שאלה אחרת');
-
-    expect(second.injected).toBe(false);
-    expect(second.deduped).toBe(1);
-    expect(messages).toHaveLength(1);
-  });
-
-  it('injects only the fresh chunks when a result partly overlaps', async () => {
-    const { service } = stubRetrieval([
-      [chunk('c1', 'ידוע')],
-      [chunk('c1', 'ידוע'), chunk('c2', 'חדש')],
-    ]);
-    const { agent, messages } = fakeAgent();
-    const injector = new KnowledgeInjector(service, 'tenant-1');
-
-    await injector.inject(agent, 'א');
-    const second = await injector.inject(agent, 'ב');
-
-    expect(second.chunkIds).toEqual(['c2']);
-    expect(second.deduped).toBe(1);
-    expect(messages[1]!.content).toContain('חדש');
-    expect(messages[1]!.content).not.toContain('ידוע');
+  it('mutates nothing — the R2 mutation API is gone', () => {
+    const { service } = stubRetrieval([[chunk('c1', 'x')]]);
+    const injector = new KnowledgeInjector(service, 'tenant-1') as unknown as Record<string, unknown>;
+    for (const name of ['inject', 'injectSpeculative', 'endTurn', 'groundedThisTurn']) {
+      expect(injector[name], name).toBeUndefined();
+    }
   });
 
   /**
-   * CONSTRAINT 3 — the search behind an interim must be REUSED when the same text arrives again as the
-   * final transcript, not re-run: re-running spends the ~250ms embedding round trip inside the turn,
-   * which is the whole cost this design exists to hide.
+   * HISTORY DEDUP IS DELIBERATELY GONE. Under R2 a chunk was injected at most once per call, because
+   * injections were permanent. Under a rolling slot the block vanishes after the inference, so a fact
+   * needed again on a later turn must be retrieved again. Re-retrieval is the design, not a leak.
    */
-  it('reuses an in-flight search instead of searching the same text twice', async () => {
-    const { service, calls } = stubRetrieval([[chunk('c1', 'תשובה')]]);
-    const { agent } = fakeAgent();
+  it('returns the same chunk again on a later turn', async () => {
+    const { service } = stubRetrieval([[chunk('c1', 'המחיר')], [chunk('c1', 'המחיר')]]);
     const injector = new KnowledgeInjector(service, 'tenant-1');
 
-    await injector.injectSpeculative(agent, 'כמה זה עולה בחודש');
-    await injector.inject(agent, 'כמה זה עולה בחודש');
+    const first = await injector.resolve('כמה זה עולה בחודש');
+    const second = await injector.resolve('ומה המחיר של החבילה הגדולה');
 
-    expect(calls).toEqual(['כמה זה עולה בחודש']); // exactly one search, not two
+    expect(first.chunkIds).toEqual(['c1']);
+    expect(second.chunkIds).toEqual(['c1']);
+    expect(second.block).toContain('המחיר');
   });
 
-  it('collapses repeated interim transcripts into a single search', async () => {
-    const { service, calls } = stubRetrieval([[chunk('c1', 'תשובה')]]);
-    const { agent } = fakeAgent();
+  it('deduplicates within one result set', async () => {
+    const { service } = stubRetrieval([[chunk('c1', 'פעם'), chunk('c1', 'פעם'), chunk('c2', 'אחרת')]]);
     const injector = new KnowledgeInjector(service, 'tenant-1');
 
-    await injector.inject(agent, 'כמה זה עולה');
-    await injector.inject(agent, 'כמה זה עולה');
-    await injector.inject(agent, 'כמה זה עולה '); // trailing space — same utterance
+    const slot = await injector.resolve('שאלה כלשהי');
 
-    expect(calls).toHaveLength(1);
+    expect(slot.chunkIds).toEqual(['c1', 'c2']);
+    expect(slot.dedupedInResult).toBe(1);
   });
 
-  it('searches again when the final transcript differs from the interim', async () => {
-    const { service, calls } = stubRetrieval([[chunk('c1', 'א')], [chunk('c2', 'ב')]]);
-    const { agent } = fakeAgent();
+  it('returns no block when nothing was retrieved', async () => {
+    const { service } = stubRetrieval([[]]);
     const injector = new KnowledgeInjector(service, 'tenant-1');
 
-    await injector.injectSpeculative(agent, 'כמה זה עולה בחודש');
-    const result = await injector.inject(agent, 'כמה זה עולה בחודש בדיוק');
+    const slot = await injector.resolve('שאלה על משהו שלא קיים');
 
-    expect(result.injected).toBe(true);
-    expect(calls).toEqual(['כמה זה עולה בחודש', 'כמה זה עולה בחודש בדיוק']);
+    expect(slot.block).toBeNull();
+    expect(slot.tokens).toBe(0);
   });
 
-  /** A knowledge lookup that fails must cost an un-grounded turn, never the call. */
-  it('degrades to no injection when retrieval throws', async () => {
+  it('degrades to no block when retrieval throws', async () => {
     const service = {
       search: vi.fn(async () => {
         throw new Error('pgvector is on fire');
       }),
     } as unknown as RetrievalService;
-    const { agent, messages } = fakeAgent();
     const injector = new KnowledgeInjector(service, 'tenant-1');
 
-    const result = await injector.inject(agent, 'כמה זה עולה');
+    const slot = await injector.resolve('כמה זה עולה');
 
-    expect(result.injected).toBe(false);
-    expect(messages).toHaveLength(0);
-    expect(agent.updateChatCtx).not.toHaveBeenCalled();
-  });
-
-  it('does not touch the context when nothing is retrieved', async () => {
-    const { service } = stubRetrieval([[]]);
-    const { agent, messages } = fakeAgent();
-    const injector = new KnowledgeInjector(service, 'tenant-1');
-
-    const result = await injector.inject(agent, 'שאלה על משהו שלא קיים');
-
-    expect(result.injected).toBe(false);
-    expect(messages).toHaveLength(0);
-    expect(agent.updateChatCtx).not.toHaveBeenCalled();
+    expect(slot.block).toBeNull();
   });
 });
 
-/**
- * THE REGRESSION THESE PIN. The first version prefetched on interims and injected only on the final
- * transcript; the 2026-08-19 call measured 4 of 6 preemptive drafts discarded with RAG on, 0 of 6 off.
- * The snapshot is taken at Soniox's PREFLIGHT event, before the final transcript exists, so injecting
- * there was always too late. Retrieval must reach the CONTEXT during the interims, not just a cache.
- */
-describe('KnowledgeInjector — speculative injection (the preemptive-draft fix)', () => {
-  it('injects during an interim, so the context is already grounded when the draft is snapshotted', async () => {
-    const { service } = stubRetrieval([[chunk('c1', 'המחיר הוא 1,490')]]);
-    const { agent, messages } = fakeAgent();
+describe('KnowledgeInjector — the token budget', () => {
+  it('keeps everything when the budget is not binding', async () => {
+    const { service } = stubRetrieval([[chunk('a', 'א', 100), chunk('b', 'ב', 100)]]);
     const injector = new KnowledgeInjector(service, 'tenant-1');
 
-    const result = await injector.injectSpeculative(agent, 'כמה עולה החבילה הבסיסית');
+    const slot = await injector.resolve('שאלה ארוכה מספיק');
 
-    expect(result!.injected).toBe(true);
-    expect(messages).toHaveLength(1);
-    expect(injector.groundedThisTurn).toBe(true);
+    expect(slot.chunkIds).toEqual(['a', 'b']);
+    expect(slot.dropped).toBe(0);
+    expect(slot.tokens).toBe(200);
   });
 
-  it('declines a fragment too short to retrieve anything but noise', () => {
-    const { service, calls } = stubRetrieval([[chunk('c1', 'x')]]);
-    const { agent } = fakeAgent();
-    const injector = new KnowledgeInjector(service, 'tenant-1');
+  /** Chunks arrive in RRF order, best first — so the trim must fall on the WEAKEST evidence. */
+  it('drops from the weakest end when the budget binds', async () => {
+    const { service } = stubRetrieval([[chunk('best', 'א', 600), chunk('mid', 'ב', 600), chunk('worst', 'ג', 600)]]);
+    const injector = new KnowledgeInjector(service, 'tenant-1', { maxTokens: 1000 });
 
-    // "how much is" — matches every pricing chunk equally and none of them usefully.
-    expect(injector.injectSpeculative(agent, 'כמה זה')).toBeNull();
-    expect(calls).toHaveLength(0);
-  });
+    const slot = await injector.resolve('שאלה ארוכה מספיק');
 
-  it('declines an interim that has barely grown — adjacent interims are near-identical', async () => {
-    const { service } = stubRetrieval([[chunk('c1', 'x')]]);
-    const { agent } = fakeAgent();
-    const injector = new KnowledgeInjector(service, 'tenant-1');
-
-    await injector.injectSpeculative(agent, 'כמה עולה החבילה');
-    expect(injector.injectSpeculative(agent, 'כמה עולה החבילה ש')).toBeNull();
-  });
-
-  it('caps speculative work per turn — the old code paid for an embedding on every interim', async () => {
-    const { service, calls } = stubRetrieval([[chunk('c1', 'a')], [chunk('c2', 'b')], [chunk('c3', 'c')], [chunk('c4', 'd')]]);
-    const { agent } = fakeAgent();
-    const injector = new KnowledgeInjector(service, 'tenant-1');
-
-    let text = 'כמה עולה החבילה';
-    for (let i = 0; i < 8; i += 1) {
-      const attempt = injector.injectSpeculative(agent, text);
-      if (attempt) await attempt;
-      text += ' ועוד מילה נוספת';
-    }
-
-    expect(calls).toHaveLength(3);
-  });
-
-  it('re-arms the throttle at the end of a turn', async () => {
-    const { service, calls } = stubRetrieval([[chunk('c1', 'a')], [chunk('c2', 'b')]]);
-    const { agent } = fakeAgent();
-    const injector = new KnowledgeInjector(service, 'tenant-1');
-
-    await injector.injectSpeculative(agent, 'שאלה ראשונה ארוכה');
-    injector.endTurn();
-    const second = injector.injectSpeculative(agent, 'שאלה שנייה ארוכה');
-
-    expect(second).not.toBeNull();
-    await second;
-    expect(calls).toHaveLength(2);
-  });
-
-  /** `groundedThisTurn` is what lets the final-transcript catch-up decide whether it may touch the
-   * context at all — the whole draft-preserving rule in agent.ts hangs off it. */
-  it('reports the turn as un-grounded when nothing was retrieved', async () => {
-    const { service } = stubRetrieval([[]]);
-    const { agent } = fakeAgent();
-    const injector = new KnowledgeInjector(service, 'tenant-1');
-
-    await injector.injectSpeculative(agent, 'שאלה על משהו שלא קיים בכלל');
-
-    expect(injector.groundedThisTurn).toBe(false);
-  });
-
-  it('clears grounded state between turns', async () => {
-    const { service } = stubRetrieval([[chunk('c1', 'a')]]);
-    const { agent } = fakeAgent();
-    const injector = new KnowledgeInjector(service, 'tenant-1');
-
-    await injector.injectSpeculative(agent, 'שאלה ראשונה ארוכה');
-    expect(injector.groundedThisTurn).toBe(true);
-    injector.endTurn();
-    expect(injector.groundedThisTurn).toBe(false);
+    expect(slot.chunkIds).toEqual(['best']);
+    expect(slot.dropped).toBe(2);
+    expect(slot.block).not.toContain('ג');
   });
 
   /**
-   * Interims now MUTATE the context, so two injections can be in flight at once. Both would copy the
-   * same base context and the second `updateChatCtx` would silently discard the first block.
+   * A single oversized chunk is kept rather than dropped. An empty slot on a turn that HAD a matching
+   * fact is the worse failure: she says "I'll have the team follow up" to a question the KB answers.
    */
-  it('serialises concurrent injections instead of letting one overwrite the other', async () => {
-    const { service } = stubRetrieval([[chunk('c1', 'ראשון')], [chunk('c2', 'שני')]]);
-    const { agent, messages } = fakeAgent();
-    const injector = new KnowledgeInjector(service, 'tenant-1');
+  it('keeps one oversized chunk rather than returning nothing', async () => {
+    const { service } = stubRetrieval([[chunk('huge', 'ארוך מאוד', 5000)]]);
+    const injector = new KnowledgeInjector(service, 'tenant-1', { maxTokens: 1000 });
 
-    await Promise.all([
-      injector.inject(agent, 'שאלה ראשונה על מחיר'),
-      injector.inject(agent, 'שאלה שנייה על זמנים'),
-    ]);
+    const slot = await injector.resolve('שאלה ארוכה מספיק');
 
-    expect(messages).toHaveLength(2);
-    expect(messages.map((m) => m.content).join(' ')).toContain('ראשון');
-    expect(messages.map((m) => m.content).join(' ')).toContain('שני');
+    expect(slot.chunkIds).toEqual(['huge']);
+    expect(slot.dropped).toBe(0);
   });
 
-  it('does not inject the same chunk twice when two injections race', async () => {
-    const { service } = stubRetrieval([[chunk('c1', 'אותו דבר')], [chunk('c1', 'אותו דבר')]]);
-    const { agent, messages } = fakeAgent();
+  it('defaults to the documented budget', () => {
+    expect(DEFAULT_KNOWLEDGE_TOKEN_BUDGET).toBe(1000);
+  });
+});
+
+describe('KnowledgeInjector — prefetch, cache and the deadline', () => {
+  it('reuses a prefetch instead of searching the same text twice', async () => {
+    const { service, calls } = stubRetrieval([[chunk('c1', 'תשובה')]]);
     const injector = new KnowledgeInjector(service, 'tenant-1');
 
-    await Promise.all([
-      injector.inject(agent, 'שאלה ראשונה על מחיר'),
-      injector.inject(agent, 'שאלה שנייה על מחיר'),
-    ]);
+    injector.prefetch('כמה זה עולה בחודש');
+    const slot = await injector.resolve('כמה זה עולה בחודש');
 
-    expect(messages).toHaveLength(1);
+    expect(slot.chunkIds).toEqual(['c1']);
+    expect(calls).toEqual(['כמה זה עולה בחודש']); // one search, not two
+  });
+
+  it('treats trivially different spellings as the same utterance', async () => {
+    const { service, calls } = stubRetrieval([[chunk('c1', 'x')]]);
+    const injector = new KnowledgeInjector(service, 'tenant-1');
+
+    injector.prefetch('כמה זה עולה');
+    injector.prefetch('  כמה   זה עולה  ');
+    await injector.resolve('כמה זה עולה');
+
+    expect(calls).toHaveLength(1);
+  });
+
+  /**
+   * THE HAZARD THE ROLLING SLOT INTRODUCES. The preemptive draft is never invalidated now, so a
+   * retrieval that lands after `llmNode` has run would be silently discarded and she would answer
+   * un-grounded with no self-correction. `resolve` therefore waits — but only so long.
+   */
+  it('gives up after the deadline and says so', async () => {
+    const { service } = stubRetrieval([[chunk('c1', 'מאוחר מדי')]], 200);
+    const injector = new KnowledgeInjector(service, 'tenant-1', { deadlineMs: 20 });
+
+    const slot = await injector.resolve('שאלה ארוכה מספיק');
+
+    expect(slot.deadlineExpired).toBe(true);
+    expect(slot.block).toBeNull();
+    expect(slot.awaitedMs).toBeGreaterThanOrEqual(15);
+  });
+
+  /**
+   * An abandoned lookup is NOT cancelled — it settles into the cache, so the follow-up turn on the
+   * same topic is grounded from memory instead of re-paying the slow path. The difference between
+   * one slow turn and two.
+   */
+  it('keeps the abandoned lookup, so the next turn on the same topic is instant', async () => {
+    const { service, calls } = stubRetrieval([[chunk('c1', 'הגיע באיחור')]], 60);
+    const injector = new KnowledgeInjector(service, 'tenant-1', { deadlineMs: 10 });
+
+    const missed = await injector.resolve('שאלה ארוכה מספיק');
+    expect(missed.deadlineExpired).toBe(true);
+
+    await new Promise((r) => setTimeout(r, 90)); // the abandoned lookup lands
+
+    const second = await injector.resolve('שאלה ארוכה מספיק');
+    expect(second.deadlineExpired).toBe(false);
+    expect(second.chunkIds).toEqual(['c1']);
+    expect(calls).toHaveLength(1); // never re-searched
+  });
+
+  it('does not wait at all when the answer is already cached', async () => {
+    const { service } = stubRetrieval([[chunk('c1', 'מוכן')]]);
+    const injector = new KnowledgeInjector(service, 'tenant-1');
+
+    injector.prefetch('שאלה ארוכה מספיק');
+    await new Promise((r) => setTimeout(r, 5));
+    const slot = await injector.resolve('שאלה ארוכה מספיק');
+
+    expect(slot.awaitedMs).toBeLessThan(20);
+    expect(slot.deadlineExpired).toBe(false);
+  });
+
+  /** A twenty-minute call must not accumulate one promise per utterance. */
+  it('bounds the cache', async () => {
+    const { service, calls } = stubRetrieval([[chunk('c1', 'x')]]);
+    const injector = new KnowledgeInjector(service, 'tenant-1');
+
+    for (let i = 0; i < 40; i += 1) injector.prefetch(`שאלה מספר ${i} על השירות`);
+    await new Promise((r) => setTimeout(r, 5));
+
+    const cache = (injector as unknown as { cache: Map<string, unknown> }).cache;
+    expect(cache.size).toBeLessThanOrEqual(16);
+    expect(calls).toHaveLength(40); // every distinct utterance was still searched
   });
 });

@@ -18,10 +18,11 @@ import { CallReport } from './call-report.js';
 import { CallStateMachine } from './call-state.js';
 import { decideSilenceAction, decideVoicemailAction } from './call-reflexes.js';
 import { decideRetrieval } from './knowledge-gate.js';
-import { KnowledgeInjector } from './knowledge-injector.js';
+import { KnowledgeInjector, type KnowledgeSlot } from './knowledge-injector.js';
 import { readKnowledgeSettings } from './knowledge-settings.js';
 import { splitPrompt, PlaybookDeliverer, formatPlaybookMessage } from './playbook-packs.js';
 import { RetrievalService } from '../../knowledge/retrieval.service.js';
+import { countTokens } from '../../knowledge/tokens.js';
 import { EmbeddingService } from '../../knowledge/embedding.service.js';
 import { hasAiDisclosure } from './compliance/ai-disclosure.js';
 import { NOT_IN_SERVICE_PATH, playRecordingNotice } from './compliance/recording-notice.js';
@@ -45,6 +46,70 @@ import { ensureAgentSideConversation } from './call-record.js';
 
 /** Where every call's report lands. Repo-root relative, gitignored — these contain caller PII. */
 const CALL_REPORTS_DIR = 'call-reports';
+
+/**
+ * Log `context_watermark` once the whole context passes this.
+ *
+ * FIRST SET TO 6,000 AND THAT WAS WRONG: it fired ten times on a healthy 22-turn R2.1 call that
+ * legitimately reached 6,766 tokens of system prompt + packs + transcript. A smoke alarm that goes off
+ * while you cook is one people learn to ignore.
+ *
+ * 10,000 sits above what a healthy multi-minute call reaches and below the shape this phase exists to
+ * catch. It is a smoke alarm, not a limit: nothing is truncated when it trips.
+ */
+const CONTEXT_WATERMARK_TOKENS = 10_000;
+
+/**
+ * The utterance this inference is answering.
+ *
+ * Read from the END of the context rather than tracked separately, because that is what the model is
+ * actually about to answer — including the preemptive draft's provisional transcript, which no
+ * external bookkeeping would know about. Scans backwards so a trailing tool call or system message
+ * (the packs land as system messages) does not hide the user turn behind it.
+ */
+function lastUserText(chatCtx: { items: Array<unknown> }): string | null {
+  for (let i = chatCtx.items.length - 1; i >= 0; i -= 1) {
+    const item = chatCtx.items[i] as { type?: string; role?: string; textContent?: string };
+    if (item?.type === 'message' && item.role === 'user' && item.textContent?.trim()) {
+      return item.textContent;
+    }
+  }
+  return null;
+}
+
+/**
+ * Her previous turn, for the gate's `answering_agent` rule.
+ *
+ * Taken from the context rather than tracked in the entrypoint for the same reason as `lastUserText`:
+ * the context is what the model sees, and it already includes the turn a preemptive draft is
+ * answering. A separately-tracked variable would be a second source of truth that can drift.
+ */
+function lastAgentText(chatCtx: { items: Array<unknown> }): string | null {
+  for (let i = chatCtx.items.length - 1; i >= 0; i -= 1) {
+    const item = chatCtx.items[i] as { type?: string; role?: string; textContent?: string };
+    if (item?.type === 'message' && item.role === 'assistant' && item.textContent?.trim()) {
+      return item.textContent;
+    }
+  }
+  return null;
+}
+
+/**
+ * Rough size of the whole context, for the R2.1 growth instrumentation.
+ *
+ * Text content only: tool schemas and images are not counted, so this UNDER-reports the true request
+ * size. That is fine and deliberate — the number exists to show the SHAPE of growth across a call
+ * (flat vs cumulative), and comparing it against itself is what answers that. For the true billed
+ * size, read `promptTokens` off the llm_metrics line.
+ */
+function contextTokens(chatCtx: { items: Array<unknown> }): number {
+  let text = '';
+  for (const raw of chatCtx.items) {
+    const item = raw as { textContent?: string };
+    if (item?.textContent) text += item.textContent + '\n';
+  }
+  return countTokens(text);
+}
 
 /**
  * LiveKit voice agent — the production voice engine.
@@ -110,9 +175,90 @@ class ClickScalesAgent extends voice.Agent {
   /** Null when the per-tenant tool gate is closed — the guard then behaves exactly as pre-Phase-4. */
   readonly toolRuntime: ToolRuntimeContext | null;
 
-  constructor(opts: ConstructorParameters<typeof voice.Agent>[0], toolRuntime: ToolRuntimeContext | null = null) {
+  /**
+   * Resolves the `[KNOWLEDGE]` slot for one inference, or null when RAG is off for this call.
+   *
+   * Injected as a function rather than as the injector itself, because the decision to retrieve needs
+   * the gate and the state machine, which live in the entrypoint. This class only needs "give me the
+   * block, if there is one" — which is also what makes `llmNode` testable without a KB.
+   */
+  readonly resolveKnowledge:
+    | ((userText: string, lastAgentTurn: string | null) => Promise<KnowledgeSlot | null>)
+    | null;
+
+  constructor(
+    opts: ConstructorParameters<typeof voice.Agent>[0],
+    toolRuntime: ToolRuntimeContext | null = null,
+    resolveKnowledge:
+      | ((userText: string, lastAgentTurn: string | null) => Promise<KnowledgeSlot | null>)
+      | null = null,
+  ) {
     super(opts);
     this.toolRuntime = toolRuntime;
+    this.resolveKnowledge = resolveKnowledge;
+  }
+
+  /**
+   * THE ROLLING KNOWLEDGE SLOT. Retrieved facts are visible to exactly ONE inference and never enter
+   * session history.
+   *
+   * WHY HERE AND NOWHERE ELSE. `agent_activity.cjs:1883` does `chatCtx = chatCtx.copy()` immediately
+   * before calling this hook, so what arrives is a per-inference copy. Appending to it therefore:
+   *
+   *   - does not grow session history, so injection overhead is FLAT rather than cumulative (R2
+   *     measured 2,742 -> 8,306 tokens over four minutes because it appended to `agent.chatCtx`), and
+   *   - does not touch `agent.chatCtx`, so LiveKit's preemptive equivalence check never sees the edit
+   *     and the draft SURVIVES. R2 spent a cycle fighting that check; here it does not apply.
+   *
+   * The block goes at the TAIL, after the current user turn, so the system-prompt + transcript prefix
+   * stays byte-stable for provider prompt caching.
+   *
+   * EXPECT `promptCacheHitPct` TO FALL, and do not read that as a regression: the slot is deliberately
+   * outside the cached prefix now. Total and uncached tokens are the metric.
+   */
+  async llmNode(
+    chatCtx: Parameters<voice.Agent['llmNode']>[0],
+    toolCtx: Parameters<voice.Agent['llmNode']>[1],
+    modelSettings: Parameters<voice.Agent['llmNode']>[2],
+  ): ReturnType<voice.Agent['llmNode']> {
+    if (this.resolveKnowledge) {
+      const userText = lastUserText(chatCtx);
+      if (userText) {
+        try {
+          const slot = await this.resolveKnowledge(userText, lastAgentText(chatCtx));
+          // Measured BEFORE the slot goes in. This is the number that proves the diet works: it is the
+          // system prompt + packs + transcript, with no knowledge in it at all, so it must grow at the
+          // rate the conversation grows and at no other rate. `contextTokens` (after) minus this is the
+          // slot's entire footprint, and that footprint must never compound.
+          const baseline = contextTokens(chatCtx);
+          if (slot?.block) chatCtx.addMessage({ role: 'system', content: slot.block });
+          if (slot) {
+            const total = contextTokens(chatCtx);
+            console.log('rag_slot', JSON.stringify({
+              chunks: slot.chunkIds.length,
+              tokens: slot.tokens,
+              dropped: slot.dropped,
+              dedupedInResult: slot.dedupedInResult,
+              awaitedMs: slot.awaitedMs,
+              // Share of gated turns where this is true is the health metric for the 300ms deadline.
+              // Above ~3% on real calls, the prefetch window is too short — revisit the gate and the
+              // cache before touching the number.
+              deadlineExpired: slot.deadlineExpired,
+              contextTokens: total,
+              contextTokensBeforeSlot: baseline,
+              ...(slot.timing ? { embedMs: slot.timing.embedMs, dbMs: slot.timing.dbMs } : {}),
+            }));
+            if (total > CONTEXT_WATERMARK_TOKENS) {
+              console.log('context_watermark', JSON.stringify({ contextTokens: total, threshold: CONTEXT_WATERMARK_TOKENS }));
+            }
+          }
+        } catch (err) {
+          // Grounding is best-effort by design: an un-grounded answer is recoverable, a dead call is not.
+          console.error('knowledge_slot_failed', err instanceof Error ? err.message : String(err));
+        }
+      }
+    }
+    return super.llmNode(chatCtx, toolCtx, modelSettings);
   }
 
   /**
@@ -626,7 +772,7 @@ export default defineAgent({
         injector = new KnowledgeInjector(
           new RetrievalService(runtime.db, embeddings),
           runtime.tenantId,
-          { topK: kbSettings.topK, minScore: kbSettings.minScore },
+          { topK: kbSettings.topK, minScore: kbSettings.minScore, maxTokens: kbSettings.maxTokens },
         );
         // Pay the TLS/DNS handshake now, during the greeting, instead of inside the caller's first
         // question. Same trick the TTS path uses for its cold socket. Steady-state embedding RTT is
@@ -696,6 +842,25 @@ export default defineAgent({
         ...(persona.tts ? { tts: buildTTS(env, persona.tts) } : {}),
       },
       runtime,
+      // The rolling knowledge slot. Both gate layers are evaluated HERE rather than inside `llmNode`,
+      // because the phase gate needs the state machine and the utterance gate needs the same
+      // `decideRetrieval` the skip logging uses — keeping one decision point means the `rag_skipped`
+      // line and the actual behaviour can never disagree.
+      injector
+        ? async (userText, lastAgentTurn) => {
+            const decision = decideRetrieval({
+              enabled: true,
+              ragActive: callState ? callState.ragActive : true,
+              transcript: userText,
+              lastAgentTurn,
+            });
+            if (!decision.retrieve) {
+              console.log('rag_skipped', JSON.stringify({ stage: callState?.stage ?? null, reason: decision.reason }));
+              return null;
+            }
+            return injector.resolve(userText);
+          }
+        : null,
     );
     if (persona.tts) {
       // Otherwise the CallReport names the PLATFORM default engine for a call that used a
@@ -803,88 +968,30 @@ export default defineAgent({
       });
     }
 
-    // ── Voice RAG: speculative injection, ahead of the preemptive snapshot ─────────────────────
+    // ── Voice RAG: prefetch only ───────────────────────────────────────────────────────────────
     //
-    // WHY THIS INJECTS ON INTERIM TRANSCRIPTS AND NOT IN `onUserTurnCompleted`, where the RAG plan put
-    // it: LiveKit drafts a reply before the turn commits, snapshotting `agent.chatCtx`, and keeps that
-    // draft only if `preemptive.chatCtx.isEquivalent(chatCtx)` still holds at commit. Injecting after
-    // the snapshot throws the draft away on every grounded turn.
+    // The INJECTION happens in `llmNode` (see ClickScalesAgent above), where the context is a
+    // per-inference copy. Nothing here touches any context at all.
     //
-    // The FIRST version of this code prefetched on interims but injected only on the final transcript,
-    // and the 2026-08-19 call measured the result: 4 of 6 drafts discarded with RAG on, 0 of 6 off.
-    // Warming a cache puts nothing in the context. The snapshot is taken at Soniox's PREFLIGHT event —
-    // the moment the caller pauses — which is strictly before the final transcript exists, so the
-    // catch-up was always too late. See constraint 3 in knowledge-injector.ts for the trace.
+    // What is left here is the warm-up: start the lookup on INTERIM transcripts, while the caller is
+    // still speaking, so the ~200ms embedding round trip is spent on speech they have not finished
+    // producing. By the time `llmNode` runs at Soniox's PREFLIGHT, the result is usually already in
+    // the injector's cache and the slot resolves with no wait at all.
     //
-    // Injecting during the interims, while the caller is still speaking, lands the knowledge before the
-    // snapshot AND spends the ~250ms retrieval on speech they have not finished producing. Throttled
-    // inside the injector, because Soniox emits many interims per utterance and the old
-    // prefetch-on-every-interim was quietly paying for an embedding on each one.
+    // Only interims. The FINAL transcript is not prefetched because `llmNode` will ask for exactly
+    // that text moments later and the cache is keyed on it — prefetching it here would race the
+    // resolve for no benefit.
     if (injector) {
-      const logRagTurn = (
-        result: { injected: boolean; chunkIds: string[]; deduped: number; timing: { embedMs: number; dbMs: number; totalMs: number } },
-        reason: string,
-        speculative: boolean,
-      ): void => {
-        console.log('rag_turn', JSON.stringify({
-          stage: callState?.stage ?? null,
-          reason,
-          // `speculative:true` means the draft survived; `false` means this turn traded it for an
-          // answer. The ratio between them is the health metric for this whole design.
-          speculative,
-          injected: result.injected,
-          chunks: result.chunkIds.length,
-          deduped: result.deduped,
-          embedMs: result.timing.embedMs,
-          dbMs: result.timing.dbMs,
-          totalMs: result.timing.totalMs,
-        }));
-      };
-
       session.on(voice.AgentSessionEventTypes.UserInputTranscribed, (ev) => {
+        if (ev.isFinal) return;
         const decision = decideRetrieval({
           enabled: true,
-          // Layer 1: the phase gate, derived from the state machine already running this call. When the
-          // advisory layer is off there is no phase signal, so RAG runs on the utterance gate alone.
           ragActive: callState ? callState.ragActive : true,
           transcript: ev.transcript,
         });
-        if (!decision.retrieve) return;
-
-        if (!ev.isFinal) {
-          const speculative = injector.injectSpeculative(agent, ev.transcript);
-          if (speculative) void speculative.then((result) => logRagTurn(result, decision.reason, true));
-          return;
-        }
-
-        // Final transcript. Touching the context HERE is what costs the draft, so it is worth doing
-        // only when the turn would otherwise go un-grounded — never to top up a turn the speculative
-        // pass already grounded. That case is not a silent skip: `grounded` says which path ran.
-        if (injector.groundedThisTurn) {
-          injector.endTurn();
-          return;
-        }
-
-        void injector.inject(agent, ev.transcript).then((result) => {
-          logRagTurn(result, decision.reason, false);
-          injector?.endTurn();
-        });
-      });
-
-
-      // Gate decisions that DECLINE are logged once per committed turn rather than per interim result,
-      // which would be several lines per utterance.
-      session.on(voice.AgentSessionEventTypes.ConversationItemAdded, (ev) => {
-        const item = ev.item as { role?: string; textContent?: string };
-        if (item?.role !== 'user' || !item.textContent) return;
-        const decision = decideRetrieval({
-          enabled: true,
-          ragActive: callState ? callState.ragActive : true,
-          transcript: item.textContent,
-        });
-        if (!decision.retrieve) {
-          console.log('rag_skipped', JSON.stringify({ stage: callState?.stage ?? null, reason: decision.reason }));
-        }
+        // Declines are NOT logged here: an utterance produces many interims, and the gate's verdict on
+        // the committed turn is what matters. `llmNode`'s resolver logs `rag_skipped` once per turn.
+        if (decision.retrieve) injector.prefetch(ev.transcript);
       });
     }
 

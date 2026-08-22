@@ -168,6 +168,21 @@ export class CallStateMachine {
       case 'capture_lead_info':
         if (facts) this.mergeFacts(facts);
         if (facts?.qualification) this.advanceTo('qualifying');
+        // R2.1: once booking has started, capturing a detail IS booking progress and must reset the
+        // stall counter.
+        //
+        // It did not, and the 2026-08-22 real call shows the cost: between check_calendar_availability
+        // and book_meeting there were ~10 turns of collecting a name, a phone number (asked four
+        // times) and an email (asked three times). Each fired capture_lead_info and none fired a
+        // SCHEDULING tool, so after two turns `ragActive` decided the booking had been abandoned and
+        // reopened retrieval — 14 lookups during scheduling, on turns that were pure data entry.
+        //
+        // The phase gate was working. Its definition of "stalled" was wrong: it meant "no scheduling
+        // tool recently" when it should mean "no progress toward the booking recently". A caller who
+        // has genuinely gone back to asking questions does not hand over his email address.
+        if (this._stage === 'scheduling' || this._stage === 'closing') {
+          this._userTurnsAtLastSchedulingTool = this._userTurns;
+        }
         break;
       case 'check_calendar_availability':
         this._userTurnsAtLastSchedulingTool = this._userTurns;

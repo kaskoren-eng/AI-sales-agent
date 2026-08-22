@@ -23,6 +23,11 @@ export interface RetrievedChunk {
   content: string;
   chunkIndex: number;
   /**
+   * Token count as measured at INGEST (`knowledge_chunks.token_count`), selected here so the per-turn
+   * slot budget can be enforced without re-tokenizing anything on the voice hot path. See `tokens.ts`.
+   */
+  tokenCount: number;
+  /**
    * The chunk's best evidence from either retriever: `max(vectorScore, lexicalScore)`. This is what
    * `minScore` filters on — a chunk found by strong lexical overlap must not be discarded because its
    * embedding was mediocre, which is the whole reason the lexical half exists.
@@ -127,6 +132,7 @@ export class RetrievalService {
                document_id,
                content,
                chunk_index,
+               token_count,
                1 - (embedding <=> ${literal}::vector) AS vec_score,
                word_similarity(${trimmed}, content) AS lex_score
           FROM knowledge_chunks
@@ -142,6 +148,7 @@ export class RetrievalService {
              document_id,
              content,
              chunk_index,
+             token_count,
              vec_score,
              lex_score,
              (1.0 / (60 + vec_rank))
@@ -166,6 +173,7 @@ export class RetrievalService {
         documentId: String(row.document_id),
         content: String(row.content),
         chunkIndex: Number(row.chunk_index),
+        tokenCount: Number(row.token_count),
         score: Math.max(vectorScore, lexicalScore),
         vectorScore,
         lexicalScore,

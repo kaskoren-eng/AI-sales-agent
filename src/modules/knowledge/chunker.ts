@@ -1,4 +1,4 @@
-import { getEncoding, type Tiktoken } from 'js-tiktoken';
+import { countTokens } from './tokens.js';
 
 /**
  * Text → clean, retrievable chunks. Pure and synchronous, so it unit-tests without a DB or a network.
@@ -28,13 +28,8 @@ export interface Chunk {
   tokenCount: number;
 }
 
-let encoder: Tiktoken | null = null;
-/** `cl100k_base` is close enough for a budget — we are sizing chunks, not billing. Loaded once and
- * memoised because construction parses a sizeable ranks table. */
-function tokens(text: string): number {
-  encoder ??= getEncoding('cl100k_base');
-  return encoder.encode(text).length;
-}
+/** Shared with the voice hot path — see `tokens.ts` for why there is exactly one of these. */
+const tokens = countTokens;
 
 /**
  * Strip the furniture that survives copy-paste and markdown export but means nothing to a caller's

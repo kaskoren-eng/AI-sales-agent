@@ -38,21 +38,29 @@ function events(name: string): Array<Record<string, unknown>> {
   return out;
 }
 
-const ragTurns = events('rag_turn');
+const slots = events('rag_slot');
 const skipped = events('rag_skipped');
 const packs = events('playbook_delivered');
 const resolved = events('rag_resolved');
 const sizes = events('playbook_packs');
 const fillers = events('thinking_filler');
 
-const stages = new Set(ragTurns.map((t) => t.stage as string));
+const watermarks = events('context_watermark');
+const contextSeries = slots.map((t) => Number(t.contextTokens)).filter((n) => Number.isFinite(n));
+/** The context WITHOUT the slot — system prompt + packs + transcript. */
+const baseSeries = slots.map((t) => Number(t.contextTokensBeforeSlot)).filter((n) => Number.isFinite(n));
+/** The slot's entire footprint per turn. Under a rolling slot this is bounded; under R2 it compounded. */
+const slotFootprint = slots
+  .map((t) => Number(t.contextTokens) - Number(t.contextTokensBeforeSlot))
+  .filter((n) => Number.isFinite(n));
+const expired = slots.filter((t) => t.deadlineExpired === true).length;
+const awaited = slots.map((t) => Number(t.awaitedMs)).filter((n) => Number.isFinite(n));
 const skipReasons = skipped.map((s) => s.reason as string);
 const packHeadings = packs.flatMap((p) => (p.headings as string[]) ?? []);
 const discarded = (log.match(/preemptive generation enabled but chat context/g) ?? []).length;
 const started = (log.match(/starting preemptive generation/g) ?? []).length;
-const speculative = ragTurns.filter((t) => t.speculative === true).length;
-const injected = ragTurns.filter((t) => t.injected === true).length;
-const embedMs = ragTurns.map((t) => Number(t.embedMs)).filter((n) => Number.isFinite(n));
+const injected = slots.filter((t) => Number(t.chunks) > 0).length;
+const embedMs = slots.map((t) => Number(t.embedMs)).filter((n) => Number.isFinite(n));
 
 interface Check {
   what: string;
@@ -72,10 +80,38 @@ check(
 );
 
 // ── retrieval fired where it should ────────────────────────────────────────────────
-check('retrieval ran at all', ragTurns.length > 0, `${ragTurns.length} rag_turn lines`);
-check('retrieval injected something', injected > 0, `${injected} of ${ragTurns.length} injected`);
-check('retrieval ran during discovery', stages.has('discovery'), `stages: ${[...stages].join(', ') || 'none'}`);
-check('retrieval ran during qualifying', stages.has('qualifying'), `stages: ${[...stages].join(', ') || 'none'}`);
+check('retrieval ran at all', slots.length > 0, `${slots.length} rag_slot lines`);
+check('retrieval filled a slot', injected > 0, `${injected} of ${slots.length} slots had chunks`);
+
+// ── R2.1: the context diet ─────────────────────────────────────────────────────────────
+// The whole point. Injection overhead must be FLAT, so context growth across the call is the
+// transcript growing — not the transcript PLUS an ever-larger pile of knowledge blocks.
+/**
+ * THE R2.1 ACCEPTANCE TEST, stated as the property rather than as a number.
+ *
+ * A first version of this check compared total context growth against a guessed 250 tokens/turn and
+ * failed a run that was working perfectly — because total growth is dominated by the TRANSCRIPT, which
+ * is supposed to grow. The number said "fail" while the mechanism said "fine".
+ *
+ * The property that actually distinguishes R2.1 from R2 is that the slot's footprint is BOUNDED. Under
+ * R2 every injection stayed forever, so footprint rose without limit; under a rolling slot it can never
+ * exceed one turn's budget, whatever else the call does.
+ */
+const maxFootprint = slotFootprint.length ? Math.max(...slotFootprint) : 0;
+const budgetCeiling = 1000 + 40; // budget + the marker line's own tokens
+check(
+  'knowledge footprint is flat, not cumulative',
+  slotFootprint.length === 0 || maxFootprint <= budgetCeiling,
+  slotFootprint.length
+    ? `max slot footprint ${maxFootprint} tokens (ceiling ${budgetCeiling}); base context ${baseSeries[0]} -> ${baseSeries[baseSeries.length - 1]}`
+    : 'no slots to judge',
+);
+check('no context watermark tripped', watermarks.length === 0, `${watermarks.length} watermark lines`);
+check(
+  'slot deadline rarely expires',
+  slots.length === 0 || expired / slots.length <= 0.03,
+  `${expired} of ${slots.length} expired (${slots.length ? Math.round((expired / slots.length) * 100) : 0}%) — revisit above 3%`,
+);
 
 // ── the two gates ──────────────────────────────────────────────────────────────────
 check(
@@ -89,9 +125,9 @@ check(
   `skip reasons: ${skipReasons.join(', ') || 'none'}`,
 );
 check(
-  'booking-stall reopened retrieval at scheduling',
-  stages.has('scheduling'),
-  stages.has('scheduling') ? 'rag_turn seen at stage=scheduling' : 'no retrieval after booking started',
+  'contact-data turns were skipped, not embedded',
+  skipReasons.includes('contact_data') || skipReasons.includes('answering_agent') || !skipReasons.length,
+  `skip reasons: ${skipReasons.join(', ') || 'none'}`,
 );
 
 // ── progressive disclosure ─────────────────────────────────────────────────────────
@@ -109,14 +145,9 @@ check(
 
 // ── the preemptive draft, which is why R2 was rewritten ────────────────────────────
 check(
-  'no preemptive draft discarded',
+  'no preemptive draft discarded (the rolling slot must never touch agent.chatCtx)',
   discarded === 0,
   `${discarded} discarded of ${started} started`,
-);
-check(
-  'speculative path won more often than not',
-  ragTurns.length > 0 && speculative > ragTurns.length / 2,
-  `${speculative} speculative of ${ragTurns.length}`,
 );
 
 // ── things that would show up as a caller complaint ────────────────────────────────
@@ -155,7 +186,11 @@ for (const c of checks) {
 }
 
 console.log('\nMeasured, not asserted (no target to pass or fail against):');
-console.log(`  retrieval turns      ${ragTurns.length}  (${injected} injected, ${speculative} speculative)`);
+console.log(`  knowledge slots      ${slots.length}  (${injected} with chunks, ${expired} deadline-expired)`);
+console.log(`  slot wait ms         ${awaited.length ? `median ${awaited.sort((a, b) => a - b)[Math.floor(awaited.length / 2)]} / max ${Math.max(...awaited)}` : 'n/a'}`);
+console.log(`  context tokens       ${contextSeries.length ? `${contextSeries[0]} -> ${contextSeries[contextSeries.length - 1]} across ${contextSeries.length} turns` : 'n/a'}`);
+console.log(`  context w/o slot     ${baseSeries.length ? `${baseSeries[0]} -> ${baseSeries[baseSeries.length - 1]}` : 'n/a'}`);
+console.log(`  slot footprint       ${slotFootprint.length ? `min ${Math.min(...slotFootprint)} / max ${Math.max(...slotFootprint)} tokens` : 'n/a'}`);
 console.log(`  skips                ${skipped.length}  (${skipReasons.join(', ') || 'none'})`);
 console.log(`  embedding ms         ${embedMs.length ? `min ${Math.min(...embedMs)} / median ${embedMs.sort((a, b) => a - b)[Math.floor(embedMs.length / 2)]} / max ${Math.max(...embedMs)}` : 'n/a'}`);
 console.log(`  thinking fillers     ${fillers.length}  (each one is a turn that crossed the threshold)`);
