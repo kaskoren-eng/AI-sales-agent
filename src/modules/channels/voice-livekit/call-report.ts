@@ -389,7 +389,7 @@ export class CallReport {
         const recent = this.#transcript
           .slice(Math.max(0, i - 4), i)
           .filter((x) => x.role === 'assistant');
-        if (recent.some((x) => x.text.trim() === curr.text.trim())) duplicateReplies++;
+        if (recent.some((x) => isRepeatOf(x.text, curr.text))) duplicateReplies++;
       }
     }
 
@@ -437,6 +437,33 @@ export class CallReport {
       return null;
     }
   }
+}
+
+/**
+ * How much of a repeat has to survive for it to count as one.
+ *
+ * Well above any opener. The prompt tells her to start every reply with a 2-4 word acknowledgement
+ * ("בטח.", "שאלה מצוינת.", "מעולה, קורן."), so two unrelated answers routinely share their first
+ * ~15 characters and must not be flagged.
+ */
+const REPEAT_MIN_CHARS = 40;
+
+/**
+ * True when `curr` is the same answer as `prev` — including the case where one of them was cut short.
+ *
+ * Exact equality alone under-reported. On the 2026-08-22 call she repeated a 40-word sentence at 206s
+ * and again at 223s, and the second copy was truncated mid-word by a barge-in, so the strings differed
+ * and the report said `duplicateReplies: 0` for a call that visibly had one. A metric that reads zero
+ * on a real occurrence is worse than no metric, because it gets trusted.
+ *
+ * A truncated repeat is still a repeat: the caller heard her start the same sentence over.
+ */
+function isRepeatOf(prev: string, curr: string): boolean {
+  const a = prev.trim();
+  const b = curr.trim();
+  if (a === b) return true;
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+  return shorter.length >= REPEAT_MIN_CHARS && longer.startsWith(shorter);
 }
 
 function median(values: number[]): number | null {
