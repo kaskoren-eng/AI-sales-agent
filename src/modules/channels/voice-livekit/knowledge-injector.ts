@@ -67,6 +67,32 @@ export const DEFAULT_RESOLVE_DEADLINE_MS = 300;
 /** Bounded so a long call cannot accumulate one promise per utterance. */
 const LRU_MAX = 16;
 
+/**
+ * ── WHY THE CACHE MATCHES ON PREFIXES AND NOT ONLY ON EXACT TEXT ───────────────────────────────
+ *
+ * Measured on the 2026-08-22 acceptance call (8 minutes, 34 turns): `resolve` waited a MEDIAN of
+ * 239ms on every first inference of every turn, and the deadline expired on 4 of 32 slots (12.5%,
+ * against a 3% threshold). One of those expiries landed on "כמה זה עולה?" and she answered "אין לי
+ * כרגע את המידע הזה" to the most valuable question in the call — with the price sitting in the KB.
+ *
+ * The prefetch was not slow. It was ORPHANED. `prefetch` keys on the INTERIM transcript; `resolve`
+ * asks for the PREFLIGHT text, which is longer. The two keys never match, so every turn threw away a
+ * warm lookup and started a cold one on the critical path. The simulation hid this completely: the
+ * synthetic caller's TTS speech produces an interim identical to the final, so the exact key hit
+ * every time and the median wait was 1ms.
+ *
+ * So a lookup already in flight for a PREFIX of this utterance is reused. It is usually the same
+ * question with its last word or two missing, and — the part that matters — it started ~150ms ago, so
+ * the wait is what REMAINS of it rather than all of it. Reuse works whether or not it has settled.
+ *
+ * The two thresholds are deliberately conservative. Reusing a 3-character prefix would answer a
+ * different question; requiring most of the utterance means a miss costs one embedding (cheap) and a
+ * false reuse stays rare (expensive). `reusedPrefix` is logged per turn so the next real call
+ * measures whether these numbers are right instead of us guessing at them twice.
+ */
+const MIN_PREFIX_COVERAGE = 0.7;
+const MIN_PREFIX_CHARS = 12;
+
 export interface KnowledgeSlot {
   /** The text to append, or null when there is nothing worth appending. */
   block: string | null;
@@ -81,15 +107,38 @@ export interface KnowledgeSlot {
   awaitedMs: number;
   /** The lookup did not finish in time; this inference is un-grounded. */
   deadlineExpired: boolean;
+  /** The result came from a lookup started for a PREFIX of this utterance (an earlier interim). */
+  reusedPrefix: boolean;
+  /**
+   * How much of this utterance the BEST available prefix covered, 0–1, whether or not it was used.
+   *
+   * Exists to make the next tuning pass evidence-based rather than another guess. If real calls show
+   * reuse failing at a steady 0.6, the floor is too high; if the best candidate is routinely 0.2, then
+   * Soniox interims arrive too sparsely for prefix reuse to be the answer at all and the fix is
+   * somewhere else. Without this we would only know that it did not work.
+   */
+  bestPrefixCoverage: number;
   /** Absent when the result came from cache without any lookup this turn. */
   timing: { embedMs: number; dbMs: number; totalMs: number } | null;
 }
 
 type SearchResult = Awaited<ReturnType<RetrievalService['search']>>;
 
+interface CacheEntry {
+  promise: Promise<SearchResult>;
+  /**
+   * The key whose TEXT was actually embedded.
+   *
+   * Distinct from the map key, because a prefix reuse files the same lookup under a second key. Every
+   * coverage test is made against this, never against the map key — otherwise reuses would chain
+   * (a → b → c) and drift arbitrarily far from the text that was really searched.
+   */
+  searchedKey: string;
+}
+
 export class KnowledgeInjector {
   /** utterance -> in-flight or settled lookup. Insertion-ordered, evicted oldest-first. */
-  private readonly cache = new Map<string, Promise<SearchResult>>();
+  private readonly cache = new Map<string, CacheEntry>();
 
   constructor(
     private readonly retrieval: RetrievalService,
@@ -114,13 +163,64 @@ export class KnowledgeInjector {
    */
   prefetch(transcript: string): void {
     const key = KnowledgeInjector.normalize(transcript);
-    if (key) void this.lookup(key, transcript);
+    if (!key) return;
+    // Swallow the rejection HERE as well as in `lookup`: a prefetch nobody ever resolves would
+    // otherwise surface as an unhandled rejection and take the worker down on a KB outage.
+    void this.lookup(key, transcript).entry.promise.catch(() => {});
   }
 
-  /** Cached lookup, keyed on the normalized utterance. Failures are evicted so a retry is possible. */
-  private lookup(key: string, transcript: string): Promise<SearchResult> {
+  /**
+   * The longest in-flight-or-settled lookup whose searched text is a PREFIX of this utterance.
+   *
+   * Longest wins because it is the latest interim, and so the closest to what the caller actually
+   * finished saying. Returns null when nothing covers enough of the utterance to stand in for it.
+   */
+  private findReusablePrefix(key: string): { entry: CacheEntry | null; bestCoverage: number } {
+    let best: CacheEntry | null = null;
+    let bestCoverage = 0;
+    for (const entry of this.cache.values()) {
+      const candidate = entry.searchedKey;
+      if (candidate.length >= key.length) continue; // an exact hit was already tried; longer is not a prefix
+      if (!key.startsWith(candidate)) continue;
+      // Recorded before the thresholds are applied, so a near-miss is visible in the logs rather than
+      // indistinguishable from having no candidate at all.
+      const coverage = candidate.length / key.length;
+      if (coverage > bestCoverage) bestCoverage = coverage;
+      if (candidate.length < MIN_PREFIX_CHARS) continue;
+      if (coverage < MIN_PREFIX_COVERAGE) continue;
+      if (!best || candidate.length > best.searchedKey.length) best = entry;
+    }
+    return { entry: best, bestCoverage };
+  }
+
+  /**
+   * Cached lookup, keyed on the normalized utterance. Failures are evicted so a retry is possible.
+   *
+   * `allowPrefix` is off for `prefetch`: an interim that reused an earlier interim would file the same
+   * lookup under every intermediate key and crowd the LRU with duplicates of one turn. Only `resolve`
+   * — the one call that is paying latency for the answer — reuses.
+   */
+  private lookup(
+    key: string,
+    transcript: string,
+    allowPrefix = false,
+  ): { entry: CacheEntry; reusedPrefix: boolean; bestPrefixCoverage: number } {
     const existing = this.cache.get(key);
-    if (existing) return existing;
+    if (existing) {
+      return { entry: existing, reusedPrefix: existing.searchedKey !== key, bestPrefixCoverage: 1 };
+    }
+
+    let bestPrefixCoverage = 0;
+    if (allowPrefix) {
+      const { entry: prefix, bestCoverage } = this.findReusablePrefix(key);
+      bestPrefixCoverage = bestCoverage;
+      if (prefix) {
+        // File it under this key too, so a second inference in the same turn is an exact hit. The
+        // entry keeps its ORIGINAL searchedKey, which is what future coverage tests are measured on.
+        this.remember(key, prefix);
+        return { entry: prefix, reusedPrefix: true, bestPrefixCoverage };
+      }
+    }
 
     const promise = this.retrieval
       .search(this.tenantId, transcript, { topK: this.options.topK, minScore: this.options.minScore })
@@ -129,14 +229,19 @@ export class KnowledgeInjector {
         throw err;
       });
 
-    this.cache.set(key, promise);
-    // Oldest-first eviction. A settled promise costs almost nothing, but an unbounded map on a
-    // twenty-minute call is a leak waiting to be found by someone else.
+    const entry: CacheEntry = { promise, searchedKey: key };
+    this.remember(key, entry);
+    return { entry, reusedPrefix: false, bestPrefixCoverage };
+  }
+
+  /** Insert and bound. Oldest-first eviction: a settled promise costs almost nothing, but an unbounded
+   * map on a twenty-minute call is a leak waiting to be found by someone else. */
+  private remember(key: string, entry: CacheEntry): void {
+    this.cache.set(key, entry);
     if (this.cache.size > LRU_MAX) {
       const oldest = this.cache.keys().next().value;
       if (oldest !== undefined) this.cache.delete(oldest);
     }
-    return promise;
   }
 
   /**
@@ -154,6 +259,8 @@ export class KnowledgeInjector {
       dedupedInResult: 0,
       awaitedMs: 0,
       deadlineExpired: false,
+      reusedPrefix: false,
+      bestPrefixCoverage: 0,
       timing: null,
     };
 
@@ -162,7 +269,8 @@ export class KnowledgeInjector {
 
     const deadlineMs = this.options.deadlineMs ?? DEFAULT_RESOLVE_DEADLINE_MS;
     const startedAt = Date.now();
-    const pending = this.lookup(key, transcript);
+    const { entry, reusedPrefix, bestPrefixCoverage } = this.lookup(key, transcript, true);
+    const pending = entry.promise;
 
     // The deadline races the lookup; it does NOT cancel it. An abandoned lookup still settles into the
     // cache, so the next turn on the same topic is grounded from memory rather than re-paying this.
@@ -174,13 +282,13 @@ export class KnowledgeInjector {
       ]);
     } catch (err) {
       console.error('knowledge_lookup_failed', err instanceof Error ? err.message : String(err));
-      return { ...empty, awaitedMs: Date.now() - startedAt };
+      return { ...empty, awaitedMs: Date.now() - startedAt, reusedPrefix, bestPrefixCoverage };
     }
 
     const awaitedMs = Date.now() - startedAt;
-    if (!result) return { ...empty, awaitedMs, deadlineExpired: true };
+    if (!result) return { ...empty, awaitedMs, deadlineExpired: true, reusedPrefix, bestPrefixCoverage };
 
-    return { ...this.buildSlot(result), awaitedMs, deadlineExpired: false };
+    return { ...this.buildSlot(result), awaitedMs, deadlineExpired: false, reusedPrefix, bestPrefixCoverage };
   }
 
   /** Dedup within the result set, then trim to the token budget. */
@@ -213,6 +321,8 @@ export class KnowledgeInjector {
       dedupedInResult: result.chunks.length - unique.length,
       awaitedMs: 0,
       deadlineExpired: false,
+      reusedPrefix: false,
+      bestPrefixCoverage: 0,
       timing: result.timing,
     };
   }

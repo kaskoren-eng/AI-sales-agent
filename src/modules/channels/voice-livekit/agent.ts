@@ -242,8 +242,14 @@ class ClickScalesAgent extends voice.Agent {
               awaitedMs: slot.awaitedMs,
               // Share of gated turns where this is true is the health metric for the 300ms deadline.
               // Above ~3% on real calls, the prefetch window is too short — revisit the gate and the
-              // cache before touching the number.
+              // cache before touching the number. It read 12.5% on 2026-08-22, which is what sent us
+              // looking and turned up the orphaned prefetch below.
               deadlineExpired: slot.deadlineExpired,
+              // Whether the warm prefetch was actually USED. Before the prefix fix this was
+              // effectively never — `prefetch` filed under the interim text and `resolve` asked for the
+              // preflight text — so every turn paid a cold ~200ms embedding. Read alongside
+              // `awaitedMs`: high reuse with a low wait is the fix working.
+              reusedPrefix: slot.reusedPrefix,
               contextTokens: total,
               contextTokensBeforeSlot: baseline,
               ...(slot.timing ? { embedMs: slot.timing.embedMs, dbMs: slot.timing.dbMs } : {}),

@@ -217,6 +217,104 @@ describe('KnowledgeInjector — prefetch, cache and the deadline', () => {
     expect(calls).toHaveLength(1); // never re-searched
   });
 
+  /**
+   * ── THE 2026-08-22 REGRESSION ────────────────────────────────────────────────────────────────
+   *
+   * `prefetch` fires on INTERIM transcripts; `resolve` asks for the PREFLIGHT text, which is longer.
+   * Keyed on exact text, the two never matched, so every real turn discarded a warm lookup and paid a
+   * cold one: median wait 239ms and 4 of 32 slots expiring, one of them on "כמה זה עולה?" — she
+   * answered "אין לי כרגע את המידע הזה" with the price sitting in the KB.
+   *
+   * The existing suite passed throughout, because every test prefetched the SAME string it resolved.
+   * So did the 21-turn simulation, because synthetic TTS speech yields an interim identical to the
+   * final. Only real speech, which pauses mid-sentence, produces the mismatch.
+   */
+  it('reuses a lookup started for an earlier interim of the same utterance', async () => {
+    const { service, calls } = stubRetrieval([[chunk('c1', 'המנוי החודשי הוא 1,490 שקלים')]]);
+    const injector = new KnowledgeInjector(service, 'tenant-1');
+
+    injector.prefetch('כמה זה עולה בחוד'); // interim: caller still mid-word
+    const slot = await injector.resolve('כמה זה עולה בחודש'); // preflight: the committed turn
+
+    expect(slot.reusedPrefix).toBe(true);
+    expect(slot.chunkIds).toEqual(['c1']);
+    expect(calls).toHaveLength(1); // the cold path was NOT re-entered
+  });
+
+  it('reuses the LATEST interim, not the earliest', async () => {
+    const { service, calls } = stubRetrieval([[chunk('early', 'א')], [chunk('late', 'ב')]]);
+    const injector = new KnowledgeInjector(service, 'tenant-1');
+
+    injector.prefetch('מה תנאי היציאה מה'); // 16 chars
+    injector.prefetch('מה תנאי היציאה מהחוזה'); // 21 chars — closer to what he actually said
+    const slot = await injector.resolve('מה תנאי היציאה מהחוזה?');
+
+    expect(slot.chunkIds).toEqual(['late']);
+    expect(calls).toHaveLength(2);
+  });
+
+  /**
+   * The expensive direction. A prefix that drops the SUBJECT of the question retrieves for a different
+   * question, and she would answer confidently off the wrong chunks — worse than answering un-grounded.
+   */
+  it('refuses a prefix that is too short to stand for the utterance', async () => {
+    const { service, calls } = stubRetrieval([[chunk('wrong', 'לא קשור')]]);
+    const injector = new KnowledgeInjector(service, 'tenant-1');
+
+    injector.prefetch('האם יש לכם'); // 10 chars — could precede almost any question
+    const slot = await injector.resolve('האם יש לכם אינטגרציה עם מערכת קרסו');
+
+    expect(slot.reusedPrefix).toBe(false);
+    expect(calls).toHaveLength(2); // searched properly rather than reusing
+  });
+
+  it('never treats a different question as a prefix', async () => {
+    const { service, calls } = stubRetrieval([[chunk('a', 'א')], [chunk('b', 'ב')]]);
+    const injector = new KnowledgeInjector(service, 'tenant-1');
+
+    injector.prefetch('כמה זה עולה בחודש');
+    const slot = await injector.resolve('מה תנאי היציאה מהחוזה');
+
+    expect(slot.reusedPrefix).toBe(false);
+    expect(slot.chunkIds).toEqual(['b']);
+    expect(calls).toEqual(['כמה זה עולה בחודש', 'מה תנאי היציאה מהחוזה']);
+  });
+
+  /**
+   * Reuse must not CHAIN. Coverage is always measured against the text that was really embedded, so a
+   * short prefix cannot be laundered into covering an arbitrarily long utterance by hopping through
+   * intermediate keys.
+   */
+  it('measures coverage against the searched text, so reuse cannot drift', async () => {
+    const { service, calls } = stubRetrieval([[chunk('c1', 'x')]]);
+    const injector = new KnowledgeInjector(service, 'tenant-1');
+
+    injector.prefetch('כמה זה עולה בחוד'); // 16 chars, actually embedded
+    await injector.resolve('כמה זה עולה בחודש'); // 17 — reuses, filed under a second key
+    expect(calls).toHaveLength(1);
+
+    // 27 chars. Against the 16 that were searched this is 59% — under the floor, so it must NOT reuse,
+    // even though a 17-char key now sits in the cache and would have passed at 63%.
+    const far = await injector.resolve('כמה זה עולה בחודש לעסק קטן?');
+    expect(far.reusedPrefix).toBe(false);
+    expect(calls).toHaveLength(2);
+  });
+
+  /** A reused lookup that is still in flight is still a win: the wait is what REMAINS of it. */
+  it('reuses an in-flight prefix and waits only for the remainder', async () => {
+    const { service, calls } = stubRetrieval([[chunk('c1', 'בדרך')]], 120);
+    const injector = new KnowledgeInjector(service, 'tenant-1');
+
+    injector.prefetch('מה תנאי היציאה מהחו');
+    await new Promise((r) => setTimeout(r, 80)); // 80ms of the 120ms already elapsed
+    const slot = await injector.resolve('מה תנאי היציאה מהחוזה');
+
+    expect(slot.reusedPrefix).toBe(true);
+    expect(slot.deadlineExpired).toBe(false);
+    expect(slot.awaitedMs).toBeLessThan(100); // not the full 120
+    expect(calls).toHaveLength(1);
+  });
+
   it('does not wait at all when the answer is already cached', async () => {
     const { service } = stubRetrieval([[chunk('c1', 'מוכן')]]);
     const injector = new KnowledgeInjector(service, 'tenant-1');

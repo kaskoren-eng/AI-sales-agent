@@ -55,9 +55,36 @@ const slotFootprint = slots
   .filter((n) => Number.isFinite(n));
 const expired = slots.filter((t) => t.deadlineExpired === true).length;
 const awaited = slots.map((t) => Number(t.awaitedMs)).filter((n) => Number.isFinite(n));
+/** Slots answered from a lookup started for an earlier interim of the same utterance. */
+const reused = slots.filter((t) => t.reusedPrefix === true).length;
+/** How much of the utterance the best candidate prefix covered — the input to any threshold retune. */
+const coverages = slots
+  .map((t) => Number(t.bestPrefixCoverage))
+  .filter((n) => Number.isFinite(n) && n > 0)
+  .sort((a, b) => a - b);
+const medianCoverage = coverages.length ? coverages[Math.floor(coverages.length / 2)]! : 0;
 const skipReasons = skipped.map((s) => s.reason as string);
 const packHeadings = packs.flatMap((p) => (p.headings as string[]) ?? []);
-const discarded = (log.match(/preemptive generation enabled but chat context/g) ?? []).length;
+/**
+ * Discarded preemptive drafts, split by CAUSE.
+ *
+ * A draft dies for two unrelated reasons and only one of them is ours. If the rolling slot ever touched
+ * `agent.chatCtx`, the equivalence check would reject the draft — that is the regression this file
+ * exists to catch. But a caller who barges in also invalidates the draft, legitimately, and LiveKit logs
+ * both with the same warning.
+ *
+ * Counting them together made this check fail the 2026-08-22 acceptance call over a caller who
+ * interrupted himself — a red line for healthy behaviour, which is how a verifier stops being read.
+ */
+const discardLines = log.split('\n');
+let discarded = 0;
+let discardedByBargeIn = 0;
+for (let i = 0; i < discardLines.length; i += 1) {
+  if (!discardLines[i]!.includes('preemptive generation enabled but chat context')) continue;
+  const preceding = discardLines.slice(Math.max(0, i - 6), i).join('\n');
+  if (preceding.includes('speech interrupted, new user turn detected')) discardedByBargeIn += 1;
+  else discarded += 1;
+}
 const started = (log.match(/starting preemptive generation/g) ?? []).length;
 const injected = slots.filter((t) => Number(t.chunks) > 0).length;
 const embedMs = slots.map((t) => Number(t.embedMs)).filter((n) => Number.isFinite(n));
@@ -113,6 +140,28 @@ check(
   `${expired} of ${slots.length} expired (${slots.length ? Math.round((expired / slots.length) * 100) : 0}%) — revisit above 3%`,
 );
 
+/**
+ * THE 2026-08-22 REGRESSION, as a standing check.
+ *
+ * `prefetch` warms the cache on interim transcripts; `resolve` asks for the longer preflight text. Keyed
+ * on exact text those never matched, so every real turn discarded a warm lookup and paid a cold one —
+ * median wait 239ms, 12.5% of slots expiring, and one expiry landing on the pricing question.
+ *
+ * Waits are asserted rather than merely measured because this failure is SILENT: retrieval still works,
+ * the call still completes, and only the latency and the occasional un-grounded answer show it. The
+ * threshold is deliberately above a warm-cache wait (~0ms) and below a cold embedding (~200ms).
+ */
+const firstPass = awaited.filter((ms) => ms > 0);
+const medianWait = firstPass.length
+  ? [...firstPass].sort((a, b) => a - b)[Math.floor(firstPass.length / 2)]!
+  : 0;
+check(
+  'the warm prefetch is actually used (not orphaned by a key mismatch)',
+  slots.length === 0 || reused / slots.length >= 0.5 || medianWait < 120,
+  `${reused} of ${slots.length} slots reused a prefix; median non-zero wait ${medianWait}ms` +
+    (coverages.length ? `; best available coverage median ${medianCoverage.toFixed(2)}` : ''),
+);
+
 // ── the two gates ──────────────────────────────────────────────────────────────────
 check(
   'acknowledgement skipped (never yet seen on synthetic audio)',
@@ -145,9 +194,9 @@ check(
 
 // ── the preemptive draft, which is why R2 was rewritten ────────────────────────────
 check(
-  'no preemptive draft discarded (the rolling slot must never touch agent.chatCtx)',
+  'no preemptive draft discarded by injection (barge-in discards are the caller, not us)',
   discarded === 0,
-  `${discarded} discarded of ${started} started`,
+  `${discarded} discarded by context change, ${discardedByBargeIn} by barge-in, of ${started} started`,
 );
 
 // ── things that would show up as a caller complaint ────────────────────────────────
@@ -187,7 +236,8 @@ for (const c of checks) {
 
 console.log('\nMeasured, not asserted (no target to pass or fail against):');
 console.log(`  knowledge slots      ${slots.length}  (${injected} with chunks, ${expired} deadline-expired)`);
-console.log(`  slot wait ms         ${awaited.length ? `median ${awaited.sort((a, b) => a - b)[Math.floor(awaited.length / 2)]} / max ${Math.max(...awaited)}` : 'n/a'}`);
+console.log(`  slot wait ms         ${awaited.length ? `median ${[...awaited].sort((a, b) => a - b)[Math.floor(awaited.length / 2)]} / max ${Math.max(...awaited)}` : 'n/a'}`);
+console.log(`  prefix reuse         ${reused} of ${slots.length} slots; best-available coverage median ${medianCoverage.toFixed(2)}`);
 console.log(`  context tokens       ${contextSeries.length ? `${contextSeries[0]} -> ${contextSeries[contextSeries.length - 1]} across ${contextSeries.length} turns` : 'n/a'}`);
 console.log(`  context w/o slot     ${baseSeries.length ? `${baseSeries[0]} -> ${baseSeries[baseSeries.length - 1]}` : 'n/a'}`);
 console.log(`  slot footprint       ${slotFootprint.length ? `min ${Math.min(...slotFootprint)} / max ${Math.max(...slotFootprint)} tokens` : 'n/a'}`);
