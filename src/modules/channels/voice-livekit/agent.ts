@@ -15,6 +15,7 @@ import { loadEnv } from '../../../config/env.js';
 import { callLearnings } from '../../../db/schema/index.js';
 import { buildSessionComponents, buildTTS, describeTtsModel } from './agent.config.js';
 import { CallReport } from './call-report.js';
+import { probeDatabase } from './db-probe.js';
 import { CallStateMachine } from './call-state.js';
 import { decideSilenceAction, decideVoicemailAction } from './call-reflexes.js';
 import { hasAiDisclosure } from './compliance/ai-disclosure.js';
@@ -220,6 +221,9 @@ export default defineAgent({
       // that does not exist on a telephone. Raising this makes the VAD ignore the noise floor.
       activationThreshold: env.VOICE_VAD_ACTIVATION_THRESHOLD,
     });
+
+    // Say out loud whether this worker can reach its database. See db-probe.ts.
+    await probeDatabase(env.DATABASE_URL);
   },
 
   // Runs once per call.
