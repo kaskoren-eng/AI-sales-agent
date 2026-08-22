@@ -124,6 +124,26 @@ check('no tool gate failure', !log.includes('tools_disabled'), log.includes('too
 check('no injection failure', !log.includes('knowledge_inject_failed'), 'knowledge_inject_failed absent');
 check('DID routed to a tenant', log.includes('"source":"did_lookup"') || log.includes('call_identity'), 'call_identity present');
 
+/**
+ * A log with two sessions in it silently doubles every count and blends two different calls into one
+ * verdict. That is not hypothetical: on 2026-08-22 a real inbound call landed on the same worker
+ * while this scenario was running, and the first run of this script reported 76 retrievals and six
+ * pack deliveries for a 21-turn scenario. Refuse to report rather than report something false.
+ */
+const sessionCount = (log.match(/received job request/g) ?? []).length;
+if (sessionCount > 1) {
+  console.error(
+    [
+      '',
+      `REFUSING TO VERIFY: ${sessionCount} sessions in this log.`,
+      'Every count below would be a blend of separate calls. Restart the worker with a fresh log',
+      'file, re-run the scenario, and keep other calls off this worker while it runs.',
+      '',
+    ].join('\n'),
+  );
+  process.exit(2);
+}
+
 const pass = checks.filter((c) => c.ok).length;
 const width = Math.max(...checks.map((c) => c.what.length));
 
