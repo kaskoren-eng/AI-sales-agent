@@ -47,54 +47,43 @@ describe('## KNOWLEDGE — grounding', () => {
 });
 
 /**
- * THE 2026-08-22 VERBOSITY REGRESSION.
+ * ── ANSWER LENGTH: TRIED IN THE PROMPT, MEASURED, REVERTED ─────────────────────────────────────
  *
- * Measured on both calls: she answers a one-fact question by reading the whole chunk — price, then
- * inclusions, then per-lead overage, then languages, then CRM sync. The block is reference material
- * and she was treating it as a script.
+ * She answers a one-fact question by reading the whole retrieved chunk — price, then inclusions,
+ * then per-lead overage, then languages, then CRM sync. Measured across three calls.
  *
- * Asserted on the PROMPT rather than on her words, because what she actually says is a model
- * behaviour that only a real call can judge. What this file can guarantee is that the instruction is
- * present and unambiguous — the necessary half, not the sufficient one.
+ * On 2026-08-22 the `## KNOWLEDGE` block gained 185 words telling her to answer in one or two
+ * sentences (~40 words), to use only the fact that was asked for, never to recite lists, plus a
+ * worked example of this exact failure. The 2026-08-23 call is the result:
+ *
+ *     answers: 45 / 61 / 49 / 34 / 27 words
+ *     baseline inference: 2,754 -> 2,970 promptTokens  (+216, EVERY inference of EVERY call)
+ *
+ * No shorter than before, and the longest answer of the call was 61 words. The instruction cost
+ * tokens on every turn for the length of the call and changed nothing, so it was reverted in full.
+ *
+ * WHAT THIS RULES OUT, which is the part worth keeping: the problem is not that she was never told.
+ * She was told explicitly, with an example, and did it anyway. The next attempt should not be more
+ * prompt words — the chunks themselves are ~250 tokens of prose, and she recites what she is handed.
+ * Shorten the source material and there is less to recite.
+ *
+ * These stay as `todo` rather than being deleted: they are the specification for whatever fixes this,
+ * and re-deriving them means re-running three calls.
  */
 describe('## KNOWLEDGE — brevity', () => {
-  it('caps the length of a factual answer', () => {
-    expect(withRag).toMatch(/ONE OR TWO sentences/u);
-    expect(withRag).toMatch(/40 spoken words/u);
-  });
-
-  it('says to answer the question asked and leave the rest unsaid', () => {
-    expect(withRag).toMatch(/Everything else in the block stays unsaid/u);
-  });
-
-  it('forbids reciting lists the lead never asked for', () => {
-    expect(withRag).toMatch(/Never read out a list of features/u);
-  });
-
-  it('carries a worked example of the failure, not just the rule', () => {
-    // An abstract "be brief" is the instruction that was already implied and already ignored. The
-    // example names the specific thing she did: the price PLUS four things nobody asked about.
-    expect(withRag).toMatch(/כמה זה עולה/u);
-    expect(withRag).toMatch(/NOT the price, plus what the package includes/u);
-  });
+  it.todo('caps the length of a factual answer');
+  it.todo('says to answer the question asked and leave the rest unsaid');
+  it.todo('forbids reciting lists the lead never asked for');
+  it.todo('carries a worked example of the failure, not just the rule');
 
   /**
-   * The example must DESCRIBE quoting a price without CONTAINING one.
-   *
-   * The first draft of it wrote ClickScales' real figures into the prompt — in a multi-tenant prompt,
-   * for every tenant, and reintroducing the second source of truth for pricing that `slimKnowledge`
-   * exists to delete. `knowledge-settings.test.ts` caught it. Pinned here too, next to the example,
-   * because that is where the mistake will be made again.
+   * KEPT LIVE, because it is about pricing having one source of truth rather than about brevity.
+   * The reverted block's example originally wrote ClickScales' real figures into a multi-tenant
+   * prompt. Whatever replaces it must not do that again.
    */
-  it('the example quotes no actual figure', () => {
-    const example = withRag.slice(withRag.indexOf('Asked "כמה זה עולה'));
-    expect(example).not.toMatch(/\d[\d,.]*\s*(?:שקל|ש"ח|₪)/u);
-    expect(example).not.toMatch(/1,490|3,500/u);
-  });
-
-  it('keeps the brevity rules inside the RAG block, so rollback takes them too', () => {
-    // They describe how to use a `[KNOWLEDGE]` block. Without RAG there is no block, and a stray
-    // 40-word cap would silently shorten her scripted FAQ answers instead.
-    expect(withoutRag).not.toMatch(/40 spoken words/u);
+  it('the RAG block quotes no actual figure', () => {
+    const knowledge = withRag.slice(withRag.indexOf('## KNOWLEDGE'));
+    expect(knowledge).not.toMatch(/\d[\d,.]*\s*(?:שקל|ש"ח|₪)/u);
+    expect(knowledge).not.toMatch(/1,490|3,500/u);
   });
 });
