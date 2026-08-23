@@ -126,14 +126,31 @@ check('retrieval filled a slot', injected > 0, `${injected} of ${slots.length} s
  */
 const maxFootprint = slotFootprint.length ? Math.max(...slotFootprint) : 0;
 const budgetCeiling = 1000 + 40; // budget + the marker line's own tokens
-check(
-  'knowledge footprint is flat, not cumulative',
-  slotFootprint.length === 0 || maxFootprint <= budgetCeiling,
-  slotFootprint.length
-    ? `max slot footprint ${maxFootprint} tokens (ceiling ${budgetCeiling}); base context ${baseSeries[0]} -> ${baseSeries[baseSeries.length - 1]}`
-    : 'no slots to judge',
-);
-check('no context watermark tripped', watermarks.length === 0, `${watermarks.length} watermark lines`);
+/**
+ * The context numbers are OPT-IN (`VOICE_RAG_CONTEXT_METRICS`) — producing them costs ~18ms of every
+ * turn's TTFT, so they are off unless someone is investigating growth.
+ *
+ * A log without them is not a failing call, it is a call that was not measuring. Saying so beats
+ * reporting "footprint 0 tokens, PASS", which is the same output a genuinely broken injector would
+ * produce and would be read as good news.
+ */
+const measuredContext = slots.some((t) => t.contextTokens !== undefined);
+if (!measuredContext && slots.length > 0) {
+  check(
+    'context-size checks were not run',
+    true,
+    'log has no contextTokens — re-run the worker with VOICE_RAG_CONTEXT_METRICS=1 to check the diet',
+  );
+} else {
+  check(
+    'knowledge footprint is flat, not cumulative',
+    slotFootprint.length === 0 || maxFootprint <= budgetCeiling,
+    slotFootprint.length
+      ? `max slot footprint ${maxFootprint} tokens (ceiling ${budgetCeiling}); base context ${baseSeries[0]} -> ${baseSeries[baseSeries.length - 1]}`
+      : 'no slots to judge',
+  );
+  check('no context watermark tripped', watermarks.length === 0, `${watermarks.length} watermark lines`);
+}
 check(
   'slot deadline rarely expires',
   slots.length === 0 || expired / slots.length <= 0.03,
@@ -238,7 +255,7 @@ console.log('\nMeasured, not asserted (no target to pass or fail against):');
 console.log(`  knowledge slots      ${slots.length}  (${injected} with chunks, ${expired} deadline-expired)`);
 console.log(`  slot wait ms         ${awaited.length ? `median ${[...awaited].sort((a, b) => a - b)[Math.floor(awaited.length / 2)]} / max ${Math.max(...awaited)}` : 'n/a'}`);
 console.log(`  prefix reuse         ${reused} of ${slots.length} slots; best-available coverage median ${medianCoverage.toFixed(2)}`);
-console.log(`  context tokens       ${contextSeries.length ? `${contextSeries[0]} -> ${contextSeries[contextSeries.length - 1]} across ${contextSeries.length} turns` : 'n/a'}`);
+console.log(`  context tokens       ${contextSeries.length ? `${contextSeries[0]} -> ${contextSeries[contextSeries.length - 1]} across ${contextSeries.length} turns` : 'not measured (VOICE_RAG_CONTEXT_METRICS=0)'}`);
 console.log(`  context w/o slot     ${baseSeries.length ? `${baseSeries[0]} -> ${baseSeries[baseSeries.length - 1]}` : 'n/a'}`);
 console.log(`  slot footprint       ${slotFootprint.length ? `min ${Math.min(...slotFootprint)} / max ${Math.max(...slotFootprint)} tokens` : 'n/a'}`);
 console.log(`  skips                ${skipped.length}  (${skipReasons.join(', ') || 'none'})`);

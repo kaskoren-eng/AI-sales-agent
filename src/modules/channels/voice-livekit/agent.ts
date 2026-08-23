@@ -18,7 +18,7 @@ import { CallReport } from './call-report.js';
 import { CallStateMachine } from './call-state.js';
 import { decideSilenceAction, decideVoicemailAction } from './call-reflexes.js';
 import { decideRetrieval } from './knowledge-gate.js';
-import { KnowledgeInjector, type KnowledgeSlot } from './knowledge-injector.js';
+import { KnowledgeInjector, KNOWLEDGE_MARKER, type KnowledgeSlot } from './knowledge-injector.js';
 import { readKnowledgeSettings } from './knowledge-settings.js';
 import { splitPrompt, PlaybookDeliverer, formatPlaybookMessage } from './playbook-packs.js';
 import { RetrievalService } from '../../knowledge/retrieval.service.js';
@@ -58,6 +58,15 @@ const CALL_REPORTS_DIR = 'call-reports';
  * catch. It is a smoke alarm, not a limit: nothing is truncated when it trips.
  */
 const CONTEXT_WATERMARK_TOKENS = 10_000;
+
+/**
+ * Tokens the `[KNOWLEDGE]` marker line itself adds, on top of the chunks.
+ *
+ * Constant, so the post-injection context size is arithmetic rather than a second pass of cl100k over
+ * the whole context. Computed once at module load, not hardcoded, so it cannot drift from the marker.
+ */
+const KNOWLEDGE_MARKER_TOKENS = countTokens(`${KNOWLEDGE_MARKER}
+`);
 
 /**
  * The utterance this inference is answering.
@@ -186,16 +195,26 @@ class ClickScalesAgent extends voice.Agent {
     | ((userText: string, lastAgentTurn: string | null) => Promise<KnowledgeSlot | null>)
     | null;
 
+  /**
+   * Produce the per-turn context-size numbers (VOICE_RAG_CONTEXT_METRICS).
+   *
+   * Defaults to OFF here as well as in env, so a test or a caller that forgets the flag gets the
+   * cheap path rather than the 18ms-per-turn one.
+   */
+  readonly contextMetrics: boolean;
+
   constructor(
     opts: ConstructorParameters<typeof voice.Agent>[0],
     toolRuntime: ToolRuntimeContext | null = null,
     resolveKnowledge:
       | ((userText: string, lastAgentTurn: string | null) => Promise<KnowledgeSlot | null>)
       | null = null,
+    contextMetrics = false,
   ) {
     super(opts);
     this.toolRuntime = toolRuntime;
     this.resolveKnowledge = resolveKnowledge;
+    this.contextMetrics = contextMetrics;
   }
 
   /**
@@ -228,12 +247,20 @@ class ClickScalesAgent extends voice.Agent {
           const slot = await this.resolveKnowledge(userText, lastAgentText(chatCtx));
           // Measured BEFORE the slot goes in. This is the number that proves the diet works: it is the
           // system prompt + packs + transcript, with no knowledge in it at all, so it must grow at the
-          // rate the conversation grows and at no other rate. `contextTokens` (after) minus this is the
-          // slot's entire footprint, and that footprint must never compound.
-          const baseline = contextTokens(chatCtx);
+          // rate the conversation grows and at no other rate. `total` minus this is the slot's entire
+          // footprint, and that footprint must never compound.
+          //
+          // OFF BY DEFAULT. It tokenizes the whole context synchronously, here, before the LLM call —
+          // 18ms on a 6,553-token context, and it used to run twice, so ~36ms came out of every turn's
+          // TTFT to produce a number. Worth it while R2.1 was unproven; it is proven now.
+          const measuring = this.contextMetrics;
+          const baseline = measuring ? contextTokens(chatCtx) : 0;
           if (slot?.block) chatCtx.addMessage({ role: 'system', content: slot.block });
           if (slot) {
-            const total = contextTokens(chatCtx);
+            // DERIVED, not re-tokenized. The block is the marker line plus the chunks, and the chunks'
+            // token counts come from ingest — so the second measurement was always redundant with
+            // arithmetic we already had, and cost another 18ms to rediscover.
+            const total = measuring ? baseline + (slot.block ? slot.tokens + KNOWLEDGE_MARKER_TOKENS : 0) : 0;
             console.log('rag_slot', JSON.stringify({
               chunks: slot.chunkIds.length,
               tokens: slot.tokens,
@@ -250,11 +277,12 @@ class ClickScalesAgent extends voice.Agent {
               // preflight text — so every turn paid a cold ~200ms embedding. Read alongside
               // `awaitedMs`: high reuse with a low wait is the fix working.
               reusedPrefix: slot.reusedPrefix,
-              contextTokens: total,
-              contextTokensBeforeSlot: baseline,
+              // Present only under VOICE_RAG_CONTEXT_METRICS. Absent rather than zero, so a log that
+              // was not measuring cannot be misread as a call whose context was empty.
+              ...(measuring ? { contextTokens: total, contextTokensBeforeSlot: baseline } : {}),
               ...(slot.timing ? { embedMs: slot.timing.embedMs, dbMs: slot.timing.dbMs } : {}),
             }));
-            if (total > CONTEXT_WATERMARK_TOKENS) {
+            if (measuring && total > CONTEXT_WATERMARK_TOKENS) {
               console.log('context_watermark', JSON.stringify({ contextTokens: total, threshold: CONTEXT_WATERMARK_TOKENS }));
             }
           }
@@ -881,6 +909,7 @@ export default defineAgent({
             return injector.resolve(userText);
           }
         : null,
+      env.VOICE_RAG_CONTEXT_METRICS,
     );
     if (persona.tts) {
       // Otherwise the CallReport names the PLATFORM default engine for a call that used a

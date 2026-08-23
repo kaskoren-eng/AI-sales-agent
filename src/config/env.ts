@@ -421,6 +421,21 @@ const envSchema = z.object({
   // Requires RAG: with the knowledge gone and nothing retrieving it, she simply cannot answer. agent.ts
   // enforces the coupling rather than trusting the operator to set both.
   VOICE_SLIM_PROMPT: envBool(false),
+  // Per-turn context-size proof metrics (`contextTokens`, `contextTokensBeforeSlot`, the watermark).
+  //
+  // DEFAULT FALSE because producing them means running cl100k over the ENTIRE chat context inside
+  // `llmNode` -- on the critical path, synchronously, before the LLM call starts. Measured on a
+  // realistic 6,553-token context: 18ms median, and it ran TWICE per inference, so ~36ms of every
+  // turn's time-to-first-token was going to a metric.
+  //
+  // That was the right trade while the rolling slot was unproven: those two numbers are exactly what
+  // showed injection overhead is flat rather than cumulative, which is the whole claim of R2.1. It is
+  // proven now (2026-08-22 and 08-23, footprint bounded 0-620 tokens across two real calls), so it
+  // returns to opt-in. Turn it on when investigating context growth, not in production.
+  //
+  // Everything used to diagnose a LIVE call -- chunks, awaitedMs, deadlineExpired, reusedPrefix --
+  // is plain arithmetic and stays on unconditionally.
+  VOICE_RAG_CONTEXT_METRICS: envBool(false),
   // Progressive disclosure of the playbook: Steps 2-4 leave the resident prompt and are delivered on
   // arrival at the stage that needs them. Selected by STAGE, never by similarity -- a retrieval query
   // is the caller's own utterance, so anything gated behind similarity is gated behind something the
