@@ -233,6 +233,22 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   const whatsappService = new WhatsAppService(app);
   const emailService = new EmailService(app);
+
+  // Say once, at boot, what this environment cannot do. Both keys are `.optional()` in env.ts and
+  // both used to be fatal anyway, because their vendor clients threw from inside their own
+  // constructors — so a fresh environment failed with a third-party stack trace instead of a
+  // sentence naming the variable to set. The clients are lazy now; these two lines are the signal
+  // that replaced the crash. Same shape as the LiveKit warning below.
+  if (!emailService.configured) {
+    app.log.warn(
+      'RESEND_API_KEY not configured — no email leaves this environment: invites, password resets, meeting reminders and email-channel replies are all skipped',
+    );
+  }
+  if (!env.OPENAI_API_KEY) {
+    app.log.warn(
+      'OPENAI_API_KEY not configured — lead qualification, AI replies and post-call transcription/analysis are disabled',
+    );
+  }
   // The one and only dialer. Constructing it throws when LiveKit isn't configured, so stay
   // undefined in that case rather than taking the whole app down at boot — the flow executor
   // skips call steps instead. There is no second engine to fall back to.

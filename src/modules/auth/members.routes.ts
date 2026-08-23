@@ -15,6 +15,15 @@ export async function membersRoutes(app: FastifyInstance) {
   const email = new EmailService(app);
   const baseUrl = app.env.DASHBOARD_BASE_URL ?? '';
 
+  /**
+   * An invite is deliverable only if there is both a link to build and a mailer to carry it.
+   * Checking the base URL alone meant an environment with no `RESEND_API_KEY` reported
+   * `{ sent: true }` for a mail that was silently dropped — and the admin, who had no other copy
+   * of the token, could not finish onboarding anyone. With both halves checked, the fallback below
+   * does its job: hand the operator the raw token so the invite can still be completed by hand.
+   */
+  const canEmail = Boolean(baseUrl) && email.configured;
+
   app.get('/', async (request) => ({ members: await svc.listMembers(request.tenantId) }));
 
   app.post('/invites', { preHandler: requireRole('admin') }, async (request, reply) => {
@@ -29,7 +38,7 @@ export async function membersRoutes(app: FastifyInstance) {
       invitedByUserId: request.userId,
     });
 
-    if (baseUrl) {
+    if (canEmail) {
       const link = `${baseUrl}/accept-invite?token=${encodeURIComponent(token)}`;
       await email
         .sendEmail(
@@ -49,9 +58,9 @@ export async function membersRoutes(app: FastifyInstance) {
       role: parsed.data.role,
     });
     reply.status(201);
-    // The raw token is returned ONLY when no mailer is configured, so an operator can still
-    // complete an invite by hand. With DASHBOARD_BASE_URL set it never leaves the server.
-    return baseUrl ? { sent: true } : { sent: false, token };
+    // The raw token is returned ONLY when the invite could not be mailed, so an operator can still
+    // complete it by hand. Once a link can be built AND sent, the token never leaves the server.
+    return canEmail ? { sent: true } : { sent: false, token };
   });
 
   app.patch('/:userId', { preHandler: requireRole('admin') }, async (request) => {

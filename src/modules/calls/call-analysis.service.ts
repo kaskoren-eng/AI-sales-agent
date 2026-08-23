@@ -2,6 +2,7 @@ import OpenAI, { toFile } from 'openai';
 import { createHash, createHmac } from 'node:crypto';
 import type { Env } from '../../config/env.js';
 import type { TranscriptSegment, SalesCallAnalysis } from '../../db/schema/call-learnings.js';
+import { AppError } from '../../shared/errors.js';
 
 const ANALYSIS_PROMPT = `You are a sales call coach analyzing a recorded sales conversation.
 Extract structured learnings to help an AI sales agent perform better on future calls.
@@ -24,12 +25,37 @@ Respond with a JSON object (all fields optional, omit what cannot be determined)
 Be specific and concrete — generalizations are not useful. Focus on repeatable patterns.`;
 
 export class CallAnalysisService {
-  private openai: OpenAI;
+  private client: OpenAI | null = null;
   private model: string;
 
   constructor(private env: Env) {
-    this.openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
     this.model = env.AI_MODEL;
+  }
+
+  /**
+   * THE OPENAI CLIENT IS BUILT ON FIRST USE, NOT IN THE CONSTRUCTOR.
+   *
+   * `OPENAI_API_KEY` is `.optional()` in env.ts, but `new OpenAI({ apiKey: undefined })` throws
+   * "Missing credentials" from inside the vendor's own constructor — and this service is
+   * constructed by `createCallAnalysisWorker`, which runs at boot. So an environment without an
+   * OpenAI key did not start the API, and said so in OpenAI's words rather than ours.
+   *
+   * Now the process boots, `server.ts` warns once at startup naming what is disabled, and a call
+   * that actually reaches transcription fails with OUR error. That error carries the env var to
+   * set, and because the analysis job then lands in the dead-letter queue with a readable reason,
+   * the work is recoverable once the key is configured — which is the whole point of degrading
+   * rather than refusing to start.
+   */
+  private get openai(): OpenAI {
+    if (!this.env.OPENAI_API_KEY) {
+      throw new AppError(
+        'Call analysis is unavailable: OPENAI_API_KEY is not configured. Transcription and sales analysis stay off until it is set.',
+        503,
+        'OPENAI_NOT_CONFIGURED',
+      );
+    }
+    this.client ??= new OpenAI({ apiKey: this.env.OPENAI_API_KEY });
+    return this.client;
   }
 
   async downloadAndTranscribe(recordingUrl: string): Promise<TranscriptSegment[]> {

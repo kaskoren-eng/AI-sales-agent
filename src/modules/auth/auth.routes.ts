@@ -41,6 +41,18 @@ export async function authRoutes(app: FastifyInstance) {
   const baseUrl = app.env.DASHBOARD_BASE_URL ?? '';
 
   /**
+   * Deliverability is ONE question, and it used to be asked as half of one.
+   *
+   * A link needs both a base URL to point at and a mailer to carry it. The code below checked only
+   * the base URL, so an environment with `DASHBOARD_BASE_URL` set and `RESEND_API_KEY` unset took
+   * the happy path, built the link, handed it to a no-op sender, and logged nothing an operator
+   * would look for. Worse, the diagnostic it did have named the wrong cause. Both halves, one
+   * predicate, one accurate reason.
+   */
+  const canEmail = Boolean(baseUrl) && email.configured;
+  const undeliverableReason = !baseUrl ? 'DASHBOARD_BASE_URL unset' : 'RESEND_API_KEY unset';
+
+  /**
    * Tolerate an EMPTY body on application/json.
    *
    * /refresh and /logout carry their credential in a cookie and take no body at all, but any
@@ -202,14 +214,14 @@ export async function authRoutes(app: FastifyInstance) {
     // A reset token that exists but was never mailed is the worst of both worlds: the user waits
     // for an email that isn't coming, and the 204 below cannot tell them otherwise without turning
     // this endpoint into an account-enumeration oracle. So the only place it can surface is here.
-    if (created && !baseUrl) {
+    if (created && !canEmail) {
       request.log.error(
-        { audit: true, event: 'password_reset_undeliverable', reason: 'DASHBOARD_BASE_URL unset' },
-        'password reset token created but no link could be built — the user gets nothing',
+        { audit: true, event: 'password_reset_undeliverable', reason: undeliverableReason },
+        'password reset token created but it could not be mailed — the user gets nothing',
       );
     }
 
-    if (created && baseUrl) {
+    if (created && canEmail) {
       const link = `${baseUrl}/reset-password?token=${encodeURIComponent(created.token)}`;
       await email
         .sendEmail(

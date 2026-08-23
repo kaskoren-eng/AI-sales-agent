@@ -22,15 +22,20 @@ import { authRoutes } from './auth.routes.js';
  */
 
 /**
- * `authRoutes` constructs an EmailService when it registers, so a Resend key must exist even for
- * tests that never send anything. SIGNUP_MODE is deliberately NOT set here: these tests assert the
- * production DEFAULT, and a deployment that forgets to configure it must be closed rather than
- * open. Security that depends on remembering to set an env var is not security.
+ * No RESEND_API_KEY here, deliberately. It used to be required — `authRoutes` built a Resend
+ * client while registering, and the vendor constructor throws on an undefined key, so even tests
+ * that never send a byte had to supply one. That workaround was the visible edge of a real bug:
+ * an environment without a mailer could not boot the API. The client is lazy now, and the absence
+ * of that line here is part of what proves it. See `config/optional-vendor-keys.test.ts`.
+ *
+ * SIGNUP_MODE is also deliberately unset: these tests assert the production DEFAULT, and a
+ * deployment that forgets to configure it must be closed rather than open. Security that depends
+ * on remembering to set an env var is not security.
  */
 async function buildAuthApp(db: ReturnType<typeof createMockDb>, envOverrides: Record<string, string> = {}) {
   return buildTestApp({
     db,
-    envOverrides: { RESEND_API_KEY: 're_test_key', ...envOverrides },
+    envOverrides: { ...envOverrides },
     registerRoutes: async (a) => { await a.register(authRoutes, { prefix: '/api/v1/auth' }); },
   });
 }
