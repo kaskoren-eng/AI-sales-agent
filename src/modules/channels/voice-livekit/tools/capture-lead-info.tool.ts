@@ -103,6 +103,8 @@ export async function executeCaptureLeadInfo(
     painPoint: args.pain_point ?? undefined,
     budget: args.budget ?? undefined,
     timeline: args.timeline ?? undefined,
+    phone: args.phone ?? undefined,
+    email: args.email ?? undefined,
     qualification: args.qualification ?? undefined,
   });
 

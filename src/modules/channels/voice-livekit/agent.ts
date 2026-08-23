@@ -15,7 +15,7 @@ import { loadEnv } from '../../../config/env.js';
 import { callLearnings } from '../../../db/schema/index.js';
 import { buildSessionComponents, buildTTS, describeTtsModel } from './agent.config.js';
 import { CallReport } from './call-report.js';
-import { CallStateMachine } from './call-state.js';
+import { CallStateMachine, formatKnownFacts } from './call-state.js';
 import { decideSilenceAction, decideVoicemailAction } from './call-reflexes.js';
 import { decideRetrieval } from './knowledge-gate.js';
 import { KnowledgeInjector, KNOWLEDGE_MARKER, type KnowledgeSlot } from './knowledge-injector.js';
@@ -203,6 +203,14 @@ class ClickScalesAgent extends voice.Agent {
    */
   readonly contextMetrics: boolean;
 
+  /**
+   * "What we already know", rebuilt each inference from the state machine's working memory.
+   *
+   * A function rather than the state machine itself, for the same reason as `resolveKnowledge`: this
+   * class should not know what a CallStateMachine is, and `llmNode` stays testable without one.
+   */
+  readonly knownFacts: (() => string | null) | null;
+
   constructor(
     opts: ConstructorParameters<typeof voice.Agent>[0],
     toolRuntime: ToolRuntimeContext | null = null,
@@ -210,11 +218,13 @@ class ClickScalesAgent extends voice.Agent {
       | ((userText: string, lastAgentTurn: string | null) => Promise<KnowledgeSlot | null>)
       | null = null,
     contextMetrics = false,
+    knownFacts: (() => string | null) | null = null,
   ) {
     super(opts);
     this.toolRuntime = toolRuntime;
     this.resolveKnowledge = resolveKnowledge;
     this.contextMetrics = contextMetrics;
+    this.knownFacts = knownFacts;
   }
 
   /**
@@ -240,6 +250,20 @@ class ClickScalesAgent extends voice.Agent {
     toolCtx: Parameters<voice.Agent['llmNode']>[1],
     modelSettings: Parameters<voice.Agent['llmNode']>[2],
   ): ReturnType<voice.Agent['llmNode']> {
+    // "What we already know", on the same per-inference copy as the knowledge slot — so it is visible
+    // to exactly this one inference, never enters session history, and cannot invalidate a preemptive
+    // draft. It is rebuilt every turn, so it can never go stale or accumulate.
+    if (this.knownFacts) {
+      try {
+        const known = this.knownFacts();
+        if (known) chatCtx.addMessage({ role: 'system', content: known });
+      } catch (err) {
+        // Never worth a dropped turn: without this line she may repeat a question, which is a
+        // nuisance. Throwing here would end the call, which is not.
+        console.error('known_facts_failed', err instanceof Error ? err.message : String(err));
+      }
+    }
+
     if (this.resolveKnowledge) {
       const userText = lastUserText(chatCtx);
       if (userText) {
@@ -910,6 +934,7 @@ export default defineAgent({
           }
         : null,
       env.VOICE_RAG_CONTEXT_METRICS,
+      callState ? () => formatKnownFacts(callState.facts) : null,
     );
     if (persona.tts) {
       // Otherwise the CallReport names the PLATFORM default engine for a call that used a

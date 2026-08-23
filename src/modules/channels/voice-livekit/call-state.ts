@@ -55,6 +55,47 @@ export interface KnownFacts {
   budget?: string;
   timeline?: string;
   qualification?: string; // hot | warm | cold
+  /** Contact details. Mirrored here for the SAME reason as the rest: so she stops asking twice.
+   * On the 2026-08-22 call the phone was asked four times and the email three, and both were
+   * missing from this interface — captured by the tool, invisible to everything downstream. */
+  phone?: string;
+  email?: string;
+}
+
+/**
+ * What she already knows, as one line for the model.
+ *
+ * ── WHY THIS EXISTS ────────────────────────────────────────────────────────────────────────────
+ *
+ * `capture_lead_info` wrote into working memory and NOTHING read it back. The state machine is
+ * advisory: it watched the call and told the model nothing. So her only record of what had been
+ * asked was the transcript — and phone audio through Soniox garbles exactly the answers that matter.
+ *
+ * Measured on 2026-08-23: she asked "what business do you run?", the caller answered, the tool
+ * captured `businessType: "חנות דיגיטלית"`, and 16 seconds later she asked what business he runs.
+ * The answer was in memory the whole time. Same root cause as the phone asked 4x and the email 3x.
+ *
+ * SELF-DESCRIBING ON PURPOSE. The instruction rides with the data instead of living in the system
+ * prompt, so a call that has captured nothing costs zero tokens and the prompt needs no new section
+ * to explain a marker. Returns null when there is nothing to say.
+ */
+export function formatKnownFacts(facts: KnownFacts): string | null {
+  const parts: string[] = [];
+  const add = (label: string, value?: string) => {
+    if (value && value.trim()) parts.push(`${label}=${value.trim()}`);
+  };
+  add('name', facts.name);
+  add('business', facts.businessType);
+  add('phone', facts.phone);
+  add('email', facts.email);
+  add('need', facts.painPoint);
+  add('budget', facts.budget);
+  add('timing', facts.timeline);
+  if (parts.length === 0) return null;
+  return (
+    `[KNOWN] Already captured from this caller — do NOT ask for any of these again, ` +
+    `and do not ask them to repeat or confirm unless they bring it up: ${parts.join('; ')}`
+  );
 }
 
 export interface StageEntry {
