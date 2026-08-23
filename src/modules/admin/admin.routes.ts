@@ -18,6 +18,19 @@ export async function adminRoutes(app: FastifyInstance) {
   // --- Monitoring ---
   app.get('/overview', async () => admin.overview());
   app.get('/tenants', async () => ({ data: await admin.listTenants() }));
+
+  /**
+   * The plans an operator can put a customer on.
+   *
+   * Read-only and deliberately so: a fourth tier is one INSERT, and a plans CRUD screen would be
+   * a lot of surface for something that changes once a year. This exists because creating a
+   * workspace now requires choosing a plan, and the operator should be choosing from what the
+   * database actually has rather than from memory.
+   *
+   * Inactive plans are included — `internal` is is_active=false and is exactly what our own
+   * workspaces belong on — but flagged, so the UI can separate "sell this" from "we use this".
+   */
+  app.get('/plans', async () => ({ data: await admin.listPlans() }));
   app.get('/tenants/:id', async (request) => {
     const { id } = request.params as { id: string };
     return admin.tenantDetail(id);

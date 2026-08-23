@@ -12,7 +12,11 @@ async function adminFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`/api/v1/admin${path}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      // Only when there IS a body. Fastify rejects an empty body that announces itself as JSON
+      // (FST_ERR_CTP_EMPTY_JSON_BODY) before routing, which is what made every body-less mutation
+      // in the tenant dashboard fail silently. `rotateKey` carried a `body: '{}'` workaround for
+      // exactly this; the workaround is gone now that the cause is.
+      ...(options?.body === undefined ? {} : { 'Content-Type': 'application/json' }),
       Authorization: `Bearer ${getAdminKey()}`,
       ...options?.headers,
     },
@@ -44,6 +48,8 @@ export interface TenantRollup {
   slug: string
   isActive: boolean
   hasApiKey: boolean
+  planCode: string | null
+  billingStatus: string
   createdAt: string
   leads: number
   conversations: number
@@ -69,8 +75,26 @@ export interface CreatedTenant {
   id: string
   name: string
   slug: string
+  planCode: string
+  billingStatus: string
   isActive: boolean
   apiKey: string // shown once
+}
+
+/**
+ * A plan an operator can put a customer on.
+ *
+ * `isActive` false means "we use this, we do not sell it" — the internal tier our own workspaces
+ * belong on. Listed rather than hidden, because those workspaces have to be creatable too.
+ */
+export interface Plan {
+  code: string
+  name: string
+  nameHe: string | null
+  monthlyPriceAgorot: number
+  includedLeads: number | null
+  overagePerLeadAgorot: number
+  isActive: boolean
 }
 
 export interface RotatedKey {
@@ -85,7 +109,9 @@ export const fetchAdminOverview = () => adminFetch<AdminOverview>('/overview')
 export const fetchAdminTenants = () => adminFetch<{ data: TenantRollup[] }>('/tenants')
 export const fetchAdminTenant = (id: string) => adminFetch<TenantDetail>(`/tenants/${id}`)
 
-export const createTenant = (input: { name: string; slug: string }) =>
+export const fetchAdminPlans = () => adminFetch<{ data: Plan[] }>('/plans')
+
+export const createTenant = (input: { name: string; slug: string; planCode: string }) =>
   adminFetch<CreatedTenant>('/tenants', { method: 'POST', body: JSON.stringify(input) })
 
 export const updateTenant = (id: string, patch: { name?: string; slug?: string; isActive?: boolean }) =>
@@ -95,7 +121,7 @@ export const updateTenant = (id: string, patch: { name?: string; slug?: string; 
   })
 
 export const rotateTenantKey = (id: string) =>
-  adminFetch<RotatedKey>(`/tenants/${id}/rotate-key`, { method: 'POST', body: '{}' })
+  adminFetch<RotatedKey>(`/tenants/${id}/rotate-key`, { method: 'POST' })
 
 /** Verify a candidate key by hitting a cheap admin route. Returns true if accepted. */
 export async function verifyAdminKey(key: string): Promise<boolean> {

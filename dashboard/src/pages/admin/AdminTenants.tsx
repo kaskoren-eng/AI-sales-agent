@@ -5,6 +5,7 @@ import {
   fetchAdminTenants,
   fetchAdminTenant,
   createTenant,
+  fetchAdminPlans,
   updateTenant,
   rotateTenantKey,
   type TenantRollup,
@@ -38,18 +39,18 @@ export function AdminTenants() {
           <table style={{ inlineSize: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
             <thead>
               <tr style={{ color: 'var(--text-tertiary)' }}>
-                {['Tenant', 'Status', 'Leads', 'Msgs', 'Calls', 'Min', 'Mtgs', 'Created'].map((h, i) => (
-                  <th key={h} style={{ padding: '11px 14px', textAlign: i > 1 ? 'end' : 'start', fontWeight: 600, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
+                {['Tenant', 'Status', 'Plan', 'Leads', 'Msgs', 'Calls', 'Min', 'Mtgs', 'Created'].map((h, i) => (
+                  <th key={h} style={{ padding: '11px 14px', textAlign: i > 2 ? 'end' : 'start', fontWeight: 600, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {list.isLoading ? (
-                <tr><td colSpan={8} style={{ padding: '28px', textAlign: 'center', color: 'var(--text-tertiary)' }}>Loading…</td></tr>
+                <tr><td colSpan={9} style={{ padding: '28px', textAlign: 'center', color: 'var(--text-tertiary)' }}>Loading…</td></tr>
               ) : list.isError ? (
-                <tr><td colSpan={8} style={{ padding: '28px', textAlign: 'center', color: 'var(--status-danger)' }}>{(list.error as Error).message}</td></tr>
+                <tr><td colSpan={9} style={{ padding: '28px', textAlign: 'center', color: 'var(--status-danger)' }}>{(list.error as Error).message}</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-tertiary)' }}>No tenants yet. Create the first one.</td></tr>
+                <tr><td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-tertiary)' }}>No tenants yet. Create the first one.</td></tr>
               ) : (
                 rows.map((t: TenantRollup) => (
                   <tr key={t.id} onClick={() => setSelected(t.id)} style={{ borderBlockStart: '1px solid var(--border-default)', cursor: 'pointer' }}
@@ -60,6 +61,23 @@ export function AdminTenants() {
                       <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-tertiary)' }}>{t.slug}</div>
                     </td>
                     <td style={{ padding: '12px 14px' }}><StatusDot active={t.isActive} /></td>
+                    {/* A workspace with no plan bills as free and unlimited, and the snapshot is
+                        frozen for its whole first month — so "none" is the one value here that
+                        needs to look wrong rather than blank. */}
+                    <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                      {t.planCode ? (
+                        <>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>{t.planCode}</span>
+                          {t.billingStatus !== 'active' && (
+                            <span style={{ marginInlineStart: '6px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                              {t.billingStatus}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--status-danger)' }}>no plan</span>
+                      )}
+                    </td>
                     <td style={numTd}>{num(t.leads)}</td>
                     <td style={numTd}>{num(t.messages)}</td>
                     <td style={numTd}>{num(t.calls)}</td>
@@ -202,13 +220,24 @@ function CreateTenantModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [slugTouched, setSlugTouched] = useState(false)
+  const [planCode, setPlanCode] = useState('')
   const [created, setCreated] = useState<{ name: string; apiKey: string } | null>(null)
+
+  /**
+   * The plan is chosen here, at creation, because it cannot be usefully chosen later.
+   *
+   * `usage_periods` snapshots the plan when the billing period opens — deliberately, so a
+   * mid-month change cannot reprice history. A workspace created without one bills as free and
+   * unlimited for its whole first month, and assigning the right plan afterwards does not fix it.
+   */
+  const plans = useQuery({ queryKey: ['admin', 'plans'], queryFn: fetchAdminPlans })
+  const planOptions = plans.data?.data ?? []
 
   const autoSlug = (v: string) => v.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
   const effectiveSlug = slugTouched ? slug : autoSlug(name)
 
   const create = useMutation({
-    mutationFn: () => createTenant({ name: name.trim(), slug: effectiveSlug }),
+    mutationFn: () => createTenant({ name: name.trim(), slug: effectiveSlug, planCode }),
     onSuccess: (data) => {
       setCreated({ name: data.name, apiKey: data.apiKey })
       void qc.invalidateQueries({ queryKey: ['admin', 'tenants'] })
@@ -216,7 +245,7 @@ function CreateTenantModal({ onClose }: { onClose: () => void }) {
     },
   })
 
-  const valid = name.trim().length > 0 && /^[a-z0-9-]+$/.test(effectiveSlug)
+  const valid = name.trim().length > 0 && /^[a-z0-9-]+$/.test(effectiveSlug) && planCode !== ''
 
   return (
     <>
@@ -241,6 +270,32 @@ function CreateTenantModal({ onClose }: { onClose: () => void }) {
             <Field label="Slug" hint="lowercase, letters/numbers/hyphens — used in URLs and keys">
               <input value={effectiveSlug} onChange={(e) => { setSlugTouched(true); setSlug(e.target.value) }} placeholder="acme-corp" style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }} />
             </Field>
+            <Field label="Plan" hint="billed from the moment the first lead arrives — it cannot be changed retroactively">
+              <select
+                value={planCode}
+                onChange={(e) => setPlanCode(e.target.value)}
+                style={inputStyle}
+                disabled={plans.isLoading}
+              >
+                <option value="" disabled>
+                  {plans.isLoading ? 'Loading plans…' : 'Choose a plan'}
+                </option>
+                {planOptions.map((p) => (
+                  <option key={p.code} value={p.code}>
+                    {p.name}
+                    {' — '}
+                    {p.monthlyPriceAgorot === 0 ? 'free' : `₪${(p.monthlyPriceAgorot / 100).toLocaleString()}/mo`}
+                    {p.includedLeads === null ? ', unlimited leads' : `, ${p.includedLeads} leads`}
+                    {p.isActive ? '' : ' (internal)'}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {plans.isError && (
+              <span role="alert" style={{ fontSize: '12.5px', color: 'var(--status-danger)' }}>
+                Could not load plans — a workspace cannot be created without one.
+              </span>
+            )}
             {create.isError && <span role="alert" style={{ fontSize: '12.5px', color: 'var(--status-danger)' }}>{(create.error as Error).message}</span>}
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginBlockStart: '4px' }}>
               <button type="button" onClick={onClose} style={btnOutline}>Cancel</button>

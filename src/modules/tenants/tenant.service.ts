@@ -1,9 +1,9 @@
 import { randomBytes, createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import { tenants } from '../../db/schema/index.js';
+import { plans, tenants } from '../../db/schema/index.js';
 import type { Database } from '../../db/client.js';
 import type { CreateTenantInput, UpdateTenantInput } from './tenant.schemas.js';
-import { NotFoundError, ConflictError } from '../../shared/errors.js';
+import { NotFoundError, ConflictError, ValidationError } from '../../shared/errors.js';
 import type { FlowDefinition } from '../flows/flow.schemas.js';
 
 export class TenantService {
@@ -19,16 +19,48 @@ export class TenantService {
 
     if (existing) throw new ConflictError(`Slug "${input.slug}" is already taken`);
 
+    // The plan is an FK, so a bad code would fail at the database with a constraint error. Check
+    // it here instead, to name the valid codes — the operator is mid-onboarding with a customer.
+    const [plan] = await this.db
+      .select({ code: plans.code })
+      .from(plans)
+      .where(eq(plans.code, input.planCode))
+      .limit(1);
+    if (!plan) {
+      const available = await this.db.select({ code: plans.code }).from(plans).orderBy(plans.code);
+      throw new ValidationError(
+        `Unknown plan "${input.planCode}". Available: ${available.map((p) => p.code).join(', ')}`,
+      );
+    }
+
     // Generate a random API key — return the raw key once, store only the hash
     const apiKey = `sk_${randomBytes(32).toString('hex')}`;
     const apiKeyHash = createHash('sha256').update(apiKey).digest('hex');
 
     const [tenant] = await this.db
       .insert(tenants)
-      .values({ name: input.name, slug: input.slug, apiKeyHash })
+      .values({ name: input.name, slug: input.slug, apiKeyHash, planCode: input.planCode })
       .returning();
 
-    return { ...tenant, apiKey };
+    /**
+     * Explicit fields, NOT `{ ...tenant }`.
+     *
+     * Spreading the row returned `api_key_hash` — the stored credential — in the create response,
+     * along with `settings`, which for an existing tenant carries encrypted integration secrets.
+     * A row shape and a response shape are different things, and spreading one into the other
+     * means every column added later is published by default.
+     */
+    return {
+      id: tenant!.id,
+      name: tenant!.name,
+      slug: tenant!.slug,
+      planCode: tenant!.planCode,
+      billingStatus: tenant!.billingStatus,
+      isActive: tenant!.isActive,
+      createdAt: tenant!.createdAt,
+      // Shown once. Only the hash is stored.
+      apiKey,
+    };
   }
 
   async list() {

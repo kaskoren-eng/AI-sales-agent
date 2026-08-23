@@ -7,6 +7,7 @@ import {
   messages,
   scheduledCalls,
   callLearnings,
+  plans,
 } from '../../db/schema/index.js';
 import { NotFoundError } from '../../shared/errors.js';
 import { redactSettings } from '../tenants/settings-policy.js';
@@ -18,6 +19,16 @@ export interface TenantRollup {
   slug: string;
   isActive: boolean;
   hasApiKey: boolean;
+  /**
+   * Which plan this customer is on, and null when they are on none.
+   *
+   * Absent from this rollup until a tenant-onboarding rehearsal found three production workspaces
+   * with `plan_code = NULL` — billing as free and unlimited — and nothing on the operator console
+   * that would ever have shown it. A billing system whose console does not display the plan is a
+   * billing system nobody can check.
+   */
+  planCode: string | null;
+  billingStatus: string;
   createdAt: Date;
   leads: number;
   conversations: number;
@@ -54,6 +65,26 @@ function toMap<T extends { t: string }>(rows: T[]): Map<string, T> {
 export class AdminService {
   constructor(private db: Database) {}
 
+  /**
+   * The plan catalogue, for the operator choosing one while creating a workspace.
+   *
+   * Ordered by price so the list reads as a ladder, with the free internal tier first.
+   */
+  async listPlans() {
+    return this.db
+      .select({
+        code: plans.code,
+        name: plans.name,
+        nameHe: plans.nameHe,
+        monthlyPriceAgorot: plans.monthlyPriceAgorot,
+        includedLeads: plans.includedLeads,
+        overagePerLeadAgorot: plans.overagePerLeadAgorot,
+        isActive: plans.isActive,
+      })
+      .from(plans)
+      .orderBy(plans.monthlyPriceAgorot);
+  }
+
   /** Every tenant with its measured rollup. Tenant counts are small; a handful of grouped scans. */
   async listTenants(): Promise<TenantRollup[]> {
     const [rows, leadRows, convoRows, msgRows, callRows, meetRows] = await Promise.all([
@@ -77,6 +108,8 @@ export class AdminService {
       slug: t.slug,
       isActive: t.isActive ?? true,
       hasApiKey: !!t.apiKeyHash,
+      planCode: t.planCode ?? null,
+      billingStatus: t.billingStatus ?? 'trialing',
       createdAt: t.createdAt,
       leads: Number(lead.get(t.id)?.c ?? 0),
       conversations: Number(convo.get(t.id)?.c ?? 0),

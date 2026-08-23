@@ -4,6 +4,20 @@ import { flowDefinitionSchema } from '../flows/flow.schemas.js';
 export const createTenantSchema = z.object({
   name: z.string().min(1).max(255),
   slug: z.string().min(1).max(100).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+  /**
+   * REQUIRED, and deliberately not defaulted.
+   *
+   * A tenant with no `plan_code` bills as free and unlimited: `readEffectivePlan` falls back to
+   * `{ monthlyPriceAgorot: 0, includedLeads: null, overagePerLeadAgorot: 0 }`. That would be
+   * survivable if it were correctable, but `usage_periods` SNAPSHOTS the plan when the period
+   * opens — on purpose, so a mid-month change cannot reprice history — so the free-unlimited
+   * snapshot is frozen for the customer's entire first month. Assigning the real plan afterwards
+   * does not fix the month you most want to bill for.
+   *
+   * A default would only choose which wrong answer to be silent about. Whoever creates a
+   * workspace has just agreed a price with the customer, so they are the one who knows.
+   */
+  planCode: z.string().min(1).max(40),
 });
 
 export const updateTenantSchema = z.object({
