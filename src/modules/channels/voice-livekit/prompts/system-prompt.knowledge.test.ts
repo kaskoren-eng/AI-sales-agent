@@ -47,39 +47,31 @@ describe('## KNOWLEDGE — grounding', () => {
 });
 
 /**
- * ── ANSWER LENGTH: TRIED IN THE PROMPT, MEASURED, REVERTED ─────────────────────────────────────
+ * ── ANSWER LENGTH IS NOT A DEFECT. DO NOT "FIX" IT. ────────────────────────────────────────────
  *
- * She answers a one-fact question by reading the whole retrieved chunk — price, then inclusions,
- * then per-lead overage, then languages, then CRM sync. Measured across three calls.
+ * On 2026-08-22 the `## KNOWLEDGE` block gained 185 words capping answers at one or two sentences
+ * (~40 words). It cost 216 tokens on every inference of every call, measurably changed nothing, and
+ * was reverted the next day.
  *
- * On 2026-08-22 the `## KNOWLEDGE` block gained 185 words telling her to answer in one or two
- * sentences (~40 words), to use only the fact that was asked for, never to recite lists, plus a
- * worked example of this exact failure. The 2026-08-23 call is the result:
+ * The reason it is not being retried is NOT that the wording was wrong. Koren, who judges these calls
+ * by ear and is the only one who can, ruled on 2026-08-23:
  *
- *     answers: 45 / 61 / 49 / 34 / 27 words
- *     baseline inference: 2,754 -> 2,970 promptTokens  (+216, EVERY inference of EVERY call)
+ *     "the long answers are not necessarily wrong or bad — in some cases the reply of the agent must
+ *      be longer than usual. until now I didn't feel like it's too long."
  *
- * No shorter than before, and the longest answer of the call was 61 words. The instruction cost
- * tokens on every turn for the length of the call and changed nothing, so it was reverted in full.
+ * A word count is not the measure here. Some answers should be long, and the caller decides which. A
+ * previous version of this file called long answers "the top open item" on the strength of counting
+ * words in a transcript; that was a metric being mistaken for a judgement.
  *
- * WHAT THIS RULES OUT, which is the part worth keeping: the problem is not that she was never told.
- * She was told explicitly, with an example, and did it anyway. The next attempt should not be more
- * prompt words — the chunks themselves are ~250 tokens of prose, and she recites what she is handed.
- * Shorten the source material and there is less to recite.
- *
- * These stay as `todo` rather than being deleted: they are the specification for whatever fixes this,
- * and re-deriving them means re-running three calls.
+ * So there is no brevity spec, and no `todo` implying one is owed. If this is ever reopened it will be
+ * because Koren asks for it, about specific answers he heard — not because a number looked high.
  */
-describe('## KNOWLEDGE — brevity', () => {
-  it.todo('caps the length of a factual answer');
-  it.todo('says to answer the question asked and leave the rest unsaid');
-  it.todo('forbids reciting lists the lead never asked for');
-  it.todo('carries a worked example of the failure, not just the rule');
-
+describe('## KNOWLEDGE — pricing has one source of truth', () => {
   /**
-   * KEPT LIVE, because it is about pricing having one source of truth rather than about brevity.
-   * The reverted block's example originally wrote ClickScales' real figures into a multi-tenant
-   * prompt. Whatever replaces it must not do that again.
+   * Unrelated to length, and the reason anything survives here at all: the reverted block's example
+   * wrote ClickScales' real figures into a prompt every tenant receives, which is exactly the second
+   * source of truth for pricing that `slimKnowledge` exists to delete. Whatever is added here later
+   * must not do it again.
    */
   it('the RAG block quotes no actual figure', () => {
     const knowledge = withRag.slice(withRag.indexOf('## KNOWLEDGE'));

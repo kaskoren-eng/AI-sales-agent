@@ -89,8 +89,10 @@ reintroducing the second source of truth for pricing that `slimKnowledge` exists
 `knowledge-settings.test.ts` caught it. The `## KNOWLEDGE` block had no tests at all, which is how it
 shipped half-specified; it now has ten.
 
-⚠️ **This one is the least verified of the four.** Tests prove the instruction is present, which is
-the necessary half. Whether she obeys it is a model behaviour only a real call can judge.
+⚠️ **REVERTED on 2026-08-23 (`3e8582d`), and the goal itself withdrawn.** It cost 216 tokens on every
+inference and measurably changed nothing — but that is the smaller point. Koren ruled that answer
+length is not a problem: some replies should be long, and he had never found them too long. Word count
+was a metric standing in for a judgement only he can make. Do not reopen unless he asks.
 
 ## 4. `duplicateReplies` read 0 on a call that had one — `2ac656a`
 
