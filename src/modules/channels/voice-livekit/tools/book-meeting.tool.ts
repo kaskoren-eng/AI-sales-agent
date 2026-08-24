@@ -11,7 +11,7 @@ import {
   filterBusinessHours,
   formatSlotHe,
 } from './israel-time.js';
-import { timedTool, type ToolRuntimeContext } from './tool-context.js';
+import { queueLeadWrite, timedTool, type ToolRuntimeContext } from './tool-context.js';
 
 /**
  * book_meeting — the moment "קבעתי לך" becomes TRUE.
@@ -133,86 +133,92 @@ export async function executeBookMeeting(
   });
 
   // ---- Invariant 2: from here on, nothing is allowed to fail the tool ----
-  let dbOk = true;
-  let scheduledCallId: string | null = null;
-  try {
-    const leadId = await upsertLead(
-      rt.db,
-      rt.tenantId,
-      { leadId: rt.leadId, callerPhone: rt.callerPhone },
-      { name: args.name.trim(), phone: args.phone, email },
-      { status: 'qualified' },
-    );
-    if (leadId) {
-      rt.leadId = leadId;
-      // VERBAL CONSENT: he just provided and confirmed this WhatsApp number for confirmations,
-      // on a recorded call — that is business-initiated-messaging consent, transcript as proof.
-      // Without this, a phone lead (who never sees the intake form) could never legally receive
-      // an out-of-window template. Never downgrades existing consent.
-      await grantWhatsappConsentVerbal(rt.db, rt.tenantId, leadId, now).catch((err) =>
-        console.error('verbal_consent_write_failed', err instanceof Error ? err.message : String(err)),
-      );
-    }
-    const insertedCalls = await rt.db
-      .insert(scheduledCalls)
-      .values({
-        tenantId: rt.tenantId,
-        leadId: leadId ?? undefined,
-        conversationId: rt.conversationId ?? undefined,
-        provider: 'google', // the legacy /book route leaves this defaulting to 'trafft' — a bug we don't copy
-        providerRef: booking.uid,
-        scheduledAt: new Date(booking.start),
-        duration,
-        status: 'scheduled',
-        attendees: [{ name: args.name.trim(), email, phone: args.phone }],
-        notes: args.notes ?? undefined,
-      })
-      .returning({ id: scheduledCalls.id });
-    scheduledCallId = insertedCalls[0]?.id ?? null;
-  } catch (err) {
-    dbOk = false;
-    console.error(
-      'book_meeting_db_write_failed',
-      JSON.stringify({
-        tenantId: rt.tenantId,
-        bookingUid: booking.uid,
-        error: err instanceof Error ? err.message : String(err),
-      }),
-    );
-  }
-
-  // Meeting reminders (C1): delayed jobs at T-24h/T-1h per tenant settings. Own try/catch —
-  // a reminder that fails to schedule must never fail the booking, and the <24h skip happens
-  // inside computeReminderPlan (past fire times drop out of the plan naturally).
-  if (scheduledCallId && rt.remindersQueue) {
+  //
+  // Bookkeeping rides the serialized background queue: the spoken confirmation depends only on the
+  // booking itself, which already exists in Google — yet these four serial round trips (lead
+  // upsert, consent, scheduled_calls insert, reminder scheduling) used to hold the caller in
+  // silence after "רגע, אני קובעת לך את הפגישה". The queue orders them after any in-flight
+  // capture_lead_info writes, so the upsert sees everything captured earlier in the call.
+  queueLeadWrite(rt, 'book_meeting', async () => {
+    let scheduledCallId: string | null = null;
     try {
-      await scheduleReminders(
-        { queue: rt.remindersQueue, db: rt.db },
-        {
-          tenantId: rt.tenantId,
-          scheduledCallId,
-          leadId: rt.leadId ?? undefined,
-          leadName: args.name.trim(),
-          phone: args.phone,
-          email,
-          meetingStartIso: booking.start,
-          meetLink: booking.meetLink,
-          bookingUid: booking.uid,
-          settings: resolveReminderSettings(rt.settings),
-          now,
-        },
+      const leadId = await upsertLead(
+        rt.db,
+        rt.tenantId,
+        { leadId: rt.leadId, callerPhone: rt.callerPhone },
+        { name: args.name.trim(), phone: args.phone, email },
+        { status: 'qualified' },
       );
+      if (leadId) {
+        rt.leadId = leadId;
+        // VERBAL CONSENT: he just provided and confirmed this WhatsApp number for confirmations,
+        // on a recorded call — that is business-initiated-messaging consent, transcript as proof.
+        // Without this, a phone lead (who never sees the intake form) could never legally receive
+        // an out-of-window template. Never downgrades existing consent.
+        await grantWhatsappConsentVerbal(rt.db, rt.tenantId, leadId, now).catch((err) =>
+          console.error('verbal_consent_write_failed', err instanceof Error ? err.message : String(err)),
+        );
+      }
+      const insertedCalls = await rt.db
+        .insert(scheduledCalls)
+        .values({
+          tenantId: rt.tenantId,
+          leadId: leadId ?? undefined,
+          conversationId: rt.conversationId ?? undefined,
+          provider: 'google', // the legacy /book route leaves this defaulting to 'trafft' — a bug we don't copy
+          providerRef: booking.uid,
+          scheduledAt: new Date(booking.start),
+          duration,
+          status: 'scheduled',
+          attendees: [{ name: args.name.trim(), email, phone: args.phone }],
+          notes: args.notes ?? undefined,
+        })
+        .returning({ id: scheduledCalls.id });
+      scheduledCallId = insertedCalls[0]?.id ?? null;
     } catch (err) {
       console.error(
-        'reminder_schedule_failed',
+        'book_meeting_db_write_failed',
         JSON.stringify({
           tenantId: rt.tenantId,
-          scheduledCallId,
+          bookingUid: booking.uid,
           error: err instanceof Error ? err.message : String(err),
         }),
       );
     }
-  }
+
+    // Meeting reminders (C1): delayed jobs at T-24h/T-1h per tenant settings. Own try/catch —
+    // a reminder that fails to schedule must never fail the booking, and the <24h skip happens
+    // inside computeReminderPlan (past fire times drop out of the plan naturally).
+    if (scheduledCallId && rt.remindersQueue) {
+      try {
+        await scheduleReminders(
+          { queue: rt.remindersQueue, db: rt.db },
+          {
+            tenantId: rt.tenantId,
+            scheduledCallId,
+            leadId: rt.leadId ?? undefined,
+            leadName: args.name.trim(),
+            phone: args.phone,
+            email,
+            meetingStartIso: booking.start,
+            meetLink: booking.meetLink,
+            bookingUid: booking.uid,
+            settings: resolveReminderSettings(rt.settings),
+            now,
+          },
+        );
+      } catch (err) {
+        console.error(
+          'reminder_schedule_failed',
+          JSON.stringify({
+            tenantId: rt.tenantId,
+            scheduledCallId,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      }
+    }
+  });
 
   rt.bookingCompleted = true; // the speech-guard now lets her say it out loud
   rt.callState?.onToolCall('book_meeting', true); // → closing stage
@@ -237,7 +243,6 @@ export async function executeBookMeeting(
     (inviteSent
       ? ` A calendar invite with a video link was emailed to ${email}.`
       : ` NOTE: the calendar event exists but NO email invite was sent (service-account limitation).`) +
-    (dbOk ? '' : ' (Internal record write failed — the meeting itself is confirmed; the team will reconcile.)') +
     ` Confirm to the lead in Hebrew that the meeting is set for ${spoken}` +
     (inviteSent
       ? ' and that an invite was sent to their email,'

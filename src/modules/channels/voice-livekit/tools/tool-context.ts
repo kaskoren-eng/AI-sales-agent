@@ -111,6 +111,27 @@ export interface ToolRuntimeContext {
    * guardrails; the agent advances it on turns and reflex events. `undefined` when the advisory
    * layer is disabled (VOICE_STATE_MACHINE_ENABLED=false) — every tool reads it as `rt.callState?.`. */
   callState: CallStateMachine | undefined;
+  /**
+   * Serialized background lead writes (see `queueLeadWrite`). capture_lead_info queues its DB work
+   * here and returns immediately — its 2-4 round trips used to run inside the tool loop of ordinary
+   * conversational turns, delaying the spoken reply for writes whose result the reply never used.
+   * Tools that READ lead state afterwards (book_meeting's upsert, end_call's opt-out) await this
+   * first, so ordering holds and a mid-flight capture can never race them into a duplicate lead.
+   */
+  pendingLeadWrites: Promise<void>;
+}
+
+/**
+ * Append one background lead write to the runtime's serialized queue.
+ *
+ * Serialized (not fired loose) so two capture calls in one turn cannot interleave their
+ * upsert+merge pairs. A failure is logged and the chain RESETS to resolved — one dead write must
+ * not poison every write after it, and must never fail the call.
+ */
+export function queueLeadWrite(rt: ToolRuntimeContext, label: string, work: () => Promise<void>): void {
+  rt.pendingLeadWrites = rt.pendingLeadWrites.then(work).catch((err) => {
+    console.error(`lead_write_failed ${label}`, err instanceof Error ? err.message : String(err));
+  });
 }
 
 /**
@@ -611,6 +632,7 @@ export async function buildToolRuntime(
       lastCheckedDurationMinutes: null,
       bookingCompleted: false,
       endReason: null,
+      pendingLeadWrites: Promise.resolve(),
       settings,
       outboundQueue,
       remindersQueue,

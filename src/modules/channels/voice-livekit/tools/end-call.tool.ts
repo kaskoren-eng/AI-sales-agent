@@ -76,6 +76,9 @@ export const LEAD_STATUS_OPTED_OUT = 'opted_out';
 export async function markLeadOptedOut(
   rt: ToolRuntimeContext,
 ): Promise<'lead_updated' | 'lead_created' | 'no_identity'> {
+  // Drain the background lead writes first: a capture/book upsert still in flight may be about to
+  // set rt.leadId or create the very row this must flip. DNC is the one write worth blocking for.
+  await rt.pendingLeadWrites;
   if (rt.leadId) {
     await rt.db
       .update(leads)

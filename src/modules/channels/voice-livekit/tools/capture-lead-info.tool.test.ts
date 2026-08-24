@@ -40,6 +40,7 @@ function fakeRt(opts: { leadId?: string | null; phoneMatch?: string | null; inse
     lastCheckedDurationMinutes: null,
     bookingCompleted: false,
     endReason: null,
+    pendingLeadWrites: Promise.resolve(),
     callState: opts.callState,
   } as unknown as ToolRuntimeContext;
   return { rt, updates, inserts };
@@ -116,12 +117,14 @@ describe('executeCaptureLeadInfo', () => {
   it('caches the resolved lead id back onto the runtime for later tools', async () => {
     const { rt } = fakeRt({ phoneMatch: 'lead-existing' });
     await executeCaptureLeadInfo(rt, args({ business_type: 'חנות רהיטים' }));
+    await rt.pendingLeadWrites;
     expect(rt.leadId).toBe('lead-existing');
   });
 
   it('qualification facts land in metadata merge with the call id stamped', async () => {
     const { rt, updates } = fakeRt({ leadId: 'lead-1' });
     await executeCaptureLeadInfo(rt, args({ pain_point: 'מפספס לידים', qualification: 'hot' }));
+    await rt.pendingLeadWrites;
     // update #1 = contact backfill (upsert), update #2 = qualification metadata merge + score
     expect(updates).toHaveLength(2);
     expect(updates[1]).toHaveProperty('metadata');
@@ -131,6 +134,7 @@ describe('executeCaptureLeadInfo', () => {
   it('contact-only capture (name/email) performs no metadata merge', async () => {
     const { rt, updates } = fakeRt({ leadId: 'lead-1' });
     await executeCaptureLeadInfo(rt, args({ name: 'דנה לוי', email: 'Dana@Example.com' }));
+    await rt.pendingLeadWrites;
     expect(updates).toHaveLength(1); // just the backfill
     expect(updates[0]).not.toHaveProperty('metadata');
   });
@@ -138,6 +142,7 @@ describe('executeCaptureLeadInfo', () => {
   it('never touches lead status — that belongs to book_meeting/end_call', async () => {
     const { rt, updates } = fakeRt({ leadId: 'lead-1' });
     await executeCaptureLeadInfo(rt, args({ qualification: 'cold', notes: 'לא בשל' }));
+    await rt.pendingLeadWrites;
     for (const u of updates) expect(u).not.toHaveProperty('status');
   });
 
@@ -145,5 +150,49 @@ describe('executeCaptureLeadInfo', () => {
     const { rt } = fakeRt({ leadId: 'lead-1' });
     const out = await executeCaptureLeadInfo(rt, args({ budget: '20K' }));
     expect(out).toContain('do not mention');
+  });
+
+  /**
+   * THE CONTRACT THIS TOOL NOW HAS. Its 2-4 DB round trips used to run inside the tool loop of an
+   * ordinary conversational turn — the caller waited on Postgres for a write whose result the
+   * spoken reply never used, on a tool the prompt describes as "silent and instant". The reply
+   * returns immediately; the write lands on the serialized background queue; working memory (what
+   * the [KNOWN] line reads) is updated before either.
+   */
+  it('the spoken reply does not wait for Postgres', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const updates: unknown[] = [];
+    const db = {
+      update: vi.fn(() => ({
+        set: (vals: unknown) => ({
+          where: async () => {
+            await gate; // Postgres is "slow" until the test says otherwise
+            updates.push(vals);
+          },
+        }),
+      })),
+    };
+    const cs = new CallStateMachine();
+    const rt = {
+      tenantId: 'tenant-1',
+      leadId: 'lead-1',
+      callerPhone: null,
+      callId: 'call-1',
+      db,
+      report: { recordToolCall: vi.fn() },
+      pendingLeadWrites: Promise.resolve(),
+      callState: cs,
+    } as unknown as ToolRuntimeContext;
+
+    const out = await executeCaptureLeadInfo(rt, args({ name: 'דנה לוי' }));
+
+    expect(out).toContain('Saved'); // returned while the update is still blocked...
+    expect(updates).toHaveLength(0);
+    expect(cs.facts.name).toBe('דנה לוי'); // ...but working memory already knows
+
+    release();
+    await rt.pendingLeadWrites;
+    expect(updates).toHaveLength(1); // and the write still lands
   });
 });

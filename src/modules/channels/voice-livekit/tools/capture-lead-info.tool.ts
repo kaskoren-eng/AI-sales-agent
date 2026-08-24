@@ -1,7 +1,7 @@
 import { llm } from '@livekit/agents';
 import { z } from 'zod';
 import { mergeLeadQualification, upsertLead } from './lead-store.js';
-import { timedTool, type ToolRuntimeContext } from './tool-context.js';
+import { queueLeadWrite, timedTool, type ToolRuntimeContext } from './tool-context.js';
 
 /**
  * capture_lead_info — the call's memory into the CRM, as it happens.
@@ -64,39 +64,10 @@ export async function executeCaptureLeadInfo(
   if (!Object.values(args).some((v) => v != null)) {
     throw new llm.ToolError('Nothing to save — call this only with at least one learned fact.');
   }
-  const leadId = await upsertLead(
-    rt.db,
-    rt.tenantId,
-    { leadId: rt.leadId, callerPhone: rt.callerPhone },
-    { name: args.name?.trim(), email: args.email?.trim().toLowerCase(), phone: args.phone ?? undefined },
-  );
-  if (!leadId) {
-    throw new llm.ToolError('Could not save right now. Continue the call normally; nothing was lost from the conversation.');
-  }
-  // Later tools (book_meeting, end_call's opt-out) reuse the resolved lead instead of re-matching.
-  rt.leadId = leadId;
 
-  const patch: Record<string, unknown> = {};
-  if (args.business_type) patch.business_type = args.business_type;
-  if (args.pain_point) patch.pain_point = args.pain_point;
-  if (args.budget) patch.budget = args.budget;
-  if (args.timeline) patch.timeline = args.timeline;
-  if (args.qualification) patch.qualification = args.qualification;
-  if (args.notes) patch.notes = args.notes;
-
-  if (Object.keys(patch).length > 0) {
-    patch.updated_from_call = rt.callId;
-    await mergeLeadQualification(
-      rt.db,
-      rt.tenantId,
-      leadId,
-      patch,
-      args.qualification ? QUALIFICATION_SCORE_FLOOR[args.qualification] : undefined,
-    );
-  }
-
-  // Mirror the gathered facts into the state machine's working memory ("what we know so far") and
-  // advance discovery→qualifying on a qualification read. The DB write above stays the source of truth.
+  // Working memory FIRST, and synchronously. The [KNOWN] facts line that stops her re-asking for a
+  // phone she already has is built from here on the very next inference — it must not wait for
+  // Postgres, and the prompt describes this tool as "silent and instant".
   rt.callState?.onToolCall('capture_lead_info', true, {
     name: args.name ?? undefined,
     businessType: args.business_type ?? undefined,
@@ -106,6 +77,42 @@ export async function executeCaptureLeadInfo(
     phone: args.phone ?? undefined,
     email: args.email ?? undefined,
     qualification: args.qualification ?? undefined,
+  });
+
+  // The DB writes ride the serialized background queue: 2-4 round trips that used to run inside
+  // the tool loop of an ordinary conversational turn, delaying the spoken reply for a result the
+  // reply never used. book_meeting and end_call await the queue before touching lead state, so a
+  // write still in flight cannot race them. A failed write is logged by the queue and costs a CRM
+  // row, never a call — the transcript still holds everything.
+  queueLeadWrite(rt, 'capture_lead_info', async () => {
+    const leadId = await upsertLead(
+      rt.db,
+      rt.tenantId,
+      { leadId: rt.leadId, callerPhone: rt.callerPhone },
+      { name: args.name?.trim(), email: args.email?.trim().toLowerCase(), phone: args.phone ?? undefined },
+    );
+    if (!leadId) return;
+    // Later tools (book_meeting, end_call's opt-out) reuse the resolved lead instead of re-matching.
+    rt.leadId = leadId;
+
+    const patch: Record<string, unknown> = {};
+    if (args.business_type) patch.business_type = args.business_type;
+    if (args.pain_point) patch.pain_point = args.pain_point;
+    if (args.budget) patch.budget = args.budget;
+    if (args.timeline) patch.timeline = args.timeline;
+    if (args.qualification) patch.qualification = args.qualification;
+    if (args.notes) patch.notes = args.notes;
+
+    if (Object.keys(patch).length > 0) {
+      patch.updated_from_call = rt.callId;
+      await mergeLeadQualification(
+        rt.db,
+        rt.tenantId,
+        leadId,
+        patch,
+        args.qualification ? QUALIFICATION_SCORE_FLOOR[args.qualification] : undefined,
+      );
+    }
   });
 
   return 'Saved. Continue the conversation naturally — do not mention that you saved anything.';

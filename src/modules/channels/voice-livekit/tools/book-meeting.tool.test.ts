@@ -103,6 +103,7 @@ function fakeRt(opts: {
     lastCheckedDurationMinutes: opts.lastCheckedDurationMinutes ?? 15,
     bookingCompleted: false,
     endReason: null,
+    pendingLeadWrites: Promise.resolve(),
     callState: opts.callState,
   } as unknown as ToolRuntimeContext;
 
@@ -122,6 +123,7 @@ describe('executeBookMeeting — happy path', () => {
   it('re-checks on the offered grid, books on the meeting duration, persists provider=google', async () => {
     const { rt, makeProvider, createBooking, captured } = fakeRt();
     const out = await executeBookMeeting(rt, args(), NOW);
+    await rt.pendingLeadWrites;
 
     // Grid re-check first (15+15=30), then the event itself at plain 15.
     expect(makeProvider).toHaveBeenNthCalledWith(1, 30);
@@ -151,6 +153,7 @@ describe('executeBookMeeting — happy path', () => {
   it('books on the grid the lead was actually offered (30-min meeting → 45-min blocks)', async () => {
     const { rt, makeProvider } = fakeRt({ lastCheckedDurationMinutes: 30 });
     await executeBookMeeting(rt, args(), NOW);
+    await rt.pendingLeadWrites;
     expect(makeProvider).toHaveBeenNthCalledWith(1, 45);
     expect(makeProvider).toHaveBeenNthCalledWith(2, 30);
   });
@@ -195,6 +198,7 @@ describe('executeBookMeeting — argument validation', () => {
   it('normalizes an STT-style email ("dana at example dot com")', async () => {
     const { rt, createBooking } = fakeRt();
     await executeBookMeeting(rt, args({ email: 'Dana at example dot com' }), NOW);
+    await rt.pendingLeadWrites;
     expect(createBooking).toHaveBeenCalledWith(
       expect.objectContaining({ attendee: expect.objectContaining({ email: 'dana@example.com' }) }),
     );
@@ -212,6 +216,7 @@ describe('executeBookMeeting — lead identity, always tenant-scoped', () => {
   it('outbound call: updates the known lead (backfill + verbal consent), inserts nothing', async () => {
     const { rt, captured } = fakeRt({ leadId: 'lead-known' });
     await executeBookMeeting(rt, args(), NOW);
+    await rt.pendingLeadWrites;
     // Two updates: the contact backfill (status: qualified) and the verbal WhatsApp consent —
     // he just confirmed his number for confirmations on a recorded call.
     expect(captured.leadUpdates).toHaveLength(2);
@@ -224,6 +229,7 @@ describe('executeBookMeeting — lead identity, always tenant-scoped', () => {
   it('inbound with a phone match: reuses the existing lead', async () => {
     const { rt, captured } = fakeRt({ phoneMatch: 'lead-existing' });
     await executeBookMeeting(rt, args(), NOW);
+    await rt.pendingLeadWrites;
     expect(captured.leadInserts).toHaveLength(0);
     expect(captured.callInserts[0]).toMatchObject({ leadId: 'lead-existing' });
   });
@@ -231,6 +237,7 @@ describe('executeBookMeeting — lead identity, always tenant-scoped', () => {
   it('inbound stranger: creates a qualified voice-livekit lead', async () => {
     const { rt, captured } = fakeRt({ phoneMatch: null });
     await executeBookMeeting(rt, args(), NOW);
+    await rt.pendingLeadWrites;
     expect(captured.leadInserts[0]).toMatchObject({
       tenantId: 'tenant-1',
       source: 'voice-livekit',
@@ -245,6 +252,7 @@ describe('executeBookMeeting — she never claims an email that was not sent', (
   it('inviteSent=true → the confirmation mentions the emailed invite', async () => {
     const { rt } = fakeRt({ inviteSent: true });
     const out = await executeBookMeeting(rt, args(), NOW);
+    await rt.pendingLeadWrites;
     expect(out).toContain('emailed to dana@example.com');
     expect(out).toContain('an invite was sent');
   });
@@ -252,6 +260,7 @@ describe('executeBookMeeting — she never claims an email that was not sent', (
   it('inviteSent=false (service-account 403 fallback) → "team will email details", no invite claim', async () => {
     const { rt } = fakeRt({ inviteSent: false });
     const out = await executeBookMeeting(rt, args(), NOW);
+    await rt.pendingLeadWrites;
     expect(out).toContain('NO email invite was sent');
     expect(out).toContain('do NOT claim an invite was already sent');
     expect(out).not.toContain('an invite was sent to their email');
@@ -263,6 +272,7 @@ describe('executeBookMeeting — calendar beats database', () => {
   it('a DB failure AFTER the event exists still returns success — the meeting is real', async () => {
     const { rt, createBooking } = fakeRt({ failWrites: true });
     const out = await executeBookMeeting(rt, args(), NOW);
+    await rt.pendingLeadWrites;
     expect(createBooking).toHaveBeenCalled();
     expect(rt.bookingCompleted).toBe(true);
     expect(out).toContain('Meeting booked');
@@ -286,6 +296,7 @@ describe('executeBookMeeting — meeting reminders hook (C1)', () => {
     const { rt, captured } = fakeRt();
     const added = attachQueue(rt);
     await executeBookMeeting(rt, args(), NOW);
+    await rt.pendingLeadWrites;
 
     expect(added).toHaveLength(4);
     // The insert mock returns id 'lead-new' for every .returning() — so that's the row id here.
@@ -306,6 +317,7 @@ describe('executeBookMeeting — meeting reminders hook (C1)', () => {
       throw new Error('redis down');
     });
     const out = await executeBookMeeting(rt, args(), NOW);
+    await rt.pendingLeadWrites;
     expect(out).toContain('Meeting booked');
     expect(rt.bookingCompleted).toBe(true);
   });
@@ -313,6 +325,7 @@ describe('executeBookMeeting — meeting reminders hook (C1)', () => {
   it('no remindersQueue (Redis was down at call start) → booking proceeds, hook silently skipped', async () => {
     const { rt } = fakeRt(); // fakeRt sets no remindersQueue
     const out = await executeBookMeeting(rt, args(), NOW);
+    await rt.pendingLeadWrites;
     expect(out).toContain('Meeting booked');
   });
 });
@@ -344,6 +357,7 @@ describe('executeBookMeeting — state-machine guardrails', () => {
     const cs = schedulingMachine();
     const { rt } = fakeRt({ callState: cs });
     await executeBookMeeting(rt, args(), NOW);
+    await rt.pendingLeadWrites;
     expect(rt.bookingCompleted).toBe(true);
     expect(cs.stage).toBe('closing');
   });
