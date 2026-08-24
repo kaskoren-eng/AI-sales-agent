@@ -201,14 +201,29 @@ function buildTTSFromEnv(env: Env): ttsBase.TTS {
   // Cartesia through LiveKit's inference gateway instead of straight to their API. Same model, same
   // voice, same language — see CARTESIA_ROUTE in env.ts for the numbers and for why the size of the
   // benched gap should not be believed until a real call confirms it.
-  if (env.VOICE_TTS_PROVIDER === 'cartesia' && env.CARTESIA_ROUTE === 'inference') {
+  //
+  // The two routes have DIFFERENT DEFAULTS: the direct Cartesia plugin asks for 24000
+  // (agents-plugin-cartesia/src/tts.ts:87), LiveKit's gateway defaults to 16000
+  // (agents/src/inference/tts.ts DEFAULT_SAMPLE_RATE). An earlier attempt at this route left
+  // sampleRate off, quietly downgrading the audio — which was then squeezed to 8kHz for the phone,
+  // degrading twice. Koren heard it immediately: "the voice was a bit hard to understand". When you
+  // change the ROUTE to a provider, diff every default, not just the options you meant to pass.
+  // Same for speed/volume: they ride in `modelOptions` here, not top-level as on the direct plugin,
+  // and dropping them un-tunes the ear-tuned 8kHz intelligibility levers.
+  if (
+    env.VOICE_TTS_PROVIDER === 'cartesia' &&
+    (env.CARTESIA_ROUTE === 'inference' || env.VOICE_TTS_ROUTE === 'inference')
+  ) {
+    const opts = cartesiaOptions(env);
     return new inference.TTS({
       model: `cartesia/${env.CARTESIA_MODEL}`,
       voice: env.CARTESIA_VOICE_ID_PRIMARY,
       // Hebrew must be explicit. Cartesia's auto-detect on Hebrew text produced transliterated
       // English on real calls — the same failure that `MODELS_ACCEPTING_LANGUAGE` exists to prevent
       // on the direct route. A route swap must not quietly reintroduce it.
-      language: 'he',
+      language: env.VOICE_LANGUAGE,
+      sampleRate: 24_000,
+      modelOptions: { speed: opts.speed, volume: opts.volume },
     });
   }
 
@@ -257,29 +272,6 @@ function buildTTSFromEnv(env: Env): ttsBase.TTS {
       return new ttsBase.StreamAdapter(elevenTTS, new tokenize.basic.SentenceTokenizer());
     }
     return elevenTTS;
-  }
-  if (env.VOICE_TTS_ROUTE === 'inference') {
-    const opts = cartesiaOptions(env);
-    return new inference.TTS({
-      model: 'cartesia/sonic-3',
-      voice: env.CARTESIA_VOICE_ID_PRIMARY,
-      language: env.VOICE_LANGUAGE,
-      // 24kHz, EXPLICITLY. This line is the whole reason the first attempt at this route shipped a
-      // worse-sounding agent to a real caller.
-      //
-      // The two routes have DIFFERENT DEFAULTS: the direct Cartesia plugin asks for 24000
-      // (agents-plugin-cartesia/src/tts.ts:87), LiveKit's gateway defaults to 16000
-      // (agents/src/inference/tts.ts DEFAULT_SAMPLE_RATE). Switching route therefore quietly
-      // downgraded the audio, which was then squeezed to 8kHz for the phone — degrading twice.
-      // Koren heard it immediately: "the voice was a bit hard to understand".
-      //
-      // Same model, same voice, same speed — and a silently different sample rate. When you change
-      // the ROUTE to a provider, diff every default, not just the options you meant to pass.
-      sampleRate: 24_000,
-      // The intelligibility levers for the 8kHz line (slower, louder). Tuned in Phase 2 by ear on a
-      // real call; they are not cosmetic and must survive any route change.
-      modelOptions: { speed: opts.speed, volume: opts.volume },
-    });
   }
   // Direct, with our own key. Options come from cartesiaOptions() so the agent and the test
   // harness cannot drift apart.

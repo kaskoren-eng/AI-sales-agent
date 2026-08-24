@@ -217,8 +217,12 @@ const envSchema = z.object({
   // Name the real model. The plugin defaults to 'stt-rt-v4', which Soniox now ALIASES to
   // stt-rt-v5 — so pinning the alias lets a silent upstream swap change our transcription overnight.
   SONIOX_MODEL: z.string().default('stt-rt-v5'),
-  // How long Soniox waits after speech stops before declaring an endpoint. Only used when
-  // VOICE_TURN_DETECTION=stt, which you should not turn on — see below.
+  // How long Soniox waits after speech stops before declaring an endpoint. This binds in BOTH turn
+  // modes, not just 'stt': in 'vad' mode the SDK abandons the turn-commit until a Soniox FINAL
+  // transcript arrives (audio_recognition: `if (this.stt && !this.audioTranscript) return`), and
+  // Soniox only emits FINAL on its own <end> token — governed by this delay. So on turns where the
+  // caller pauses mid-sentence, this value IS the end-of-turn floor. 500 is the Soniox API minimum;
+  // it cannot go lower.
   SONIOX_MAX_ENDPOINT_DELAY_MS: z.coerce.number().int().min(500).max(3000).default(500),
   // How the turn ends. LEAVE THIS ON 'vad'.
   //
