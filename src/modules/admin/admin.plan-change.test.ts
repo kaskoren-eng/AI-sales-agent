@@ -124,3 +124,48 @@ describe('TenantService.update — plan validation', () => {
     expect(updates).toHaveLength(0);
   });
 });
+
+/**
+ * THE WRITE WORKED AND THE READ DID NOT SHOW IT.
+ *
+ * `tenantDetail` builds an explicit projection rather than spreading the row — which is the right
+ * shape, and the reason the operator console has never leaked `api_key_hash`. The cost of that
+ * shape is that a column added later is invisible until someone adds it here too, and it fails
+ * silently: the field is simply absent, so the console rendered an empty plan for a tenant that
+ * had one, and the operator's only conclusion would be that the change had not saved.
+ *
+ * Caught by driving a real plan change against production and reading it back, not by review.
+ */
+describe('AdminService.tenantDetail — the billing projection', () => {
+  it('returns the fields the operator can set', async () => {
+    const row = {
+      id: 't1', name: 'Acme', slug: 'acme', isActive: true, apiKeyHash: 'hash', settings: {},
+      createdAt: new Date(), updatedAt: new Date(),
+      planCode: 'base', billingStatus: 'trialing', quotaEnforcement: 'soft', billingAnchorDay: 12,
+    };
+    // Every read after the tenant row is a rollup this test does not care about.
+    const db = {
+      select: vi.fn(() => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => [row],
+            groupBy: async () => [],
+            then: (r: (v: unknown[]) => unknown) => r([]),
+          }),
+        }),
+      })),
+    } as unknown as Database;
+
+    const { AdminService } = await import('./admin.service.js');
+    const detail = await new AdminService(db).tenantDetail('t1');
+
+    expect(detail.tenant).toMatchObject({
+      planCode: 'base',
+      billingStatus: 'trialing',
+      quotaEnforcement: 'soft',
+      billingAnchorDay: 12,
+    });
+    // And the boundary the projection exists to enforce still holds.
+    expect(detail.tenant).not.toHaveProperty('apiKeyHash');
+  });
+});

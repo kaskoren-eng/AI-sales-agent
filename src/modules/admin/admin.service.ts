@@ -47,7 +47,18 @@ export interface AdminOverview {
 }
 
 export interface TenantDetail {
-  tenant: { id: string; name: string; slug: string; isActive: boolean; hasApiKey: boolean; settings: unknown; createdAt: Date; updatedAt: Date };
+  tenant: {
+    id: string; name: string; slug: string; isActive: boolean; hasApiKey: boolean; settings: unknown;
+    createdAt: Date; updatedAt: Date;
+    /**
+     * The billing posture. An explicit projection like this one is the right shape — it is why the
+     * operator console never leaked `api_key_hash` — but it also means a column added later is
+     * invisible until someone adds it HERE too, and these three were exactly that: the PATCH could
+     * set them and the GET could not show them, so the console rendered a blank plan for a tenant
+     * that had one.
+     */
+    planCode: string | null; billingStatus: string; quotaEnforcement: string; billingAnchorDay: number;
+  };
   stats: {
     leads: { total: number; byStatus: Record<string, number> };
     conversations: number;
@@ -248,6 +259,10 @@ export class AdminService {
         settings: redactSettings(t.settings),
         createdAt: t.createdAt,
         updatedAt: t.updatedAt,
+        planCode: t.planCode ?? null,
+        billingStatus: t.billingStatus,
+        quotaEnforcement: t.quotaEnforcement,
+        billingAnchorDay: t.billingAnchorDay,
       },
       stats: {
         leads: { total: leadsTotal, byStatus },
