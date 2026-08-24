@@ -151,6 +151,37 @@ const envSchema = z.object({
   // So the low-latency sonic-turbo is NOT an option for us. Verify: npm run voice:ab -- <model>
   CARTESIA_API_KEY: z.string().min(1).optional(),
   CARTESIA_MODEL: z.string().default('sonic-3'),
+  /**
+   * How we reach Cartesia: straight to their API with our own key, or through LiveKit's inference
+   * gateway. SAME model, SAME voice, SAME language — only the route differs.
+   *
+   * WHY THIS IS A KNOB. Benched 2026-08-24, sonic-3.5 both ways, three runs:
+   *
+   *     direct     1169ms / 919ms / 1502ms
+   *     inference   344ms / 263ms /  381ms
+   *
+   * Direct is 3-4x slower every time. It went unnoticed for weeks because the bench's "LIVE, direct"
+   * row was hardcoded to the label "sonic-3" while CARTESIA_MODEL had been sonic-3.5 since 2026-08-05
+   * — so the two rows read as a model comparison, and the route never entered the conversation.
+   *
+   * AND THE BENCH WAS WRONG ABOUT THE SIZE. Measured the same scenario through the live pipeline,
+   * same day, seven TTS segments each:
+   *
+   *     direct      544 464 1064 463 462 534 656   median 534ms
+   *     inference   558 416  594 468 440 350 445   median 445ms
+   *
+   * ~89ms, not ~1100ms — and the distributions overlap, so even that may be noise. The bench builds a
+   * fresh TTS per candidate and pays a handshake every time; a live agent holds the socket open and
+   * never pays it. The 3-4x gap was almost entirely connection setup.
+   *
+   * What survives is smaller and softer: the inference route's WORST sample was 594ms against the
+   * direct route's 1064ms, so the tail is tighter. That is worth something on a call, where one
+   * 1-second stall is more noticeable than 89ms of median.
+   *
+   * `direct` remains the default. This knob exists so the question can be re-measured on real calls
+   * rather than argued from a bench — the bench is what made it look like a 1-second win.
+   */
+  CARTESIA_ROUTE: z.enum(['direct', 'inference']).default('direct'),
   CARTESIA_VOICE_ID_PRIMARY: z.string().min(1).optional(),
   // Backup voices — A/B candidates for the Phase 2 voice selection
   CARTESIA_VOICE_ID_SECONDARY: z.string().min(1).optional(),

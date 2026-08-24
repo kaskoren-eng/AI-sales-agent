@@ -198,6 +198,20 @@ export function buildTTS(env: Env, override?: PersonaTts | null): ttsBase.TTS {
 }
 
 function buildTTSFromEnv(env: Env): ttsBase.TTS {
+  // Cartesia through LiveKit's inference gateway instead of straight to their API. Same model, same
+  // voice, same language — see CARTESIA_ROUTE in env.ts for the numbers and for why the size of the
+  // benched gap should not be believed until a real call confirms it.
+  if (env.VOICE_TTS_PROVIDER === 'cartesia' && env.CARTESIA_ROUTE === 'inference') {
+    return new inference.TTS({
+      model: `cartesia/${env.CARTESIA_MODEL}`,
+      voice: env.CARTESIA_VOICE_ID_PRIMARY,
+      // Hebrew must be explicit. Cartesia's auto-detect on Hebrew text produced transliterated
+      // English on real calls — the same failure that `MODELS_ACCEPTING_LANGUAGE` exists to prevent
+      // on the direct route. A route swap must not quietly reintroduce it.
+      language: 'he',
+    });
+  }
+
   // DeepDub, behind the flag. Won a blind Hebrew A/B (6:1) on quality + native gender at cost parity,
   // realtime model ~125ms. NOT default — this branch only fires on VOICE_TTS_PROVIDER=deepdub, so
   // Cartesia keeps serving until a decision is made. One env var to revert. See tts/deepdub.tts.ts.

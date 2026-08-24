@@ -24,6 +24,7 @@
  */
 import { inference, initializeLogger, llm as llmBase, tts as ttsBase } from '@livekit/agents';
 import * as cartesia from '@livekit/agents-plugin-cartesia';
+import { DeepdubTTS, deepdubOptions } from '../tts/deepdub.tts.js';
 import * as openai from '@livekit/agents-plugin-openai';
 import { loadEnv } from '../../../../config/env.js';
 import { cartesiaOptions } from './speech.js';
@@ -50,7 +51,8 @@ const OUT_DIR = 'voice-samples/bench';
 // Hebrew and only whispers about it at DEBUG level; known-issues §2).
 // ---------------------------------------------------------------------------------------------
 interface TtsCandidate {
-  name: string;
+  /** A function when the row's identity depends on env — see the LIVE row's comment for why. */
+  name: string | ((env: Env) => string);
   build: (env: Env) => ttsBase.TTS;
   /** Set when the model is known to be dubious on Hebrew — listen to the WAV before believing it. */
   note?: string;
@@ -69,8 +71,24 @@ const TTS_CANDIDATES: TtsCandidate[] = [
   {
     // THE BASELINE — our live config, direct to Cartesia with our own key. Every other row is only
     // meaningful relative to this one.
-    name: 'cartesia/sonic-3 (LIVE, direct)',
+    //
+    // NAMED FROM ENV, because it does not run whatever model the label says — it runs CARTESIA_MODEL.
+    // It was hardcoded to "sonic-3" while CARTESIA_MODEL had been sonic-3.5 since 2026-08-05, so this
+    // row silently reported sonic-3.5's latency under sonic-3's name. Anyone comparing the two rows
+    // was comparing the same model to itself, which is a plausible reason the 2026-08-05 latency A/B
+    // read as noise.
+    name: (env) => `cartesia/${env.CARTESIA_MODEL} (LIVE, direct)`,
     build: (env) => new cartesia.TTS(cartesiaOptions(env)),
+  },
+  {
+    // DEEPDUB — the one candidate never benched, despite winning Koren's blind Hebrew A/B 6:1 on
+    // quality and native gender at cost parity, with a realtime model documented at ~125ms.
+    //
+    // It was missing from this file entirely, which is how "the lever, not yet pulled" stayed unpulled:
+    // every latency conversation compared Cartesia against ElevenLabs and never against the thing that
+    // had already won on quality. If it is also fast, it is not a trade-off at all.
+    name: (env) => `deepdub/${env.DEEPDUB_MODEL}${env.DEEPDUB_REALTIME ? ' (realtime)' : ''}`,
+    build: (env) => new DeepdubTTS(deepdubOptions(env)),
   },
   {
     // Same model through LiveKit's gateway. Included ONLY to price the extra hop: if this is much
@@ -231,19 +249,20 @@ async function benchTts(env: Env): Promise<void> {
     }
 
     const ttfb = median(samples);
-    results.push({ name: c.name, ttfb, note: c.note, err });
+    const label = typeof c.name === 'function' ? c.name(env) : c.name;
+    results.push({ name: label, ttfb, note: c.note, err });
 
     if (frames.length > 0) {
       // Judge the voice on the PHONE band, never on studio audio — an 8kHz line strips the
       // frequencies that carry Hebrew consonants, and a voice that is lovely in a browser can be
       // unintelligible on a call. That is not hypothetical; it is what happened to us.
-      const safe = c.name.replace(/[^a-z0-9.]+/gi, '_');
+      const safe = label.replace(/[^a-z0-9.]+/gi, '_');
       await writeFile(`${OUT_DIR}/${safe}-phone.wav`, toPhoneWav(frames));
       await writeFile(`${OUT_DIR}/${safe}-studio.wav`, toStudioWav(frames));
     }
 
     console.log(
-      `  ${c.name.padEnd(38)} ${err ? `FAILED — ${err}` : `${String(ttfb).padStart(4)}ms`}` +
+      `  ${label.padEnd(38)} ${err ? `FAILED — ${err}` : `${String(ttfb).padStart(4)}ms`}` +
         `${c.note ? `   (${c.note})` : ''}`,
     );
   }
@@ -299,7 +318,7 @@ async function benchLlm(env: Env): Promise<void> {
 
     const ttft = median(samples);
     results.push({ name: c.name, ttft, reply, err });
-    console.log(`  ${c.name.padEnd(42)} ${err ? `FAILED — ${err}` : `${String(ttft).padStart(4)}ms`}`);
+    console.log(`  ${String(c.name).padEnd(42)} ${err ? `FAILED — ${err}` : `${String(ttft).padStart(4)}ms`}`);
   }
 
   const baseline = results.find((r) => r.name.includes('LIVE'))?.ttft;

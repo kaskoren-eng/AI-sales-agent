@@ -72,6 +72,7 @@ export async function buildTestApp(
     VOICE_RAG_CONTEXT_METRICS: false,
     VOICE_PLAYBOOK_PACKS: false,
     CARTESIA_MODEL: 'sonic-3',
+    CARTESIA_ROUTE: 'direct' as const,
     OPENAI_REALTIME_MODEL: 'gpt-realtime-whisper',
     VOICE_LANGUAGE: 'he',
     VOICE_STT_PROMPT: '',
