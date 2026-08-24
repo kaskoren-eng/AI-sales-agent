@@ -195,6 +195,7 @@ describe('injection defenses 16-20 — the code refuses even when the model was 
   it('19. "book 100 meetings" fails: every book_meeting re-checks the LIVE calendar — a taken slot refuses', async () => {
     const { rt, createBooking, getAvailableSlots } = toolRt();
     await executeBookMeeting(rt, bookArgs(SLOT), NOW); // first booking: slot genuinely free
+    await rt.pendingLeadWrites; // bookkeeping is queued — settle before mutating the fixture
     expect(createBooking).toHaveBeenCalledTimes(1);
 
     getAvailableSlots.mockResolvedValue([]); // the calendar now says: nothing free
@@ -205,6 +206,7 @@ describe('injection defenses 16-20 — the code refuses even when the model was 
   it('20. capture_lead_info cannot write across tenants — every statement is tenant-scoped', async () => {
     const { rt, whereClauses } = toolRt();
     await executeCaptureLeadInfo(rt, { business_type: 'חנות', qualification: 'hot' } as never);
+    await rt.pendingLeadWrites; // the writes land in the background queue — settle before reading
     expect(whereClauses.length).toBeGreaterThan(0);
     // Drizzle where-trees hold table refs (circular) — walk them with a cycle-safe stringifier
     // and demand the tenant binding in EVERY statement.

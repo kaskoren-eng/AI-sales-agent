@@ -5,6 +5,7 @@ import {
   WorkerOptions,
   cli,
   defineAgent,
+  inference,
   llm,
   voice,
 } from '@livekit/agents';
@@ -440,8 +441,12 @@ export default defineAgent({
 
     // DeepDub's realtime advantage only exists on a WARM socket (cold connect ~550–1900ms, warm
     // TTFB ~460ms — measured). Open it NOW, in parallel with everything below; by the time the
-    // greeting synthesizes, the handshake is long done. No-op for other TTS providers.
+    // greeting synthesizes, the handshake is long done. The gateway route (CARTESIA_ROUTE=inference)
+    // gets the same treatment — its pooled websocket otherwise opens lazily at the first synthesis,
+    // so the GREETING paid the cold TLS handshake. The direct Cartesia plugin has no prewarm hook;
+    // it connects per stream.
     if (components.tts instanceof DeepdubTTS) void components.tts.prewarm();
+    else if (components.tts instanceof inference.TTS) components.tts.prewarm();
 
     // Connect FIRST. waitForParticipant() throws "room is not connected" otherwise — you cannot
     // ask who is on the call before picking up the phone. (session.start() below also connects,
@@ -668,6 +673,9 @@ export default defineAgent({
       // Best-effort by design: losing the row must not crash teardown (the stdout JSON line above
       // still carries everything, and `lk agent logs` can recover it).
       if (runtime) {
+        // Drain the background lead writes before the pool is used for teardown work and closed —
+        // a capture/book bookkeeping write still in flight must land, not die with the pool.
+        await runtime.pendingLeadWrites;
         try {
           const json = reportJson;
           const [inserted] = await runtime.db.insert(callLearnings).values({

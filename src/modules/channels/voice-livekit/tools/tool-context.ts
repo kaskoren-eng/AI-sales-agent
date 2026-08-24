@@ -129,7 +129,9 @@ export interface ToolRuntimeContext {
  * not poison every write after it, and must never fail the call.
  */
 export function queueLeadWrite(rt: ToolRuntimeContext, label: string, work: () => Promise<void>): void {
-  rt.pendingLeadWrites = rt.pendingLeadWrites.then(work).catch((err) => {
+  // `?? Promise.resolve()` tolerates hand-built partial runtimes (test fixtures); the real
+  // construction in buildToolRuntime always initializes the chain.
+  rt.pendingLeadWrites = (rt.pendingLeadWrites ?? Promise.resolve()).then(work).catch((err) => {
     console.error(`lead_write_failed ${label}`, err instanceof Error ? err.message : String(err));
   });
 }
@@ -537,6 +539,13 @@ export async function buildToolRuntime(
     }
   }
 
+  // Calendar auth starts NOW, in parallel with the settings read below. The two are independent
+  // once the tenant id is known, and this used to be one more serial DB read (+ decrypt) standing
+  // between pickup and the greeting. Consumed at step 4; the early catch keeps a rejection that
+  // lands while step 3 is still running from surfacing as unhandled.
+  const calendarPromise = resolveCalendarAuth(env, identity.tenantId, connection.db, deps);
+  calendarPromise.catch(() => undefined);
+
   // 3. The gate config. PREFER the settings the dispatcher already resolved and shipped in the
   //    metadata (backend-side, fast+correct DB) — the agent then gates instantly and never depends
   //    on a cold cross-region DB read at pickup. Only inbound SIP (no dispatcher settings) falls
@@ -572,7 +581,10 @@ export async function buildToolRuntime(
   //    bug this step closes: customer #2's agent would qualify a lead, agree a time, and write the
   //    meeting into ClickScales' calendar. Nothing errors — the tool succeeds, and the agent tells
   //    the lead it is booked — while their salesperson never sees it.
-  const calendar = await resolveCalendarAuth(env, identity.tenantId, connection.db, deps);
+  //
+  //    (Resolution STARTED back at step 2½, in parallel with the settings read; this await usually
+  //    finds it already settled.)
+  const calendar = await calendarPromise;
   if (!calendar) {
     await connection.close().catch(() => undefined);
     return { runtime: null, disabledReason: 'calendar_not_configured', settings };
