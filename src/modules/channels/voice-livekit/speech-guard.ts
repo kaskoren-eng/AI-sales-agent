@@ -233,12 +233,18 @@ export function guardSpeech(
   text: string,
   opts: { allowBookingClaims?: boolean } = {},
 ): GuardResult {
+  // NEVER `.test()` these patterns: they are shared module-level /g regexes, and `RegExp.test` on a
+  // /g regex persists `lastIndex` — after any match, the next call starts MID-STRING and silently
+  // misses. guardSpeech runs once per sentence of every turn of every call in the process, so the
+  // guard was blind on alternating sentences. `String.match` and `.replace` with /g ignore
+  // `lastIndex`, so detection goes through them instead.
   const interventions: string[] = [];
   let out = text;
 
-  if (NO_RESPONSE.test(out)) {
+  const withoutToken = out.replace(NO_RESPONSE, '');
+  if (withoutToken !== out) {
     interventions.push('removed NO_RESPONSE_NEEDED (silence control token)');
-    out = out.replace(NO_RESPONSE, '').trim();
+    out = withoutToken.trim();
     // If that was the WHOLE reply, she is meant to stay silent — which is the correct behaviour when
     // a caller says "רגע" or "שנייה". Saying nothing is the point.
     if (out === '') return { text: '', silent: true, interventions };
@@ -248,8 +254,9 @@ export function guardSpeech(
   // — at that point "קבעתי לך" is the truth and rewriting it would be the lie.
   if (!opts.allowBookingClaims) {
     for (const pattern of FALSE_BOOKING) {
-      if (pattern.test(out)) {
-        interventions.push(`rewrote a false booking claim: "${out.match(pattern)?.[0]?.slice(0, 50)}"`);
+      const claim = out.match(pattern)?.[0];
+      if (claim !== undefined) {
+        interventions.push(`rewrote a false booking claim: "${claim.slice(0, 50)}"`);
         out = out.replace(pattern, TRUTH);
       }
     }

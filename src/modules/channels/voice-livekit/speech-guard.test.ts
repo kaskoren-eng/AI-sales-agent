@@ -53,6 +53,27 @@ describe('speech guard — she must not claim a booking that does not exist', ()
     expect(guardSpeech(t).text).toBe(t);
     expect(guardSpeech(t).interventions).toHaveLength(0);
   });
+
+  /**
+   * ── THE lastIndex TRAP ────────────────────────────────────────────────────────────────────────
+   *
+   * The booking patterns are shared module-level /g regexes, and `RegExp.test` on a /g regex
+   * persists `lastIndex` across calls — after any match, the NEXT test starts mid-string and
+   * silently misses. guardStream calls the guard once per sentence, so the original code caught a
+   * false claim in one sentence and then waved the identical claim through in the next. This runs
+   * the same lie through the guard many times in a row; every single pass must catch it.
+   */
+  it('catches the same false claim on EVERY consecutive sentence, not every other one', () => {
+    for (let i = 0; i < 5; i++) {
+      const r = guardSpeech('קבעתי לך שיחת דמו למחר בעשר.');
+      expect(r.text, `pass ${i + 1} let the claim through`).not.toMatch(/קבעתי לך/u);
+      expect(r.interventions.length, `pass ${i + 1} logged nothing`).toBeGreaterThan(0);
+    }
+    // And the silence token, which shares the same /g + .test shape.
+    for (let i = 0; i < 5; i++) {
+      expect(guardSpeech('NO_RESPONSE_NEEDED').silent, `pass ${i + 1}`).toBe(true);
+    }
+  });
 });
 
 describe('speech guard — niqqud is stripped so Cartesia gets clean consonantal Hebrew', () => {
