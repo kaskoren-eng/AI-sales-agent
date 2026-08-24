@@ -19,19 +19,7 @@ export class TenantService {
 
     if (existing) throw new ConflictError(`Slug "${input.slug}" is already taken`);
 
-    // The plan is an FK, so a bad code would fail at the database with a constraint error. Check
-    // it here instead, to name the valid codes — the operator is mid-onboarding with a customer.
-    const [plan] = await this.db
-      .select({ code: plans.code })
-      .from(plans)
-      .where(eq(plans.code, input.planCode))
-      .limit(1);
-    if (!plan) {
-      const available = await this.db.select({ code: plans.code }).from(plans).orderBy(plans.code);
-      throw new ValidationError(
-        `Unknown plan "${input.planCode}". Available: ${available.map((p) => p.code).join(', ')}`,
-      );
-    }
+    await this.assertPlanExists(input.planCode);
 
     // Generate a random API key — return the raw key once, store only the hash
     const apiKey = `sk_${randomBytes(32).toString('hex')}`;
@@ -78,7 +66,29 @@ export class TenantService {
     return tenant;
   }
 
+  /**
+   * The plan is an FK, so a bad code would fail at the database with a constraint error. Check it
+   * here instead, to name the valid codes — the operator is mid-onboarding with a customer on the
+   * phone, and "violates foreign key constraint tenants_plan_code_plans_code_fk" is not an answer
+   * they can act on.
+   */
+  private async assertPlanExists(planCode: string) {
+    const [plan] = await this.db
+      .select({ code: plans.code })
+      .from(plans)
+      .where(eq(plans.code, planCode))
+      .limit(1);
+    if (plan) return;
+
+    const available = await this.db.select({ code: plans.code }).from(plans).orderBy(plans.code);
+    throw new ValidationError(
+      `Unknown plan "${planCode}". Available: ${available.map((p) => p.code).join(', ')}`,
+    );
+  }
+
   async update(id: string, input: UpdateTenantInput) {
+    if (input.planCode) await this.assertPlanExists(input.planCode);
+
     if (input.slug) {
       const [existing] = await this.db
         .select({ id: tenants.id })

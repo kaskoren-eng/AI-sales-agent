@@ -61,7 +61,7 @@ export interface TenantRollup {
 }
 
 export interface TenantDetail {
-  tenant: { id: string; name: string; slug: string; isActive: boolean; hasApiKey: boolean; settings: unknown; createdAt: string; updatedAt: string }
+  tenant: { id: string; name: string; slug: string; isActive: boolean; hasApiKey: boolean; settings: unknown; createdAt: string; updatedAt: string; planCode: string | null; billingStatus: string; quotaEnforcement: string }
   stats: {
     leads: { total: number; byStatus: Record<string, number> }
     conversations: number
@@ -114,8 +114,38 @@ export const fetchAdminPlans = () => adminFetch<{ data: Plan[] }>('/plans')
 export const createTenant = (input: { name: string; slug: string; planCode: string }) =>
   adminFetch<CreatedTenant>('/tenants', { method: 'POST', body: JSON.stringify(input) })
 
-export const updateTenant = (id: string, patch: { name?: string; slug?: string; isActive?: boolean }) =>
-  adminFetch<{ id: string; name: string; slug: string; isActive: boolean }>(`/tenants/${id}`, {
+/**
+ * `planCode`, `billingStatus` and `quotaEnforcement` are operator-only — deliberately absent from
+ * the tenant's own PATCH, so nobody can move themselves onto a cheaper plan or switch off their
+ * own quota.
+ *
+ * A plan change does NOT reprice the billing period it lands in: `usage_periods` snapshots the
+ * plan at period open so a change on the 20th cannot rewrite the 19 days already billed. When the
+ * plan changes, the response carries `openPeriodStillPricedAs` so the caller can show what the
+ * current invoice still reflects.
+ */
+export const updateTenant = (
+  id: string,
+  patch: {
+    name?: string
+    slug?: string
+    isActive?: boolean
+    planCode?: string
+    billingStatus?: string
+    quotaEnforcement?: string
+  },
+) =>
+  adminFetch<{
+    id: string
+    name: string
+    slug: string
+    isActive: boolean
+    planCode: string | null
+    billingStatus: string
+    quotaEnforcement: string
+    openPeriodStillPricedAs?: { planCode: string; periodEnd: string; monthlyPriceAgorot: number }
+    note?: string
+  }>(`/tenants/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(patch),
   })

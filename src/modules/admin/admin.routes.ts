@@ -50,7 +50,60 @@ export async function adminRoutes(app: FastifyInstance) {
     const result = updateTenantSchema.safeParse(request.body);
     if (!result.success) throw new ValidationError(result.error.issues[0]?.message ?? 'Invalid input');
     // name / slug / isActive — isActive:false is "suspend", true is "activate".
+    // planCode / billingStatus / quotaEnforcement are the operator-only billing controls.
+    const before = result.data.planCode ? await admin.readBillingPosture(id) : null;
     const updated = await tenantsSvc.update(id, result.data);
+
+    /**
+     * A PLAN CHANGE DOES NOT REPRICE THE MONTH IT LANDS IN.
+     *
+     * `usage_periods` snapshots the plan when the period opens, on purpose, so that a change made
+     * on the 20th cannot silently reprice the 19 days already invoiced against the old terms. The
+     * consequence is the part an operator will not guess: an upgrade agreed today takes effect at
+     * the NEXT period turnover, and the customer's current invoice still reflects the old plan.
+     *
+     * That is the correct behaviour and the wrong thing to leave unsaid — the operator has just
+     * told a customer their new price, so the response says plainly what the open period is still
+     * priced at. Silence here is how a billing dispute starts.
+     */
+    let openPeriod: Awaited<ReturnType<typeof admin.readBillingPosture>> | null = null;
+    if (result.data.planCode && result.data.planCode !== before?.planCode) {
+      openPeriod = before;
+      request.log.info({
+        audit: true,
+        event: 'tenant_plan_changed',
+        tenantId: id,
+        from: before?.planCode ?? null,
+        to: result.data.planCode,
+      });
+      // Money. Needs a record that outlives log retention and can be shown to the customer.
+      await recordAudit(app.db, {
+        tenantId: id,
+        action: 'tenant.plan_changed',
+        targetType: 'tenant',
+        targetId: id,
+        actorType: 'admin_key',
+        actorLabel: 'operator_console',
+        ip: request.ip,
+        metadata: { from: before?.planCode ?? null, to: result.data.planCode },
+      });
+    }
+
+    if (result.data.billingStatus || result.data.quotaEnforcement) {
+      await recordAudit(app.db, {
+        tenantId: id,
+        action: 'tenant.billing_updated',
+        targetType: 'tenant',
+        targetId: id,
+        actorType: 'admin_key',
+        actorLabel: 'operator_console',
+        ip: request.ip,
+        metadata: {
+          ...(result.data.billingStatus ? { billingStatus: result.data.billingStatus } : {}),
+          ...(result.data.quotaEnforcement ? { quotaEnforcement: result.data.quotaEnforcement } : {}),
+        },
+      });
+    }
 
     // Suspension is enforced from a 30s-TTL status cache (see plugins/tenant-status.ts), so
     // without this the operator clicks "suspend" and the tenant keeps working for up to half a
@@ -76,7 +129,17 @@ export async function adminRoutes(app: FastifyInstance) {
       });
     }
 
-    return safeTenant(updated);
+    return {
+      ...safeTenant(updated),
+      // Present only when the plan actually changed, so the operator sees the discrepancy at the
+      // moment they create it rather than when the invoice is queried.
+      ...(openPeriod?.openPeriod
+        ? {
+            openPeriodStillPricedAs: openPeriod.openPeriod,
+            note: 'The open billing period keeps the plan it was opened with. The new plan applies from the next period.',
+          }
+        : {}),
+    };
   });
 
   app.post('/tenants/:id/rotate-key', async (request) => {

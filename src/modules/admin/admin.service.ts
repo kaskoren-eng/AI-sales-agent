@@ -8,6 +8,7 @@ import {
   scheduledCalls,
   callLearnings,
   plans,
+  usagePeriods,
 } from '../../db/schema/index.js';
 import { NotFoundError } from '../../shared/errors.js';
 import { redactSettings } from '../tenants/settings-policy.js';
@@ -83,6 +84,47 @@ export class AdminService {
       })
       .from(plans)
       .orderBy(plans.monthlyPriceAgorot);
+  }
+
+  /**
+   * What a tenant is on right now, and what its OPEN billing period is priced at — which are two
+   * different questions the moment anyone changes a plan mid-month.
+   *
+   * `usage_periods` snapshots plan values when the period opens so that a later change cannot
+   * reprice days already billed. Read on its own that sounds like an implementation detail; in
+   * practice it is the difference between what the operator just promised a customer and what the
+   * customer's current invoice will say. The plan-change route reports both for exactly that
+   * reason.
+   */
+  async readBillingPosture(tenantId: string) {
+    const [tenant] = await this.db
+      .select({
+        planCode: tenants.planCode,
+        billingStatus: tenants.billingStatus,
+        quotaEnforcement: tenants.quotaEnforcement,
+      })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+
+    if (!tenant) throw new NotFoundError('Tenant', tenantId);
+
+    const [open] = await this.db
+      .select({
+        periodStart: usagePeriods.periodStart,
+        periodEnd: usagePeriods.periodEnd,
+        planCode: usagePeriods.planCode,
+        monthlyPriceAgorot: usagePeriods.monthlyPriceAgorot,
+        includedLeads: usagePeriods.includedLeads,
+        leadsUsed: usagePeriods.leadsUsed,
+      })
+      .from(usagePeriods)
+      .where(and(eq(usagePeriods.tenantId, tenantId), eq(usagePeriods.status, 'open')))
+      .limit(1);
+
+    // No open period is normal, not an error: one is created lazily on the tenant's first metered
+    // unit. A tenant that has never had a lead or a call simply has nothing to reprice.
+    return { ...tenant, openPeriod: open ?? null };
   }
 
   /** Every tenant with its measured rollup. Tenant counts are small; a handful of grouped scans. */

@@ -116,6 +116,28 @@ function TenantDrawer({ id, onClose }: { id: string; onClose: () => void }) {
     mutationFn: () => updateTenant(id, { isActive: !t?.isActive }),
     onSuccess: invalidate,
   })
+
+  /**
+   * Billing controls. Until these existed a plan could be chosen at creation and never changed —
+   * no upgrade, no downgrade, no way off the internal tier — so every price change meant SQL
+   * against production.
+   */
+  const plans = useQuery({ queryKey: ['admin', 'plans'], queryFn: fetchAdminPlans })
+  const [periodNote, setPeriodNote] = useState<string | null>(null)
+  const saveBilling = useMutation({
+    mutationFn: (patch: { planCode?: string; billingStatus?: string; quotaEnforcement?: string }) =>
+      updateTenant(id, patch),
+    onSuccess: (res) => {
+      // The plan moved but this month's invoice did not. Say so where the operator is looking,
+      // because they have usually just quoted the customer the new price.
+      setPeriodNote(
+        res.openPeriodStillPricedAs
+          ? `This month still bills as "${res.openPeriodStillPricedAs.planCode}". The new plan applies from the next period.`
+          : null,
+      )
+      invalidate()
+    },
+  })
   const rotate = useMutation({
     mutationFn: () => rotateTenantKey(id),
     onSuccess: (data) => { setRotated(data.apiKey); setConfirmRotate(false); invalidate() },
@@ -173,6 +195,64 @@ function TenantDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                   <ChipRow entries={s.calls.byOutcome} />
                 </Section>
               )}
+
+              {/* Billing posture */}
+              <Section title="Billing">
+                <div style={{ display: 'grid', gap: '10px' }}>
+                  <label style={fieldLabel}>
+                    Plan
+                    <select
+                      value={t.planCode ?? ''}
+                      onChange={(e) => saveBilling.mutate({ planCode: e.target.value })}
+                      disabled={saveBilling.isPending || plans.isLoading}
+                      style={{ ...selectStyle, ...(t.planCode ? null : { color: 'var(--status-danger)' }) }}
+                    >
+                      {!t.planCode && <option value="">no plan — bills as free</option>}
+                      {(plans.data?.data ?? []).map((p) => (
+                        <option key={p.code} value={p.code}>
+                          {p.code}{p.isActive ? '' : ' (internal)'}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label style={fieldLabel}>
+                    Billing status
+                    <select
+                      value={t.billingStatus}
+                      onChange={(e) => saveBilling.mutate({ billingStatus: e.target.value })}
+                      disabled={saveBilling.isPending}
+                      style={selectStyle}
+                    >
+                      {['trialing', 'active', 'past_due', 'suspended'].map((v) => (
+                        <option key={v} value={v}>{v}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label style={fieldLabel}>
+                    Quota enforcement
+                    <select
+                      value={t.quotaEnforcement}
+                      onChange={(e) => saveBilling.mutate({ quotaEnforcement: e.target.value })}
+                      disabled={saveBilling.isPending}
+                      style={selectStyle}
+                    >
+                      <option value="off">off — meter only</option>
+                      <option value="soft">soft — warn at the cap</option>
+                      <option value="hard">hard — block at the cap</option>
+                    </select>
+                  </label>
+
+                  {periodNote && (
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, border: '1px solid color-mix(in srgb, var(--status-warning) 34%, transparent)', background: 'color-mix(in srgb, var(--status-warning) 8%, transparent)', borderRadius: '10px', padding: '10px 12px' }}>
+                      <AlertTriangle size={15} strokeWidth={1.8} style={{ color: 'var(--status-warning)', flexShrink: 0, marginBlockStart: '1px' }} />
+                      {periodNote}
+                    </div>
+                  )}
+                  {saveBilling.isError && <span role="alert" style={{ fontSize: '12px', color: 'var(--status-danger)' }}>{(saveBilling.error as Error).message}</span>}
+                </div>
+              </Section>
 
               {/* Actions */}
               <Section title="Operator actions">
@@ -373,6 +453,8 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 
 // --- styles ---
 const inputStyle: React.CSSProperties = { inlineSize: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: '10px', border: '1px solid var(--border-strong)', background: 'var(--surface-sunken)', color: 'var(--text-primary)', fontFamily: 'var(--font-body)', fontSize: '14px', outline: 'none' }
+const fieldLabel: React.CSSProperties = { display: 'grid', gap: '5px', fontSize: '12px', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }
+const selectStyle: React.CSSProperties = { ...inputStyle, fontFamily: 'var(--font-mono)', fontSize: '13px', textTransform: 'none', letterSpacing: 'normal', fontWeight: 400, cursor: 'pointer' }
 const iconBtn: React.CSSProperties = { display: 'grid', placeItems: 'center', inlineSize: '32px', blockSize: '32px', borderRadius: '8px', border: '1px solid var(--border-default)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' }
 const btnBase: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px 16px', borderRadius: '10px', fontFamily: 'var(--font-body)', fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', border: '1px solid transparent' }
 const btnPrimary: React.CSSProperties = { ...btnBase, background: 'var(--accent)', color: 'var(--text-on-accent)' }

@@ -20,11 +20,31 @@ export const createTenantSchema = z.object({
   planCode: z.string().min(1).max(40),
 });
 
+/**
+ * OPERATOR update (PATCH /api/v1/admin/tenants/:id). Admin-key only.
+ *
+ * The billing fields live here and NOT on `updateSelfSchema` — a tenant must never be able to move
+ * itself onto a cheaper plan, mark itself `active`, or turn off its own quota enforcement. That
+ * separation is the reason there are two schemas rather than one with a flag.
+ *
+ * They were missing entirely until now, which meant a plan could be chosen at creation and then
+ * never changed: no upgrade, no downgrade, no way off the internal tier, and no way to mark an
+ * account `past_due` when an invoice went unpaid. Every one of those is a normal Tuesday for a
+ * business with customers, and each required hand-written SQL against production.
+ *
+ * The enums are spelled out here rather than left to the database CHECK constraints, so a typo
+ * comes back as "Invalid input" naming the valid values instead of a Postgres constraint-violation
+ * stack trace. The CHECK constraints stay as the last line of defence, not the first.
+ */
 export const updateTenantSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   slug: z.string().min(1).max(100).regex(/^[a-z0-9-]+$/).optional(),
   isActive: z.boolean().optional(),
   settings: z.record(z.string(), z.any()).optional(),
+  /** Validated against the `plans` table in the service — this only checks the shape. */
+  planCode: z.string().min(1).max(40).optional(),
+  billingStatus: z.enum(['trialing', 'active', 'past_due', 'suspended']).optional(),
+  quotaEnforcement: z.enum(['off', 'soft', 'hard']).optional(),
 });
 
 /**
