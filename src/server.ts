@@ -214,9 +214,28 @@ export async function buildApp(): Promise<FastifyInstance> {
   const dashboardDist = join(__dirname, '..', 'dashboard', 'dist');
   if (existsSync(dashboardDist)) {
     await app.register(staticFiles, { root: dashboardDist, prefix: '/' });
-    // Serve index.html for all unmatched routes so React Router handles navigation
-    app.setNotFoundHandler((_req, reply) => {
-      reply.sendFile('index.html');
+    /**
+     * Serve index.html for unmatched routes so React Router handles navigation — but NEVER for an
+     * API or webhook path.
+     *
+     * A blanket SPA fallback answers every unknown route with `200 text/html`, and an API client
+     * cannot tell that apart from success: `if (res.ok)` passes, `res.json()` throws on a `<`, and
+     * the caller reports a parse error rather than a missing endpoint. It turns a typo, a removed
+     * route, or a misregistered prefix into a silent one.
+     *
+     * That is not hypothetical — it is how the settings module went to production mounted at the
+     * root instead of `/api/v1/settings`. Every call to the correct-looking path came back 200 with
+     * the dashboard's HTML, so nothing anywhere reported a 404.
+     */
+    app.setNotFoundHandler((request, reply) => {
+      if (request.url.startsWith('/api/') || request.url.startsWith('/webhooks/')) {
+        const path = request.url.split('?')[0];
+        return reply.status(404).send({
+          error: 'NOT_FOUND',
+          message: `Route ${request.method} ${path} does not exist`,
+        });
+      }
+      return reply.sendFile('index.html');
     });
   }
 

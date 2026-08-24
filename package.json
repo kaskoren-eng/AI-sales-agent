@@ -41,6 +41,7 @@
     "usage:reconcile": "node scripts/reconcile-usage.mjs",
     "db:drift": "node scripts/check-schema-drift.mjs",
     "rehearse:onboarding": "node scripts/rehearse-onboarding.mjs",
+    "verify:tenant": "node scripts/verify-tenant.mjs",
     "announcements:generate": "node scripts/generate-system-announcements.mjs"
   },
   "engines": {
