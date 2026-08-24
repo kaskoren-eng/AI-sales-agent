@@ -63,7 +63,7 @@ if (fullId) {
     `latency: EOU ${ms(s.endOfTurnMedianMs)} | LLM ${ms(s.llmTtftMedianMs)} | TTS ${ms(s.ttsTtfbMedianMs)} | worst ${ms(s.worstCaseMs)}  (ms)`,
   );
   console.log(
-    `turns ${s.turnsHeard} | ttsSeg ${s.ttsSegments} | cutOffs ${s.cutOffs} | fragmented ${s.fragmentedTurns} | dup ${s.duplicateReplies} | cache ${s.promptCacheHitPct ?? '-'}%`,
+    `turns ${s.turnsHeard} | ttsSeg ${s.ttsSegments} | fragmented ${s.fragmentedTurns} | dup ${s.duplicateReplies} | cache ${s.promptCacheHitPct ?? '-'}%`,
   );
   console.log('\n--- transcript ---');
   for (const t of cr.transcript ?? []) {
@@ -89,7 +89,7 @@ const { rows } = await client.query(
 );
 
 console.log(
-  `\n${pad('when', 20)} ${pad('id', 8)} ${pad('caller', 15)} ${pad('model', 26)} ${pad('dur', 4)} ${pad('EOU', 5)} ${pad('LLM', 5)} ${pad('TTS', 5)} ${pad('worst', 6)} ${pad('cut', 3)} ${pad('frg', 3)} ${pad('dup', 3)}`,
+  `\n${pad('when', 20)} ${pad('id', 8)} ${pad('caller', 15)} ${pad('model', 26)} ${pad('dur', 4)} ${pad('EOU', 5)} ${pad('LLM', 5)} ${pad('TTS', 5)} ${pad('worst', 6)} ${pad('frg', 3)} ${pad('dup', 3)}`,
 );
 console.log('-'.repeat(130));
 for (const r of rows) {
@@ -97,7 +97,7 @@ for (const r of rows) {
   const s = cr.summary ?? {};
   const when = (r.created_at.toISOString?.() ?? String(r.created_at)).replace('T', ' ').slice(0, 19);
   console.log(
-    `${pad(when, 20)} ${pad(r.id.slice(0, 8), 8)} ${pad(cr.callerPhone ?? '-', 15)} ${pad(cr.config?.ttsModel ?? '-', 26)} ${pad((cr.durationSec ?? r.duration_secs ?? '') + 's', 4)} ${ms(s.endOfTurnMedianMs)} ${ms(s.llmTtftMedianMs)} ${ms(s.ttsTtfbMedianMs)} ${ms(s.worstCaseMs).padStart(6)} ${pad(s.cutOffs, 3)} ${pad(s.fragmentedTurns, 3)} ${pad(s.duplicateReplies, 3)}`,
+    `${pad(when, 20)} ${pad(r.id.slice(0, 8), 8)} ${pad(cr.callerPhone ?? '-', 15)} ${pad(cr.config?.ttsModel ?? '-', 26)} ${pad((cr.durationSec ?? r.duration_secs ?? '') + 's', 4)} ${ms(s.endOfTurnMedianMs)} ${ms(s.llmTtftMedianMs)} ${ms(s.ttsTtfbMedianMs)} ${ms(s.worstCaseMs).padStart(6)} ${pad(s.fragmentedTurns, 3)} ${pad(s.duplicateReplies, 3)}`,
   );
 }
 console.log(`\n${rows.length} call(s). Use --full <id> for transcript + per-turn metrics.\n`);

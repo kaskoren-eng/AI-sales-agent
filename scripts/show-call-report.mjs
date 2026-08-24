@@ -25,16 +25,16 @@ if (files.length === 0) {
 
 if (arg === 'all') {
   console.log(`${files.length} call(s)\n`);
-  console.log('  when              turn-det  engine   end-of-turn     LLM     TTS  turns  CUT YOU OFF');
-  console.log('  ' + '-'.repeat(86));
+  console.log('  when              turn-det  engine   end-of-turn     LLM     TTS  turns  CHOPPED');
+  console.log('  ' + '-'.repeat(82));
   for (const f of files) {
     const r = JSON.parse(await readFile(join(DIR, f), 'utf8'));
     const s = r.summary;
     console.log(
       `  ${r.startedAt.slice(0, 16).replace('T', ' ')}  ${r.config.turnDetection.padEnd(8)}  ` +
         `${r.config.sttProvider.padEnd(7)} ${ms(s.endOfTurnMedianMs).padStart(11)} ${ms(s.llmTtftMedianMs)} ${ms(s.ttsTtfbMedianMs)}  ` +
-        `${String(s.turnsHeard).padStart(5)}  ${String(s.cutOffs ?? '?').padStart(6)}` +
-        `${(s.cutOffs ?? 0) > 0 ? '   <-- SHE TALKED OVER YOU' : ''}`,
+        `${String(s.turnsHeard).padStart(5)}  ${String(s.fragmentedTurns ?? '?').padStart(6)}` +
+        `${(s.fragmentedTurns ?? 0) > 0 ? '   <-- SHE TALKED OVER YOU' : ''}`,
     );
   }
   console.log('\n  Note that the BROKEN call has the BEST end-of-turn number — a turn cut in half');
@@ -90,18 +90,6 @@ if (frag > 0) {
 } else if (s.fragmentedTurns === 0) {
   console.log('  SENTENCES SHE CHOPPED 0   she let you finish every time');
 }
-const cut = s.cutOffs;
-if (cut > 0) {
-  console.log(`  CUT YOU OFF         ${cut}   <-- SHE STARTED REPLYING WHILE YOU WERE STILL TALKING`);
-  console.log('');
-  console.log('      This is the number to read FIRST, because latency cannot see it: a turn');
-  console.log('      chopped in half finalises FASTER, so a broken call reports a BETTER');
-  console.log('      end-of-turn median. Our best-ever 259ms came from the call where she went');
-  console.log('      silent three times.');
-} else {
-  console.log(`  CUT YOU OFF         0   clean — she waited for you every time`);
-}
-
 if (r.usage?.modelUsage) {
   console.log('\nCOST\n');
   for (const u of r.usage.modelUsage) {

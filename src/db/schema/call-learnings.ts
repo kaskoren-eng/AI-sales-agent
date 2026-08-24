@@ -96,7 +96,6 @@ export interface PersistedCallReport {
   summary: {
     turnsHeard: number;
     ttsSegments: number;
-    cutOffs: number;
     fragmentedTurns: number;
     duplicateReplies: number;
     promptCacheHitPct: number | null;

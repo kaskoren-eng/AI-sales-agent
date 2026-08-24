@@ -91,33 +91,27 @@ export interface CallReportJson {
     /** Speech segments the agent synthesized. */
     ttsSegments: number;
     /**
-     * Times the STT declared the caller finished WHILE THE VAD STILL HEARD SPEECH — i.e. she cut
-     * him off mid-sentence.
-     *
-     * THE NUMBER THAT CATCHES A BROKEN CALL, and the only trustworthy one. Latency cannot see this:
-     * a turn chopped in half FINALISES FASTER, so a cut-off call reports a BETTER end-of-turn
-     * median. We measured our best-ever 259ms in precisely the call where the agent went silent on
-     * the caller three times. The instrument said we had won while he was being talked over.
-     *
-     * (An earlier version of this file tried to infer cut-offs from turnsHeard - ttsSegments. That
-     * is NOT a valid subtraction — TTS segments include the greeting and preemptive drafts, so it
-     * goes NEGATIVE on a healthy call. Do not resurrect it.)
-     */
-    cutOffs: number;
-    /**
      * Times the agent CHOPPED ONE SENTENCE INTO SEVERAL TURNS — she decided the caller had finished
      * while he was mid-thought, and he had to keep going.
      *
-     * THIS IS THE REAL CUT-OFF DETECTOR, and `cutOffs` above is nearly useless without it. That
-     * counter watches for a LiveKit warning that ONLY EXISTS IN `stt` TURN-DETECTION MODE. In `vad`
-     * mode — which is what we actually run — it can never fire, so it reports a serene 0 on a call
-     * where the agent talked over the caller from start to finish. I reported "cut-offs: 0" on
-     * exactly such a call.
+     * THIS IS THE CUT-OFF DETECTOR. Latency cannot see this failure: a turn chopped in half
+     * FINALISES FASTER, so a cut-off call reports a BETTER end-of-turn median. We measured our
+     * best-ever 259ms in precisely the call where the agent went silent on the caller three times.
+     * The instrument said we had won while he was being talked over.
      *
-     * Detected instead from the transcript itself: two CALLER turns in a row, close together, with
-     * no agent reply between them, means one utterance was split in half. On the call that broke
-     * phone-number capture this fired repeatedly — "050." / "888-45." / "רשמת?" are one sentence
-     * that the turn detector shredded.
+     * Detected from the transcript itself: two CALLER turns in a row, close together, with no agent
+     * reply between them, means one utterance was split in half. On the call that broke phone-number
+     * capture this fired repeatedly — "050." / "888-45." / "רשמת?" are one sentence that the turn
+     * detector shredded.
+     *
+     * Two earlier detectors are gone; do not resurrect either. (1) `turnsHeard - ttsSegments` is not
+     * a valid subtraction — TTS segments include the greeting and preemptive drafts, so it goes
+     * NEGATIVE on a healthy call. (2) A `cutOffs` counter that monkeypatched `process.stderr.write`
+     * to grep LiveKit's logs for its cut-off warning was structurally dead three ways: the warning
+     * only exists in `stt` turn-detection mode (we run `vad`), pino writes Buffers to STDOUT (the
+     * patch string-matched stderr), and the patch was un-installed after the first turn. It reported
+     * a serene 0 on a call where the agent talked over the caller from start to finish — and cost a
+     * closure on every stderr write of the whole process for the privilege.
      *
      * A booking agent that cannot receive a phone number in one breath is not a slow agent. It is a
      * broken one.
@@ -179,12 +173,6 @@ export interface CallReportJson {
   shadow: ShadowSttTranscript | null;
 }
 
-/**
- * The exact LiveKit warning that means "she started replying while he was still talking".
- * Emitted by the agent framework when the STT's end-of-speech lands inside a VAD speech segment.
- */
-const CUT_OFF_WARNING = 'stt end of speech received while vad is still in a speech segment';
-
 export class CallReport {
   #startedAt = Date.now();
   #room: string;
@@ -197,14 +185,11 @@ export class CallReport {
   #endDisclosureRequested = false;
   #usage: unknown = null;
   #shadow: ShadowSttTranscript | null = null;
-  #cutOffs = 0;
-  #restoreStderr: (() => void) | null = null;
 
   constructor(room: string, callerPhone: string | null, config: CallReportJson['config']) {
     this.#room = room;
     this.#callerPhone = callerPhone;
     this.#config = config;
-    this.#watchForCutOffs();
   }
 
   /**
@@ -221,37 +206,6 @@ export class CallReport {
       if (value !== undefined) {
         (this.#config as Record<string, unknown>)[key] = value;
       }
-    }
-  }
-
-  /**
-   * Counts cut-offs by watching what LiveKit logs.
-   *
-   * Yes, this reads the framework's log output, which is not how one would normally detect
-   * something. It is the honest option available: LiveKit emits no EVENT for this, and it is the
-   * single most important health signal we have — the difference between "fast" and "she talked
-   * over the customer" is invisible in every metric the framework does expose. The alternative was
-   * to infer it by subtracting event counts, which produced NEGATIVE cut-offs on a healthy call.
-   *
-   * Wrapped in a try so a change in LiveKit's logging can never do worse than lose the counter.
-   */
-  #watchForCutOffs(): void {
-    try {
-      const original = process.stderr.write.bind(process.stderr);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      process.stderr.write = ((chunk: any, ...rest: any[]) => {
-        try {
-          if (typeof chunk === 'string' && chunk.includes(CUT_OFF_WARNING)) this.#cutOffs++;
-        } catch {
-          // Counting must never break the log line itself.
-        }
-        return original(chunk, ...rest);
-      }) as typeof process.stderr.write;
-      this.#restoreStderr = () => {
-        process.stderr.write = original;
-      };
-    } catch {
-      this.#restoreStderr = null;
     }
   }
 
@@ -373,8 +327,8 @@ export class CallReport {
     const promptCacheHitPct = totalIn > 0 ? Math.round((totalCached / totalIn) * 100) : null;
 
     // Two caller turns in a row, within 3s, with no agent reply between them: one sentence that the
-    // turn detector cut in half. See `fragmentedTurns` above for why this, and not `cutOffs`, is the
-    // signal that matters on a vad-mode call.
+    // turn detector cut in half. See `fragmentedTurns` above for why this is the cut-off signal that
+    // matters on a vad-mode call.
     let fragmentedTurns = 0;
     let duplicateReplies = 0;
     for (let i = 1; i < this.#transcript.length; i++) {
@@ -402,7 +356,6 @@ export class CallReport {
       summary: {
         turnsHeard: eou.length,
         ttsSegments: this.#metrics.filter((m) => m.stage === 'tts_metrics').length,
-        cutOffs: this.#cutOffs,
         fragmentedTurns,
         duplicateReplies,
         promptCacheHitPct,
@@ -423,14 +376,24 @@ export class CallReport {
     };
   }
 
-  /** Writes the report and returns its path. Never throws — losing a report must not fail a call. */
-  async write(dir: string): Promise<string | null> {
-    this.#restoreStderr?.();
+  /**
+   * Writes the report and returns its path. Never throws — losing a report must not fail a call.
+   *
+   * Compact by default: the per-turn flush runs at turn-commit, and `JSON.stringify` is synchronous
+   * event-loop time that grows with the call — pretty-printing a late-call report tripled the bytes
+   * serialized at the exact moment `llmNode` was starting. Teardown passes `pretty` (a human reads
+   * that one) and `precomputed` so the shutdown path derives the report once instead of four times.
+   */
+  async write(
+    dir: string,
+    opts: { pretty?: boolean; precomputed?: CallReportJson } = {},
+  ): Promise<string | null> {
     try {
       await mkdir(dir, { recursive: true });
       const stamp = new Date(this.#startedAt).toISOString().replace(/[:.]/gu, '-');
       const path = join(dir, `${stamp}.json`);
-      await writeFile(path, `${JSON.stringify(this.toJson(), null, 2)}\n`);
+      const json = opts.precomputed ?? this.toJson();
+      await writeFile(path, `${JSON.stringify(json, null, opts.pretty ? 2 : undefined)}\n`);
       return path;
     } catch (err) {
       console.error('call_report_write_failed', err instanceof Error ? err.message : String(err));

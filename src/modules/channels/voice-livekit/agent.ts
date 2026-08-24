@@ -651,9 +651,15 @@ export default defineAgent({
       // `lk agent logs` is how it gets here. `npm run call:report -- --cloud` pulls these back down.
       //
       // The file is still written too, for the local dev path where it is genuinely readable.
-      console.log(`call_report_json ${JSON.stringify(report.toJson())}`);
+      //
+      // Derived ONCE. `toJson()` re-computes the medians and re-walks the transcript every call —
+      // teardown used to do that four times (stdout, file, call_learnings, metering) on the same
+      // event loop the room-delete IPC needs, which held the caller on a silent line after an
+      // end_call. Every consumer below reads this one object.
+      const reportJson = report.toJson();
+      console.log(`call_report_json ${JSON.stringify(reportJson)}`);
 
-      const path = await report.write(CALL_REPORTS_DIR);
+      const path = await report.write(CALL_REPORTS_DIR, { pretty: true, precomputed: reportJson });
       if (path) console.log('call_report_written', path);
 
       // PHASE 4: the durable record the CallReport header always promised — a call_learnings row,
@@ -663,7 +669,7 @@ export default defineAgent({
       // still carries everything, and `lk agent logs` can recover it).
       if (runtime) {
         try {
-          const json = report.toJson();
+          const json = reportJson;
           const [inserted] = await runtime.db.insert(callLearnings).values({
             tenantId: runtime.tenantId,
             conferenceName: (ctx.room.name ?? 'unknown').slice(0, 64),
@@ -739,7 +745,7 @@ export default defineAgent({
         // transcript failure must not cost us the cost. `dedupeKey` is the room name, so a worker
         // restarted mid-teardown cannot double-count.
         try {
-          const json = report.toJson();
+          const json = reportJson;
           await meterCall(runtime.db, {
             tenantId: runtime.tenantId,
             roomName: ctx.room.name ?? 'unknown',
@@ -776,7 +782,7 @@ export default defineAgent({
       //    invalidated LiveKit's preemptive draft on every single turn. See trimHistory().
       void trimHistory(agent, env.VOICE_MAX_HISTORY_ITEMS);
 
-      // 3. FLUSH THE REPORT AFTER EVERY TURN, not just at shutdown.
+      // 3. FLUSH THE REPORT AFTER EVERY EXCHANGE, not just at shutdown.
       //
       //    The report used to be written only from addShutdownCallback. A worker that is killed —
       //    which is exactly what happens every time we restart it to change a setting — never runs
@@ -785,8 +791,11 @@ export default defineAgent({
       //    that mattered ("did she chop his sentences?"), and there is no way to get it back short
       //    of asking him to call again.
       //
-      //    Rewriting a few KB of JSON per turn is free. Losing a caller's data is not.
-      void report.write(CALL_REPORTS_DIR);
+      //    On ASSISTANT items only — the same rule as the playbook deliverer. The user item commits
+      //    at the exact moment `llmNode` starts, and `toJson` + stringify are synchronous work that
+      //    grows with the call; billing that to TTFT bought nothing (a kill now loses at most the
+      //    final user line, which the compact flush after her PREVIOUS reply still bounds).
+      if (item?.role === 'assistant') void report.write(CALL_REPORTS_DIR);
     });
 
     // Tools only exist when the per-tenant gate said yes — and the PROMPT always agrees with the
