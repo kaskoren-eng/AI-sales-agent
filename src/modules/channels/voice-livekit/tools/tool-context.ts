@@ -428,7 +428,16 @@ export async function buildToolRuntime(
   // `phone_numbers` lookup. Outbound calls never reach that query — their tenant is on the metadata
   // — so the dialer's hot path is unchanged.
   const connect = deps.connectDb ?? (() => {
-    const { db, pool } = createDatabase(env.DATABASE_URL);
+    // A live call's pool must FAIL FAST, not wait politely. pg's defaults are connectionTimeout 0
+    // (wait forever for a slot) and no statement timeout (a runaway query holds its connection for
+    // minutes) — on a saturated pool the RAG resolver's 300ms deadline would then mask the stall and
+    // the agent silently answers un-grounded. Nothing a call legitimately runs takes 5s; keepAlive
+    // stops the 10s idle reaper from forcing a TCP+TLS+auth handshake onto the next turn's query.
+    const { db, pool } = createDatabase(env.DATABASE_URL, {
+      connectionTimeoutMillis: 500,
+      keepAlive: true,
+      statement_timeout: 5_000,
+    });
     return { db, close: () => pool.end() };
   });
 

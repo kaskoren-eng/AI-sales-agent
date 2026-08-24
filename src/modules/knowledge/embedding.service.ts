@@ -76,11 +76,20 @@ export class EmbeddingService {
   }
 
   private async embedOne(text: string): Promise<number[]> {
-    const response = await this.client.embeddings.create({
-      model: this.model,
-      input: text,
-      ...(this.env.EMBEDDING_DIMENSIONS ? { dimensions: this.env.EMBEDDING_DIMENSIONS } : {}),
-    });
+    // Tight per-REQUEST limits — this path runs on the voice hot path, where the turn's own deadline
+    // is 300ms (`DEFAULT_RESOLVE_DEADLINE_MS`). The SDK defaults are a 10-MINUTE timeout and 2
+    // retries with backoff: an abandoned lookup would keep holding a socket and a pool slot for
+    // seconds while new interims pile fresh lookups on top of it. No retries — the retry IS the next
+    // interim. Ingest (`embedBatch`) keeps the SDK defaults on purpose: a 96-chunk batch is slow and
+    // nobody is on the phone waiting for it.
+    const response = await this.client.embeddings.create(
+      {
+        model: this.model,
+        input: text,
+        ...(this.env.EMBEDDING_DIMENSIONS ? { dimensions: this.env.EMBEDDING_DIMENSIONS } : {}),
+      },
+      { timeout: 2_500, maxRetries: 0 },
+    );
     const embedding = response.data[0]?.embedding;
     if (!embedding) {
       throw new AppError('Embedding API returned no vector', 502, 'EMBEDDING_EMPTY');

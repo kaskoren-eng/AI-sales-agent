@@ -1062,6 +1062,10 @@ export default defineAgent({
           enabled: true,
           ragActive: callState ? callState.ragActive : true,
           transcript: ev.transcript,
+          // Without this, the `answering_agent` rule could never fire at prefetch time — so every
+          // interim of a turn the resolver would later skip ("קורן", "050…") was still fully
+          // embedded and searched. Those turns were 70% of retrievals on the 2026-08-22 call.
+          lastAgentTurn: lastAgentText(agent.chatCtx),
         });
         // Declines are NOT logged here: an utterance produces many interims, and the gate's verdict on
         // the committed turn is what matters. `llmNode`'s resolver logs `rag_skipped` once per turn.

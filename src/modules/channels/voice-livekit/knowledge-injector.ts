@@ -68,6 +68,17 @@ export const DEFAULT_RESOLVE_DEADLINE_MS = 300;
 const LRU_MAX = 16;
 
 /**
+ * How many characters an interim must GROW before it earns another speculative lookup.
+ *
+ * Soniox streams an interim every ~100-200ms of speech, each a slightly longer prefix of the same
+ * utterance. Un-debounced, a four-second question fired 15-30 embeddings and 15-30 unindexed
+ * Postgres scans — per turn, mid-speech, against a 10-connection pool the resolve's own query then
+ * queued behind. Sub-step growth rides the previous lookup instead; `findReusablePrefix` bridges
+ * the remainder at resolve time, and its floor (MIN_PREFIX_CHARS) is what this step mirrors.
+ */
+const PREFETCH_MIN_GROWTH_CHARS = 12;
+
+/**
  * ── WHY THE CACHE MATCHES ON PREFIXES AND NOT ONLY ON EXACT TEXT ───────────────────────────────
  *
  * Measured on the 2026-08-22 acceptance call (8 minutes, 34 turns): `resolve` waited a MEDIAN of
@@ -140,6 +151,9 @@ export class KnowledgeInjector {
   /** utterance -> in-flight or settled lookup. Insertion-ordered, evicted oldest-first. */
   private readonly cache = new Map<string, CacheEntry>();
 
+  /** The last interim actually embedded, for the prefetch debounce. */
+  private lastPrefetchedKey = '';
+
   constructor(
     private readonly retrieval: RetrievalService,
     private readonly tenantId: string,
@@ -164,6 +178,13 @@ export class KnowledgeInjector {
   prefetch(transcript: string): void {
     const key = KnowledgeInjector.normalize(transcript);
     if (!key) return;
+    // Debounce growing interims of the same utterance: only a step of real new content earns a new
+    // lookup. A revision that is NOT an extension (Soniox rewrote the text, or a new turn started)
+    // always fires — the debounce is measured against what was last actually embedded.
+    if (key.startsWith(this.lastPrefetchedKey) && this.lastPrefetchedKey.length > 0) {
+      if (key.length - this.lastPrefetchedKey.length < PREFETCH_MIN_GROWTH_CHARS) return;
+    }
+    this.lastPrefetchedKey = key;
     // Swallow the rejection HERE as well as in `lookup`: a prefetch nobody ever resolves would
     // otherwise surface as an unhandled rejection and take the worker down on a KB outage.
     void this.lookup(key, transcript).entry.promise.catch(() => {});

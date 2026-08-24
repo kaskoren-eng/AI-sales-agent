@@ -245,11 +245,58 @@ describe('KnowledgeInjector — prefetch, cache and the deadline', () => {
     const { service, calls } = stubRetrieval([[chunk('early', 'א')], [chunk('late', 'ב')]]);
     const injector = new KnowledgeInjector(service, 'tenant-1');
 
-    injector.prefetch('מה תנאי היציאה מה'); // 16 chars
-    injector.prefetch('מה תנאי היציאה מהחוזה'); // 21 chars — closer to what he actually said
-    const slot = await injector.resolve('מה תנאי היציאה מהחוזה?');
+    injector.prefetch('מה תנאי היציאה מה'); // 17 chars
+    injector.prefetch('מה תנאי היציאה מהחוזה אם זה לא מתאים'); // grew a full step — a second lookup
+    const slot = await injector.resolve('מה תנאי היציאה מהחוזה אם זה לא מתאים לי?');
 
     expect(slot.chunkIds).toEqual(['late']);
+    expect(calls).toHaveLength(2);
+  });
+
+  /**
+   * ── THE INTERIM FLOOD ────────────────────────────────────────────────────────────────────────
+   *
+   * Soniox streams an interim every ~100-200ms of speech, each a slightly longer prefix of the same
+   * sentence. Un-debounced, every one was a new cache key and therefore a new embedding HTTP call
+   * plus a new unindexed Postgres scan — 15-30 of each per turn, fired mid-speech, queueing on the
+   * same 10-connection pool the resolve's own query needs. The debounce lets an interim ride the
+   * previous lookup until it has grown a step of REAL new content; `findReusablePrefix` bridges the
+   * remainder at resolve time.
+   */
+  it('an interim that grew by less than a step rides the previous lookup', async () => {
+    const { service, calls } = stubRetrieval([[chunk('c1', 'x')]]);
+    const injector = new KnowledgeInjector(service, 'tenant-1');
+
+    injector.prefetch('כמה עולה המנוי');
+    injector.prefetch('כמה עולה המנוי הח'); // +3 chars
+    injector.prefetch('כמה עולה המנוי החודש'); // +6 from the embedded one
+    injector.prefetch('כמה עולה המנוי החודשי?'); // +8 — still under the step
+
+    expect(calls).toHaveLength(1);
+  });
+
+  it('fires again once the interim has grown a full step', async () => {
+    const { service, calls } = stubRetrieval([[chunk('a', 'א')], [chunk('b', 'ב')]]);
+    const injector = new KnowledgeInjector(service, 'tenant-1');
+
+    injector.prefetch('כמה עולה המנוי');
+    injector.prefetch('כמה עולה המנוי החודשי לעסק קטן'); // +16 chars of real content
+
+    expect(calls).toHaveLength(2);
+  });
+
+  /**
+   * The debounce compares against what was last EMBEDDED, not against the last interim seen — so a
+   * new turn (or a Soniox rewrite that is not an extension) always fires immediately, and skipped
+   * sub-step interims do not push the baseline forward.
+   */
+  it('a different utterance is never debounced', async () => {
+    const { service, calls } = stubRetrieval([[chunk('a', 'א')], [chunk('b', 'ב')]]);
+    const injector = new KnowledgeInjector(service, 'tenant-1');
+
+    injector.prefetch('כמה עולה המנוי החודשי');
+    injector.prefetch('מה תנאי היציאה'); // new turn, not a prefix — must not be swallowed
+
     expect(calls).toHaveLength(2);
   });
 
