@@ -268,9 +268,9 @@ describe('KnowledgeInjector — prefetch, cache and the deadline', () => {
     const injector = new KnowledgeInjector(service, 'tenant-1');
 
     injector.prefetch('כמה עולה המנוי');
-    injector.prefetch('כמה עולה המנוי הח'); // +3 chars
-    injector.prefetch('כמה עולה המנוי החודש'); // +6 from the embedded one
-    injector.prefetch('כמה עולה המנוי החודשי?'); // +8 — still under the step
+    injector.prefetch('כמה עולה המנוי ה'); // +2 chars
+    injector.prefetch('כמה עולה המנוי הח'); // +3 from the embedded one
+    injector.prefetch('כמה עולה המנוי החו?'); // +5 — still under the step
 
     expect(calls).toHaveLength(1);
   });
@@ -298,6 +298,46 @@ describe('KnowledgeInjector — prefetch, cache and the deadline', () => {
     injector.prefetch('מה תנאי היציאה'); // new turn, not a prefix — must not be swallowed
 
     expect(calls).toHaveLength(2);
+  });
+
+  /**
+   * ── THE 2026-08-24 PRICING MISS ──────────────────────────────────────────────────────────────
+   *
+   * Real call, verbatim: the caller asked "אוקיי, תגיד לי כמה זה עולה." — the debounced last
+   * prefetch was "אוקיי, תגיד לי כמה זה", which covers 78% of the question by CHARACTERS and 0% of
+   * it by MEANING: probed against the live KB, that prefix retrieves two OBJECTION chunks while the
+   * full question retrieves both pricing chunks. Coverage passed, the wrong retrieval was reused,
+   * and she told a real caller "אין לי כרגע את המידע הזה" with the price sitting in the KB — for
+   * the second call in a row, via a different mechanism than the first (2026-08-22: orphaned
+   * prefetch; this time: prefix reuse trusting character coverage).
+   *
+   * The rule this pins: a prefix whose missing tail contains a CONTENT word (3+ letters) asked a
+   * different question — pay the ~250ms cold search instead of answering the wrong one.
+   */
+  it('does not reuse a prefix whose missing tail is a content word — the pricing miss', async () => {
+    const { service, calls } = stubRetrieval([
+      [chunk('objection', 'התנגדות — אני רוצה לחשוב על זה')], // what the truncated prefix retrieves
+      [chunk('pricing', 'המנוי החודשי הוא 1,490 שקלים')], // what the real question retrieves
+    ]);
+    const injector = new KnowledgeInjector(service, 'tenant-1');
+
+    injector.prefetch('אוקיי, תגיד לי כמה זה');
+    const slot = await injector.resolve('אוקיי, תגיד לי כמה זה עולה.');
+
+    expect(slot.reusedPrefix).toBe(false);
+    expect(slot.chunkIds).toEqual(['pricing']);
+    expect(calls).toHaveLength(2); // the cold search ran — correctness bought for ~250ms
+  });
+
+  it('still reuses when the tail only finishes a word or adds a particle', async () => {
+    const { service, calls } = stubRetrieval([[chunk('c1', 'x')]]);
+    const injector = new KnowledgeInjector(service, 'tenant-1');
+
+    injector.prefetch('מה תנאי היציאה מהחוזה אם זה לא מתאים');
+    const slot = await injector.resolve('מה תנאי היציאה מהחוזה אם זה לא מתאים לי?'); // tail: "לי?"
+
+    expect(slot.reusedPrefix).toBe(true);
+    expect(calls).toHaveLength(1);
   });
 
   /**

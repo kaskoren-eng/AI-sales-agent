@@ -74,9 +74,15 @@ const LRU_MAX = 16;
  * utterance. Un-debounced, a four-second question fired 15-30 embeddings and 15-30 unindexed
  * Postgres scans — per turn, mid-speech, against a 10-connection pool the resolve's own query then
  * queued behind. Sub-step growth rides the previous lookup instead; `findReusablePrefix` bridges
- * the remainder at resolve time, and its floor (MIN_PREFIX_CHARS) is what this step mirrors.
+ * the remainder at resolve time.
+ *
+ * 6 and not 12, measured on the 2026-08-24 call: at 12, the last prefetch of "אוקיי, תגיד לי כמה
+ * זה עולה" was the 21-char "אוקיי, תגיד לי כמה זה" — the debounce swallowed "עולה", the one word
+ * carrying the meaning, and that prefix retrieves OBJECTION chunks, not pricing. One Hebrew word +
+ * space is ~5 chars; the step must be small enough that the final content word usually earns its
+ * own prefetch. Still ≤5 lookups on a long question, versus 15-30 un-debounced.
  */
-const PREFETCH_MIN_GROWTH_CHARS = 12;
+const PREFETCH_MIN_GROWTH_CHARS = 6;
 
 /**
  * ── WHY THE CACHE MATCHES ON PREFIXES AND NOT ONLY ON EXACT TEXT ───────────────────────────────
@@ -209,9 +215,24 @@ export class KnowledgeInjector {
       if (coverage > bestCoverage) bestCoverage = coverage;
       if (candidate.length < MIN_PREFIX_CHARS) continue;
       if (coverage < MIN_PREFIX_COVERAGE) continue;
+      // Character coverage cannot see MEANING. On the 2026-08-24 call, "אוקיי, תגיד לי כמה זה"
+      // covered 78% of "אוקיי, תגיד לי כמה זה עולה." and passed — but the missing "עולה" was the
+      // whole question, and the truncated retrieval held objection chunks, not pricing. She told a
+      // real caller "אין לי כרגע את המידע הזה" with the price sitting in the KB. So: if the
+      // uncovered tail contains a CONTENT word (3+ letters), the prefix asked a different question —
+      // pay the cold search instead of answering the wrong one. A short tail ("ש" finishing
+      // "בחודש", "לי?", punctuation) still reuses.
+      if (KnowledgeInjector.tailHasContentWord(key.slice(candidate.length))) continue;
       if (!best || candidate.length > best.searchedKey.length) best = entry;
     }
     return { entry: best, bestCoverage };
+  }
+
+  /** True when the text contains a word of 3+ letters — new meaning, not a word-completion crumb. */
+  private static tailHasContentWord(tail: string): boolean {
+    return tail
+      .split(/\s+/)
+      .some((word) => (word.match(/\p{L}/gu)?.length ?? 0) >= 3);
   }
 
   /**
