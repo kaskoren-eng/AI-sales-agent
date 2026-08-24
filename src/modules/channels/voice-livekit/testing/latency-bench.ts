@@ -177,6 +177,14 @@ const LLM_CANDIDATES: LlmCandidate[] = [
   },
   { name: 'openai/gpt-5.4-mini', build: () => new inference.LLM({ model: 'openai/gpt-5.4-mini' }) },
   { name: 'openai/gpt-4.1-mini', build: () => new inference.LLM({ model: 'openai/gpt-4.1-mini' }) },
+  // Direct-route twins of the two OpenAI minis. The gateway rows above died on 2026-08-24 with
+  // MaxGatewayCredits exhausted — a billing state, not a model property — and the OpenAI key is
+  // ours, so these keep the most important comparison alive regardless of LiveKit credit balance.
+  {
+    name: 'openai/gpt-5.4-mini (direct)',
+    build: () => new openai.LLM({ model: 'gpt-5.4-mini', reasoningEffort: 'none' }),
+  },
+  { name: 'openai/gpt-4.1-mini (direct)', build: () => new openai.LLM({ model: 'gpt-4.1-mini' }) },
   {
     // Gemini Flash is fast AND genuinely good at Hebrew — the most promising row here.
     name: 'google/gemini-3.5-flash',
@@ -292,6 +300,11 @@ async function benchLlm(env: Env): Promise<void> {
     for (let i = 0; i < RUNS; i++) {
       try {
         const model = c.build(env);
+        // The LLM is an EventEmitter, and an emitted 'error' with no listener THROWS OUT OF THE
+        // EMIT PATH and kills the whole bench — one dead candidate (gateway 429) took every
+        // remaining row with it on 2026-08-24. The stream iteration still rejects into the catch
+        // below; this listener only stops Node treating the event itself as fatal.
+        model.on?.('error', () => {});
         const chatCtx = llmBase.ChatContext.empty();
         chatCtx.addMessage({ role: 'system', content: SYSTEM_PROMPT_HE });
         chatCtx.addMessage({ role: 'user', content: HEBREW_TURN });
@@ -344,6 +357,14 @@ function median(v: number[]): number | null {
 }
 
 async function main(): Promise<void> {
+  // A dead candidate must cost ONE row, never the run. The plugins launch background tasks whose
+  // rejections escape the per-candidate try/catch entirely (LiveKit's retry wrapper rejects its
+  // mainTask asynchronously — on 2026-08-24 a gateway 429 took the whole bench down twice: once as
+  // an unlistened 'error' event, once as an unhandled rejection). This is a measurement tool, so a
+  // process-level net is the honest fix; each swallowed rejection still surfaces as its row's err.
+  process.on('unhandledRejection', (reason) => {
+    console.error(`  (background task rejected: ${String(reason).slice(0, 100)})`);
+  });
   const env = loadEnv();
   initializeLogger({ pretty: false, level: 'error' });
 
