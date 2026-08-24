@@ -42,7 +42,8 @@
     "agent:logs": "lk agent logs",
     "provision:number": "node scripts/provision-number.mjs",
     "usage:reconcile": "node scripts/reconcile-usage.mjs",
-    "announcements:generate": "node scripts/generate-system-announcements.mjs"
+    "announcements:generate": "node scripts/generate-system-announcements.mjs",
+    "postinstall": "patch-package"
   },
   "engines": {
     "node": ">=20"
@@ -77,6 +78,7 @@
     "livekit-server-sdk": "^2.17.0",
     "openai": "^6.34.0",
     "papaparse": "^5.4.0",
+    "patch-package": "^8.0.1",
     "pg": "^8.13.0",
     "resend": "^4.1.0",
     "zod": "^3.25.76"

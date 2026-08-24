@@ -1,6 +1,7 @@
 FROM node:20-alpine AS backend-builder
 WORKDIR /app
 COPY package*.json ./
+COPY patches ./patches
 RUN npm ci
 COPY . .
 RUN npm run build
@@ -15,6 +16,7 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 COPY package*.json ./
+COPY patches ./patches
 RUN npm ci --omit=dev
 COPY --from=backend-builder /app/dist ./dist
 COPY --from=dashboard-builder /app/dashboard/dist ./dashboard/dist

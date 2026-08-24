@@ -87,6 +87,7 @@ export async function buildTestApp(
     STT_PROVIDER: 'openai' as const,
     SONIOX_MODEL: 'stt-rt-v4',
     SONIOX_MAX_ENDPOINT_DELAY_MS: 500,
+    SONIOX_FINALIZE_ON_VAD_END: false,
     VOICE_TURN_DETECTION: 'vad' as const,
     SHADOW_STT_ENABLED: false,
     VOICE_AMD_ENABLED: false,

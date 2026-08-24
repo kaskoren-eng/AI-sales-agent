@@ -224,6 +224,13 @@ const envSchema = z.object({
   // caller pauses mid-sentence, this value IS the end-of-turn floor. 500 is the Soniox API minimum;
   // it cannot go lower.
   SONIOX_MAX_ENDPOINT_DELAY_MS: z.coerce.number().int().min(500).max(3000).default(500),
+  // Sends Soniox `{"type":"finalize"}` the moment Silero declares end-of-speech, instead of waiting
+  // out the 500ms endpoint floor above. This is the pause-arm EOU fix (566-758ms → ~VAD+RTT). The
+  // turn-end DECISION stays with Silero — this is not VOICE_TURN_DETECTION=stt (still banned, see
+  // below); Soniox is only told to stop second-guessing a decision already made. Soniox's own docs
+  // prescribe exactly this: "call finalize after ~200ms of silence following the end of speech".
+  // Requires the patched plugin (patches/@livekit+agents-plugin-soniox+1.5.1.patch).
+  SONIOX_FINALIZE_ON_VAD_END: envBool(false),
   // How the turn ends. LEAVE THIS ON 'vad'.
   //
   // 'stt' drives end-of-turn from Soniox's own endpoint instead of the Silero silence timer. It

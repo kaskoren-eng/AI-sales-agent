@@ -13,6 +13,7 @@ import * as silero from '@livekit/agents-plugin-silero';
 import { TelephonyBackgroundVoiceCancellation } from '@livekit/noise-cancellation-node';
 import { type AudioFrame, RoomEvent, type RemoteAudioTrack, TrackKind } from '@livekit/rtc-node';
 import { loadEnv } from '../../../config/env.js';
+import { FinalizingSonioxSTT } from './stt/soniox.stt.js';
 import { callLearnings } from '../../../db/schema/index.js';
 import { buildSessionComponents, buildTTS, describeTtsModel } from './agent.config.js';
 import { CallReport } from './call-report.js';
@@ -447,6 +448,21 @@ export default defineAgent({
     // it connects per stream.
     if (components.tts instanceof DeepdubTTS) void components.tts.prewarm();
     else if (components.tts instanceof inference.TTS) components.tts.prewarm();
+
+    // ── PAUSE-ARM EOU FIX ─────────────────────────────────────────────────────────────────────
+    // The SDK refuses to commit a turn until Soniox delivers a FINAL transcript, and Soniox holds
+    // text non-final until its own endpoint fires (500ms floor) — so on mid-sentence-pause turns
+    // Silero's 200ms verdict waited another ~350-550ms for paperwork, with the preemptive draft
+    // ready the whole time (measured EOU 566-758ms vs 226ms clean). UserStateChanged
+    // speaking→listening IS Silero's end-of-speech; on that edge, tell Soniox to finalize now.
+    // The turn-end decision stays with Silero — see soniox.stt.ts for why this is NOT the banned
+    // VOICE_TURN_DETECTION=stt.
+    if (env.SONIOX_FINALIZE_ON_VAD_END && components.stt instanceof FinalizingSonioxSTT) {
+      const sonioxStt = components.stt;
+      session.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
+        if (ev.oldState === 'speaking' && ev.newState === 'listening') sonioxStt.finalizeTurn();
+      });
+    }
 
     // Connect FIRST. waitForParticipant() throws "room is not connected" otherwise — you cannot
     // ask who is on the call before picking up the phone. (session.start() below also connects,

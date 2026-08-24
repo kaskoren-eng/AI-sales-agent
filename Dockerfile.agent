@@ -27,6 +27,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
+# patch-package runs from postinstall during npm ci — the patches must already be in the image.
+# Without this line the Soniox finalize patch silently fails to apply and the pause-arm EOU fix
+# reverts to the 500ms floor with no error anywhere.
+COPY patches ./patches
 # NOT --omit=dev: the build needs typescript + tsx, and this is a single-stage image.
 RUN npm ci
 

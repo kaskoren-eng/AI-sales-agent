@@ -1,0 +1,28 @@
+diff --git a/node_modules/@livekit/agents-plugin-soniox/dist/stt.cjs b/node_modules/@livekit/agents-plugin-soniox/dist/stt.cjs
+index 56fe826..1f65d3b 100644
+--- a/node_modules/@livekit/agents-plugin-soniox/dist/stt.cjs
++++ b/node_modules/@livekit/agents-plugin-soniox/dist/stt.cjs
+@@ -222,6 +222,9 @@ class SpeechStream extends import_agents.stt.SpeechStream {
+       }
+       const data = result.value;
+       if (data === SpeechStream.FLUSH_SENTINEL) {
++        if (ws.readyState === import_ws.WebSocket.OPEN) {
++          ws.send('{"type":"finalize"}');
++        }
+         continue;
+       }
+       ws.send(Buffer.from(data.data.buffer, data.data.byteOffset, data.data.byteLength));
+diff --git a/node_modules/@livekit/agents-plugin-soniox/dist/stt.js b/node_modules/@livekit/agents-plugin-soniox/dist/stt.js
+index aa40b17..81b21e0 100644
+--- a/node_modules/@livekit/agents-plugin-soniox/dist/stt.js
++++ b/node_modules/@livekit/agents-plugin-soniox/dist/stt.js
+@@ -206,6 +206,9 @@ class SpeechStream extends stt.SpeechStream {
+       }
+       const data = result.value;
+       if (data === SpeechStream.FLUSH_SENTINEL) {
++        if (ws.readyState === WebSocket.OPEN) {
++          ws.send('{"type":"finalize"}');
++        }
+         continue;
+       }
+       ws.send(Buffer.from(data.data.buffer, data.data.byteOffset, data.data.byteLength));

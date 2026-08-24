@@ -4,16 +4,40 @@ import { type MeasureOptions, type Measurement, measureStream } from './measure.
 import type { Env } from '../../../../config/env.js';
 
 /**
- * Soniox STT — configuration, not a wrapper.
+ * Soniox STT — configuration plus ONE capability the plugin is missing: turn finalization.
  *
- * WHY THERE IS NO WRAPPER HERE. The original brief asked for a hand-written LiveKit-compatible
- * STT class over Soniox's WebSocket API. There is an OFFICIAL one — `@livekit/agents-plugin-soniox`,
- * published by LiveKit at 1.5.1, the same version as every other plugin we run. It already
- * subclasses `stt.STT`, so it drops straight into `AgentSession`. Hand-rolling ours would mean
- * owning the reconnect logic, the audio framing, the interim/final token state machine and the
- * `<end>`/`<fin>` endpoint protocol — all of it code LiveKit maintains and we would not.
+ * WHY THERE IS (STILL) NO FULL WRAPPER HERE. The original brief asked for a hand-written
+ * LiveKit-compatible STT class over Soniox's WebSocket API. There is an OFFICIAL one —
+ * `@livekit/agents-plugin-soniox` — and it owns the reconnect logic, the audio framing, the
+ * interim/final token state machine and the `<end>`/`<fin>` endpoint protocol. We keep it that way.
  *
- * So this file is the thin part that IS ours: the Hebrew configuration, and the circuit breaker.
+ * ── THE PAUSE-ARM EOU FIX (2026-08-24) ────────────────────────────────────────────────────────
+ *
+ * The SDK will not commit a turn until Soniox delivers a FINAL transcript, and Soniox only marks
+ * text final when ITS OWN endpoint detector fires — floored at 500ms by their API. So on any turn
+ * where the caller trails off, Silero's 200ms verdict sits waiting for Soniox's 500ms one:
+ * measured EOU 566-758ms on those turns versus 226ms on clean ones, with the preemptive draft
+ * already generated and ready to speak.
+ *
+ * Soniox's protocol has the answer built in: a client-sent `{"type":"finalize"}` forces all
+ * pending tokens final, answered by the `<fin>` token — which the plugin ALREADY treats as an end
+ * token. Their docs even prescribe our exact trigger: "call finalize only after sending
+ * approximately 200ms of silence following the end of speech" — which is precisely what Silero's
+ * minSilenceDuration=200 gives us, surfaced as UserStateChanged speaking→listening.
+ *
+ * Two pieces make it work:
+ *  1. patches/@livekit+agents-plugin-soniox+1.5.1.patch — the plugin's send loop receives the
+ *     SDK's FLUSH_SENTINEL and ignored it (`continue`); patched to send `{"type":"finalize"}`.
+ *     Routing it through flush() means the finalize rides the SAME queue as the audio frames, so
+ *     it can never overtake the tail of the caller's speech.
+ *  2. FinalizingSonioxSTT below — tracks the active stream so `finalizeTurn()` (called from the
+ *     agent's UserStateChanged handler) can reach it.
+ *
+ * This is NOT VOICE_TURN_DETECTION=stt in disguise. That mode let Soniox DECIDE when the turn
+ * ends (it cut a real caller off ten times — phase-4-known-issues §11 — and stays banned). Here
+ * the decision stays with Silero, on the same criteria as today; Soniox is only told to stop
+ * second-guessing a decision that has already been made. If the caller resumes speaking, nothing
+ * is lost: finalize does not close the stream, and new audio keeps transcribing.
  */
 
 /**
@@ -49,12 +73,45 @@ export const sonioxCircuit = new CircuitBreaker({
  * the sole reason Phase 4 carries a "hybrid STT" workaround. Soniox accepts biasing terms on a
  * STREAMING connection, so if this holds up on Hebrew, the workaround is deleted rather than built.
  */
-export function createSonioxSTT(env: Env): soniox.STT {
+/** Minimum gap between finalize requests. Soniox tolerates one every few seconds; a flapping VAD
+ * (breath, line noise) must not turn into a finalize storm that gets the socket dropped. */
+const FINALIZE_MIN_INTERVAL_MS = 1_000;
+
+export class FinalizingSonioxSTT extends soniox.STT {
+  #activeStream: soniox.SpeechStream | null = null;
+  #lastFinalizeAt = 0;
+
+  override stream(options?: Parameters<soniox.STT['stream']>[0]): soniox.SpeechStream {
+    const s = super.stream(options);
+    this.#activeStream = s;
+    return s;
+  }
+
+  /**
+   * Tell Soniox to finalize everything heard so far. Called when Silero declares end-of-speech —
+   * the moment the SDK starts waiting for a FINAL transcript that Soniox would otherwise sit on
+   * for up to 500ms. Safe to call redundantly: a finalize with nothing pending returns an empty
+   * `<fin>` that the SDK discards, and the rate limit keeps a flapping VAD from spamming it.
+   */
+  finalizeTurn(): void {
+    const s = this.#activeStream;
+    // `closed` is a real public field at runtime but declared protected in the SDK types.
+    if (!s || (s as unknown as { closed: boolean }).closed) return;
+    const now = Date.now();
+    if (now - this.#lastFinalizeAt < FINALIZE_MIN_INTERVAL_MS) return;
+    this.#lastFinalizeAt = now;
+    // flush() enqueues FLUSH_SENTINEL behind any buffered audio; the patched plugin turns the
+    // sentinel into the `{"type":"finalize"}` websocket message. See the patch + header comment.
+    s.flush();
+  }
+}
+
+export function createSonioxSTT(env: Env): FinalizingSonioxSTT {
   if (!env.SONIOX_API_KEY) {
     throw new Error('STT_PROVIDER=soniox requires SONIOX_API_KEY');
   }
 
-  return new soniox.STT({
+  return new FinalizingSonioxSTT({
     apiKey: env.SONIOX_API_KEY,
     model: env.SONIOX_MODEL,
     languageHints: [env.VOICE_LANGUAGE],
