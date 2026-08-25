@@ -328,12 +328,18 @@ const envSchema = z.object({
   //
   // THE THRESHOLD IS THE ENTIRE DESIGN. Median LLM first-token is ~767ms, so anything below ~1000ms
   // would make her hum on EVERY turn, which is far worse than silence — it would sound like a tic.
-  // 1200ms fires only on the genuinely slow turns (the ~1600-1800ms outliers), which is exactly when
-  // a person would actually hesitate.
+  //
+  // ⚠️ The timer must BEAT the LLM's first token, not measure perceived silence: the hesitation can
+  // only be injected while the TTS pipeline is still waiting for the reply's first chunk. Anything
+  // ≥ typical TTFT (~700-900ms on gpt-5.4) arms too late, is discarded unheard, and the feature is
+  // silently dead — exactly what the 2026-08-25 cloud call proved at 1300ms (3 armed, 0 heard).
+  // At 600ms the caller hears the hesitation at ~1.15s of silence (EOU 350 + 600 + TTS ~200), and
+  // fast turns (TTFT < 600) never hesitate at all. The 3-per-call cap + 45s cooldown (charged on
+  // SPOKEN fillers only) keep it from becoming a tic.
   //
   // Costs a little: once the filler starts, the real reply queues behind it. That is the trade —
   // it makes the wait feel HUMAN, not shorter. Set to 0 to switch it off entirely.
-  VOICE_THINKING_FILLER_MS: z.coerce.number().int().nonnegative().default(2500),
+  VOICE_THINKING_FILLER_MS: z.coerce.number().int().nonnegative().default(600),
 
   // Agent spoken language (ISO 639-1) — drives both STT and TTS
   VOICE_LANGUAGE: z.string().default('he'),

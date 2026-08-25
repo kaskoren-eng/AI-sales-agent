@@ -183,6 +183,14 @@ class ClickScalesAgent extends voice.Agent {
    */
   pendingFiller: string | null = null;
 
+  /**
+   * Fired by ttsNode's takeFiller at the moment a hesitation is actually CONSUMED into speech.
+   * The per-call budget (3) and the 45s cooldown are charged HERE, not at arm time: the 2026-08-25
+   * cloud call armed 3 fillers that all lost the race to the reply's first token — the caller heard
+   * none of them, yet the budget was spent and the feature went dead for the rest of the call.
+   */
+  onFillerSpoken: ((filler: string) => void) | null = null;
+
   /** Null when the per-tenant tool gate is closed — the guard then behaves exactly as pre-Phase-4. */
   readonly toolRuntime: ToolRuntimeContext | null;
 
@@ -365,6 +373,7 @@ class ClickScalesAgent extends voice.Agent {
     const takeFiller = (): string | null => {
       const filler = this.pendingFiller;
       this.pendingFiller = null;
+      if (filler) this.onFillerSpoken?.(filler);
       return filler;
     };
 
@@ -1000,13 +1009,26 @@ export default defineAgent({
     // אחרי שהיא מסיימת לדבר, זה לא תקין." He was right; a person who hesitates after finishing their
     // sentence is not thinking, they are twitching.
     //
-    // THE THRESHOLD IS STILL THE DESIGN. Below ~2s she would hesitate on nearly every turn, which is
-    // a tic and worse than silence. The ceiling (3 per call) and the cooldown exist because the
-    // threshold alone was not enough: it fired 21 times in one call.
+    // THE THRESHOLD MUST BEAT TTFT, NOT MEASURE PERCEIVED SILENCE. The hesitation can only enter
+    // the reply while withFiller is still waiting for the LLM's first token — once that token has
+    // passed, the injection window is closed forever. A 1300ms arm lost that race on every single
+    // turn of the 2026-08-25 cloud call (TTFT 717-928ms): 3 fillers armed, 0 heard. The caller's
+    // perceived silence at a 600ms arm is ~EOU(350) + 600 + TTS ttfb(~200) ≈ 1.15s — which is the
+    // 1.3s feel Koren asked for. Fast turns (TTFT < threshold) simply never hesitate, correctly.
+    // The ceiling (3 per call) and the cooldown exist because the threshold alone was not enough:
+    // it fired 21 times in one call. Both are charged on SPOKEN fillers only (onFillerSpoken).
     let fillerTimer: ReturnType<typeof setTimeout> | null = null;
     let lastFiller: string | null = null;
     let fillerCount = 0;
     let lastFillerAt = 0;
+
+    agent.onFillerSpoken = (filler) => {
+      fillerCount++;
+      lastFillerAt = Date.now();
+      console.log(
+        `thinking_filler ${JSON.stringify({ filler, n: fillerCount, max: MAX_FILLERS_PER_CALL, spoken: true })}`,
+      );
+    };
 
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) => {
       if (fillerTimer) {
@@ -1027,12 +1049,12 @@ export default defineAgent({
         fillerTimer = null;
         const filler = pickThinkingFiller(lastFiller);
         lastFiller = filler;
-        fillerCount++;
-        lastFillerAt = Date.now();
-        // ARMED, not spoken. ttsNode puts it at the front of the reply that is still being written.
+        // ARMED, not spoken — and not yet charged. The budget and cooldown are charged in
+        // onFillerSpoken, when ttsNode actually consumes it. An arm that loses the race to the
+        // reply's first token costs nothing.
         agent.pendingFiller = filler;
         console.log(
-          `thinking_filler ${JSON.stringify({ filler, n: fillerCount, max: MAX_FILLERS_PER_CALL, armed: true })}`,
+          `thinking_filler ${JSON.stringify({ filler, n: fillerCount + 1, max: MAX_FILLERS_PER_CALL, armed: true })}`,
         );
       }, env.VOICE_THINKING_FILLER_MS);
     });
