@@ -17,7 +17,7 @@ import { guardStream, withFiller } from '../speech-guard.js';
  * through the exact composition agent.ts::ttsNode builds, and asserts the duplication no longer
  * reaches the TTS sink — while a non-colliding filler is still spoken.
  *
- *     agent.ts::ttsNode → guardStream(withFiller(filler, text), pred)
+ *     agent.ts::ttsNode → guardStream(withFiller(takeFiller, text), pred)
  */
 
 /** A scripted LLM output stream — yields the reply in chunks, like the real streaming LLM node. */
@@ -61,7 +61,10 @@ function firstDuplicatedLeadingWord(sink: string[]): { word: string; a: string; 
 
 /** Faithful reconstruction of agent.ts::ttsNode's text composition. */
 function ttsNodeTextPath(filler: string | null, text: AsyncIterable<string>): AsyncIterable<string> {
-  return guardStream(withFiller(filler, text), () => false);
+  // Consuming getter, exactly as agent.ts::ttsNode passes it since the mid-silence filler change.
+  let armed = filler;
+  const takeFiller = () => { const f = armed; armed = null; return f; };
+  return guardStream(withFiller(takeFiller, text), () => false);
 }
 
 describe('filler ⨯ opener duplication — real pipeline modules', () => {
@@ -72,16 +75,21 @@ describe('filler ⨯ opener duplication — real pipeline modules', () => {
     expect(THINKING_FILLERS_HE).toContain('רגע...');
   });
 
-  // ---- The fix: filler suppressed when the opener would repeat it -----------------------------
+  // ---- The fix, v2: the OPENER loses the duplicate word, never the filler ---------------------
+  //
+  // v1 withheld the filler on collision. Since the mid-silence change (2026-08-25) that is no
+  // longer possible: the filler is spoken WHILE the LLM is still silent — by the time the opener
+  // arrives it is already out of her mouth. The invariant that matters is unchanged (the caller
+  // hears the word ONCE); which side carries it flipped.
 
   it('FIXED: filler "רגע..." + opener "רגע, בודקת." → "רגע" reaches the TTS sink only ONCE', async () => {
     const sink = await drainToSink(
       ttsNodeTextPath('רגע...', llmStream('רגע, בודקת. ', 'יש לי כמה אפשרויות בשבילך.')),
     );
-    // No back-to-back duplicate, and no standalone filler chunk — the opener carries the word once.
+    // No back-to-back duplicate; the filler chunk carries the word, the opener arrives without it.
     expect(firstDuplicatedLeadingWord(sink)).toBeNull();
     expect(sink.filter((c) => c.includes('רגע'))).toHaveLength(1);
-    expect(sink.some((c) => c.trim() === 'רגע...')).toBe(false);
+    expect(sink.some((c) => c.trim() === 'רגע...')).toBe(true);
   });
 
   it('FIXED breadth: EVERY filler is suppressed when the opener starts with that filler word', async () => {

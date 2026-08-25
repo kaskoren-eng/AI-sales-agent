@@ -357,15 +357,21 @@ class ClickScalesAgent extends voice.Agent {
     text: Parameters<voice.Agent['ttsNode']>[0],
     modelSettings: voice.ModelSettings,
   ): ReturnType<voice.Agent['ttsNode']> {
-    // The hesitation goes HERE — glued to the front of what she is about to say, so it is the first
-    // sound out of her mouth and physically cannot arrive after she has finished. Consumed once.
-    const filler = this.pendingFiller;
-    this.pendingFiller = null;
+    // The hesitation is read through a CONSUMING GETTER, not sampled once. The thinking timer arms
+    // it ~1.3s into the turn — mid-generation, long after a start-of-stream sample would have read
+    // null — and withFiller polls this while the LLM is still silent, so the hesitation is spoken
+    // DURING the wait it exists to cover. Consumed exactly once; it cannot arrive after she has
+    // finished (that was the v1 bug: "היא עושה קולות של חשיבה אחרי שהיא מסיימת לדבר").
+    const takeFiller = (): string | null => {
+      const filler = this.pendingFiller;
+      this.pendingFiller = null;
+      return filler;
+    };
 
     return voice.Agent.default.ttsNode(
       this,
       guardStream(
-        withFiller(filler, text as AsyncIterable<string>),
+        withFiller(takeFiller, text as AsyncIterable<string>),
         // Read PER SENTENCE: book_meeting can succeed mid-reply, and the very next sentence
         // ("קבעתי לך ליום ראשון") must already be allowed through.
         () => this.toolRuntime?.bookingCompleted === true,

@@ -245,18 +245,60 @@ describe('forceMasculineAddress — fixing pronunciation, not vocabulary', () =>
 describe('withFiller — the hesitation goes FIRST, never last', () => {
   const chunks = async function* (...c: string[]) { for (const x of c) yield x; };
   const drain = async (it: AsyncIterable<string>) => { const o: string[] = []; for await (const x of it) o.push(x); return o.join(''); };
+  const armed = (f: string | null) => {
+    let v = f;
+    return () => { const out = v; v = null; return out; };
+  };
 
   it('puts the hesitation at the START of her reply', async () => {
     // The bug: session.say() QUEUED the filler, so it played AFTER she finished speaking.
     //   היא מדברת (1152ms)
     //   >>> FILLER: אה...        <- fired the instant she stopped
     // Prepending makes correct placement structural instead of a matter of timing.
-    const out = await drain(withFiller('אממ...', chunks('כן, ', 'אנחנו בונים סוכני AI.')));
+    const out = await drain(withFiller(armed('אממ...'), chunks('כן, ', 'אנחנו בונים סוכני AI.')));
     expect(out.startsWith('אממ...')).toBe(true);
     expect(out).toContain('אנחנו בונים סוכני AI');
   });
 
   it('adds nothing at all when she did not need to think', async () => {
-    expect(await drain(withFiller(null, chunks('כן, בשמחה.')))).toBe('כן, בשמחה.');
+    expect(await drain(withFiller(armed(null), chunks('כן, בשמחה.')))).toBe('כן, בשמחה.');
+  });
+
+  /**
+   * ── THE MID-SILENCE FILLER (Koren, 2026-08-25) ───────────────────────────────────────────────
+   *
+   * "if the agent taking more than 1.3 seconds to reply, it needs to say a filler word". The timer
+   * arms the filler MID-generation — after a once-at-start sample has already read null — so v2
+   * polls while the LLM is still silent and speaks the hesitation DURING the wait, not glued to an
+   * answer that has already arrived.
+   */
+  it('a filler armed while the LLM is still silent is spoken BEFORE the reply arrives', async () => {
+    const getFiller = (() => {
+      const armAt = Date.now() + 120;
+      return () => (Date.now() >= armAt ? 'שנייה...' : null);
+    })();
+    const slowReply = async function* () {
+      await new Promise((r) => setTimeout(r, 400)); // the LLM thinks for 400ms
+      yield 'התשובה המלאה.';
+    };
+
+    const seen: Array<{ text: string; atMs: number }> = [];
+    const t0 = Date.now();
+    for await (const chunk of withFiller(getFiller, slowReply())) {
+      seen.push({ text: chunk, atMs: Date.now() - t0 });
+    }
+
+    expect(seen[0]!.text).toBe('שנייה... ');
+    expect(seen[0]!.atMs, 'the filler waited for the reply instead of covering the silence').toBeLessThan(350);
+    expect(seen.map((s) => s.text).join('')).toContain('התשובה המלאה');
+  });
+
+  it('strips the reply opener that repeats an already-spoken filler', async () => {
+    // v1 withheld the filler on collision; that is no longer possible — by the time the reply
+    // arrives the filler is already out of her mouth. The duplicate word comes off the REPLY.
+    const out = await drain(withFiller(armed('רגע...'), chunks('רגע, ', 'בודקת.')));
+    expect(out.startsWith('רגע... ')).toBe(true);
+    expect(out).not.toMatch(/רגע.*רגע/u);
+    expect(out).toContain('בודקת.');
   });
 });

@@ -289,38 +289,60 @@ export function guardSpeech(
  * is the first sound of her next breath, and it cannot be anywhere else.
  */
 export async function* withFiller(
-  filler: string | null,
+  getFiller: () => string | null,
   text: AsyncIterable<string>,
 ): AsyncIterable<string> {
-  if (!filler) {
-    yield* text;
-    return;
-  }
-
-  // COLLISION GUARD. The filler ends in "..." — a sentence terminator — so guardStream flushes it as
-  // its OWN TTS chunk. If the reply's SHORT opener starts with the same word (e.g. filler "רגע..."
-  // and the prompt's opener example "רגע, בודקת."), the caller hears that word TWICE back-to-back.
-  // Koren heard exactly this. So peek the reply's first word before committing the filler, and drop
-  // the filler when the opener is about to repeat it. We buffer only up to the first word boundary —
-  // a few characters — so the fast-filler benefit is essentially unchanged.
-  const fillerWord = normalizeFillerWord(filler);
   const iterator = text[Symbol.asyncIterator]();
   const wordBoundary = /[\s.,!?…׃]/u;
+
+  // Speak the hesitation DURING the silence it exists to cover. The thinking timer arms the filler
+  // 1.3s into a turn — which is MID-generation, after a once-at-start sample has already read null.
+  // The previous version sampled exactly once, so a slow turn went: full silence, then filler and
+  // answer together — the hesitation filled nothing. Now, while waiting for the reply's first word,
+  // every 100ms tick re-asks whether a filler was armed, and says it the moment it was: the caller
+  // hears "אממ..." at ~1.4s of a 2.5s turn instead of dead air to the end.
+  let filler = getFiller();
+  if (filler) yield `${filler} `;
+
   let buffer = '';
   let streamDone = false;
+  let pending: Promise<IteratorResult<string>> | null = null;
   while (buffer.length <= 40) {
-    const next = await iterator.next();
-    if (next.done) {
+    pending ??= iterator.next();
+    let result: IteratorResult<string>;
+    if (!filler) {
+      const winner = await Promise.race([
+        pending,
+        new Promise<'tick'>((resolve) => setTimeout(() => resolve('tick'), 100)),
+      ]);
+      if (winner === 'tick') {
+        filler = getFiller();
+        if (filler) yield `${filler} `;
+        continue; // `pending` still holds the in-flight next() — reused, never dropped
+      }
+      result = winner;
+    } else {
+      result = await pending;
+    }
+    pending = null;
+    if (result.done) {
       streamDone = true;
       break;
     }
-    buffer += next.value;
+    buffer += result.value;
     if (wordBoundary.test(buffer)) break;
   }
 
-  const firstWord = buffer.split(wordBoundary)[0] ?? '';
-  const collides = firstWord.length > 0 && normalizeFillerWord(firstWord) === fillerWord;
-  if (!collides) yield `${filler} `;
+  // COLLISION GUARD, inverted from v1. The filler is SPOKEN by the time the reply arrives — that is
+  // the whole point — so when the reply's short opener starts with the same word (filler "רגע..."
+  // then opener "רגע, בודקת."), the duplicate is stripped from the REPLY instead of the filler
+  // being withheld. Koren heard the doubled-word version of this bug in v1.
+  if (filler) {
+    const firstWord = buffer.split(wordBoundary)[0] ?? '';
+    if (firstWord.length > 0 && normalizeFillerWord(firstWord) === normalizeFillerWord(filler)) {
+      buffer = buffer.slice(firstWord.length).replace(/^[,.]?\s*/u, '');
+    }
+  }
 
   if (buffer) yield buffer;
   if (!streamDone) {
