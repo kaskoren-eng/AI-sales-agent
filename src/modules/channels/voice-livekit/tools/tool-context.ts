@@ -456,8 +456,11 @@ export async function buildToolRuntime(
     // minutes) — on a saturated pool the RAG resolver's 300ms deadline would then mask the stall and
     // the agent silently answers un-grounded. Nothing a call legitimately runs takes 5s; keepAlive
     // stops the 10s idle reaper from forcing a TCP+TLS+auth handshake onto the next turn's query.
+    // connectionTimeout 3s, not lower: in production the DB is cross-region (Railway), and a fresh
+    // TCP+TLS+auth handshake is several RTTs — a laptop-tuned 500ms would fail the FIRST connect at
+    // pickup and disable every tool on the call.
     const { db, pool } = createDatabase(env.DATABASE_URL, {
-      connectionTimeoutMillis: 500,
+      connectionTimeoutMillis: 3_000,
       keepAlive: true,
       statement_timeout: 5_000,
     });
