@@ -35,6 +35,7 @@ function raw(over: Partial<VoiceMetricsRaw> = {}): VoiceMetricsRaw {
     },
     overBudgetToolCalls: 0,
     seriesRows: [],
+    openPeriod: null,
     ...over,
   };
 }
@@ -127,6 +128,55 @@ describe('usage — minutes only, never our provider cost', () => {
     for (const leaked of ['perMinuteRateUsd', 'estimatedUsd', 'estimated', 'cost']) {
       expect(serialized).not.toContain(leaked);
     }
+  });
+});
+
+describe('bundle — what the customer bought and what they have spent', () => {
+  const period = (over: Partial<NonNullable<VoiceMetricsRaw['openPeriod']>> = {}) => ({
+    openPeriod: {
+      periodStart: new Date('2026-08-01T00:00:00.000Z'),
+      periodEnd: new Date('2026-09-01T00:00:00.000Z'),
+      includedMinutes: 300,
+      overagePerMinuteAgorot: 300,
+      secondsUsed: 0,
+      ...over,
+    },
+  });
+
+  it('inside the bundle there is no overage and nothing to pay', () => {
+    const m = assembleVoiceMetrics(raw(period({ secondsUsed: 6000 }))); // 100 min
+    expect(m.bundle).toMatchObject({ includedMinutes: 300, minutesUsed: 100, overageMinutes: 0, estimatedOverageAgorot: 0 });
+  });
+
+  it('past the bundle, only the minutes BEYOND it are charged', () => {
+    const m = assembleVoiceMetrics(raw(period({ secondsUsed: 19_800 }))); // 330 min
+    expect(m.bundle).toMatchObject({ minutesUsed: 330, overageMinutes: 30, estimatedOverageAgorot: 30 * 300 });
+  });
+
+  it('rounds the PERIOD once, not every call — a part-minute is one minute, not one per call', () => {
+    // 200 calls of 30s is 100 minutes of talk time. Rounding per call would bill 200.
+    const m = assembleVoiceMetrics(raw(period({ secondsUsed: 200 * 30 })));
+    expect(m.bundle!.minutesUsed).toBe(100);
+    // And any part-minute still counts as a whole one at the period level.
+    expect(assembleVoiceMetrics(raw(period({ secondsUsed: 61 }))).bundle!.minutesUsed).toBe(2);
+  });
+
+  it('an unmetered plan has NO bundle — not a bundle of zero', () => {
+    // null allowance = bespoke/internal. Zero would render as "you have used all of nothing".
+    expect(assembleVoiceMetrics(raw(period({ includedMinutes: null }))).bundle).toBeNull();
+  });
+
+  it('no open period yet means no bundle', () => {
+    expect(assembleVoiceMetrics(raw()).bundle).toBeNull();
+  });
+
+  it('the bundle is period-scoped and ignores the range selector', () => {
+    // usage.minutes follows the range; the allowance follows the billing period. Different windows.
+    const m = assembleVoiceMetrics(
+      raw({ ...period({ secondsUsed: 18_000 }), counters: { ...raw().counters, totalDurationSecs: 600 } }),
+    );
+    expect(m.usage.minutes).toBe(10); // 600s in the selected range
+    expect(m.bundle!.minutesUsed).toBe(300); // 18000s across the period
   });
 });
 

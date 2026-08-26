@@ -107,12 +107,24 @@ export const usagePeriods = pgTable('usage_periods', {
   // it snapshotted: retiring a plan must never rewrite or block the history of periods billed on it.
   planCode: varchar('plan_code', { length: 40 }),
   monthlyPriceAgorot: integer('monthly_price_agorot').notNull().default(0),
+  /** Superseded by `includedMinutes`; frozen on periods that were priced on leads. */
   includedLeads: integer('included_leads'),
   overagePerLeadAgorot: integer('overage_per_lead_agorot').notNull().default(0),
+  /** The billable bundle for this period, frozen at open time. Null = unmetered. */
+  includedMinutes: integer('included_minutes'),
+  overagePerMinuteAgorot: integer('overage_per_minute_agorot').notNull().default(0),
 
   // --- running totals, derivable from the ledger ---
   leadsUsed: integer('leads_used').notNull().default(0),
   callsCount: integer('calls_count').notNull().default(0),
+  /**
+   * Voice seconds used, the counter the bundle is measured against.
+   *
+   * SECONDS, not minutes, because this is a running total of a raw measurement and rounding must
+   * happen once — at the point a bill is written — not on every call. Rounding each call up to a
+   * whole minute here would silently inflate a busy month by the number of calls made.
+   */
+  secondsUsed: integer('seconds_used').notNull().default(0),
   measuredCostMilliAgorot: bigint('measured_cost_milli_agorot', { mode: 'number' }).notNull().default(0),
 
   /** 'open' | 'closed'. Closed periods are what an invoice is written from. */

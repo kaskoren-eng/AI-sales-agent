@@ -27,7 +27,13 @@ export interface UsageRecordInput {
   kind: 'lead' | 'call';
   /** Unique within (tenant, kind). Lead id for leads, room name for calls. */
   dedupeKey: string;
-  /** Invoice units. 1 for a lead; 0 for a call, which is cost-only. */
+  /**
+   * The billable quantity, IN THE UNIT OF ITS KIND: 1 per lead, seconds for a call.
+   *
+   * One column, two units, which is only safe because every reader splits on `kind` — see
+   * `recomputePeriod`. It used to be summed across kinds into `leads_used`; that was correct only
+   * while calls were always 0.
+   */
   billableUnits?: number;
   costMilliAgorot?: number;
   metadata?: Record<string, unknown>;
@@ -47,6 +53,8 @@ interface EffectivePlan {
   monthlyPriceAgorot: number;
   includedLeads: number | null;
   overagePerLeadAgorot: number;
+  includedMinutes: number | null;
+  overagePerMinuteAgorot: number;
 }
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -66,10 +74,20 @@ async function readEffectivePlan(tx: Tx, tenantId: string): Promise<{ plan: Effe
 
   if (!row) return null;
 
-  let base: { monthlyPriceAgorot: number; includedLeads: number | null; overagePerLeadAgorot: number } = {
+  // No plan (or a plan row that vanished) means free and unlimited — nulls, not zeroes: a zero
+  // allowance would read as "every minute is overage".
+  let base: {
+    monthlyPriceAgorot: number;
+    includedLeads: number | null;
+    overagePerLeadAgorot: number;
+    includedMinutes: number | null;
+    overagePerMinuteAgorot: number;
+  } = {
     monthlyPriceAgorot: 0,
     includedLeads: null,
     overagePerLeadAgorot: 0,
+    includedMinutes: null,
+    overagePerMinuteAgorot: 0,
   };
 
   if (row.planCode) {
@@ -78,6 +96,8 @@ async function readEffectivePlan(tx: Tx, tenantId: string): Promise<{ plan: Effe
         monthlyPriceAgorot: plans.monthlyPriceAgorot,
         includedLeads: plans.includedLeads,
         overagePerLeadAgorot: plans.overagePerLeadAgorot,
+        includedMinutes: plans.includedMinutes,
+        overagePerMinuteAgorot: plans.overagePerMinuteAgorot,
       })
       .from(plans)
       .where(eq(plans.code, row.planCode))
@@ -94,6 +114,10 @@ async function readEffectivePlan(tx: Tx, tenantId: string): Promise<{ plan: Effe
       monthlyPriceAgorot: row.priceOverride ?? base.monthlyPriceAgorot,
       includedLeads: row.includedOverride ?? base.includedLeads,
       overagePerLeadAgorot: row.overageOverride ?? base.overagePerLeadAgorot,
+      // No per-tenant minute overrides yet — `tenants` carries lead-shaped override columns only.
+      // A negotiated minute bundle needs two more columns there and in reconcile-usage.mjs.
+      includedMinutes: base.includedMinutes,
+      overagePerMinuteAgorot: base.overagePerMinuteAgorot,
     },
   };
 }
@@ -132,6 +156,8 @@ export async function ensureOpenPeriod(tx: Tx, tenantId: string, at: Date): Prom
       monthlyPriceAgorot: resolved.plan.monthlyPriceAgorot,
       includedLeads: resolved.plan.includedLeads,
       overagePerLeadAgorot: resolved.plan.overagePerLeadAgorot,
+      includedMinutes: resolved.plan.includedMinutes,
+      overagePerMinuteAgorot: resolved.plan.overagePerMinuteAgorot,
       status: 'open',
     })
     .onConflictDoNothing({ target: [usagePeriods.tenantId, usagePeriods.periodStart] })
@@ -189,7 +215,12 @@ export async function recordUsageEvent(db: Database, input: UsageRecordInput): P
       await tx
         .update(usagePeriods)
         .set({
-          leadsUsed: sql`${usagePeriods.leadsUsed} + ${billableUnits}`,
+          // Each counter takes units only from its OWN kind. `billableUnits` carries leads on a
+          // lead row and seconds on a call row, so adding it to leadsUsed unconditionally — which
+          // is what this did while calls were always 0 — starts inflating leads by call seconds
+          // the moment calls become billable.
+          leadsUsed: sql`${usagePeriods.leadsUsed} + ${input.kind === 'lead' ? billableUnits : 0}`,
+          secondsUsed: sql`${usagePeriods.secondsUsed} + ${input.kind === 'call' ? billableUnits : 0}`,
           callsCount: sql`${usagePeriods.callsCount} + ${input.kind === 'call' ? 1 : 0}`,
           measuredCostMilliAgorot: sql`${usagePeriods.measuredCostMilliAgorot} + ${costMilliAgorot}`,
           updatedAt: new Date(),
@@ -239,7 +270,15 @@ export async function meterLead(
 }
 
 /**
- * Meter a finished call. ZERO billable units — calls are a COST signal, never an invoice line.
+ * Meter a finished call. ITS DURATION IN SECONDS IS THE BILLABLE QUANTITY.
+ *
+ * Calls used to be metered at zero units — a pure cost signal — because the invoice was made of
+ * leads. The bundle is now a number of MINUTES, so the call is the billable event and its seconds
+ * are what the allowance is spent on. Seconds rather than minutes so rounding happens once, when a
+ * bill is written, instead of once per call.
+ *
+ * Still records `costMilliAgorot` alongside: what we charge and what we pay are different numbers
+ * and both matter, which is why they are different columns.
  *
  * Called from the agent's shutdown handler, where nothing may throw: an exception there loses the
  * call report and the `call_learnings` row along with the meter.
@@ -262,7 +301,8 @@ export async function meterCall(
       tenantId: params.tenantId,
       kind: 'call',
       dedupeKey: params.roomName,
-      billableUnits: 0,
+      // Negative or absent durations round to 0 rather than crediting minutes back.
+      billableUnits: Math.max(0, Math.round(params.durationSec ?? 0)),
       costMilliAgorot: cost.totalMilliAgorot,
       ...(params.endedAt ? { occurredAt: params.endedAt } : {}),
       metadata: { usage, breakdown: cost, rateVersion: cost.rateVersion, durationSec: params.durationSec ?? null },
@@ -290,13 +330,18 @@ export async function meterCall(
 export async function recomputePeriod(db: Database, periodId: string): Promise<void> {
   await db.execute(sql`
     UPDATE usage_periods p SET
-      leads_used = COALESCE(agg.units, 0),
+      leads_used = COALESCE(agg.lead_units, 0),
+      seconds_used = COALESCE(agg.call_seconds, 0),
       calls_count = COALESCE(agg.calls, 0),
       measured_cost_milli_agorot = COALESCE(agg.cost, 0),
       updated_at = now()
     FROM (
       SELECT
-        SUM(billable_units) AS units,
+        -- FILTERED BY KIND, both of them. billable_units means leads on one row and seconds on
+        -- another; an unfiltered SUM would rebuild leads_used as leads + call-seconds and then
+        -- report the honest counter as the drifted one.
+        SUM(billable_units) FILTER (WHERE kind = 'lead') AS lead_units,
+        SUM(billable_units) FILTER (WHERE kind = 'call') AS call_seconds,
         COUNT(*) FILTER (WHERE kind = 'call') AS calls,
         SUM(cost_milli_agorot) AS cost
       FROM usage_events WHERE period_id = ${periodId}

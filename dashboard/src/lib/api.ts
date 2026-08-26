@@ -111,6 +111,16 @@ export interface VoiceMetrics {
   }
   /** Usage only — provider cost is operator-only and is not served to tenants. */
   usage: { minutes: number }
+  /** The tenant's own bundle for the current BILLING PERIOD (not the selected range). */
+  bundle: {
+    periodStart: string
+    periodEnd: string
+    includedMinutes: number
+    minutesUsed: number
+    overageMinutes: number
+    overagePerMinuteAgorot: number
+    estimatedOverageAgorot: number
+  } | null
   series: Array<{ date: string; calls: number; minutes: number; booked: number }>
 }
 

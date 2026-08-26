@@ -140,8 +140,27 @@ export function VoiceOps() {
               : t('voiceOps.kpi.bookingRateOf', { booked: num(m.outcomes.booked), total: num(m.outcomes.withEndReason) })
           }
         />
-        {/* No cost tile. What a call costs US in provider fees is margin information and stays in
-            the operator console; the tenant sees minutes used, which is what they are billed on. */}
+        {/* The bundle, when the tenant is on a metered plan. Money here is what the CUSTOMER owes
+            for minutes past their allowance — never what those minutes cost us. */}
+        {m?.bundle && (
+          <Kpi
+            label={t('voiceOps.kpi.bundle')}
+            value={`${num(m.bundle.minutesUsed)} / ${num(m.bundle.includedMinutes)}`}
+            loading={loading}
+            isHebrew={isHebrew}
+            danger={m.bundle.overageMinutes > 0}
+            note={
+              m.bundle.overageMinutes > 0
+                ? t('voiceOps.kpi.bundleOverage', {
+                    n: num(m.bundle.overageMinutes),
+                    amount: agorot(m.bundle.estimatedOverageAgorot),
+                  })
+                : t('voiceOps.kpi.bundleRemaining', {
+                    n: num(Math.max(0, m.bundle.includedMinutes - m.bundle.minutesUsed)),
+                  })
+            }
+          />
+        )}
         <Kpi
           label={t('voiceOps.kpi.failed')}
           value={num(m?.calls.failed ?? 0)}
@@ -701,6 +720,12 @@ function VoiceTrendChart({
       </ResponsiveContainer>
     </div>
   )
+}
+
+/** Agorot → ₪, the way an invoice reads. Prices are integers in agorot precisely so that no
+ *  floating-point drift can put a customer's bill a fraction off. */
+function agorot(a: number): string {
+  return `₪${(a / 100).toLocaleString('he-IL', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 }
 
 /** m:ss for an average call length. */
