@@ -384,8 +384,14 @@ describe('Keren — emotional color (round 4, 2026-08-26)', () => {
     expect(SYSTEM_PROMPT_HE).toMatch(/do not write it, ever/u);
   });
 
-  it('caps the color at one touch per reply — overuse is what sounds like a machine', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/at most one emotional touch per reply/iu);
+  it('anchors the color to BEATS — the 2026-08-26 evening call used one device in 32 turns', () => {
+    // "Sparingly, at most one per reply" made the model play it safe to the point of silence:
+    // a whole call with a single emotional touch, copied verbatim from the example. The section
+    // now names the moments that ALWAYS deserve color and demands the model's own words.
+    expect(SYSTEM_PROMPT_HE).toMatch(/These beats always deserve emotional color/iu);
+    expect(SYSTEM_PROMPT_HE).toMatch(/never copy these examples verbatim/iu);
+    expect(SYSTEM_PROMPT_HE).toMatch(/acknowledge the feeling first/iu);
+    expect(SYSTEM_PROMPT_HE).not.toMatch(/at most one emotional touch per reply/iu);
   });
 
   it('keeps the color out of the opener slot — the instant-ack double-receipt bug must not return', () => {
