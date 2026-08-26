@@ -153,10 +153,24 @@ describe('recordUsageEvent', () => {
     expect(calls.insertedPeriods[0]).toMatchObject({ planCode: null, includedLeads: null });
   });
 
-  it('call events carry cost but ZERO billable units', async () => {
+  it('a call event carries BOTH what we charge (seconds) and what it cost us', async () => {
     const { db, calls } = fakeDb();
-    await recordUsageEvent(db, { tenantId: 't1', kind: 'call', dedupeKey: 'room-1', billableUnits: 0, costMilliAgorot: 4321 });
-    expect(calls.insertedEvents[0]).toMatchObject({ kind: 'call', billableUnits: 0, costMilliAgorot: 4321 });
+    await recordUsageEvent(db, { tenantId: 't1', kind: 'call', dedupeKey: 'room-1', billableUnits: 132, costMilliAgorot: 4321 });
+    expect(calls.insertedEvents[0]).toMatchObject({ kind: 'call', billableUnits: 132, costMilliAgorot: 4321 });
+  });
+
+  it('moves BOTH unit counters on every event, so neither kind silently stops counting', async () => {
+    // billable_units means leads on a lead row and seconds on a call row, so each counter must take
+    // units only from its own kind — the arithmetic itself is in SQL and is asserted by the
+    // reconcile drift check, not here. What this pins is that both columns are written at all.
+    for (const kind of ['lead', 'call'] as const) {
+      const { db, calls } = fakeDb();
+      await recordUsageEvent(db, { tenantId: 't1', kind, dedupeKey: `k-${kind}`, billableUnits: 132 });
+      const update = calls.periodUpdates[0]!;
+      expect(Object.keys(update)).toEqual(
+        expect.arrayContaining(['leadsUsed', 'secondsUsed', 'callsCount', 'measuredCostMilliAgorot']),
+      );
+    }
   });
 
   it('never stores a negative cost', async () => {
@@ -217,9 +231,24 @@ describe('meterLead / meterCall never throw', () => {
     });
 
     const event = calls.insertedEvents[0]!;
-    expect(event).toMatchObject({ kind: 'call', billableUnits: 0 });
+    // The call's SECONDS are the billable quantity — minutes are the bundle the customer buys.
+    expect(event).toMatchObject({ kind: 'call', billableUnits: 60 });
     expect(event.costMilliAgorot as number).toBeGreaterThan(0);
     expect((event.metadata as Record<string, unknown>).rateVersion).toBeTruthy();
+  });
+
+  it('bills the seconds it was given, rounded, and never credits minutes back', async () => {
+    for (const [durationSec, expected] of [[132.4, 132], [0.6, 1], [0, 0], [-5, 0]] as const) {
+      const { db, calls } = fakeDb();
+      await meterCall(db, { tenantId: 't1', roomName: `room-${durationSec}`, usage: null, durationSec });
+      expect(calls.insertedEvents[0]).toMatchObject({ billableUnits: expected });
+    }
+  });
+
+  it('a call with no duration at all bills zero rather than NaN', async () => {
+    const { db, calls } = fakeDb();
+    await meterCall(db, { tenantId: 't1', roomName: 'room-x', usage: null });
+    expect(calls.insertedEvents[0]).toMatchObject({ kind: 'call', billableUnits: 0 });
   });
 
   it('an unmeasured call is recorded at zero cost rather than skipped', async () => {

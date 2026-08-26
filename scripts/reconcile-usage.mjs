@@ -124,13 +124,21 @@ async function ensurePeriod(client, tenantId, occurredAt) {
   const b = rows[0];
 
   const plan = b.plan_code
-    ? (await client.query('SELECT monthly_price_agorot, included_leads, overage_per_lead_agorot FROM plans WHERE code = $1', [b.plan_code])).rows[0]
+    ? (
+        await client.query(
+          `SELECT monthly_price_agorot, included_leads, overage_per_lead_agorot,
+                  included_minutes, overage_per_minute_agorot
+             FROM plans WHERE code = $1`,
+          [b.plan_code],
+        )
+      ).rows[0]
     : null;
 
   const inserted = await client.query(
     `INSERT INTO usage_periods
-       (tenant_id, period_start, period_end, plan_code, monthly_price_agorot, included_leads, overage_per_lead_agorot, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,'open')
+       (tenant_id, period_start, period_end, plan_code, monthly_price_agorot, included_leads,
+        overage_per_lead_agorot, included_minutes, overage_per_minute_agorot, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'open')
      ON CONFLICT (tenant_id, period_start) DO NOTHING
      RETURNING id`,
     [
@@ -138,6 +146,9 @@ async function ensurePeriod(client, tenantId, occurredAt) {
       b.monthly_price_agorot_override ?? plan?.monthly_price_agorot ?? 0,
       b.included_leads_override ?? plan?.included_leads ?? null,
       b.overage_per_lead_agorot_override ?? plan?.overage_per_lead_agorot ?? 0,
+      // No per-tenant minute override columns on `tenants` yet — mirrors readEffectivePlan.
+      plan?.included_minutes ?? null,
+      plan?.overage_per_minute_agorot ?? 0,
     ],
   );
   if (inserted.rows[0]) return inserted.rows[0].id;
@@ -221,11 +232,13 @@ async function main() {
       backfilledCost += cost;
       const periodId = await ensurePeriod(client, row.tenant_id, row.created_at);
       await client.query(
+        // billable_units = the call's SECONDS (the billable quantity since minutes became the
+        // bundle), not 0 as when calls were a cost-only signal.
         `INSERT INTO usage_events (tenant_id, kind, dedupe_key, billable_units, cost_milli_agorot, metadata, period_id, occurred_at)
-         VALUES ($1, 'call', $2, 0, $3, $4, $5, $6)
+         VALUES ($1, 'call', $2, $3, $4, $5, $6, $7)
          ON CONFLICT (tenant_id, kind, dedupe_key) DO NOTHING`,
         [
-          row.tenant_id, row.conference_name, cost,
+          row.tenant_id, row.conference_name, Math.max(0, Math.round(row.duration_secs ?? 0)), cost,
           JSON.stringify({ usage: row.usage, rateVersion: `${RATES.version}-reconciled`, backfilled: true, durationSec: row.duration_secs }),
           periodId, row.created_at,
         ],
@@ -238,34 +251,50 @@ async function main() {
   // The counters are a cache of the ledger. Disagreement is ALWAYS resolved towards the ledger —
   // the opposite direction would let a drifted counter bill units that have no evidence behind them.
   const drift = await client.query(
-    `SELECT p.id, p.tenant_id, p.period_start, p.leads_used, p.measured_cost_milli_agorot,
-            COALESCE(a.units, 0) AS real_units, COALESCE(a.cost, 0) AS real_cost
+    // Both sums FILTERED BY KIND: billable_units means leads on one row and seconds on another,
+    // so an unfiltered SUM would compare leads_used against leads + call-seconds and report every
+    // period with a call on it as drifted.
+    `SELECT p.id, p.tenant_id, p.period_start, p.leads_used, p.seconds_used, p.measured_cost_milli_agorot,
+            COALESCE(a.lead_units, 0) AS real_units, COALESCE(a.call_seconds, 0) AS real_seconds,
+            COALESCE(a.cost, 0) AS real_cost
      FROM usage_periods p
      LEFT JOIN (
-       SELECT period_id, SUM(billable_units) AS units, SUM(cost_milli_agorot) AS cost
+       SELECT period_id,
+              SUM(billable_units) FILTER (WHERE kind = 'lead') AS lead_units,
+              SUM(billable_units) FILTER (WHERE kind = 'call') AS call_seconds,
+              SUM(cost_milli_agorot) AS cost
        FROM usage_events GROUP BY period_id
      ) a ON a.period_id = p.id
-     WHERE (p.leads_used <> COALESCE(a.units, 0) OR p.measured_cost_milli_agorot <> COALESCE(a.cost, 0))
+     WHERE (p.leads_used <> COALESCE(a.lead_units, 0)
+            OR p.seconds_used <> COALESCE(a.call_seconds, 0)
+            OR p.measured_cost_milli_agorot <> COALESCE(a.cost, 0))
        ${TENANT ? 'AND p.tenant_id = $1' : ''}`,
     TENANT ? [TENANT] : [],
   );
 
   console.log(`\nperiods whose counters disagree with the ledger: ${drift.rowCount}`);
   for (const row of drift.rows) {
-    console.log(`  ${row.period_start.toISOString().slice(0, 10)}  ${row.tenant_id}  leads ${row.leads_used} → ${row.real_units}`);
+    console.log(
+      `  ${row.period_start.toISOString().slice(0, 10)}  ${row.tenant_id}` +
+        `  leads ${row.leads_used} → ${row.real_units}` +
+        `  seconds ${row.seconds_used} → ${row.real_seconds}`,
+    );
   }
 
   if (APPLY) {
     for (const row of drift.rows) touchedPeriods.add(row.id);
     for (const periodId of touchedPeriods) {
       await client.query(
+        // Mirrors recomputePeriod() in src/modules/billing/usage.service.ts — keep them in lockstep.
         `UPDATE usage_periods p SET
-           leads_used = COALESCE(agg.units, 0),
+           leads_used = COALESCE(agg.lead_units, 0),
+           seconds_used = COALESCE(agg.call_seconds, 0),
            calls_count = COALESCE(agg.calls, 0),
            measured_cost_milli_agorot = COALESCE(agg.cost, 0),
            updated_at = now()
          FROM (
-           SELECT SUM(billable_units) AS units,
+           SELECT SUM(billable_units) FILTER (WHERE kind = 'lead') AS lead_units,
+                  SUM(billable_units) FILTER (WHERE kind = 'call') AS call_seconds,
                   COUNT(*) FILTER (WHERE kind = 'call') AS calls,
                   SUM(cost_milli_agorot) AS cost
            FROM usage_events WHERE period_id = $1

@@ -1,6 +1,6 @@
 import { and, count, eq, gte, sql } from 'drizzle-orm';
 import type { Database } from '../../db/client.js';
-import { leads, callLearnings } from '../../db/schema/index.js';
+import { leads, callLearnings, usagePeriods } from '../../db/schema/index.js';
 
 export type MetricsRange = 'today' | 'd7' | 'd30';
 
@@ -89,6 +89,28 @@ export interface VoiceMetrics {
    * which published our cost basis to anyone holding a tenant API key.
    */
   usage: { minutes: number };
+  /**
+   * The tenant's own billing bundle for the CURRENT PERIOD — deliberately not scoped by `range`.
+   *
+   * Everything else on this page answers "how did the agent do over the last 7 days"; a bundle
+   * answers "how much of what I bought have I spent", and that question only has one honest window
+   * — the billing period. Showing a 7-day slice of a monthly allowance would read as an allowance
+   * that resets weekly.
+   *
+   * Null when the tenant has no open period yet, or is on an unmetered plan. Money here is what the
+   * CUSTOMER owes (their bundle and overage), never what the calls cost us.
+   */
+  bundle: {
+    periodStart: string;
+    periodEnd: string;
+    includedMinutes: number;
+    minutesUsed: number;
+    /** Minutes past the bundle, 0 while inside it. */
+    overageMinutes: number;
+    overagePerMinuteAgorot: number;
+    /** overageMinutes × rate, in agorot. Indicative — the invoice is written by hand. */
+    estimatedOverageAgorot: number;
+  } | null;
   series: Array<{ date: string; calls: number; minutes: number; booked: number }>;
 }
 
@@ -124,6 +146,13 @@ export interface VoiceMetricsRaw {
   };
   overBudgetToolCalls: number;
   seriesRows: Array<{ d: string; calls: number; durationSecs: number; booked: number }>;
+  openPeriod: {
+    periodStart: Date;
+    periodEnd: Date;
+    includedMinutes: number | null;
+    overagePerMinuteAgorot: number;
+    secondsUsed: number;
+  } | null;
 }
 
 const round = (v: unknown, dp = 0): number | null => {
@@ -156,6 +185,26 @@ export function assembleVoiceMetrics(raw: VoiceMetricsRaw): VoiceMetrics {
   const bookingRatePct = withEndReason === 0 ? null : round((booked / withEndReason) * 100, 1);
 
   const minutes = round(counters.totalDurationSecs / 60, 1) ?? 0;
+
+  // The bundle. A null allowance means unmetered (bespoke or internal) — there is nothing to spend
+  // down, so there is nothing to show, which is different from having spent zero.
+  const p = raw.openPeriod;
+  let bundle: VoiceMetrics['bundle'] = null;
+  if (p && p.includedMinutes != null) {
+    // Round the period total ONCE, here, rather than per call — rounding each call up to a whole
+    // minute would overstate a busy month by roughly the number of calls in it.
+    const minutesUsed = Math.ceil(p.secondsUsed / 60);
+    const overageMinutes = Math.max(0, minutesUsed - p.includedMinutes);
+    bundle = {
+      periodStart: p.periodStart.toISOString(),
+      periodEnd: p.periodEnd.toISOString(),
+      includedMinutes: p.includedMinutes,
+      minutesUsed,
+      overageMinutes,
+      overagePerMinuteAgorot: p.overagePerMinuteAgorot,
+      estimatedOverageAgorot: overageMinutes * p.overagePerMinuteAgorot,
+    };
+  }
 
   // Zero-filled daily buckets, same shape as summary()'s trend so both charts line up.
   const byDay = new Map(raw.seriesRows.map((r) => [r.d, r]));
@@ -201,6 +250,7 @@ export function assembleVoiceMetrics(raw: VoiceMetricsRaw): VoiceMetrics {
       overBudgetToolCalls: raw.overBudgetToolCalls,
     },
     usage: { minutes },
+    bundle,
     series,
   };
 }
@@ -327,7 +377,7 @@ export class MetricsService {
     const reportSum = (key: string) =>
       sql<number>`coalesce(sum((${report} -> 'summary' ->> ${key})::int), 0)`;
 
-    const [countersRow, endReasonRows, latencyRows, overBudgetRes, seriesRows] =
+    const [countersRow, endReasonRows, latencyRows, overBudgetRes, seriesRows, openPeriodRows] =
       await Promise.all([
         this.db
           .select({
@@ -381,6 +431,18 @@ export class MetricsService {
           .from(callLearnings)
           .where(and(eq(callLearnings.tenantId, tenantId), gte(callLearnings.createdAt, seriesFrom)))
           .groupBy(callDay),
+        // The tenant's own bundle. Period-scoped, not range-scoped — see `VoiceMetrics.bundle`.
+        this.db
+          .select({
+            periodStart: usagePeriods.periodStart,
+            periodEnd: usagePeriods.periodEnd,
+            includedMinutes: usagePeriods.includedMinutes,
+            overagePerMinuteAgorot: usagePeriods.overagePerMinuteAgorot,
+            secondsUsed: usagePeriods.secondsUsed,
+          })
+          .from(usagePeriods)
+          .where(and(eq(usagePeriods.tenantId, tenantId), eq(usagePeriods.status, 'open')))
+          .limit(1),
       ]);
 
     const c = countersRow[0];
@@ -418,6 +480,7 @@ export class MetricsService {
         worstMax: l?.worstMax ?? null,
       },
       overBudgetToolCalls: Number(overBudgetRows?.[0]?.c ?? 0),
+      openPeriod: openPeriodRows[0] ? { ...openPeriodRows[0] } : null,
       seriesRows: seriesRows.map((r) => ({
         d: r.d,
         calls: Number(r.calls),

@@ -25,9 +25,26 @@ export const plans = pgTable('plans', {
   monthlyPriceAgorot: integer('monthly_price_agorot').notNull(),
   setupFeeAgorot: integer('setup_fee_agorot').notNull().default(0),
 
-  /** Leads included before overage. Null = unmetered (bespoke contracts). */
+  /**
+   * Leads included before overage. Null = unmetered (bespoke contracts).
+   *
+   * SUPERSEDED as the billable unit by `includedMinutes` below. Kept, not dropped: every
+   * `usage_periods` row already written froze these values into its snapshot, and a snapshot has to
+   * stay readable for the month it priced.
+   */
   includedLeads: integer('included_leads'),
   overagePerLeadAgorot: integer('overage_per_lead_agorot').notNull().default(0),
+
+  /**
+   * THE BILLABLE UNIT: voice minutes included per period before overage. Null = unmetered.
+   *
+   * The customer buys a bundle of minutes at `monthlyPriceAgorot` and pays
+   * `overagePerMinuteAgorot` for each minute beyond it. This is a *price*, in agorot, and has
+   * nothing to do with what a minute costs us — that is `usage_periods.measuredCostMilliAgorot`,
+   * which is operator-only (see `billing.ts`).
+   */
+  includedMinutes: integer('included_minutes'),
+  overagePerMinuteAgorot: integer('overage_per_minute_agorot').notNull().default(0),
 
   /** Read by Phase 8's concurrency cap. Stored now so the plan row is complete when it is needed. */
   maxConcurrentCalls: integer('max_concurrent_calls').notNull().default(1),

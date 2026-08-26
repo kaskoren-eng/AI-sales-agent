@@ -92,6 +92,8 @@ export class AdminService {
         monthlyPriceAgorot: plans.monthlyPriceAgorot,
         includedLeads: plans.includedLeads,
         overagePerLeadAgorot: plans.overagePerLeadAgorot,
+        includedMinutes: plans.includedMinutes,
+        overagePerMinuteAgorot: plans.overagePerMinuteAgorot,
         isActive: plans.isActive,
       })
       .from(plans)
@@ -129,6 +131,12 @@ export class AdminService {
         monthlyPriceAgorot: usagePeriods.monthlyPriceAgorot,
         includedLeads: usagePeriods.includedLeads,
         leadsUsed: usagePeriods.leadsUsed,
+        // The bundle the customer is actually billed on, and what they have spent of it.
+        includedMinutes: usagePeriods.includedMinutes,
+        overagePerMinuteAgorot: usagePeriods.overagePerMinuteAgorot,
+        secondsUsed: usagePeriods.secondsUsed,
+        // Operator-only: what those minutes COST us. Never served to a tenant.
+        measuredCostMilliAgorot: usagePeriods.measuredCostMilliAgorot,
       })
       .from(usagePeriods)
       .where(and(eq(usagePeriods.tenantId, tenantId), eq(usagePeriods.status, 'open')))

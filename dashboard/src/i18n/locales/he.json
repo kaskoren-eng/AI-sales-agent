@@ -553,7 +553,10 @@
       "bookingRate": "אחוז סגירה",
       "bookingRateOf": "{{booked}} מתוך {{total}} שיחות שנמדדו",
       "bookingRateNone": "עדיין לא נרשמה סיבת סיום לאף שיחה",
-      "failed": "שיחות שנכשלו"
+      "failed": "שיחות שנכשלו",
+      "bundle": "דקות בחבילה",
+      "bundleRemaining": "נותרו {{n}} דקות בתקופה",
+      "bundleOverage": "חריגה של {{n}} דקות — {{amount}} נוספים"
     },
     "latency": {
       "title": "זמן תגובה",

@@ -553,7 +553,10 @@
       "bookingRate": "Booking rate",
       "bookingRateOf": "{{booked}} of {{total}} measured calls",
       "bookingRateNone": "No call recorded an end reason yet",
-      "failed": "Failed calls"
+      "failed": "Failed calls",
+      "bundle": "Minutes in plan",
+      "bundleRemaining": "{{n}} minutes left this period",
+      "bundleOverage": "{{n}} minutes over — {{amount}} extra"
     },
     "latency": {
       "title": "Response latency",
