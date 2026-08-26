@@ -69,6 +69,15 @@ export interface TenantDetail {
     calls: { total: number; voiceMinutes: number; byOutcome: Record<string, number> }
     meetings: { total: number; upcoming: number }
   }
+  /** Open billing period. `measuredCostMilliAgorot` is OPERATOR-ONLY — never render it tenant-side. */
+  openPeriod: {
+    periodStart: string
+    periodEnd: string
+    includedMinutes: number | null
+    overagePerMinuteAgorot: number
+    secondsUsed: number
+    measuredCostMilliAgorot: number
+  } | null
 }
 
 export interface CreatedTenant {
@@ -92,8 +101,12 @@ export interface Plan {
   name: string
   nameHe: string | null
   monthlyPriceAgorot: number
+  /** Superseded by `includedMinutes` as the billable unit; still served for historical periods. */
   includedLeads: number | null
   overagePerLeadAgorot: number
+  /** The bundle the customer buys. Null = unmetered. */
+  includedMinutes: number | null
+  overagePerMinuteAgorot: number
   isActive: boolean
 }
 
