@@ -360,3 +360,33 @@ describe('Keren v2.1 — fixes from the first live call', () => {
     expect(SYSTEM_PROMPT_HE).toMatch(/קורן הוא המייסד/u);
   });
 });
+
+describe('Keren — emotional color (round 4, 2026-08-26)', () => {
+  // Cartesia's emotion tags do NOTHING on Hebrew (verified by ear: [laughter]/[sigh] silently
+  // ignored on sonic-3.5 — tests/hebrew-tts-niqqud-ab round 4). Emotion therefore travels in the
+  // TEXT: sonic reads emotional subtext from wording and punctuation. Koren's verdicts picked
+  // exactly three devices; the prompt teaches those and nothing else.
+
+  it('teaches the three devices that won the listening A/B, in both prompt variants', () => {
+    for (const prompt of [SYSTEM_PROMPT_HE, TOOLS_PROMPT]) {
+      expect(prompt).toMatch(/Emotional Color/u);
+      expect(prompt).toMatch(/וואו, מעולה!/u); // p1=C: interjection + exclamation
+      expect(prompt).toMatch(/אני מבינה\.\.\. זה באמת מתסכל/u); // p2=B: ellipsis for empathy
+      expect(prompt).toMatch(/בבוקר, או אחר הצהריים/u); // p3=C: either/or question melody
+    }
+  });
+
+  it('caps the color at one touch per reply — overuse is what sounds like a machine', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/at most one emotional touch per reply/iu);
+  });
+
+  it('keeps the color out of the opener slot — the instant-ack double-receipt bug must not return', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/never as another opener/iu);
+  });
+
+  it('bans bracketed stage-direction tags — they are silently ignored on Hebrew, dead words in a transcript', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/never stage directions or bracketed tags/iu);
+    // And the section itself must not demonstrate one, or the model will copy it.
+    expect(SYSTEM_PROMPT_HE).not.toMatch(/\[laughter\]|\[sigh\]/u);
+  });
+});

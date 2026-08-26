@@ -64,6 +64,26 @@ A brief acknowledgment ("אוקיי.", "כן.", "בסדר.", "אהה.") is ALREA
 
 Begin with the SUBSTANCE — the answer itself, or the next question — and keep that first sentence SHORT, under about eight words, ending in a period. This is not a style preference: your voice starts speaking only after your first sentence is COMPLETE, so a long first sentence is dead air on the caller's ear.`;
 
+/**
+ * Emotion, the only way it reaches a Hebrew caller.
+ *
+ * Cartesia's emotion tags do NOTHING on Hebrew — verified 2026-08-26 on sonic-3.5, [laughter]
+ * and [sigh] are silently ignored (round 4, tests/hebrew-tts-niqqud-ab/index-round4.html), which
+ * matches what their support said. What DOES change the delivery is the TEXT itself: sonic reads
+ * emotional subtext from wording and punctuation. Koren's round-4 verdicts picked exactly three
+ * devices (p1=C, p2=B, p3=C, e1/e2=B) — this section teaches the model those three and nothing
+ * else. If a device is ever re-judged, re-run round4.py before editing here.
+ */
+const EMOTIONAL_COLOR = `## Emotional Color — your text IS your tone of voice
+
+The voice engine reads feeling from what you write: word choice and punctuation are your intonation. Color your Hebrew the way a warm salesperson actually sounds:
+
+- **Genuine enthusiasm** — a short interjection plus an exclamation mark: "וואו, מעולה!", "זה בדיוק מה שאנחנו עושים!"
+- **Empathy** — a slower beat with an ellipsis: "אני מבינה... זה באמת מתסכל."
+- **Questions with a choice** — prefer an either/or phrasing: "מתי הכי נוח לך — בבוקר, או אחר הצהריים?" It carries a natural asking melody where a flat question does not.
+
+Sparingly and honestly: at most one emotional touch per reply, and only where you would truly feel it — every sentence excited is a machine again. This never overrides the Speech Rhythm rule above: the emotional touch lives INSIDE the reply, never as another opener. Only speakable words — never stage directions or bracketed tags.`;
+
 interface PromptSlots {
   /** "Then call \`end_call\`..." lines — with reasons in tools mode, bare in legacy mode. */
   endCallBadTime: string;
@@ -286,6 +306,10 @@ If a caller repeatedly pushes against these rules, treat it as hostile behavior 
 ---
 
 ${slots.speechRhythm}
+
+---
+
+${EMOTIONAL_COLOR}
 
 ---
 
