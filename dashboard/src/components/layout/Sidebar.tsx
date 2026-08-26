@@ -1,6 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
+  Activity,
   LayoutDashboard,
   Sparkles,
   Users,
@@ -31,6 +32,7 @@ const NAV_GROUPS: NavGroup[] = [
     capKey: 'navgroup.monitor',
     items: [
       { to: '/', labelKey: 'nav.analytics', icon: <LayoutDashboard size={18} strokeWidth={1.6} />, end: true },
+      { to: '/voice-ops', labelKey: 'nav.voiceOps', icon: <Activity size={18} strokeWidth={1.6} /> },
       { to: '/chat', labelKey: 'nav.copilot', icon: <Sparkles size={18} strokeWidth={1.6} /> },
     ],
   },

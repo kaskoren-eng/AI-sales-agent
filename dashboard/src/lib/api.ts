@@ -78,6 +78,45 @@ export function fetchMetricsSummary(range: 'today' | 'd7' | 'd30'): Promise<Metr
   return apiFetch<MetricsSummary>(`/metrics/summary?range=${range}`)
 }
 
+// --- Voice-agent supervision metrics (Voice Ops page) ---
+
+export interface VoiceMetrics {
+  range: 'today' | 'd7' | 'd30'
+  from: string
+  to: string
+  days: number
+  calls: { total: number; failed: number; totalDurationSecs: number; avgDurationSecs: number | null }
+  outcomes: {
+    byEndReason: Record<string, number>
+    withEndReason: number
+    booked: number
+    /** null (not 0) when no call recorded an end reason — render as "—". */
+    bookingRatePct: number | null
+  }
+  latency: {
+    /** 0 → show the "awaiting data" state; every figure below will be null. */
+    callsWithLatency: number
+    endOfTurnMs: { median: number | null; p95: number | null }
+    llmTtftMs: { median: number | null; p95: number | null }
+    ttsTtfbMs: { median: number | null; p95: number | null }
+    worstCaseMs: { median: number | null; p95: number | null; max: number | null }
+  }
+  attention: {
+    failedCalls: number
+    disclosureMissed: number
+    fragmentedTurnCalls: number
+    fragmentedTurnsTotal: number
+    cutOffsTotal: number
+    overBudgetToolCalls: number
+  }
+  cost: { minutes: number; perMinuteRateUsd: number; estimatedUsd: number; estimated: true }
+  series: Array<{ date: string; calls: number; minutes: number; booked: number }>
+}
+
+export function fetchVoiceMetrics(range: 'today' | 'd7' | 'd30'): Promise<VoiceMetrics> {
+  return apiFetch<VoiceMetrics>(`/metrics/voice?range=${range}`)
+}
+
 /**
  * Every workspace this signed-in human belongs to.
  *
