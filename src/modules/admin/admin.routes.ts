@@ -7,6 +7,9 @@ import { ValidationError } from '../../shared/errors.js';
 import { invalidateTenantStatus } from '../../plugins/tenant-status.js';
 import { safeTenant } from '../tenants/settings-policy.js';
 import { recordAudit } from '../../shared/audit.js';
+import { syncInboundTrunkNumbers } from './sip-trunk.service.js';
+import { toE164 } from '../../shared/phone-number.js';
+import { phoneNumbers } from '../../db/schema/index.js';
 
 export async function adminRoutes(app: FastifyInstance) {
   const admin = new AdminService(app.db);
@@ -146,6 +149,84 @@ export async function adminRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     return { data: await admin.tenantNumbers(id) };
   });
+
+  /**
+   * Assign a DID to a tenant, and put it on the SIP trunk in the same call.
+   *
+   * Both halves, always, because they are one fact stored in two systems and a human keeping them
+   * in step demonstrably did not: the checked-in trunk config said `numbers: []` for weeks while
+   * production carried one number. The dangerous direction is a row here with no trunk entry — the
+   * call is refused at the SIP layer, our code never runs, nothing logs it, and the customer
+   * reports it before we notice.
+   *
+   * `scripts/provision-number.mjs` does the same job for an operator with a database connection.
+   * This exists because that script needs a direct Postgres port, which some networks block, and
+   * provisioning should not be the one onboarding step that depends on a firewall rule.
+   */
+  app.post('/tenants/:id/numbers', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { e164?: string; label?: string };
+
+    const e164 = body.e164 ? toE164(body.e164) : null;
+    if (!e164) throw new ValidationError('e164 must be a usable phone number, e.g. +972555070922');
+
+    // Fail before writing a row that points at nothing: a number mapped to a missing tenant routes
+    // calls into a read that returns nothing, which is far harder to diagnose from a recording than
+    // a refusal at provisioning time.
+    const tenant = await tenantsSvc.getById(id);
+
+    const [row] = await app.db
+      .insert(phoneNumbers)
+      .values({ tenantId: id, e164, label: body.label ?? null, isActive: true })
+      .onConflictDoUpdate({
+        target: phoneNumbers.e164,
+        set: { tenantId: id, label: body.label ?? null, isActive: true, updatedAt: new Date() },
+      })
+      .returning();
+
+    await recordAudit(app.db, {
+      tenantId: id,
+      action: 'tenant.number_assigned',
+      targetType: 'phone_number',
+      targetId: e164,
+      actorType: 'admin_key',
+      actorLabel: 'operator_console',
+      ip: request.ip,
+      metadata: { e164, tenantName: tenant.name },
+    });
+
+    // The row is committed and is the source of truth, so a trunk failure must not fail the
+    // request — but it must be impossible to miss, because the resulting state produces no log
+    // line anywhere and reads to the customer as "your agent never answers".
+    let trunk: Awaited<ReturnType<typeof syncInboundTrunkNumbers>> | null = null;
+    let trunkError: string | null = null;
+    try {
+      trunk = await syncInboundTrunkNumbers({ db: app.db, env: app.env });
+    } catch (err) {
+      trunkError = err instanceof Error ? err.message : String(err);
+      request.log.error(
+        { audit: true, event: 'sip_trunk_sync_failed', e164, error: trunkError },
+        'phone_numbers row written but the SIP trunk was NOT updated — calls to this number are refused before our code runs',
+      );
+    }
+
+    reply.status(201);
+    return {
+      number: { e164: row!.e164, label: row!.label, isActive: row!.isActive, tenantId: id },
+      trunk,
+      ...(trunkError
+        ? {
+            warning:
+              'The number is saved but the SIP trunk was not updated. Until it is, calls to this number are rejected at the SIP layer and nothing will log it. Repair: node scripts/provision-number.mjs --sync-trunk',
+            trunkError,
+          }
+        : {}),
+      next: 'Point this number at the SIP URI in the Zadarma portal (infra/livekit-sip/README.md).',
+    };
+  });
+
+  /** Repair drift without touching any row. */
+  app.post('/sip-trunk/sync', async () => syncInboundTrunkNumbers({ db: app.db, env: app.env }));
 
   app.post('/tenants/:id/rotate-key', async (request) => {
     const { id } = request.params as { id: string };

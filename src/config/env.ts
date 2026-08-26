@@ -406,6 +406,10 @@ const envSchema = z.object({
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),
+  // Which INBOUND trunk to keep in step with `phone_numbers`. Optional: with exactly one inbound
+  // trunk it is discovered, and it is only required once a second exists — at which point guessing
+  // would mean editing the security boundary of the wrong one.
+  LIVEKIT_SIP_INBOUND_TRUNK_ID: z.string().min(1).optional(),
 
   // Scheduling (Google Calendar) — ClickScales' OWN service account.
   //
