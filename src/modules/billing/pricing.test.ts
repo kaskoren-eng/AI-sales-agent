@@ -149,6 +149,64 @@ describe('readUsageSummary', () => {
       expect(costOfCall(parsed).totalMilliAgorot).toBe(0);
     }
   });
+
+  describe('modelUsage[] — the shape the SDK actually sends', () => {
+    // Copied from a real production payload. Reading only the deprecated flat fields priced every
+    // one of these calls on platform minutes alone: LLM, STT and TTS all came back ₪0.00.
+    const real = {
+      modelUsage: [
+        { type: 'llm_usage', provider: 'api.openai.com', model: 'gpt-5.4', inputTokens: 100_064, inputCachedTokens: 84_992, outputTokens: 955 },
+        { type: 'tts_usage', provider: 'Cartesia', model: 'sonic-3', charactersCount: 2553, audioDurationMs: 21_645 },
+        { type: 'stt_usage', provider: 'Soniox', model: 'stt-rt-v5', audioDurationMs: 252_000 },
+        { type: 'interruption_usage', provider: 'livekit', totalRequests: 10 },
+      ],
+    };
+
+    it('reads every provider out of the array', () => {
+      const u = readUsageSummary(real, 313);
+      expect(u).toMatchObject({
+        llmPromptTokens: 100_064,
+        llmPromptCachedTokens: 84_992,
+        llmCompletionTokens: 955,
+        ttsCharactersCount: 2553,
+        sttAudioDurationMs: 252_000,
+        durationSec: 313,
+      });
+    });
+
+    it('prices ALL FOUR components, not just the platform leg', () => {
+      const cost = costOfCall(readUsageSummary(real, 313));
+      for (const part of ['llmMilliAgorot', 'sttMilliAgorot', 'ttsMilliAgorot', 'platformMilliAgorot'] as const) {
+        expect(cost[part], part).toBeGreaterThan(0);
+      }
+      // The bug this replaces: platform was the whole bill.
+      expect(cost.platformMilliAgorot).toBeLessThan(cost.totalMilliAgorot / 2);
+    });
+
+    it('SUMS repeated entries — a call that switched model reports one per model', () => {
+      const u = readUsageSummary({
+        modelUsage: [
+          { type: 'llm_usage', inputTokens: 1000, outputTokens: 10 },
+          { type: 'llm_usage', inputTokens: 500, outputTokens: 5 },
+          { type: 'tts_usage', charactersCount: 100 },
+          { type: 'tts_usage', charactersCount: 50 },
+        ],
+      });
+      expect(u.llmPromptTokens).toBe(1500);
+      expect(u.llmCompletionTokens).toBe(15);
+      expect(u.ttsCharactersCount).toBe(150);
+    });
+
+    it('still reads the old flat shape, so an older payload keeps pricing', () => {
+      const u = readUsageSummary({ llmPromptTokens: 500, ttsCharactersCount: 20, sttAudioDurationMs: 1000 });
+      expect(u).toMatchObject({ llmPromptTokens: 500, ttsCharactersCount: 20, sttAudioDurationMs: 1000 });
+    });
+
+    it('an empty or junk-filled array is zeros, not a throw', () => {
+      expect(costOfCall(readUsageSummary({ modelUsage: [] })).totalMilliAgorot).toBe(0);
+      expect(costOfCall(readUsageSummary({ modelUsage: [null, 'x', { type: 'unknown_usage' }] })).totalMilliAgorot).toBe(0);
+    });
+  });
 });
 
 describe('formatMilliAgorot', () => {

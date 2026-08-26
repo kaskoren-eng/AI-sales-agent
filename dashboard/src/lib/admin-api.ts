@@ -77,6 +77,8 @@ export interface TenantDetail {
     overagePerMinuteAgorot: number
     secondsUsed: number
     measuredCostMilliAgorot: number
+    /** Cost split by provider, in milli-agorot. A line at exactly 0 means "not measured". */
+    costByComponent: { llm: number; stt: number; tts: number; platform: number }
   } | null
 }
 
