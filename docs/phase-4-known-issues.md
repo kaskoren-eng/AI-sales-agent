@@ -344,7 +344,18 @@ Do not touch the context inside that hook.
 
 ---
 
-## 13. Niqqud (Hebrew diacritics) makes Cartesia sonic-3 WORSE, not better. Do not send it.
+## 13. FULL niqqud makes Cartesia WORSE — but ONE mark on ONE letter is the shipped fix (2026-08-26)
+
+> **⚠️ 2026-08-26 amendment — read before citing this section.** The headline below is about
+> **blanket** diacritization (pointing every word), and it stands: do not send fully-pointed
+> Hebrew. But the later rounds this section originally didn't cover (July round 2, D/E/F —
+> then round 3 on sonic-3.5, `round3.py` / `index-round3.html`) tested **minimal niqqud** — a
+> single vowel mark on only the ambiguous letter, rest of the sentence plain — and it **won the
+> listening A/B against both plain text and the שלכה respelling**. It now ships:
+> `speech-guard.ts` sends שלךָ (one kamatz), לוודֵא (one tsere), and a per-word feminine table.
+> One mark answers exactly the question the TTS was guessing at; full pointing pushes the whole
+> sentence out of the model's training distribution. Both facts are true at once — that is why
+> `guardSpeech` STRIPS model-emitted niqqud first, then injects only these verified marks.
 
 The idea keeps coming back because it sounds obviously right: Hebrew doesn't write vowels, so the
 gender bug (שלך = shel-KHA vs shel-AKH) is a missing-vowel problem — so *add the vowels* with niqqud
@@ -369,14 +380,19 @@ why the audio dragged — but stripping it in variant C did not save the approac
 This is the SECOND time niqqud has been rejected on real audio — the first was manual niqqud in the
 system prompt ("אין משהו אחיד"). Two independent attempts, same verdict.
 
-**What to do instead — and it already ships.** `speech-guard.ts::forceMasculineAddress` does NOT add
-niqqud. It **respells the few ambiguous words with ordinary letters** (שלך → שלכה), so the rest of the
-sentence stays plain, un-diacritized text — exactly what sonic-3 handles well. The surgical
-letter-swap beats the blanket diacritization precisely because it does not poison the whole utterance.
-Verified round-trip (TTS → 8kHz line → Soniox) as correct masculine. That is the answer; niqqud is not.
+**What to do instead — surgical, not blanket. This evolved; the current answer is minimal niqqud.**
+The first shipped fix respelled with ordinary letters (שלך → שלכה) — it worked because it kept the
+rest of the sentence plain. Round 3 (2026-08-26, sonic-3.5) put that respelling head-to-head against
+**minimal niqqud** (one mark on the ambiguous letter only: שלך → שלךָ) and minimal niqqud won by
+Koren's ear on every masculine word and most feminine ones — `speech-guard.ts::forceAddressGender`
+now ships the per-word winners, plus a gender-neutral dictionary (לוודא → לוודֵא). Every entry is
+double-verified: listening-page pick + round-trip (TTS → 8kHz line → Soniox → the intended plain
+word — `roundtrip.ts`, 27 clips). What remains true: never diacritize the whole utterance, and
+`guardSpeech` strips any niqqud the LLM emits before injecting the verified marks.
 
-The A/B/C harness and audio are kept under `tests/hebrew-tts-niqqud-ab/` as the evidence, so this does
-not get re-litigated. The 293MB ONNX model is gitignored (re-fetch instructions in that folder's README).
+The harnesses and audio for all three rounds are kept under `tests/hebrew-tts-niqqud-ab/` as the
+evidence, so this does not get re-litigated in either direction. The 293MB ONNX model is gitignored
+(re-fetch instructions in that folder's README).
 
 ---
 
