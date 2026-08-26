@@ -142,6 +142,11 @@ export async function adminRoutes(app: FastifyInstance) {
     };
   });
 
+  app.get('/tenants/:id/numbers', async (request) => {
+    const { id } = request.params as { id: string };
+    return { data: await admin.tenantNumbers(id) };
+  });
+
   app.post('/tenants/:id/rotate-key', async (request) => {
     const { id } = request.params as { id: string };
     // Returns the new plaintext key once.

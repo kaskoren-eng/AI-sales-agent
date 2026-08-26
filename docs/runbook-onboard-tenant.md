@@ -12,15 +12,21 @@ ClickScales and dial out from ClickScales' number. They are not edge cases.
 
 | # | Blocker | Consequence if ignored |
 |---|---|---|
-| 1 | **The SIP trunk only accepts ClickScales' number.** `zadarma-inbound` has `Numbers: +972555070922, 972555070922`. The Phase 4 design is `numbers: []`, so the trunk takes any dialled number and `phone_numbers` decides ownership. | Tenant #2's DID is **rejected at the trunk**, before routing runs. Inbound simply does not work. |
+| 1 | ~~The SIP trunk only accepts ClickScales' number.~~ **Resolved 2026-08-26.** `provision-number.mjs` now syncs the trunk list from `phone_numbers` on every write, and `verify-tenant.mjs` fails if the two disagree. The list is kept on purpose — see the note below the table. | — |
 | 2 | **Outbound caller identity is global.** One `LIVEKIT_SIP_OUTBOUND_TRUNK_ID`, no per-tenant from-number. See [phase-4b-outbound-tenant-identity.md](phase-4b-outbound-tenant-identity.md). | Tenant #2's leads see ClickScales' number and reach ClickScales' agent when they call back. |
 | 3 | **A custom persona has never been heard on a live call.** The mechanism is built and tenant-editable (`PUT /settings/agent-persona`); ClickScales deliberately runs `DEFAULT_PERSONA`, so the custom branch has only ever been exercised by tests. | If it misbehaves, a tenant's leads are greeted as "קרן from ClickScales" — including a founder FAQ naming Koren. Set it, then hear it. |
 | 4 | **Nothing enforces quota or concurrency.** `quota_enforcement` is stored and unread; `plans.max_concurrent_calls` is a column nothing reads. | A tenant can run past their plan on your vendor bill with no ceiling. |
 | 5 | **Google app verification is pending.** Until it completes, OAuth refresh tokens expire after 7 days. | The tenant's calendar silently disconnects a week after onboarding. |
 
-Changing the trunk to `numbers: []` has a security consequence the Phase 4 plan accepted explicitly:
-**the IP allowlist becomes the only boundary on that trunk.** Confirm the Zadarma ranges are current
-before making the change.
+**Do not empty the trunk's `numbers` list**, despite what `infra/livekit-sip/README.md` still
+recommends. Its reasoning — onboarding a number should be a database step, not a deploy step — is
+right, and the sync script satisfies it without giving up the boundary. An empty list means every
+INVITE from the allow-listed ranges reaches the agent, costing a room and a process each; with one
+agent replica a flood starves real callers before it costs real money. See the header of
+`scripts/lib/trunk-numbers.mjs`.
+
+The IP allowlist stays the primary boundary either way. Do not widen it, and never remove entries
+"to debug" — an unrestricted inbound trunk is a SIP endpoint anyone on the internet can dial.
 
 ---
 
@@ -76,11 +82,23 @@ response returns `openPeriodStillPricedAs` when that matters. Quote the customer
 
 ```bash
 node scripts/provision-number.mjs --number +972XXXXXXXXX --tenant <id> --label "Acme main"
-node scripts/provision-number.mjs            # list all numbers and owners
+node scripts/provision-number.mjs --list         # numbers, owners, and trunk drift
+node scripts/provision-number.mjs --sync-trunk   # repair drift, touching no rows
 ```
 
-Then, ⛔ **add the number to the LiveKit inbound trunk** (blocker 1) and point Zadarma forwarding at
-the SIP URI.
+This writes the `phone_numbers` row **and** puts the number on the LiveKit inbound trunk, in both
+the `+972…` and `972…` spellings, because Zadarma is inconsistent about the leading `+`. Then point
+the number's forwarding at the SIP URI in the Zadarma portal.
+
+If the row is written but the trunk update fails, the script says so loudly and exits non-zero. That
+state — the number routes in our code but is refused at the SIP layer — produces **no log line
+anywhere** and reads to the customer as "your agent never answers". Re-run `--sync-trunk` until
+clean.
+
+> **⚠️ This script needs a direct Postgres connection**, unlike every other step here. The Railway
+> TCP proxy (`switchback.proxy.rlwy.net:14655`) is blocked outbound on some networks — it was on the
+> dev machine on 2026-08-26 while HTTPS worked fine. If it hangs, run it from a network that allows
+> that port rather than assuming the database is down.
 
 An unassigned or inactive number answers "not in service" and creates no data — deliberately. A call
 that cannot be attributed to a tenant is never allowed to fall through to the platform tenant.

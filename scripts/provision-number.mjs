@@ -4,8 +4,15 @@
  * The provisioning model is hybrid: ClickScales buys the number and assigns it; the customer never
  * touches telephony. So onboarding is two steps, and this script is the first:
  *
- *   1. THIS SCRIPT — insert/update the `phone_numbers` row so inbound calls route to the tenant.
+ *   1. THIS SCRIPT — insert/update the `phone_numbers` row so inbound calls route to the tenant,
+ *      AND put the number on the LiveKit inbound trunk so the call is accepted at the SIP layer.
  *   2. ZADARMA PORTAL — point that number's forwarding at the SIP URI (see infra/livekit-sip/).
+ *
+ * Step 1 does both halves on purpose. The trunk list and `phone_numbers` have to agree, and when a
+ * human maintained the trunk by hand they did not: the checked-in trunk config said `numbers: []`
+ * for weeks while production carried one number. The dangerous direction is a number in the
+ * database but not on the trunk — the caller is refused at the SIP layer, our code never runs, and
+ * nothing logs it. The customer reports it before we do.
  *
  * Do step 1 FIRST. A number forwarded to us with no row is answered with "not in service", which is
  * a caller hearing a dead line; a row with no forwarding is simply inert. Order the failure so it
@@ -16,11 +23,14 @@
  *   node scripts/provision-number.mjs --number +972555070922 --unassign
  *   node scripts/provision-number.mjs --number +972555070922 --deactivate
  *   node scripts/provision-number.mjs --list
+ *   node scripts/provision-number.mjs --sync-trunk        # repair drift, touching no rows
+ *   node scripts/provision-number.mjs --sync-trunk --dry-run
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { syncTrunkNumbers, expectedNumbers, diffNumbers, readInboundTrunk } from './lib/trunk-numbers.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -88,6 +98,25 @@ try {
         `${r.e164.padEnd(16)} ${r.is_active ? 'active  ' : 'inactive'} ${String(owner).padEnd(28)} ${r.label ?? ''}`,
       );
     }
+    reportTrunk(rows);
+    process.exit(0);
+  }
+
+  // Repair mode: make the trunk match the table without writing to the table. For fixing drift, and
+  // for the first run after this script learned to do it at all.
+  if (has('sync-trunk')) {
+    const { rows } = await client.query('SELECT e164, tenant_id, is_active FROM phone_numbers');
+    const res = syncTrunkNumbers(rows, { dryRun: has('dry-run') });
+    if (res.dryRun) {
+      console.log(`would set ${res.trunk.sipTrunkId} numbers to: ${res.expected.join(', ')}`);
+      console.log(`  add:    ${res.diff.missing.join(', ') || '(none)'}`);
+      console.log(`  remove: ${res.diff.extra.join(', ') || '(none)'}`);
+    } else if (res.changed) {
+      console.log(`trunk ${res.trunk.sipTrunkId} updated: ${res.expected.join(', ')}`);
+      console.log(`IP allowlist intact: ${(res.trunk.allowedAddresses ?? []).join(', ')}`);
+    } else {
+      console.log(`trunk ${res.trunk.sipTrunkId} already matches the database.`);
+    }
     process.exit(0);
   }
 
@@ -106,7 +135,10 @@ try {
     );
     if (rows.length === 0) throw new Error(`${e164} is not provisioned`);
     console.log(`${e164}: tenant=${rows[0].tenant_id ?? 'NULL'} active=${rows[0].is_active}`);
-    console.log('Inbound calls to it are now refused with the not-in-service announcement.');
+    // Taking it off the trunk too means the call is refused at the SIP layer rather than costing a
+    // room, a process and an announcement every time.
+    await syncTrunkAfterWrite(client);
+    console.log('Inbound calls to it are now refused at the trunk.');
     process.exit(0);
   }
 
@@ -135,8 +167,64 @@ try {
   );
 
   console.log(`${rows[0].e164} -> ${tenant.rows[0].name} (${rows[0].tenant_id})`);
+  await syncTrunkAfterWrite(client);
   console.log('');
   console.log('NEXT: point this number at our SIP URI in the Zadarma portal (infra/livekit-sip/README.md).');
 } finally {
   await client.end();
+}
+
+/**
+ * Push the table's state to the trunk after a write.
+ *
+ * A trunk failure must NOT fail the script: the row is already committed and the database is the
+ * source of truth. But it must be impossible to miss, because the resulting state — a number that
+ * routes in our code and is refused at the SIP layer — produces no log line anywhere and reads to
+ * the customer as "your agent never answers". So it prints the repair command and says what is
+ * broken until it is run.
+ */
+async function syncTrunkAfterWrite(db) {
+  const { rows } = await db.query('SELECT e164, tenant_id, is_active FROM phone_numbers');
+  try {
+    const res = syncTrunkNumbers(rows);
+    if (res.changed) {
+      console.log(`trunk ${res.trunk.sipTrunkId}: ${res.expected.join(', ')}`);
+    } else {
+      console.log(`trunk ${res.trunk.sipTrunkId}: already correct`);
+    }
+  } catch (err) {
+    console.error('');
+    console.error('!! THE DATABASE IS UPDATED BUT THE SIP TRUNK IS NOT.');
+    console.error(`!! ${err instanceof Error ? err.message : String(err)}`);
+    console.error('!! Until this is fixed, calls to that number are rejected before our code runs,');
+    console.error('!! and nothing will log it. Repair with:');
+    console.error('!!     node scripts/provision-number.mjs --sync-trunk');
+    process.exitCode = 1;
+  }
+}
+
+/** Read-only drift report for `--list`. Never throws: listing must work without the LiveKit CLI. */
+function reportTrunk(rows) {
+  try {
+    const trunk = readInboundTrunk();
+    const actual = [...(trunk.numbers ?? [])].sort();
+    console.log('');
+    if (actual.length === 0) {
+      console.log(`trunk ${trunk.sipTrunkId}: numbers list is EMPTY — it accepts every dialled number.`);
+      console.log('  Run --sync-trunk to restore the list. See scripts/lib/trunk-numbers.mjs for why it matters.');
+      return;
+    }
+    const { missing, extra } = diffNumbers(expectedNumbers(rows), actual);
+    if (!missing.length && !extra.length) {
+      console.log(`trunk ${trunk.sipTrunkId}: in sync (${actual.length} entries)`);
+    } else {
+      console.log(`trunk ${trunk.sipTrunkId}: OUT OF SYNC — run --sync-trunk`);
+      // Listed first: this is the direction that gives a real customer a dead line.
+      if (missing.length) console.log(`  in the database, NOT on the trunk: ${missing.join(', ')}`);
+      if (extra.length) console.log(`  on the trunk, not in the database:  ${extra.join(', ')}`);
+    }
+  } catch (err) {
+    console.log('');
+    console.log(`(could not read the SIP trunk: ${err instanceof Error ? err.message : String(err)})`);
+  }
 }

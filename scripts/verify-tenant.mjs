@@ -13,6 +13,8 @@
  * Exits non-zero if any check fails, so it can gate a handover.
  */
 
+import { verifyTrunkNumbers } from './lib/trunk-numbers.mjs';
+
 const ROOT =
   process.env.VERIFY_BASE_URL ??
   'https://ai-sales-agent-production-9736.up.railway.app/api/v1';
@@ -96,8 +98,46 @@ check(Boolean(t?.billingStatus), 'billing status set', t?.billingStatus);
 console.log(`  info  quota enforcement = ${t?.quotaEnforcement} (stored; nothing enforces it yet)`);
 
 console.log('\n── telephony ──');
-// A tenant with no number cannot receive a call; the trunk and phone_numbers must both know it.
 check(Boolean(tenant.isActive), 'tenant is active', tenant.isActive ? '' : 'suspended tenants are refused at the door');
+
+/**
+ * A number must be known to BOTH `phone_numbers` and the SIP trunk, and the case worth catching is
+ * the quiet one: a row in the database with no trunk entry. That call is rejected at the SIP layer,
+ * our code never runs, nothing logs it anywhere, and the customer's leads just hear a dead line.
+ * There is no log to find it in — which is why it belongs in a check.
+ */
+const numbers = (await admin('GET', `/tenants/${tenant.id}/numbers`)).body?.data;
+
+if (!Array.isArray(numbers)) {
+  skip('numbers reachable at the SIP trunk', 'could not list this tenant\'s numbers');
+} else if (numbers.length === 0) {
+  skip('numbers reachable at the SIP trunk', 'no number assigned yet — inbound cannot work until there is one');
+} else {
+  for (const { e164, isActive } of numbers) {
+    try {
+      const onTrunk = verifyTrunkNumbers(e164);
+      if (onTrunk.acceptsEverything) {
+        // Reachable, but for the wrong reason. An empty list means the trunk takes ANY dialled
+        // number, so every bogus INVITE costs a room and an agent process instead of being refused
+        // for free — with one replica, a flood starves real callers before it costs real money.
+        fail(
+          `${e164} on the SIP trunk`,
+          `trunk ${onTrunk.trunkId} numbers list is EMPTY — it accepts every number. Fix: provision-number.mjs --sync-trunk`,
+        );
+      } else {
+        check(
+          onTrunk.missing.length === 0,
+          `${e164} is on the SIP trunk`,
+          onTrunk.missing.length
+            ? `missing ${onTrunk.missing.join(', ')} — calls are refused before our code runs. Fix: provision-number.mjs --sync-trunk`
+            : `${onTrunk.trunkId}${isActive ? '' : ' (row is inactive)'}`,
+        );
+      }
+    } catch (err) {
+      skip(`${e164} reachable at the SIP trunk`, err instanceof Error ? err.message : String(err));
+    }
+  }
+}
 
 console.log('\n── tenant-facing ──');
 if (!tenantKey) {

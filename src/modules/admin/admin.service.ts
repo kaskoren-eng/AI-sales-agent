@@ -9,6 +9,7 @@ import {
   callLearnings,
   plans,
   usagePeriods,
+  phoneNumbers,
 } from '../../db/schema/index.js';
 import { NotFoundError } from '../../shared/errors.js';
 import { redactSettings } from '../tenants/settings-policy.js';
@@ -136,6 +137,28 @@ export class AdminService {
     // No open period is normal, not an error: one is created lazily on the tenant's first metered
     // unit. A tenant that has never had a lead or a call simply has nothing to reprice.
     return { ...tenant, openPeriod: open ?? null };
+  }
+
+  /**
+   * The DIDs assigned to a tenant.
+   *
+   * There was no way to ask this anywhere — not in the API, not in the console — even though "which
+   * number does this customer answer on" is the first question of any inbound support call. It also
+   * gives `verify-tenant.mjs` the list it needs to check each number against the SIP trunk, which is
+   * where the quiet failure lives: a row here with no trunk entry means calls are rejected before
+   * our code runs and nothing logs it.
+   */
+  async tenantNumbers(tenantId: string) {
+    return this.db
+      .select({
+        e164: phoneNumbers.e164,
+        label: phoneNumbers.label,
+        isActive: phoneNumbers.isActive,
+        createdAt: phoneNumbers.createdAt,
+      })
+      .from(phoneNumbers)
+      .where(eq(phoneNumbers.tenantId, tenantId))
+      .orderBy(phoneNumbers.e164);
   }
 
   /** Every tenant with its measured rollup. Tenant counts are small; a handful of grouped scans. */
