@@ -553,8 +553,6 @@
       "bookingRate": "אחוז סגירה",
       "bookingRateOf": "{{booked}} מתוך {{total}} שיחות שנמדדו",
       "bookingRateNone": "עדיין לא נרשמה סיבת סיום לאף שיחה",
-      "cost": "עלות משוערת",
-      "costEstimated": "הערכה לפי ${{rate}} לדקה — לא חיוב",
       "failed": "שיחות שנכשלו"
     },
     "latency": {
