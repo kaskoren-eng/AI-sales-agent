@@ -319,6 +319,21 @@ describe('AddressGenderTracker — her own conjugation decides the table', () =>
     expect(tracker.current).toBe('f');
   });
 
+  it('2026-08-26 call regressions: the forms the LLM ACTUALLY used, all must flip', () => {
+    // Each of these was said on the test call while the tracker was watching a thinner list —
+    // the flip came a full reply late and the caller heard masculine right after correcting her.
+    for (const said of [
+      'בואי נקבע שיחת דמו קצרה עם קורן שבה תראי איך זה עובד בפועל.',
+      'כדי שלא תאבדי לידים בגלל עומס או איחור בתגובה.',
+      'מה גורם לך להרגיש שזה אולי לא מה שאת רוצה?', // prefixed שאת
+      'אני אפנה אליך בלשון נקבה.', // her explicit promise
+    ]) {
+      const tracker = new AddressGenderTracker();
+      tracker.observe(said);
+      expect(tracker.current, said).toBe('f');
+    }
+  });
+
   it('does NOT flip on the object-marker את ("את הפרטים")', () => {
     const tracker = new AddressGenderTracker();
     tracker.observe('אשלח לך את הפרטים למייל.');
@@ -331,12 +346,29 @@ describe('AddressGenderTracker — her own conjugation decides the table', () =>
     expect(tracker.current).toBe('m');
   });
 
-  it('is sticky — a later masculine-looking form does not flip back', () => {
-    // "תוכל" is 2nd-masculine AND 3rd-feminine ("היא תוכל לעזור") — ambiguous, so it must not
-    // undo a flip that was based on unambiguous evidence.
+  it('flips BACK on unambiguous masculine — "אתה" and the explicit לשון-זכר promise', () => {
+    // The first version was one-way sticky, and the 2026-08-26 caller asked to switch back to
+    // masculine and could not get it — "שוב, אותה טעות". Latest signal wins now.
+    const tracker = new AddressGenderTracker();
+    tracker.observe('מתי תרצי לקבוע?');
+    expect(tracker.current).toBe('f');
+    tracker.observe('רגע, אתה עוד על הקו?'); // verbatim from the call
+    expect(tracker.current).toBe('m');
+    tracker.observe('אם תרצי, נמשיך.');
+    tracker.observe('אני אדבר בלשון זכר.'); // her explicit promise, also from the call
+    expect(tracker.current).toBe('m');
+  });
+
+  it('an AMBIGUOUS masculine form does not flip back — "היא תוכל" is 3rd-person feminine', () => {
     const tracker = new AddressGenderTracker();
     tracker.observe('מתי תרצי לקבוע?');
     tracker.observe('המנהלת שלנו תוכל לחזור אליך מחר.');
+    expect(tracker.current).toBe('f');
+  });
+
+  it('within one sentence, the LATEST unambiguous marker wins', () => {
+    const tracker = new AddressGenderTracker();
+    tracker.observe('אתה אמרת שאדבר בלשון נקבה.'); // masc pronoun first, feminine promise later
     expect(tracker.current).toBe('f');
   });
 
@@ -344,6 +376,22 @@ describe('AddressGenderTracker — her own conjugation decides the table', () =>
     const tracker = new AddressGenderTracker();
     tracker.observe('כשתרצי, נקבע פגישה.');
     expect(tracker.current).toBe('f');
+  });
+
+  it('the CALLER self-identifying flips immediately, both directions', () => {
+    // Fed from the ConversationItemAdded hook, so the very next reply is already correct —
+    // on the test call this correction was heard one full reply late.
+    const tracker = new AddressGenderTracker();
+    expect(tracker.observeUser('יכולים לפנות אליי בלשון נקבה, אני אישה.')).toBe('f'); // verbatim
+    expect(tracker.current).toBe('f');
+    expect(tracker.observeUser('בעצם עדיף בלשון זכר.')).toBe('m');
+    expect(tracker.current).toBe('m');
+  });
+
+  it('a caller utterance with NO clear signal changes nothing', () => {
+    const tracker = new AddressGenderTracker();
+    expect(tracker.observeUser('אני מוכר אתרים לעסקים.')).toBe(null);
+    expect(tracker.current).toBe('m');
   });
 
   it('without a tracker, guardStream keeps the pre-round-3 masculine behaviour', async () => {

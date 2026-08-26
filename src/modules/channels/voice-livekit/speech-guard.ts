@@ -163,42 +163,72 @@ export function forceMasculineAddress(text: string): string {
   return forceAddressGender(text, 'm');
 }
 
+/** Optional attached prefixes before a marker word: ולך, שאת, כשתרצי, וכשבוא… */
+const PFX = '(?:ו|ש|וש|כש|וכש|לכש)?';
+
 /**
- * Unambiguously-feminine ADDRESS in the agent's own Hebrew. Two shapes only:
+ * Unambiguously-feminine ADDRESS in the agent's own Hebrew. Three shapes:
  *
- *   1. Future 2nd-person-feminine verbs (תרצי, תוכלי…) — the ת…י form belongs to nobody else in
- *      the paradigm, so a listed word (with optional ו/ש/כש prefixes) is proof the LLM is
- *      addressing a woman. A curated list, not a clever pattern: ת…י as a REGEX would also match
- *      nouns (תוכנית) and adverbs, and one false flip is worse than ten missed ones.
- *   2. את + a present-tense verb — "את רוצה", "את יכולה". The subject pronoun את is itself
+ *   1. 2nd-person-feminine verbs (תרצי, תוכלי, בואי, ספרי…) — the ת…י future and the ־י
+ *      imperative belong to nobody else in the paradigm. A curated list, not a clever pattern:
+ *      ת…י as a REGEX would also match nouns and possessives. The 2026-08-26 test call showed the
+ *      cost of a THIN list, though — the LLM switched with בואי/תראי/תאבדי, none of which were
+ *      listed, and the flip came a full reply late. The list is now the agent's actual sales
+ *      vocabulary; extend it whenever a transcript shows a missed form.
+ *   2. את + a present-tense verb — "את רוצה", "מה שאת רוצה". The subject pronoun את is itself
  *      feminine; requiring the following verb keeps the object-marker homograph ("את הפרטים")
- *      from matching.
+ *      from matching. Prefixes allowed: the real call said "מה שאת רוצה" and the un-prefixed
+ *      pattern missed it.
+ *   3. An explicit promise — "אדבר בלשון נקבה". When she SAYS which register she is using,
+ *      believe her.
  */
 const FEMININE_ADDRESS = new RegExp(
-  '(?<![֐-׿])(?:ו|ש|וש|כש|וכש|לכש)?(?:' +
+  `(?<![֐-׿])${PFX}(?:` +
     [
       'תרצי', 'תוכלי', 'תגידי', 'תדעי', 'תעדיפי', 'תחליטי', 'תחשבי', 'תשלחי',
       'תקבלי', 'תאשרי', 'תבדקי', 'תחזרי', 'תספרי', 'תצטרכי', 'תשמחי',
+      'תראי', 'תעשי', 'תהיי', 'תדברי', 'תעני', 'תבחרי', 'תמצאי', 'תתחילי',
+      'תמשיכי', 'תפני', 'תצליחי', 'תסכימי', 'תזכרי', 'תתקשרי', 'תכתבי',
+      'תקראי', 'תאבדי', 'בואי', 'ספרי', 'תני',
     ].join('|') +
     ')(?![֐-׿])' +
-    '|(?<![֐-׿])את\\s+(?:רוצה|יכולה|צריכה|מעוניינת|פנויה|זמינה|מחפשת|נמצאת|מעדיפה|חושבת|מכירה)(?![֐-׿])',
-  'u',
+    `|(?<![֐-׿])${PFX}את\\s+(?:רוצה|יכולה|צריכה|מעוניינת|פנויה|זמינה|מחפשת|נמצאת|מעדיפה|חושבת|מכירה)(?![֐-׿])` +
+    '|לשון\\s+נקבה',
+  'gu',
 );
 
 /**
- * Decides which gender table the pronunciation fix uses — from the LLM's OWN Hebrew.
+ * Unambiguously-masculine ADDRESS. Deliberately much shorter than the feminine list: the
+ * masculine future (תרצה, תוכל) is spelled identically to 3rd-person feminine ("היא תוכל
+ * לעזור"), so listing ANY of it would misfire on a sentence about the agent herself. What is
+ * safe: the pronoun אתה, the imperative בוא, אדוני, and the explicit "לשון זכר" promise.
+ */
+const MASCULINE_ADDRESS = new RegExp(
+  `(?<![֐-׿])${PFX}(?:אתה|בוא|אדוני)(?![֐-׿])|לשון\\s+זכר`,
+  'gu',
+);
+
+/** The CALLER saying outright which they are. The strongest evidence there is. */
+const USER_SAYS_FEMININE = /לשון\s+נקבה|אני\s+(?:אישה|בחורה|נקבה)/u;
+const USER_SAYS_MASCULINE = /לשון\s+זכר|אני\s+(?:גבר|בחור|זכר)/u;
+
+/**
+ * Decides which gender table the pronunciation fix uses — from the conversation itself.
  *
- * Only the conversation knows the lead's gender; no TTS can hear it in a suffix pronoun. But the
- * LLM already conjugates every verb to the gender it believes it is addressing — "תרצי" vs
- * "תרצה" — per the prompt's gender rules, updating the moment a lead self-identifies. Those verb
- * forms are unambiguous exactly where the suffix pronouns are not. So the tracker reads the
- * evidence the model already emits, and the suffix table follows it. No prompt change, no tool.
+ * Only the conversation knows the lead's gender; no TTS can hear it in a suffix pronoun. Two
+ * sources feed it:
  *
- * Koren's rule (2026-08-26): masculine by default — names are unreliable — and switch on CLEAR
- * feminine conjugation only. The flip is ONE-WAY by design: feminine 2sg future (ת…י) is shared
- * with nobody, but its masculine counterpart (תרצה, תוכל) is spelled identically to 3rd-person
- * feminine ("היא תוכל לעזור"), so flipping back on it would misfire on a sentence about the agent
- * herself. One tracker per call; a new call starts masculine again.
+ *   - observe(): the LLM's OWN conjugation ("תרצי" vs "אתה"), per the prompt's gender rules.
+ *   - observeUser(): the caller saying it outright ("אני אישה", "אפשר בלשון זכר") — fed from the
+ *     ConversationItemAdded hook, so the flip happens BEFORE the LLM's next reply instead of one
+ *     reply late.
+ *
+ * LATEST SIGNAL WINS, in both directions. The first version was one-way (masc→fem, sticky) and
+ * the 2026-08-26 test call showed exactly why that is wrong: the caller switched their requested
+ * register mid-call, the LLM followed ("אני אדבר בלשון זכר"), and the sticky table kept forcing
+ * לָךְ — "שוב, אותה טעות". Within one sentence carrying both kinds of evidence, the later match
+ * wins. Masculine remains the default (Koren's rule: names are unreliable). One tracker per
+ * call; a new call starts masculine again.
  */
 export class AddressGenderTracker {
   private gender: AddressGender = 'm';
@@ -207,15 +237,36 @@ export class AddressGenderTracker {
     return this.gender;
   }
 
-  /** Feeds one outgoing sentence. Returns true when THIS sentence flipped the call to feminine. */
-  observe(sentence: string): boolean {
-    if (this.gender === 'f') return false;
-    if (FEMININE_ADDRESS.test(sentence)) {
-      this.gender = 'f';
-      return true;
-    }
-    return false;
+  /** Feeds one of HER outgoing sentences. Returns the new gender when it changed, else null. */
+  observe(sentence: string): AddressGender | null {
+    return this.apply(lastMatchGender(sentence, FEMININE_ADDRESS, MASCULINE_ADDRESS));
   }
+
+  /** Feeds one committed CALLER utterance. Returns the new gender when it changed, else null. */
+  observeUser(utterance: string): AddressGender | null {
+    const fem = USER_SAYS_FEMININE.test(utterance);
+    const masc = USER_SAYS_MASCULINE.test(utterance);
+    // Both in one utterance ("לא לשון נקבה, לשון זכר") is genuinely ambiguous to a regex — the
+    // agent-side evidence on the next reply settles it. Act only on a clear single signal.
+    if (fem === masc) return this.apply(null);
+    return this.apply(fem ? 'f' : 'm');
+  }
+
+  private apply(evidence: AddressGender | null): AddressGender | null {
+    if (evidence === null || evidence === this.gender) return null;
+    this.gender = evidence;
+    return evidence;
+  }
+}
+
+/** The gender of the LAST unambiguous marker in the sentence, or null when there is none. */
+function lastMatchGender(sentence: string, fem: RegExp, masc: RegExp): AddressGender | null {
+  let lastFem = -1;
+  let lastMasc = -1;
+  for (const m of sentence.matchAll(fem)) lastFem = m.index;
+  for (const m of sentence.matchAll(masc)) lastMasc = m.index;
+  if (lastFem === -1 && lastMasc === -1) return null;
+  return lastFem > lastMasc ? 'f' : 'm';
 }
 
 /** The prompt's silence token. Nothing downstream interprets it, so it must never reach the TTS. */
@@ -299,9 +350,10 @@ export async function* guardStream(
   let buffer = '';
 
   const flush = function* (chunk: string): Generator<string> {
-    if (genderTracker?.observe(chunk)) {
+    const flipped = genderTracker?.observe(chunk);
+    if (flipped) {
       console.log(
-        `speech_guard ${JSON.stringify({ note: 'address gender -> feminine (unambiguous feminine conjugation in her own reply)' })}`,
+        `speech_guard ${JSON.stringify({ note: `address gender -> ${flipped === 'f' ? 'feminine' : 'masculine'} (unambiguous conjugation in her own reply)` })}`,
       );
     }
     const guarded = guardSpeech(chunk, {

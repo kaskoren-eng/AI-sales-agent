@@ -151,12 +151,13 @@ class ClickScalesAgent extends voice.Agent {
   msSinceUserStopped: (() => number | null) | null = null;
 
   /**
-   * Which gender table the pronunciation fix speaks — masculine until HER OWN Hebrew proves the
-   * lead is a woman (an unambiguous feminine conjugation like "תוכלי"). One per call by
-   * construction: the agent instance is created per session, so a new call starts masculine.
-   * See AddressGenderTracker in speech-guard.ts for the full rules.
+   * Which gender table the pronunciation fix speaks. Masculine by default; follows the LATEST
+   * unambiguous evidence in either direction — her own conjugation (תרצי / אתה) via guardStream,
+   * and the caller saying it outright ("אני אישה") via the ConversationItemAdded hook below.
+   * One per call by construction: the agent instance is created per session, so a new call
+   * starts masculine. See AddressGenderTracker in speech-guard.ts for the full rules.
    */
-  private readonly genderTracker = new AddressGenderTracker();
+  readonly genderTracker = new AddressGenderTracker();
 
   constructor(
     opts: ConstructorParameters<typeof voice.Agent>[0],
@@ -811,6 +812,19 @@ export default defineAgent({
       //     No-op when the advisory layer is disabled (callState undefined).
       if (item?.role === 'user') callState?.onUserTurn();
       else if (item?.role === 'assistant') callState?.onAgentTurn();
+
+      // 1c. The caller stating their gender outright ("אני אישה", "אפשר בלשון זכר") switches the
+      //     pronunciation table IMMEDIATELY — before the LLM's next reply, not one reply late.
+      //     On the 2026-08-26 test call the correction was heard a full turn after it was asked
+      //     for, because only her own conjugation was being watched.
+      if (item?.role === 'user' && item.textContent) {
+        const flipped = agent.genderTracker.observeUser(item.textContent);
+        if (flipped) {
+          console.log(
+            `speech_guard ${JSON.stringify({ note: `address gender -> ${flipped === 'f' ? 'feminine' : 'masculine'} (caller self-identified)` })}`,
+          );
+        }
+      }
 
       // 2. Trim the history — HERE, between turns, and never inside onUserTurnCompleted, where it
       //    invalidated LiveKit's preemptive draft on every single turn. See trimHistory().
