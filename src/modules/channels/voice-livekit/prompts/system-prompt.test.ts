@@ -367,13 +367,21 @@ describe('Keren — emotional color (round 4, 2026-08-26)', () => {
   // TEXT: sonic reads emotional subtext from wording and punctuation. Koren's verdicts picked
   // exactly three devices; the prompt teaches those and nothing else.
 
-  it('teaches the three devices that won the listening A/B, in both prompt variants', () => {
+  it('teaches ONLY devices that won a listening verdict, in both prompt variants', () => {
     for (const prompt of [SYSTEM_PROMPT_HE, TOOLS_PROMPT]) {
       expect(prompt).toMatch(/Emotional Color/u);
-      expect(prompt).toMatch(/וואו, מעולה!/u); // p1=C: interjection + exclamation
-      expect(prompt).toMatch(/אני מבינה\.\.\. זה באמת מתסכל/u); // p2=B: ellipsis for empathy
-      expect(prompt).toMatch(/בבוקר, או אחר הצהריים/u); // p3=C: either/or question melody
+      expect(prompt).toMatch(/וואו, מעולה!/u); // r4 p1=C: interjection + exclamation
+      expect(prompt).toMatch(/אני מבינה\.\.\. זה באמת מתסכל/u); // r4 p2=B: ellipsis for empathy
+      expect(prompt).toMatch(/בבוקר, או אחר הצהריים/u); // r4 p3=C: either/or question melody
+      expect(prompt).toMatch(/איזה כיף/u); // r4b w5 ok: joy
+      expect(prompt).toMatch(/וואלה\?/u); // r4b w6 ok: surprise
+      expect(prompt).toMatch(/אוף\.\.\./u); // r4b w3 ok: the shared sigh
     }
+  });
+
+  it('BANS written laughter — sonic-3.5 reads חח as the letter khet, not a laugh (r4b w1/w2)', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/You CANNOT laugh/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/do not write it, ever/u);
   });
 
   it('caps the color at one touch per reply — overuse is what sounds like a machine', () => {
