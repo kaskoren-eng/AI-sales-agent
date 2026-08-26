@@ -35,7 +35,6 @@ function raw(over: Partial<VoiceMetricsRaw> = {}): VoiceMetricsRaw {
     },
     overBudgetToolCalls: 0,
     seriesRows: [],
-    perMinuteRateUsd: 0.1,
     ...over,
   };
 }
@@ -113,19 +112,21 @@ describe('latency', () => {
   });
 });
 
-describe('cost — estimated, never billing', () => {
-  it('90 seconds at the default rate is 1.5 min / $0.15', () => {
+describe('usage — minutes only, never our provider cost', () => {
+  it('90 seconds is 1.5 minutes', () => {
     const m = assembleVoiceMetrics(raw({ counters: { ...raw().counters, totalDurationSecs: 90 } }));
-    expect(m.cost.minutes).toBe(1.5);
-    expect(m.cost.estimatedUsd).toBe(0.15);
-    expect(m.cost.estimated).toBe(true);
+    expect(m.usage.minutes).toBe(1.5);
   });
 
-  it('honours a tenant rate override', () => {
-    const m = assembleVoiceMetrics(
-      raw({ counters: { ...raw().counters, totalDurationSecs: 600 }, perMinuteRateUsd: 0.25 }),
-    );
-    expect(m.cost).toMatchObject({ minutes: 10, perMinuteRateUsd: 0.25, estimatedUsd: 2.5 });
+  it('serves NO money field to a tenant — cost is margin data, operator-only', () => {
+    const m = assembleVoiceMetrics(raw({ counters: { ...raw().counters, totalDurationSecs: 600 } }));
+    expect(m.usage).toEqual({ minutes: 10 });
+    // Guards the leak this endpoint used to have: minutes × the toll-fraud rate, served as
+    // "estimated cost" to anyone holding a tenant API key.
+    const serialized = JSON.stringify(m);
+    for (const leaked of ['perMinuteRateUsd', 'estimatedUsd', 'estimated', 'cost']) {
+      expect(serialized).not.toContain(leaked);
+    }
   });
 });
 

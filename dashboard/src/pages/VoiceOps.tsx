@@ -122,7 +122,7 @@ export function VoiceOps() {
         <Kpi label={t('voiceOps.kpi.calls')} value={num(m?.calls.total ?? 0)} loading={loading} isHebrew={isHebrew} />
         <Kpi
           label={t('voiceOps.kpi.minutes')}
-          value={num(m?.cost.minutes ?? 0)}
+          value={num(m?.usage.minutes ?? 0)}
           loading={loading}
           isHebrew={isHebrew}
           note={avgDur == null ? undefined : t('voiceOps.kpi.avgDuration', { n: formatDuration(avgDur) })}
@@ -140,13 +140,8 @@ export function VoiceOps() {
               : t('voiceOps.kpi.bookingRateOf', { booked: num(m.outcomes.booked), total: num(m.outcomes.withEndReason) })
           }
         />
-        <Kpi
-          label={t('voiceOps.kpi.cost')}
-          value={`$${num(m?.cost.estimatedUsd ?? 0)}`}
-          loading={loading}
-          isHebrew={isHebrew}
-          note={t('voiceOps.kpi.costEstimated', { rate: (m?.cost.perMinuteRateUsd ?? 0.1).toFixed(2) })}
-        />
+        {/* No cost tile. What a call costs US in provider fees is margin information and stays in
+            the operator console; the tenant sees minutes used, which is what they are billed on. */}
         <Kpi
           label={t('voiceOps.kpi.failed')}
           value={num(m?.calls.failed ?? 0)}

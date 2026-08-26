@@ -109,7 +109,8 @@ export interface VoiceMetrics {
     cutOffsTotal: number
     overBudgetToolCalls: number
   }
-  cost: { minutes: number; perMinuteRateUsd: number; estimatedUsd: number; estimated: true }
+  /** Usage only — provider cost is operator-only and is not served to tenants. */
+  usage: { minutes: number }
   series: Array<{ date: string; calls: number; minutes: number; booked: number }>
 }
 

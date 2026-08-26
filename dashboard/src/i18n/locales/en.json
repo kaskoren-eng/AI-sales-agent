@@ -553,8 +553,6 @@
       "bookingRate": "Booking rate",
       "bookingRateOf": "{{booked}} of {{total}} measured calls",
       "bookingRateNone": "No call recorded an end reason yet",
-      "cost": "Estimated cost",
-      "costEstimated": "estimated at ${{rate}}/min — not billing",
       "failed": "Failed calls"
     },
     "latency": {

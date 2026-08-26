@@ -1,7 +1,6 @@
 import { and, count, eq, gte, sql } from 'drizzle-orm';
 import type { Database } from '../../db/client.js';
-import { leads, callLearnings, tenants } from '../../db/schema/index.js';
-import { resolveTollFraudSettings } from '../calls/spend-guard.js';
+import { leads, callLearnings } from '../../db/schema/index.js';
 
 export type MetricsRange = 'today' | 'd7' | 'd30';
 
@@ -80,13 +79,16 @@ export interface VoiceMetrics {
     /** Tool invocations over the 500ms budget. */
     overBudgetToolCalls: number;
   };
-  cost: {
-    minutes: number;
-    perMinuteRateUsd: number;
-    estimatedUsd: number;
-    /** Always true: this is minutes × rate, an abuse-brake heuristic, NOT billing truth. */
-    estimated: true;
-  };
+  /**
+   * Voice minutes used in the range — a USAGE figure the tenant is entitled to see.
+   *
+   * There is deliberately no money here. What a call costs US in provider fees (tokens, characters,
+   * STT seconds) is the margin signal and is operator-only; `db/schema/billing.ts` states the same
+   * rule for the same reason — measured cost never reaches an invoice, let alone a tenant's screen.
+   * An earlier version of this endpoint returned minutes × the toll-fraud rate as "estimated cost",
+   * which published our cost basis to anyone holding a tenant API key.
+   */
+  usage: { minutes: number };
   series: Array<{ date: string; calls: number; minutes: number; booked: number }>;
 }
 
@@ -122,7 +124,6 @@ export interface VoiceMetricsRaw {
   };
   overBudgetToolCalls: number;
   seriesRows: Array<{ d: string; calls: number; durationSecs: number; booked: number }>;
-  perMinuteRateUsd: number;
 }
 
 const round = (v: unknown, dp = 0): number | null => {
@@ -155,7 +156,6 @@ export function assembleVoiceMetrics(raw: VoiceMetricsRaw): VoiceMetrics {
   const bookingRatePct = withEndReason === 0 ? null : round((booked / withEndReason) * 100, 1);
 
   const minutes = round(counters.totalDurationSecs / 60, 1) ?? 0;
-  const estimatedUsd = round(minutes * raw.perMinuteRateUsd, 2) ?? 0;
 
   // Zero-filled daily buckets, same shape as summary()'s trend so both charts line up.
   const byDay = new Map(raw.seriesRows.map((r) => [r.d, r]));
@@ -200,7 +200,7 @@ export function assembleVoiceMetrics(raw: VoiceMetricsRaw): VoiceMetrics {
       cutOffsTotal: counters.cutOffsTotal,
       overBudgetToolCalls: raw.overBudgetToolCalls,
     },
-    cost: { minutes, perMinuteRateUsd: raw.perMinuteRateUsd, estimatedUsd, estimated: true },
+    usage: { minutes },
     series,
   };
 }
@@ -327,7 +327,7 @@ export class MetricsService {
     const reportSum = (key: string) =>
       sql<number>`coalesce(sum((${report} -> 'summary' ->> ${key})::int), 0)`;
 
-    const [countersRow, endReasonRows, latencyRows, overBudgetRes, seriesRows, tenantRow] =
+    const [countersRow, endReasonRows, latencyRows, overBudgetRes, seriesRows] =
       await Promise.all([
         this.db
           .select({
@@ -381,7 +381,6 @@ export class MetricsService {
           .from(callLearnings)
           .where(and(eq(callLearnings.tenantId, tenantId), gte(callLearnings.createdAt, seriesFrom)))
           .groupBy(callDay),
-        this.db.select({ settings: tenants.settings }).from(tenants).where(eq(tenants.id, tenantId)),
       ]);
 
     const c = countersRow[0];
@@ -425,7 +424,6 @@ export class MetricsService {
         durationSecs: Number(r.durationSecs),
         booked: Number(r.booked),
       })),
-      perMinuteRateUsd: resolveTollFraudSettings(tenantRow[0]?.settings).perMinuteRateUsd,
     });
   }
 }
