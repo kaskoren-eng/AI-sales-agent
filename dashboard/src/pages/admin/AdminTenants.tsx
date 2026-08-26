@@ -185,6 +185,29 @@ function TenantDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                 ]} />
               </Section>
 
+              {/* THE MARGIN PANEL. What they bought, what they have spent of it, and what those
+                  minutes cost us — the one place the cost figure belongs. It is deliberately
+                  absent from the tenant's own dashboard, where it would publish our cost basis. */}
+              {detail.data?.openPeriod && (
+                <Section title="This billing period">
+                  {(() => {
+                    const op = detail.data.openPeriod
+                    const minutesUsed = Math.ceil(op.secondsUsed / 60)
+                    const costShekels = op.measuredCostMilliAgorot / 1000 / 100
+                    const overage = op.includedMinutes == null ? 0 : Math.max(0, minutesUsed - op.includedMinutes)
+                    return (
+                      <StatGrid items={[
+                        ['Minutes used', op.includedMinutes == null ? `${num(minutesUsed)} (unmetered)` : `${num(minutesUsed)} / ${num(op.includedMinutes)}`],
+                        ['Overage', overage > 0 ? `${num(overage)} min · ₪${((overage * op.overagePerMinuteAgorot) / 100).toFixed(2)}` : '—'],
+                        ['Our cost', `₪${costShekels.toFixed(2)}`],
+                        // The number the whole cost question was really about.
+                        ['Cost / minute', minutesUsed > 0 ? `₪${(costShekels / minutesUsed).toFixed(3)}` : '—'],
+                      ]} />
+                    )
+                  })()}
+                </Section>
+              )}
+
               {Object.keys(s.leads.byStatus).length > 0 && (
                 <Section title="Leads by status">
                   <ChipRow entries={s.leads.byStatus} />
@@ -365,7 +388,10 @@ function CreateTenantModal({ onClose }: { onClose: () => void }) {
                     {p.name}
                     {' — '}
                     {p.monthlyPriceAgorot === 0 ? 'free' : `₪${(p.monthlyPriceAgorot / 100).toLocaleString()}/mo`}
-                    {p.includedLeads === null ? ', unlimited leads' : `, ${p.includedLeads} leads`}
+                    {/* Minutes, not leads — minutes are what the plan bills on. */}
+                    {p.includedMinutes === null
+                      ? ', unmetered'
+                      : `, ${p.includedMinutes} min +₪${(p.overagePerMinuteAgorot / 100).toFixed(2)}/min`}
                     {p.isActive ? '' : ' (internal)'}
                   </option>
                 ))}

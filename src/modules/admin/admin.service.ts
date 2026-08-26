@@ -67,6 +67,19 @@ export interface TenantDetail {
     calls: { total: number; voiceMinutes: number; byOutcome: Record<string, number> };
     meetings: { total: number; upcoming: number };
   };
+  /**
+   * The open billing period: what the customer bought, what they have spent of it, and — operator
+   * only — what those minutes actually COST us. The margin per tenant is the whole reason this
+   * lives here and nowhere the tenant can reach.
+   */
+  openPeriod: {
+    periodStart: Date;
+    periodEnd: Date;
+    includedMinutes: number | null;
+    overagePerMinuteAgorot: number;
+    secondsUsed: number;
+    measuredCostMilliAgorot: number;
+  } | null;
 }
 
 function toMap<T extends { t: string }>(rows: T[]): Map<string, T> {
@@ -250,13 +263,25 @@ export class AdminService {
     if (!t) throw new NotFoundError('Tenant', id);
 
     const now = new Date();
-    const [leadStatus, convoTotal, msgByDir, callOutcome, callMins, meetRows] = await Promise.all([
+    const [leadStatus, convoTotal, msgByDir, callOutcome, callMins, meetRows, openPeriodRows] = await Promise.all([
       this.db.select({ status: leads.status, c: count() }).from(leads).where(eq(leads.tenantId, id)).groupBy(leads.status),
       this.db.select({ c: count() }).from(conversations).where(eq(conversations.tenantId, id)),
       this.db.select({ direction: messages.direction, c: count() }).from(messages).where(eq(messages.tenantId, id)).groupBy(messages.direction),
       this.db.select({ outcome: callLearnings.outcome, c: count() }).from(callLearnings).where(eq(callLearnings.tenantId, id)).groupBy(callLearnings.outcome),
       this.db.select({ s: sum(callLearnings.durationSecs) }).from(callLearnings).where(eq(callLearnings.tenantId, id)),
       this.db.select({ upcoming: count() }).from(scheduledCalls).where(and(eq(scheduledCalls.tenantId, id), gte(scheduledCalls.scheduledAt, now))),
+      this.db
+        .select({
+          periodStart: usagePeriods.periodStart,
+          periodEnd: usagePeriods.periodEnd,
+          includedMinutes: usagePeriods.includedMinutes,
+          overagePerMinuteAgorot: usagePeriods.overagePerMinuteAgorot,
+          secondsUsed: usagePeriods.secondsUsed,
+          measuredCostMilliAgorot: usagePeriods.measuredCostMilliAgorot,
+        })
+        .from(usagePeriods)
+        .where(and(eq(usagePeriods.tenantId, id), eq(usagePeriods.status, 'open')))
+        .limit(1),
     ]);
 
     const [meetTotalRow] = await this.db.select({ c: count() }).from(scheduledCalls).where(eq(scheduledCalls.tenantId, id));
@@ -302,6 +327,7 @@ export class AdminService {
         calls: { total: callsTotal, voiceMinutes: Math.round(Number(callMins[0]?.s ?? 0) / 60), byOutcome },
         meetings: { total: Number(meetTotalRow?.c ?? 0), upcoming: Number(meetRows[0]?.upcoming ?? 0) },
       },
+      openPeriod: openPeriodRows[0] ? { ...openPeriodRows[0] } : null,
     };
   }
 }
