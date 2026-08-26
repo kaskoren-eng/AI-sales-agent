@@ -104,6 +104,12 @@ const SECOND_PERSON_MASCULINE: Array<[RegExp, string]> = [
   [/(?<![֐-׿])איתך(?![֐-׿])/gu, 'איתכה'],
   [/(?<![֐-׿])בשבילך(?![֐-׿])/gu, 'בשבילכה'],
   [/(?<![֐-׿])עבורך(?![֐-׿])/gu, 'עבורכה'],
+  // רוצה — rotsE (m) / rotsA (f), same letters (added on Koren's report, 2026-08-26 evening).
+  // The gender of רוצה follows its SUBJECT, not the addressee — so this rule deliberately skips
+  // "אני רוצה" (the agent, about herself), "הוא/היא/מי רוצה" (third persons): those get fixed
+  // subject-side in PRONUNCIATION_FIXES. What is left — "אתה רוצה", "רוצה לשמוע עוד?" — is
+  // second person, and follows the addressee. "מרוצה" is protected by the letter lookbehind.
+  [/(?<!(?:אני|היא|הוא|מי)\s(?:לא\s)?)(?<![֐-׿])רוצה(?![֐-׿])/gu, 'רוצֶה'],
 ];
 
 /**
@@ -121,6 +127,8 @@ const SECOND_PERSON_FEMININE: Array<[RegExp, string]> = [
   [/(?<![֐-׿])איתך(?![֐-׿])/gu, 'איתאך'],
   [/(?<![֐-׿])בשבילך(?![֐-׿])/gu, 'בשבילֵךְ'],
   [/(?<![֐-׿])עבורך(?![֐-׿])/gu, 'עבורֵךְ'],
+  // רוצה, feminine addressee — see the masculine table's note on why אני/הוא/היא are skipped.
+  [/(?<!(?:אני|היא|הוא|מי)\s(?:לא\s)?)(?<![֐-׿])רוצה(?![֐-׿])/gu, 'רוצָה'],
 ];
 
 /**
@@ -133,6 +141,13 @@ const PRONUNCIATION_FIXES: Array<[RegExp, string]> = [
   // לוודא: the final-aleph vowel gets dropped ("levad"). One tsere on the ד restores "levadé".
   // Round-3 winner (vd1+vd2 = C) over the לוודה respelling; round-trips as לוודא. 2026-08-26.
   [/(?<![֐-׿])לוודא(?![֐-׿])/gu, 'לוודֵא'],
+  // רוצה with an explicit SUBJECT — gender comes from the subject, never from the addressee
+  // (the addressee-driven cases live in the gender tables). "אני רוצה" is the AGENT speaking:
+  // feminine because the persona (Keren) is feminine — when tenant `agent_persona` ships, this
+  // is the line that takes its gender from it.
+  [/(?<![֐-׿])((?:ו|ש|וש|כש|וכש)?אני(?:\s+לא)?)\s+רוצה(?![֐-׿])/gu, '$1 רוצָה'],
+  [/(?<![֐-׿])((?:ו|ש|וש|כש|וכש)?היא(?:\s+לא)?)\s+רוצה(?![֐-׿])/gu, '$1 רוצָה'],
+  [/(?<![֐-׿])((?:ו|ש|וש|כש|וכש)?הוא(?:\s+לא)?)\s+רוצה(?![֐-׿])/gu, '$1 רוצֶה'],
 ];
 
 /** Applies the gender-neutral pronunciation dictionary. Speech-only, like the gender fix. */

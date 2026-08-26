@@ -252,6 +252,29 @@ describe('forceAddressGender — fixing pronunciation, not vocabulary', () => {
     expect(forceMasculineAddress(once)).toBe(once);
   });
 
+  it('רוצה follows the ADDRESSEE in second person — rotsE for him, rotsA for her', () => {
+    expect(forceMasculineAddress('אתה רוצה לשמוע עוד?')).toBe('אתה רוצֶה לשמוע עוד?');
+    expect(forceAddressGender('את רוצה לשמוע עוד?', 'f')).toBe('את רוצָה לשמוע עוד?');
+    // Bare "רוצה?" — the implied subject is the caller.
+    expect(forceMasculineAddress('רוצה שאשלח פרטים?')).toBe('רוצֶה שאשלח פרטים?');
+    expect(forceAddressGender('רוצה שאשלח פרטים?', 'f')).toBe('רוצָה שאשלח פרטים?');
+  });
+
+  it('רוצה with an explicit OTHER subject is not the addressee\'s business', () => {
+    // "אני רוצה" is the agent about herself; "הוא רוצה" a third person — the gender tables must
+    // leave both alone (the subject-side dictionary fixes them, tested below).
+    expect(forceMasculineAddress('אני רוצה לבדוק משהו')).toBe('אני רוצה לבדוק משהו');
+    expect(forceAddressGender('הוא רוצה להצטרף', 'f')).toBe('הוא רוצה להצטרף');
+  });
+
+  it('never touches מרוצה — a different word that merely ends in the same letters', () => {
+    for (const gender of ['m', 'f'] as const) {
+      expect(forceAddressGender('הלקוחות שלנו מרוצים והוא מרוצה מאוד', gender)).toBe(
+        'הלקוחות שלנו מרוצים והוא מרוצה מאוד',
+      );
+    }
+  });
+
   it('leaves her OWN feminine speech untouched — only the ADDRESS changes', () => {
     // Three genders, three persons: she is feminine, the company is masculine plural, the lead is
     // his own gender. Only the last one is being fixed here.
@@ -269,7 +292,7 @@ describe('the pronunciation dictionary — gender-neutral fixed words', () => {
     // sonic-3.5 says "levad", dropping the final vowel. Round-3 winner: לוודֵא ("levadé"),
     // which Soniox round-trips back as the plain word.
     expect(applyPronunciationFixes('אני רוצה לוודא שהפרטים נכונים.')).toBe(
-      'אני רוצה לוודֵא שהפרטים נכונים.',
+      'אני רוצָה לוודֵא שהפרטים נכונים.',
     );
   });
 
@@ -280,6 +303,22 @@ describe('the pronunciation dictionary — gender-neutral fixed words', () => {
 
   it('runs inside the live guard', () => {
     expect(guardSpeech('רק לוודא, הפגישה מחר?').text).toBe('רק לוודֵא, הפגישה מחר?');
+  });
+
+  it('רוצה follows its SUBJECT: the agent is feminine about herself even on a masculine call', () => {
+    // "אני רוצה" is Keren speaking — feminine (rotsA) regardless of who she is talking to.
+    // When tenant agent_persona ships, this gender comes from it.
+    expect(applyPronunciationFixes('אני רוצה לוודא שהבנתי')).toBe('אני רוצָה לוודֵא שהבנתי');
+    expect(applyPronunciationFixes('אני לא רוצה להעמיס')).toBe('אני לא רוצָה להעמיס');
+    expect(applyPronunciationFixes('הוא רוצה להצטרף והיא רוצה פרטים')).toBe(
+      'הוא רוצֶה להצטרף והיא רוצָה פרטים',
+    );
+  });
+
+  it('the two רוצה mechanisms compose in one guarded sentence', () => {
+    expect(guardSpeech('אני רוצה לוודא — אתה רוצה שאשלח לך פרטים?').text).toBe(
+      'אני רוצָה לוודֵא — אתה רוצֶה שאשלח לךָ פרטים?',
+    );
   });
 });
 
