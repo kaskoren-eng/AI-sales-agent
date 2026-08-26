@@ -22,6 +22,7 @@
  */
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
+import { assertDeployableCode, assertNotBehindMain } from './lib/deploy-guard.mjs';
 
 const MODE = process.argv[2] ?? 'deploy';
 const STAGE = '.agent-build';
@@ -104,6 +105,9 @@ async function assertDeployableSecrets(file) {
     );
   }
 }
+
+await assertDeployableCode(STAGE);
+assertNotBehindMain({ allowBehind: process.argv.includes('--allow-behind') });
 
 if (MODE === 'create') await assertDeployableSecrets('.env.agent');
 
