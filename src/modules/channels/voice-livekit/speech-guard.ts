@@ -59,53 +59,157 @@ import { dropEchoedOpener } from './prompts/acknowledgements.he.js';
  * The LLM is innocent. It writes the correct word every time; the transcript is always right. Only
  * the caller's ear can catch this.
  *
- * WHAT DID NOT WORK: niqqud (שֶׁלְּךָ). Cartesia accepts it and still mispronounces — Koren confirmed
- * the inconsistency persisted with it in the prompt.
+ * WHAT DID NOT WORK: FULL niqqud (שֶׁלְּךָ) — pointing every syllable. Cartesia still mispronounced
+ * with it in the prompt, and fully-pointed sentences came out distorted and 1.3–2.4× longer
+ * (tests/hebrew-tts-niqqud-ab, docs/phase-4-known-issues.md §13). The FIRST shipped fix respelled
+ * the suffix phonetically ("שלכה") — it worked, and it lost the round-3 listening A/B.
  *
- * WHAT DOES WORK: spell the word PHONETICALLY so there is nothing left to guess. The TTS does not
- * read Hebrew — it reads letters and makes sounds. "שלכה" has no ambiguous vowel: it can only be
- * shel-KHA.
+ * WHAT WON, by Koren's ear on sonic-3.5 (round 3, 2026-08-26): ONE vowel mark on the ambiguous
+ * letter only — שלךָ, a kamatz on the final kaf, the rest of the sentence untouched. A little
+ * niqqud is not a little of the full-niqqud problem: one mark on one letter answers exactly the
+ * question the TTS was guessing at, without pushing the whole sentence out of its training
+ * distribution. The feminine table (round 3 + 3b) mixes techniques per word — each entry is
+ * whatever won by ear, respelling or single mark; no entry is derived from theory.
  *
- * VERIFIED, not assumed. Synthesized "מה מספר הטלפון שלכה?", squeezed it through an 8kHz phone
- * line, and transcribed it back with Soniox:
+ * VERIFIED, not assumed — the same round-trip as the original שלכה fix, for EVERY entry below:
+ * synthesized, squeezed through an 8kHz phone line, transcribed back with Soniox
+ * (tests/hebrew-tts-niqqud-ab/roundtrip.ts, 27 clips):
  *
- *     sent:  מה מספר הטלפון שלכה?
- *     heard: מה מספר הטלפון שלך?     <- a real Hebrew word, in the masculine
+ *     sent:  מה כתובת המייל שלךָ?
+ *     heard: מה כתובת המייל שלך?     <- the intended plain Hebrew word, in the masculine
  *
- * Cartesia pronounced correct masculine Hebrew. The spelling is non-standard and NOBODY EVER SEES
- * IT — it exists for exactly the few milliseconds between the LLM and the speaker.
+ * The marked spelling is non-standard and NOBODY EVER SEES IT — it exists for exactly the few
+ * milliseconds between the LLM and the speaker.
  *
  * AND THIS IS WHY IT IS DONE HERE AND NOT IN THE PROMPT. The first attempt BANNED these words in
  * the system prompt, with a table of replacements. Koren, immediately: "אל תגדיר אותם כמילים
  * אסורות, זה לא פתרון." He is right. Crippling her vocabulary to work around a pronunciation bug
  * makes her speak like a foreigner. She writes natural Hebrew; the pipeline fixes the sound.
  */
+export type AddressGender = 'm' | 'f';
+
 const SECOND_PERSON_MASCULINE: Array<[RegExp, string]> = [
   // Lookarounds, not \b — Hebrew letters are not word characters in JS regex, so \b matches in the
-  // MIDDLE of a Hebrew word and would corrupt "משלך", "הלך", "שלכם".
-  [/(?<![֐-׿])שלך(?![֐-׿])/gu, 'שלכה'],
-  [/(?<![֐-׿])לך(?![֐-׿])/gu, 'לכה'],
-  [/(?<![֐-׿])אותך(?![֐-׿])/gu, 'אותכה'],
-  [/(?<![֐-׿])אליך(?![֐-׿])/gu, 'אליכה'],
-  [/(?<![֐-׿])איתך(?![֐-׿])/gu, 'איתכה'],
-  [/(?<![֐-׿])בשבילך(?![֐-׿])/gu, 'בשבילכה'],
-  [/(?<![֐-׿])עבורך(?![֐-׿])/gu, 'עבורכה'],
+  // MIDDLE of a Hebrew word and would corrupt "משלך", "הלך", "שלכם". The lookahead also covers
+  // niqqud (U+0590–U+05FF), which makes every rule idempotent: לךָ no longer matches לך.
+  [/(?<![֐-׿])שלך(?![֐-׿])/gu, 'שלךָ'],
+  [/(?<![֐-׿])לך(?![֐-׿])/gu, 'לךָ'],
+  [/(?<![֐-׿])אותך(?![֐-׿])/gu, 'אותךָ'],
+  [/(?<![֐-׿])אליך(?![֐-׿])/gu, 'אליךָ'],
+  [/(?<![֐-׿])איתך(?![֐-׿])/gu, 'איתךָ'],
+  [/(?<![֐-׿])בשבילך(?![֐-׿])/gu, 'בשבילךָ'],
+  [/(?<![֐-׿])עבורך(?![֐-׿])/gu, 'עבורךָ'],
 ];
 
 /**
- * Forces the 2nd-person pronouns to be PRONOUNCED in the masculine, without changing a word the LLM
- * chose. Applied to what Cartesia is asked to say — never to what is stored, logged or transcribed.
- *
- * Only masculine for now: the prompt says most leads are men and to default to the masculine. When
- * Phase 4 knows the lead's gender from the CRM, this takes a parameter and the feminine forms
- * (שלך -> "שלאך", לך -> "לאך") get their own table.
+ * The feminine table — same words, addressed to a woman. Per-word winners from rounds 3/3b
+ * (index-round3.html / index-round3b.html): לך and the kamatz-sheva words won as minimal niqqud,
+ * שלך won as the שלאך respelling, אליך as the standard feminine spelling אלייך (which Soniox
+ * round-trips back as exactly that word). בשבילך/עבורך take a tsere ("-ech").
  */
-export function forceMasculineAddress(text: string): string {
+const SECOND_PERSON_FEMININE: Array<[RegExp, string]> = [
+  [/(?<![֐-׿])שלך(?![֐-׿])/gu, 'שלאך'],
+  [/(?<![֐-׿])לך(?![֐-׿])/gu, 'לָךְ'],
+  [/(?<![֐-׿])אותך(?![֐-׿])/gu, 'אותָךְ'],
+  [/(?<![֐-׿])אליך(?![֐-׿])/gu, 'אלייך'],
+  [/(?<![֐-׿])איתך(?![֐-׿])/gu, 'איתָךְ'],
+  [/(?<![֐-׿])בשבילך(?![֐-׿])/gu, 'בשבילֵךְ'],
+  [/(?<![֐-׿])עבורך(?![֐-׿])/gu, 'עבורֵךְ'],
+];
+
+/**
+ * Gender-NEUTRAL pronunciation fixes — words sonic-3.5 misreads for everyone, regardless of who
+ * is being addressed. The living pronunciation dictionary: one entry per word, each verified the
+ * same way (listening page win + Soniox round-trip) before it lands. Same lookaround rules as the
+ * gender tables.
+ */
+const PRONUNCIATION_FIXES: Array<[RegExp, string]> = [
+  // לוודא: the final-aleph vowel gets dropped ("levad"). One tsere on the ד restores "levadé".
+  // Round-3 winner (vd1+vd2 = C) over the לוודה respelling; round-trips as לוודא. 2026-08-26.
+  [/(?<![֐-׿])לוודא(?![֐-׿])/gu, 'לוודֵא'],
+];
+
+/** Applies the gender-neutral pronunciation dictionary. Speech-only, like the gender fix. */
+export function applyPronunciationFixes(text: string): string {
   let out = text;
-  for (const [pattern, replacement] of SECOND_PERSON_MASCULINE) {
+  for (const [pattern, replacement] of PRONUNCIATION_FIXES) {
     out = out.replace(pattern, replacement);
   }
   return out;
+}
+
+/**
+ * Forces the 2nd-person pronouns to be PRONOUNCED in the given gender, without changing a word the
+ * LLM chose. Applied to what Cartesia is asked to say — never to what is stored, logged or
+ * transcribed. The gender comes from AddressGenderTracker (masculine until proven feminine).
+ */
+export function forceAddressGender(text: string, gender: AddressGender = 'm'): string {
+  const table = gender === 'f' ? SECOND_PERSON_FEMININE : SECOND_PERSON_MASCULINE;
+  let out = text;
+  for (const [pattern, replacement] of table) {
+    out = out.replace(pattern, replacement);
+  }
+  return out;
+}
+
+/** The pre-round-3 name, kept for its history in comments and reports: masculine-table shorthand. */
+export function forceMasculineAddress(text: string): string {
+  return forceAddressGender(text, 'm');
+}
+
+/**
+ * Unambiguously-feminine ADDRESS in the agent's own Hebrew. Two shapes only:
+ *
+ *   1. Future 2nd-person-feminine verbs (תרצי, תוכלי…) — the ת…י form belongs to nobody else in
+ *      the paradigm, so a listed word (with optional ו/ש/כש prefixes) is proof the LLM is
+ *      addressing a woman. A curated list, not a clever pattern: ת…י as a REGEX would also match
+ *      nouns (תוכנית) and adverbs, and one false flip is worse than ten missed ones.
+ *   2. את + a present-tense verb — "את רוצה", "את יכולה". The subject pronoun את is itself
+ *      feminine; requiring the following verb keeps the object-marker homograph ("את הפרטים")
+ *      from matching.
+ */
+const FEMININE_ADDRESS = new RegExp(
+  '(?<![֐-׿])(?:ו|ש|וש|כש|וכש|לכש)?(?:' +
+    [
+      'תרצי', 'תוכלי', 'תגידי', 'תדעי', 'תעדיפי', 'תחליטי', 'תחשבי', 'תשלחי',
+      'תקבלי', 'תאשרי', 'תבדקי', 'תחזרי', 'תספרי', 'תצטרכי', 'תשמחי',
+    ].join('|') +
+    ')(?![֐-׿])' +
+    '|(?<![֐-׿])את\\s+(?:רוצה|יכולה|צריכה|מעוניינת|פנויה|זמינה|מחפשת|נמצאת|מעדיפה|חושבת|מכירה)(?![֐-׿])',
+  'u',
+);
+
+/**
+ * Decides which gender table the pronunciation fix uses — from the LLM's OWN Hebrew.
+ *
+ * Only the conversation knows the lead's gender; no TTS can hear it in a suffix pronoun. But the
+ * LLM already conjugates every verb to the gender it believes it is addressing — "תרצי" vs
+ * "תרצה" — per the prompt's gender rules, updating the moment a lead self-identifies. Those verb
+ * forms are unambiguous exactly where the suffix pronouns are not. So the tracker reads the
+ * evidence the model already emits, and the suffix table follows it. No prompt change, no tool.
+ *
+ * Koren's rule (2026-08-26): masculine by default — names are unreliable — and switch on CLEAR
+ * feminine conjugation only. The flip is ONE-WAY by design: feminine 2sg future (ת…י) is shared
+ * with nobody, but its masculine counterpart (תרצה, תוכל) is spelled identically to 3rd-person
+ * feminine ("היא תוכל לעזור"), so flipping back on it would misfire on a sentence about the agent
+ * herself. One tracker per call; a new call starts masculine again.
+ */
+export class AddressGenderTracker {
+  private gender: AddressGender = 'm';
+
+  get current(): AddressGender {
+    return this.gender;
+  }
+
+  /** Feeds one outgoing sentence. Returns true when THIS sentence flipped the call to feminine. */
+  observe(sentence: string): boolean {
+    if (this.gender === 'f') return false;
+    if (FEMININE_ADDRESS.test(sentence)) {
+      this.gender = 'f';
+      return true;
+    }
+    return false;
+  }
 }
 
 /** The prompt's silence token. Nothing downstream interprets it, so it must never reach the TTS. */
@@ -113,15 +217,17 @@ const NO_RESPONSE = /NO_RESPONSE_NEEDED/gi;
 
 /**
  * Hebrew niqqud + cantillation marks (U+0591–U+05C7 — the same range stripped in
- * normalizeFillerWord). Cartesia mispronounces vowel-pointed Hebrew — Koren confirmed the
- * inconsistency persisted with niqqud in the prompt (see the gender note above). So if the model
- * ever emits niqqud, strip it before the text reaches the TTS; bare consonantal Hebrew is what
- * Cartesia reads most reliably. Speech-only, like forceMasculineAddress — never touches what is
- * stored, logged or transcribed.
+ * normalizeFillerWord). MODEL-emitted niqqud is unreliable on Cartesia — full pointing came out
+ * distorted (known-issues §13), and the model points words we never verified. So anything the LLM
+ * pointed is stripped before the text reaches the TTS. The VERIFIED single marks this file injects
+ * (round 3 — see the gender note above) are the one exception, which is purely an ordering rule:
+ * guardSpeech strips FIRST, then applies the tables. Reversing that order silently erases every
+ * pronunciation fix — there is a test pinning it. Speech-only, like the tables — never touches
+ * what is stored, logged or transcribed.
  */
 const NIQQUD = /[֑-ׇ]/gu;
 
-/** Removes Hebrew niqqud / cantillation so the TTS receives clean consonantal text. */
+/** Removes Hebrew niqqud / cantillation so only THIS FILE's verified marks reach the TTS. */
 export function stripNiqqud(text: string): string {
   return text.replace(NIQQUD, '');
 }
@@ -177,11 +283,25 @@ export async function* guardStream(
    * sentence ("קבעתי לך ליום ראשון...") must already be allowed through.
    */
   allowBookingClaims: () => boolean = () => false,
+  /**
+   * One per call (lives on the agent instance). Observes each sentence BEFORE it is fixed, so the
+   * sentence that reveals the lead is a woman ("תוכלי לשלוח לך...") already gets the feminine
+   * table. Omitted (tests, legacy callers) → masculine, the pre-round-3 behaviour.
+   */
+  genderTracker?: AddressGenderTracker,
 ): AsyncIterable<string> {
   let buffer = '';
 
   const flush = function* (chunk: string): Generator<string> {
-    const guarded = guardSpeech(chunk, { allowBookingClaims: allowBookingClaims() });
+    if (genderTracker?.observe(chunk)) {
+      console.log(
+        `speech_guard ${JSON.stringify({ note: 'address gender -> feminine (unambiguous feminine conjugation in her own reply)' })}`,
+      );
+    }
+    const guarded = guardSpeech(chunk, {
+      allowBookingClaims: allowBookingClaims(),
+      addressGender: genderTracker?.current,
+    });
     for (const note of guarded.interventions) {
       console.log(`speech_guard ${JSON.stringify({ note, said: guarded.text.slice(0, 80) })}`);
     }
@@ -396,7 +516,7 @@ export interface GuardResult {
  */
 export function guardSpeech(
   text: string,
-  opts: { allowBookingClaims?: boolean } = {},
+  opts: { allowBookingClaims?: boolean; addressGender?: AddressGender } = {},
 ): GuardResult {
   const interventions: string[] = [];
   let out = text;
@@ -420,17 +540,19 @@ export function guardSpeech(
     }
   }
 
-  // LAST, so it applies to the rewritten text too. Purely a PRONUNCIATION fix — it changes how
-  // Cartesia says the word, never which word the LLM chose. See forceMasculineAddress().
-  out = forceMasculineAddress(out);
-
-  // Strip any niqqud the model emitted — Cartesia mispronounces vowel-pointed Hebrew. Only logs an
-  // intervention when it actually removed something, so it stays quiet on the common (unpointed) case.
+  // Strip any niqqud the MODEL emitted — unverified pointing is unreliable on Cartesia. MUST run
+  // BEFORE the fixes below, which inject this file's own verified marks; reversed, it erases them.
+  // Only logs when it actually removed something, so it stays quiet on the common (unpointed) case.
   const unpointed = stripNiqqud(out);
   if (unpointed !== out) {
-    interventions.push('stripped niqqud (Cartesia mispronounces vowel points)');
+    interventions.push('stripped model-emitted niqqud (unverified pointing is unreliable on Cartesia)');
     out = unpointed;
   }
+
+  // LAST, so they apply to the rewritten text too. Purely PRONUNCIATION fixes — they change how
+  // Cartesia says the word, never which word the LLM chose. See forceAddressGender().
+  out = forceAddressGender(out, opts.addressGender ?? 'm');
+  out = applyPronunciationFixes(out);
 
   return { text: out.replace(/\s{2,}/gu, ' ').trim(), silent: false, interventions };
 }

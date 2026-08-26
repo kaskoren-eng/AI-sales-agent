@@ -1,0 +1,90 @@
+[
+  {
+    "id": "m1",
+    "gender": "זכר",
+    "word": "שלך",
+    "plain": "מה השם שלך?",
+    "fixed": "מה השם שלךָ?",
+    "file_a": "vm1_A.wav",
+    "file_b": "vm1_B.wav",
+    "dur_a": 0.93,
+    "dur_b": 1.53
+  },
+  {
+    "id": "m2",
+    "gender": "זכר",
+    "word": "אליך",
+    "plain": "אני אחזור אליך היום.",
+    "fixed": "אני אחזור אליךָ היום.",
+    "file_a": "vm2_A.wav",
+    "file_b": "vm2_B.wav",
+    "dur_a": 1.72,
+    "dur_b": 1.81
+  },
+  {
+    "id": "m3",
+    "gender": "זכר",
+    "word": "אותך",
+    "plain": "נעים מאוד להכיר אותך.",
+    "fixed": "נעים מאוד להכיר אותךָ.",
+    "file_a": "vm3_A.wav",
+    "file_b": "vm3_B.wav",
+    "dur_a": 1.11,
+    "dur_b": 1.95
+  },
+  {
+    "id": "m4",
+    "gender": "זכר",
+    "word": "לך",
+    "plain": "שלחתי לך עכשיו מייל.",
+    "fixed": "שלחתי לךָ עכשיו מייל.",
+    "file_a": "vm4_A.wav",
+    "file_b": "vm4_B.wav",
+    "dur_a": 2.14,
+    "dur_b": 1.58
+  },
+  {
+    "id": "f1",
+    "gender": "נקבה",
+    "word": "שלך",
+    "plain": "מה השם שלך?",
+    "fixed": "מה השם שלָךְ?",
+    "file_a": "vf1_A.wav",
+    "file_b": "vf1_B.wav",
+    "dur_a": 0.84,
+    "dur_b": 0.93
+  },
+  {
+    "id": "f2",
+    "gender": "נקבה",
+    "word": "אליך",
+    "plain": "אני אחזור אליך היום.",
+    "fixed": "אני אחזור אלַיִךְ היום.",
+    "file_a": "vf2_A.wav",
+    "file_b": "vf2_B.wav",
+    "dur_a": 1.16,
+    "dur_b": 1.63
+  },
+  {
+    "id": "f3",
+    "gender": "נקבה",
+    "word": "אותך",
+    "plain": "נעים מאוד להכיר אותך.",
+    "fixed": "נעים מאוד להכיר אותָךְ.",
+    "file_a": "vf3_A.wav",
+    "file_b": "vf3_B.wav",
+    "dur_a": 1.11,
+    "dur_b": 1.76
+  },
+  {
+    "id": "f4",
+    "gender": "נקבה",
+    "word": "לך",
+    "plain": "שלחתי לך עכשיו מייל.",
+    "fixed": "שלחתי לָךְ עכשיו מייל.",
+    "file_a": "vf4_A.wav",
+    "file_b": "vf4_B.wav",
+    "dur_a": 1.9,
+    "dur_b": 1.63
+  }
+]

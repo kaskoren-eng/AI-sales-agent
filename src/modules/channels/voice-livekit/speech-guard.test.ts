@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { dropAckEcho, forceMasculineAddress, guardSpeech, guardStream, notifyIfSilent, withFiller } from './speech-guard.js';
+import {
+  AddressGenderTracker,
+  applyPronunciationFixes,
+  dropAckEcho,
+  forceAddressGender,
+  forceMasculineAddress,
+  guardSpeech,
+  guardStream,
+  notifyIfSilent,
+  withFiller,
+} from './speech-guard.js';
 
 /**
  * These are the ACTUAL sentences the agent said to Koren on a real call. Not hypotheticals.
@@ -55,17 +65,26 @@ describe('speech guard — she must not claim a booking that does not exist', ()
   });
 });
 
-describe('speech guard — niqqud is stripped so Cartesia gets clean consonantal Hebrew', () => {
+describe('speech guard — model-emitted niqqud is stripped, OUR verified marks survive', () => {
   it('removes niqqud/cantillation the model may emit', () => {
     const r = guardSpeech('שָׁלוֹם, מְדַבֶּרֶת קֶרֶן.');
     expect(r.text).toBe('שלום, מדברת קרן.');
-    expect(r.interventions).toContain('stripped niqqud (Cartesia mispronounces vowel points)');
+    expect(r.interventions).toContain(
+      'stripped model-emitted niqqud (unverified pointing is unreliable on Cartesia)',
+    );
   });
 
   it('is a silent no-op on ordinary unpointed Hebrew', () => {
     const t = 'שלום, מדברת קרן. איך אפשר לעזור?';
     expect(guardSpeech(t).text).toBe(t);
     expect(guardSpeech(t).interventions).toHaveLength(0);
+  });
+
+  it('THE ORDER IS LOAD-BEARING: the strip runs first, so the pronunciation fix survives it', () => {
+    // If stripNiqqud ever moves after the tables, this sentence loses its kamatz silently and
+    // every pronunciation fix in the file is dead code. The model's own pointing goes; ours stays.
+    const r = guardSpeech('שָׁלוֹם, מה השם שלך?');
+    expect(r.text).toBe('שלום, מה השם שלךָ?');
   });
 });
 
@@ -136,8 +155,8 @@ describe('guardStream — the booking-claim rewrite is conditional on a REAL boo
     const out = (
       await drain(guardStream(chunks('קבעתי לך שיחת דמו ליום ראשון בעשר. ', 'נשלח לך את הפרטים!'), () => true))
     ).join('');
-    // The claim SURVIVES (as "קבעתי לכה" — the pronunciation fix still applies, see below)...
-    expect(out).toMatch(/קבעתי לכה/u);
+    // The claim SURVIVES (as "קבעתי לךָ" — the pronunciation fix still applies, see below)...
+    expect(out).toMatch(/קבעתי לךָ/u);
     // ...and is NOT rewritten into the pass-to-the-team line.
     expect(out).not.toMatch(/אעביר את הבקשה לצוות/u);
   });
@@ -159,7 +178,7 @@ describe('guardStream — the booking-claim rewrite is conditional on a REAL boo
     };
     const out = await drain(guardStream(source(), () => booked));
     expect(out[0]).not.toMatch(/קבעתי/u); // rewritten to the pass-to-the-team truth
-    expect(out[1]).toMatch(/קבעתי לכה/u); // survives (pronunciation-fixed, not censored)
+    expect(out[1]).toMatch(/קבעתי לךָ/u); // survives (pronunciation-fixed, not censored)
   });
 
   it('NO_RESPONSE_NEEDED and the pronunciation fix stay armed even after a booking', async () => {
@@ -167,12 +186,12 @@ describe('guardStream — the booking-claim rewrite is conditional on a REAL boo
       await drain(guardStream(chunks('NO_RESPONSE_NEEDED שלחתי לך אישור למייל שלך.'), () => true))
     ).join('');
     expect(out).not.toMatch(/NO_RESPONSE_NEEDED/u);
-    expect(out).toMatch(/שלכה/u); // forceMasculineAddress is unconditional
+    expect(out).toMatch(/שלךָ/u); // the pronunciation fix is unconditional
   });
 
   it('guardSpeech honours the flag directly', () => {
     const claim = 'קבעתי לך שיחת דמו למחר.';
-    expect(guardSpeech(claim, { allowBookingClaims: true }).text).toMatch(/קבעתי לכה/u);
+    expect(guardSpeech(claim, { allowBookingClaims: true }).text).toMatch(/קבעתי לךָ/u);
     expect(guardSpeech(claim, { allowBookingClaims: false }).text).not.toMatch(/קבעתי/u);
     expect(guardSpeech(claim).text).not.toMatch(/קבעתי/u); // default stays fail-closed
   });
@@ -185,28 +204,49 @@ describe('guardStream — the booking-claim rewrite is conditional on a REAL boo
  * not write them. And: "אל תגדיר אותם כמילים אסורות, זה לא פתרון" — so the LLM keeps its natural
  * Hebrew and the pipeline fixes the SOUND.
  */
-describe('forceMasculineAddress — fixing pronunciation, not vocabulary', () => {
-  it('forces שלך to be pronounced shel-KHA (masculine)', () => {
-    // Verified against the real TTS: "שלכה" synthesized and transcribed back by Soniox as "שלך" —
-    // a correct masculine Hebrew word. The spelling is non-standard and nobody ever sees it.
-    expect(forceMasculineAddress('מה מספר הטלפון שלך?')).toBe('מה מספר הטלפון שלכה?');
+describe('forceAddressGender — fixing pronunciation, not vocabulary', () => {
+  it('forces שלך to be pronounced shel-KHA with ONE kamatz — the round-3 winner', () => {
+    // Verified against the real TTS on sonic-3.5 (tests/hebrew-tts-niqqud-ab, round 3): the
+    // minimal-niqqud variant beat the old שלכה respelling by ear, and "שלךָ" round-trips through
+    // an 8kHz line + Soniox back to "שלך". The mark is non-standard output nobody ever sees.
+    expect(forceMasculineAddress('מה מספר הטלפון שלך?')).toBe('מה מספר הטלפון שלךָ?');
   });
 
-  it('fixes every ambiguous suffix', () => {
-    expect(forceMasculineAddress('אשלח לך')).toBe('אשלח לכה');
-    expect(forceMasculineAddress('אחזור אליך')).toBe('אחזור אליכה');
-    expect(forceMasculineAddress('לשמוע אותך')).toBe('לשמוע אותכה');
-    expect(forceMasculineAddress('לדבר איתך')).toBe('לדבר איתכה');
-    expect(forceMasculineAddress('בשבילך')).toBe('בשבילכה');
+  it('fixes every ambiguous suffix in the masculine', () => {
+    expect(forceMasculineAddress('אשלח לך')).toBe('אשלח לךָ');
+    expect(forceMasculineAddress('אחזור אליך')).toBe('אחזור אליךָ');
+    expect(forceMasculineAddress('לשמוע אותך')).toBe('לשמוע אותךָ');
+    expect(forceMasculineAddress('לדבר איתך')).toBe('לדבר איתךָ');
+    expect(forceMasculineAddress('בשבילך')).toBe('בשבילךָ');
+    expect(forceMasculineAddress('עבורך')).toBe('עבורךָ');
   });
 
-  it('NEVER corrupts a word that merely CONTAINS the letters', () => {
+  it('fixes every ambiguous suffix in the feminine — per-word winners, not one technique', () => {
+    // Round 3/3b: לך won as minimal niqqud, שלך as the שלאך respelling, אליך as the standard
+    // feminine spelling. Each entry is whatever Koren's ear picked — mixing is the point.
+    expect(forceAddressGender('אשלח לך', 'f')).toBe('אשלח לָךְ');
+    expect(forceAddressGender('מה השם שלך?', 'f')).toBe('מה השם שלאך?');
+    expect(forceAddressGender('אחזור אליך', 'f')).toBe('אחזור אלייך');
+    expect(forceAddressGender('לשמוע אותך', 'f')).toBe('לשמוע אותָךְ');
+    expect(forceAddressGender('לדבר איתך', 'f')).toBe('לדבר איתָךְ');
+    expect(forceAddressGender('בשבילך', 'f')).toBe('בשבילֵךְ');
+    expect(forceAddressGender('עבורך', 'f')).toBe('עבורֵךְ');
+  });
+
+  it('NEVER corrupts a word that merely CONTAINS the letters — in either gender', () => {
     // The trap: JS \b does not work on Hebrew (Hebrew letters are not word characters), so a naive
     // boundary would match inside "משלך" / "הלך" / "שלכם" and mangle them.
-    expect(forceMasculineAddress('הוא הלך הביתה')).toBe('הוא הלך הביתה');
-    expect(forceMasculineAddress('הצוות שלכם')).toBe('הצוות שלכם');
-    expect(forceMasculineAddress('משלך')).toBe('משלך');
-    expect(forceMasculineAddress('לכל הלקוחות')).toBe('לכל הלקוחות');
+    for (const gender of ['m', 'f'] as const) {
+      expect(forceAddressGender('הוא הלך הביתה', gender)).toBe('הוא הלך הביתה');
+      expect(forceAddressGender('הצוות שלכם', gender)).toBe('הצוות שלכם');
+      expect(forceAddressGender('משלך', gender)).toBe('משלך');
+      expect(forceAddressGender('לכל הלקוחות', gender)).toBe('לכל הלקוחות');
+    }
+  });
+
+  it('is idempotent — running the guard twice must not stack marks', () => {
+    const once = forceMasculineAddress('אשלח לך');
+    expect(forceMasculineAddress(once)).toBe(once);
   });
 
   it('leaves her OWN feminine speech untouched — only the ADDRESS changes', () => {
@@ -216,8 +256,96 @@ describe('forceMasculineAddress — fixing pronunciation, not vocabulary', () =>
     expect(forceMasculineAddress(t)).toBe(t);
   });
 
-  it('runs inside the live guard, so what Cartesia SAYS is masculine', () => {
-    expect(guardSpeech('מה השם שלך? אשלח לך אישור.').text).toBe('מה השם שלכה? אשלח לכה אישור.');
+  it('runs inside the live guard, so what Cartesia SAYS is masculine by default', () => {
+    expect(guardSpeech('מה השם שלך? אשלח לך אישור.').text).toBe('מה השם שלךָ? אשלח לךָ אישור.');
+  });
+});
+
+describe('the pronunciation dictionary — gender-neutral fixed words', () => {
+  it('restores the swallowed final vowel of לוודא with one tsere', () => {
+    // sonic-3.5 says "levad", dropping the final vowel. Round-3 winner: לוודֵא ("levadé"),
+    // which Soniox round-trips back as the plain word.
+    expect(applyPronunciationFixes('אני רוצה לוודא שהפרטים נכונים.')).toBe(
+      'אני רוצה לוודֵא שהפרטים נכונים.',
+    );
+  });
+
+  it('does not touch other forms of the same root', () => {
+    const t = 'אני מוודאת את הפרטים, והם וידאו את השעה.';
+    expect(applyPronunciationFixes(t)).toBe(t);
+  });
+
+  it('runs inside the live guard', () => {
+    expect(guardSpeech('רק לוודא, הפגישה מחר?').text).toBe('רק לוודֵא, הפגישה מחר?');
+  });
+});
+
+/**
+ * THE GENDER TRACKER — the feminine table needs to know the lead is a woman, and only the
+ * conversation knows that. The LLM already conjugates to the gender it believes it is addressing
+ * ("תרצי" vs "תרצה"); the tracker reads that evidence and the suffix table follows it.
+ *
+ * Koren's rule: masculine by default (names are unreliable), flip on CLEAR feminine conjugation
+ * only, and the flip is one-way — masculine 2nd-person future is spelled identically to 3rd-person
+ * feminine ("היא תוכל"), so flipping back on it would misfire on a sentence about the agent herself.
+ */
+describe('AddressGenderTracker — her own conjugation decides the table', () => {
+  const chunks = async function* (...c: string[]) {
+    for (const x of c) yield x;
+  };
+  const drain = async (it: AsyncIterable<string>) => {
+    const out: string[] = [];
+    for await (const x of it) out.push(x);
+    return out;
+  };
+
+  it('starts masculine — the default when nothing is known', () => {
+    expect(new AddressGenderTracker().current).toBe('m');
+  });
+
+  it('flips on an unambiguous feminine future verb, and the SAME sentence is already feminine', async () => {
+    const tracker = new AddressGenderTracker();
+    const out = (await drain(guardStream(chunks('מתי תרצי שאחזור אליך?'), () => false, tracker))).join('');
+    expect(tracker.current).toBe('f');
+    expect(out).toContain('אלייך'); // the feminine table applied to the flipping sentence itself
+  });
+
+  it('flips on את + present-tense verb ("את יכולה")', () => {
+    const tracker = new AddressGenderTracker();
+    tracker.observe('אז את יכולה לספר לי קצת על העסק?');
+    expect(tracker.current).toBe('f');
+  });
+
+  it('does NOT flip on the object-marker את ("את הפרטים")', () => {
+    const tracker = new AddressGenderTracker();
+    tracker.observe('אשלח לך את הפרטים למייל.');
+    expect(tracker.current).toBe('m');
+  });
+
+  it('does NOT flip on her own feminine self-reference — "אני בודקת" is about HER', () => {
+    const tracker = new AddressGenderTracker();
+    tracker.observe('רגע, אני בודקת זמינות. אני שמחה לעזור.');
+    expect(tracker.current).toBe('m');
+  });
+
+  it('is sticky — a later masculine-looking form does not flip back', () => {
+    // "תוכל" is 2nd-masculine AND 3rd-feminine ("היא תוכל לעזור") — ambiguous, so it must not
+    // undo a flip that was based on unambiguous evidence.
+    const tracker = new AddressGenderTracker();
+    tracker.observe('מתי תרצי לקבוע?');
+    tracker.observe('המנהלת שלנו תוכל לחזור אליך מחר.');
+    expect(tracker.current).toBe('f');
+  });
+
+  it('catches a prefixed feminine verb ("כשתרצי")', () => {
+    const tracker = new AddressGenderTracker();
+    tracker.observe('כשתרצי, נקבע פגישה.');
+    expect(tracker.current).toBe('f');
+  });
+
+  it('without a tracker, guardStream keeps the pre-round-3 masculine behaviour', async () => {
+    const out = (await drain(guardStream(chunks('מה השם שלך?')))).join('');
+    expect(out).toContain('שלךָ');
   });
 });
 

@@ -28,7 +28,14 @@ import {
   pickThinkingFiller,
 } from './prompts/thinking-fillers.he.js';
 import { pickAcknowledgement } from './prompts/acknowledgements.he.js';
-import { dropAckEcho, guardStream, notifyIfSilent, timeFirstChunk, withFiller } from './speech-guard.js';
+import {
+  AddressGenderTracker,
+  dropAckEcho,
+  guardStream,
+  notifyIfSilent,
+  timeFirstChunk,
+  withFiller,
+} from './speech-guard.js';
 import { ShadowSTT } from './stt/shadow-stt.js';
 import { DeepdubTTS } from './tts/deepdub.tts.js';
 import { buildAgentTools } from './tools/index.js';
@@ -142,6 +149,14 @@ class ClickScalesAgent extends voice.Agent {
    * reply was STARTED late and no amount of pipeline tuning will help.
    */
   msSinceUserStopped: (() => number | null) | null = null;
+
+  /**
+   * Which gender table the pronunciation fix speaks — masculine until HER OWN Hebrew proves the
+   * lead is a woman (an unambiguous feminine conjugation like "תוכלי"). One per call by
+   * construction: the agent instance is created per session, so a new call starts masculine.
+   * See AddressGenderTracker in speech-guard.ts for the full rules.
+   */
+  private readonly genderTracker = new AddressGenderTracker();
 
   constructor(
     opts: ConstructorParameters<typeof voice.Agent>[0],
@@ -292,6 +307,7 @@ class ClickScalesAgent extends voice.Agent {
             // Read PER SENTENCE: book_meeting can succeed mid-reply, and the very next sentence
             // ("קבעתי לך ליום ראשון") must already be allowed through.
             () => this.toolRuntime?.bookingCompleted === true,
+            this.genderTracker,
           ),
           startedAt,
           (ms) => {

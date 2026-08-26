@@ -1,0 +1,200 @@
+[
+  {
+    "region": "EU",
+    "sentence": "short",
+    "run": 1,
+    "connectMs": 1299,
+    "ttfb": 577,
+    "total": 2067,
+    "bytes": 236220,
+    "chunks": 7,
+    "audioMs": 7382
+  },
+  {
+    "region": "EU",
+    "sentence": "short",
+    "run": 2,
+    "connectMs": 578,
+    "ttfb": 326,
+    "total": 16569,
+    "bytes": 242112,
+    "chunks": 8,
+    "audioMs": 7566
+  },
+  {
+    "region": "EU",
+    "sentence": "short",
+    "run": 3,
+    "connectMs": 538,
+    "ttfb": 371,
+    "total": 16439,
+    "bytes": 225660,
+    "chunks": 7,
+    "audioMs": 7052
+  },
+  {
+    "region": "EU",
+    "sentence": "medium",
+    "run": 1,
+    "connectMs": 560,
+    "ttfb": 609,
+    "total": 17871,
+    "bytes": 302084,
+    "chunks": 8,
+    "audioMs": 9440
+  },
+  {
+    "region": "EU",
+    "sentence": "medium",
+    "run": 2,
+    "connectMs": 583,
+    "ttfb": 853,
+    "total": 18761,
+    "bytes": 278976,
+    "chunks": 8,
+    "audioMs": 8718
+  },
+  {
+    "region": "EU",
+    "sentence": "medium",
+    "run": 3,
+    "connectMs": 679,
+    "ttfb": 371,
+    "total": 17454,
+    "bytes": 270784,
+    "chunks": 8,
+    "audioMs": 8462
+  },
+  {
+    "region": "EU",
+    "sentence": "long",
+    "run": 1,
+    "connectMs": 566,
+    "ttfb": 440,
+    "total": 18440,
+    "bytes": 447116,
+    "chunks": 11,
+    "audioMs": 13972
+  },
+  {
+    "region": "EU",
+    "sentence": "long",
+    "run": 2,
+    "connectMs": 740,
+    "ttfb": 434,
+    "total": 18699,
+    "bytes": 464140,
+    "chunks": 11,
+    "audioMs": 14504
+  },
+  {
+    "region": "EU",
+    "sentence": "long",
+    "run": 3,
+    "connectMs": 689,
+    "ttfb": 373,
+    "total": 19519,
+    "bytes": 500500,
+    "chunks": 13,
+    "audioMs": 15641
+  },
+  {
+    "region": "US",
+    "sentence": "short",
+    "run": 1,
+    "connectMs": 1024,
+    "ttfb": 537,
+    "total": 17834,
+    "bytes": 238016,
+    "chunks": 8,
+    "audioMs": 7438
+  },
+  {
+    "region": "US",
+    "sentence": "short",
+    "run": 2,
+    "connectMs": 605,
+    "ttfb": 448,
+    "total": 2686,
+    "bytes": 252604,
+    "chunks": 7,
+    "audioMs": 7894
+  },
+  {
+    "region": "US",
+    "sentence": "short",
+    "run": 3,
+    "connectMs": 567,
+    "ttfb": 333,
+    "total": 17424,
+    "bytes": 258496,
+    "chunks": 8,
+    "audioMs": 8078
+  },
+  {
+    "region": "US",
+    "sentence": "medium",
+    "run": 1,
+    "connectMs": 591,
+    "ttfb": 347,
+    "total": 17809,
+    "bytes": 282420,
+    "chunks": 8,
+    "audioMs": 8826
+  },
+  {
+    "region": "US",
+    "sentence": "medium",
+    "run": 2,
+    "connectMs": 659,
+    "ttfb": 416,
+    "total": 18265,
+    "bytes": 278976,
+    "chunks": 8,
+    "audioMs": 8718
+  },
+  {
+    "region": "US",
+    "sentence": "medium",
+    "run": 3,
+    "connectMs": 638,
+    "ttfb": 334,
+    "total": 15943,
+    "bytes": 278976,
+    "chunks": 8,
+    "audioMs": 8718
+  },
+  {
+    "region": "US",
+    "sentence": "long",
+    "run": 1,
+    "connectMs": 647,
+    "ttfb": 641,
+    "total": 1668,
+    "bytes": 512788,
+    "chunks": 13,
+    "audioMs": 16025
+  },
+  {
+    "region": "US",
+    "sentence": "long",
+    "run": 2,
+    "connectMs": 573,
+    "ttfb": 364,
+    "total": 16427,
+    "bytes": 468844,
+    "chunks": 12,
+    "audioMs": 14651
+  },
+  {
+    "region": "US",
+    "sentence": "long",
+    "run": 3,
+    "connectMs": 633,
+    "ttfb": 430,
+    "total": 19629,
+    "bytes": 475856,
+    "chunks": 12,
+    "audioMs": 14871
+  }
+]

@@ -1,0 +1,82 @@
+[
+  {
+    "id": "01",
+    "tag": "greeting-user",
+    "text": "שלום, אני שמחה לעזור לך. איך אפשר לסייע לך היום?",
+    "file": "dd_01.wav",
+    "bytes": 393188,
+    "ct_file": "ct_01.wav",
+    "ct_dur": 5.76,
+    "dd_dur": 4.46
+  },
+  {
+    "id": "02",
+    "tag": "greeting-keren",
+    "text": "שלום, מדברת קרן מ-ClickScales. איך אני יכולה לעזור?",
+    "file": "dd_02.wav",
+    "bytes": 344166,
+    "ct_file": "ct_02.wav",
+    "ct_dur": 4.5,
+    "dd_dur": 3.9
+  },
+  {
+    "id": "03",
+    "tag": "founder-name",
+    "text": "קורן הוא המייסד של ClickScales, והוא זה שיעביר את הדמו.",
+    "file": "dd_03.wav",
+    "bytes": 344036,
+    "ct_file": "ct_03.wav",
+    "ct_dur": 3.99,
+    "dd_dur": 3.9
+  },
+  {
+    "id": "04",
+    "tag": "masc-cue",
+    "text": "אדוני, מה השם שלך? אני אחזור אליך היום.",
+    "file": "dd_04.wav",
+    "bytes": 277952,
+    "ct_file": "ct_04.wav",
+    "ct_dur": 3.11,
+    "dd_dur": 3.15
+  },
+  {
+    "id": "05",
+    "tag": "fem-cue",
+    "text": "גברתי, מה השם שלך? אני אחזור אליך היום.",
+    "file": "dd_05.wav",
+    "bytes": 262422,
+    "ct_file": "ct_05.wav",
+    "ct_dur": 2.32,
+    "dd_dur": 2.97
+  },
+  {
+    "id": "06",
+    "tag": "no-cue-gender",
+    "text": "מה מספר הטלפון שלך? אשלח לך אישור.",
+    "file": "dd_06.wav",
+    "bytes": 270308,
+    "ct_file": "ct_06.wav",
+    "ct_dur": 2.28,
+    "dd_dur": 3.06
+  },
+  {
+    "id": "07",
+    "tag": "phone-digits",
+    "text": "רק לוודא — אפס חמש אפס, תשע שבע, שמונה שמונה, ארבע חמש?",
+    "file": "dd_07.wav",
+    "bytes": 425956,
+    "ct_file": "ct_07.wav",
+    "ct_dur": 4.04,
+    "dd_dur": 4.83
+  },
+  {
+    "id": "08",
+    "tag": "crm-english",
+    "text": "הסוכן מתחבר ל-CRM שלך ומגיע עם דשבורד מלא לצפייה בכל השיחות והלידים.",
+    "file": "dd_08.wav",
+    "bytes": 514364,
+    "ct_file": "ct_08.wav",
+    "ct_dur": 5.2,
+    "dd_dur": 5.83
+  }
+]
