@@ -92,27 +92,33 @@ const SECOND_PERSON_MASCULINE: Array<[RegExp, string]> = [
   // Lookarounds, not \b — Hebrew letters are not word characters in JS regex, so \b matches in the
   // MIDDLE of a Hebrew word and would corrupt "משלך", "הלך", "שלכם". The lookahead also covers
   // niqqud (U+0590–U+05FF), which makes every rule idempotent: לךָ no longer matches לך.
+  //
+  // NOT one technique per table — one WINNER per word. The kamatz won rounds 3/3b for the first
+  // four (m1/m2/bm1/bm2 = C); for איתך/בשבילך/עבורך Koren rejected BOTH 3b options ("bad or
+  // wrong"), so those keep the pre-round-3 respelling that shipped in production, pending a
+  // round-3c winner.
   [/(?<![֐-׿])שלך(?![֐-׿])/gu, 'שלךָ'],
   [/(?<![֐-׿])לך(?![֐-׿])/gu, 'לךָ'],
   [/(?<![֐-׿])אותך(?![֐-׿])/gu, 'אותךָ'],
   [/(?<![֐-׿])אליך(?![֐-׿])/gu, 'אליךָ'],
-  [/(?<![֐-׿])איתך(?![֐-׿])/gu, 'איתךָ'],
-  [/(?<![֐-׿])בשבילך(?![֐-׿])/gu, 'בשבילךָ'],
-  [/(?<![֐-׿])עבורך(?![֐-׿])/gu, 'עבורךָ'],
+  [/(?<![֐-׿])איתך(?![֐-׿])/gu, 'איתכה'],
+  [/(?<![֐-׿])בשבילך(?![֐-׿])/gu, 'בשבילכה'],
+  [/(?<![֐-׿])עבורך(?![֐-׿])/gu, 'עבורכה'],
 ];
 
 /**
- * The feminine table — same words, addressed to a woman. Per-word winners from rounds 3/3b
- * (index-round3.html / index-round3b.html): לך and the kamatz-sheva words won as minimal niqqud,
- * שלך won as the שלאך respelling, אליך as the standard feminine spelling אלייך (which Soniox
- * round-trips back as exactly that word). בשבילך/עבורך take a tsere ("-ech").
+ * The feminine table — same words, addressed to a woman. Per-word winners from Koren's rounds
+ * 3/3b verdicts (f1=C, f2=B, bf1=B, bf2=C, bf3=B, bf4=C, bf5=C): a MIX of the אך-respelling and
+ * minimal niqqud — whichever won by ear for that word, nothing derived from theory. Note bf2's
+ * winner is the fully-pointed אלַיִךְ (three marks) — "minimal" means as few marks as THAT WORD
+ * needs, not one mark everywhere.
  */
 const SECOND_PERSON_FEMININE: Array<[RegExp, string]> = [
   [/(?<![֐-׿])שלך(?![֐-׿])/gu, 'שלאך'],
   [/(?<![֐-׿])לך(?![֐-׿])/gu, 'לָךְ'],
-  [/(?<![֐-׿])אותך(?![֐-׿])/gu, 'אותָךְ'],
-  [/(?<![֐-׿])אליך(?![֐-׿])/gu, 'אלייך'],
-  [/(?<![֐-׿])איתך(?![֐-׿])/gu, 'איתָךְ'],
+  [/(?<![֐-׿])אותך(?![֐-׿])/gu, 'אותאך'],
+  [/(?<![֐-׿])אליך(?![֐-׿])/gu, 'אלַיִךְ'],
+  [/(?<![֐-׿])איתך(?![֐-׿])/gu, 'איתאך'],
   [/(?<![֐-׿])בשבילך(?![֐-׿])/gu, 'בשבילֵךְ'],
   [/(?<![֐-׿])עבורך(?![֐-׿])/gu, 'עבורֵךְ'],
 ];

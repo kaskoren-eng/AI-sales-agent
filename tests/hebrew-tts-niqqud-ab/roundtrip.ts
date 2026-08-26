@@ -30,6 +30,7 @@ const TARGET: Record<string, string> = {
   bm3: 'איתך', bf3: 'איתך',
   bm4: 'בשבילך', bf4: 'בשבילך',
   bm5: 'עבורך', bf5: 'עבורך',
+  c1: 'איתך', c2: 'בשבילך', c3: 'עבורך',
 };
 
 const NIQQUD = /[֑-ׇ]/gu;
@@ -53,8 +54,9 @@ async function main(): Promise<void> {
   ensureLogger();
   const env = loadEnv();
   const cards: Card[] = [];
-  for (const manifest of ['round3.json', 'round3b.json']) {
-    const data = JSON.parse(await readFile(join(HERE, manifest), 'utf-8'));
+  const only = process.argv[2]; // optional: run a single manifest, e.g. `roundtrip.ts round3c.json`
+  for (const manifest of only ? [only] : ['round3.json', 'round3b.json', 'round3c.json']) {
+    const data = JSON.parse(await readFile(join(HERE, manifest), 'utf-8').catch(() => '{"cards":[]}'));
     cards.push(...data.cards);
   }
 

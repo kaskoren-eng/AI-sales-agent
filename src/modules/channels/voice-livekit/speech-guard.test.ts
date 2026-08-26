@@ -212,23 +212,26 @@ describe('forceAddressGender — fixing pronunciation, not vocabulary', () => {
     expect(forceMasculineAddress('מה מספר הטלפון שלך?')).toBe('מה מספר הטלפון שלךָ?');
   });
 
-  it('fixes every ambiguous suffix in the masculine', () => {
+  it('fixes every ambiguous suffix in the masculine — per-word winners, not one technique', () => {
+    // Kamatz won for the first four (rounds 3/3b: m1/m2/bm1/bm2 = C). Koren rejected BOTH 3b
+    // options for the last three, so they keep the production-proven כה respelling until a
+    // round-3c winner replaces it.
     expect(forceMasculineAddress('אשלח לך')).toBe('אשלח לךָ');
     expect(forceMasculineAddress('אחזור אליך')).toBe('אחזור אליךָ');
     expect(forceMasculineAddress('לשמוע אותך')).toBe('לשמוע אותךָ');
-    expect(forceMasculineAddress('לדבר איתך')).toBe('לדבר איתךָ');
-    expect(forceMasculineAddress('בשבילך')).toBe('בשבילךָ');
-    expect(forceMasculineAddress('עבורך')).toBe('עבורךָ');
+    expect(forceMasculineAddress('לדבר איתך')).toBe('לדבר איתכה');
+    expect(forceMasculineAddress('בשבילך')).toBe('בשבילכה');
+    expect(forceMasculineAddress('עבורך')).toBe('עבורכה');
   });
 
   it('fixes every ambiguous suffix in the feminine — per-word winners, not one technique', () => {
-    // Round 3/3b: לך won as minimal niqqud, שלך as the שלאך respelling, אליך as the standard
-    // feminine spelling. Each entry is whatever Koren's ear picked — mixing is the point.
+    // Koren's rounds 3/3b verdicts verbatim: f1=C f2=B bf1=B bf2=C bf3=B bf4=C bf5=C.
+    // Each entry is whatever his ear picked — mixing respelling and niqqud is the point.
     expect(forceAddressGender('אשלח לך', 'f')).toBe('אשלח לָךְ');
     expect(forceAddressGender('מה השם שלך?', 'f')).toBe('מה השם שלאך?');
-    expect(forceAddressGender('אחזור אליך', 'f')).toBe('אחזור אלייך');
-    expect(forceAddressGender('לשמוע אותך', 'f')).toBe('לשמוע אותָךְ');
-    expect(forceAddressGender('לדבר איתך', 'f')).toBe('לדבר איתָךְ');
+    expect(forceAddressGender('אחזור אליך', 'f')).toBe('אחזור אלַיִךְ');
+    expect(forceAddressGender('לשמוע אותך', 'f')).toBe('לשמוע אותאך');
+    expect(forceAddressGender('לדבר איתך', 'f')).toBe('לדבר איתאך');
     expect(forceAddressGender('בשבילך', 'f')).toBe('בשבילֵךְ');
     expect(forceAddressGender('עבורך', 'f')).toBe('עבורֵךְ');
   });
@@ -307,7 +310,7 @@ describe('AddressGenderTracker — her own conjugation decides the table', () =>
     const tracker = new AddressGenderTracker();
     const out = (await drain(guardStream(chunks('מתי תרצי שאחזור אליך?'), () => false, tracker))).join('');
     expect(tracker.current).toBe('f');
-    expect(out).toContain('אלייך'); // the feminine table applied to the flipping sentence itself
+    expect(out).toContain('אלַיִךְ'); // the feminine table applied to the flipping sentence itself
   });
 
   it('flips on את + present-tense verb ("את יכולה")', () => {
