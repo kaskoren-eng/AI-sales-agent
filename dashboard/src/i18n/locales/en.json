@@ -21,7 +21,8 @@
     "billing": "Billing & Subscription",
     "mainNavigation": "Main navigation",
     "openMenu": "Open menu",
-    "members": "Team"
+    "members": "Team",
+    "voiceOps": "Voice Ops"
   },
   "navgroup": {
     "monitor": "Monitor",
@@ -541,6 +542,64 @@
       "admin": "Can do everything except transfer ownership, including inviting and removing people.",
       "member": "Can work leads, calls and the calendar, and change the agent. Cannot manage the team.",
       "viewer": "Can look at everything and change nothing."
+    }
+  },
+  "voiceOps": {
+    "kpi": {
+      "sectionLabel": "Voice agent key metrics",
+      "calls": "Calls",
+      "minutes": "Voice minutes",
+      "avgDuration": "avg {{n}} per call",
+      "bookingRate": "Booking rate",
+      "bookingRateOf": "{{booked}} of {{total}} measured calls",
+      "bookingRateNone": "No call recorded an end reason yet",
+      "cost": "Estimated cost",
+      "costEstimated": "estimated at ${{rate}}/min — not billing",
+      "failed": "Failed calls"
+    },
+    "latency": {
+      "title": "Response latency",
+      "endOfTurn": "End of turn",
+      "llmTtft": "LLM first token",
+      "ttsTtfb": "Speech first byte",
+      "worstCase": "Worst case",
+      "budget": "budget",
+      "basedOn": "based on {{n}} of {{total}} calls",
+      "awaitingTitle": "Awaiting latency data",
+      "awaitingNote": "No call in this range recorded its latency. Figures appear here for calls the voice agent completed after it began saving its per-call report."
+    },
+    "outcome": {
+      "title": "How calls ended",
+      "meeting_booked": "Meeting booked",
+      "not_qualified": "Not qualified",
+      "not_interested": "Not interested",
+      "opt_out": "Opted out",
+      "wrong_person": "Wrong person",
+      "unknown": "No reason recorded",
+      "unknownHint": "Calls with no recorded reason ended without the agent closing them — a hang-up or a dropped call. They are left out of the booking rate.",
+      "empty": "No calls in this range"
+    },
+    "chart": {
+      "title": "Daily activity",
+      "calls": "Calls",
+      "minutes": "Minutes",
+      "empty": "Could not load the trend"
+    },
+    "attention": {
+      "title": "Needs attention",
+      "failed": "Calls that failed processing",
+      "disclosureMissed": "Calls where the AI disclosure was missed",
+      "fragmented": "Calls where the agent cut the caller off ({{turns}} turns across {{calls}} calls)",
+      "overBudgetTools": "Tool calls over the {{budget}} ms budget",
+      "cutOffs": "Speech cut-offs detected",
+      "clear": "Nothing needs attention in this range"
+    },
+    "errors": {
+      "load": "Could not load voice metrics"
+    },
+    "empty": {
+      "title": "No calls in this range",
+      "note": "Once the agent takes calls, volume, outcomes and latency appear here."
     }
   }
 }

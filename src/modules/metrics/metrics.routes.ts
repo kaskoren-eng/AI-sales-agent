@@ -16,4 +16,11 @@ export async function metricsRoutes(app: FastifyInstance) {
     const range: MetricsRange = RANGES.includes(q as MetricsRange) ? (q as MetricsRange) : 'today';
     return service.summary(request.tenantId, range);
   });
+
+  // Voice-agent supervision: volume, duration, booking rate, latency, cost, attention signals.
+  app.get<{ Querystring: { range?: string } }>('/voice', async (request) => {
+    const q = request.query.range;
+    const range: MetricsRange = RANGES.includes(q as MetricsRange) ? (q as MetricsRange) : 'today';
+    return service.voice(request.tenantId, range);
+  });
 }

@@ -4,6 +4,7 @@ import { AppLayout } from './components/layout/AppLayout.js'
 import { AuthGate } from './components/AuthGate.js'
 import { RouteFallback } from './components/RouteFallback.js'
 import { Overview } from './pages/Overview.js'
+import { VoiceOps } from './pages/VoiceOps.js'
 import { Leads } from './pages/Leads.js'
 import { LeadDetail } from './pages/LeadDetail.js'
 import { Calls } from './pages/Calls.js'
@@ -82,6 +83,7 @@ function TenantShell() {
     <AppLayout>
       <Routes>
           <Route path="/" element={<Overview />} />
+          <Route path="/voice-ops" element={<VoiceOps />} />
           <Route path="/leads" element={<Leads />} />
           <Route path="/leads/:id" element={<LeadDetail />} />
           <Route path="/calls" element={<Calls />} />

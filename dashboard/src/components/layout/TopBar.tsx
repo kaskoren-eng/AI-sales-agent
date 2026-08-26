@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 const PAGE_TITLE_KEYS: Record<string, string> = {
   '/': 'nav.analytics',
+  '/voice-ops': 'nav.voiceOps',
   '/chat': 'nav.copilot',
   '/leads': 'nav.leads',
   '/calls': 'nav.calls',
