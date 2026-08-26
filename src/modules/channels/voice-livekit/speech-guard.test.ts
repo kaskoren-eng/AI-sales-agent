@@ -213,9 +213,9 @@ describe('forceAddressGender — fixing pronunciation, not vocabulary', () => {
   });
 
   it('fixes every ambiguous suffix in the masculine — per-word winners, not one technique', () => {
-    // Kamatz won for the first four (rounds 3/3b: m1/m2/bm1/bm2 = C). Koren rejected BOTH 3b
-    // options for the last three, so they keep the production-proven כה respelling until a
-    // round-3c winner replaces it.
+    // Kamatz won for the first four (rounds 3/3b: m1/m2/bm1/bm2 = C). For the last three Koren
+    // rejected plain and kamatz (3b), and round 3c confirmed the כה respelling over a patach
+    // mark (c1/c2/c3 = B). The split is final — per-word winners, all by ear.
     expect(forceMasculineAddress('אשלח לך')).toBe('אשלח לךָ');
     expect(forceMasculineAddress('אחזור אליך')).toBe('אחזור אליךָ');
     expect(forceMasculineAddress('לשמוע אותך')).toBe('לשמוע אותךָ');

@@ -94,9 +94,9 @@ const SECOND_PERSON_MASCULINE: Array<[RegExp, string]> = [
   // niqqud (U+0590–U+05FF), which makes every rule idempotent: לךָ no longer matches לך.
   //
   // NOT one technique per table — one WINNER per word. The kamatz won rounds 3/3b for the first
-  // four (m1/m2/bm1/bm2 = C); for איתך/בשבילך/עבורך Koren rejected BOTH 3b options ("bad or
-  // wrong"), so those keep the pre-round-3 respelling that shipped in production, pending a
-  // round-3c winner.
+  // four (m1/m2/bm1/bm2 = C). For איתך/בשבילך/עבורך Koren rejected both plain AND kamatz (3b),
+  // then round 3c scored the כה respelling against a patach mark — the respelling won all three
+  // (c1/c2/c3 = B, 2026-08-26). So the split below is final, each row by ear, not by theory.
   [/(?<![֐-׿])שלך(?![֐-׿])/gu, 'שלךָ'],
   [/(?<![֐-׿])לך(?![֐-׿])/gu, 'לךָ'],
   [/(?<![֐-׿])אותך(?![֐-׿])/gu, 'אותךָ'],
