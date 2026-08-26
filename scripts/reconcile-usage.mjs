@@ -21,6 +21,12 @@
  *   node scripts/reconcile-usage.mjs --apply              # backfill + recompute
  *   node scripts/reconcile-usage.mjs --tenant <uuid>      # scope to one tenant
  *   node scripts/reconcile-usage.mjs --since 2026-08-01   # limit the window (default: 90 days)
+ *   node scripts/reconcile-usage.mjs --reprice            # re-price existing call events
+ *
+ * --reprice recomputes the cost of call events that ALREADY exist, from the usage still held in
+ * call_learnings.call_report. It is for correcting a pricing bug or a rate card, and it is opt-in
+ * (and still needs --apply to write) because rewriting money-shaped rows is a bigger claim than
+ * filling in missing ones.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -45,6 +51,7 @@ function arg(name) {
 const has = (name) => process.argv.includes(`--${name}`);
 
 const APPLY = has('apply');
+const REPRICE = has('reprice');
 const TENANT = arg('tenant');
 const SINCE = arg('since') ?? new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
 
@@ -78,8 +85,32 @@ const RATES = {
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
 const toMilliAgorot = (usd) => Math.round(usd * RATES.ilsPerUsd * 100_000);
 
-function costOfCall(usage, durationSec) {
-  const u = usage ?? {};
+/**
+ * Normalise whatever LiveKit stored into flat quantities. Mirrors `readUsageSummary` in
+ * pricing.ts — including the reason it exists: the SDK moved from flat `UsageSummary` fields to a
+ * `modelUsage[]` array, and reading only the old shape prices every provider at zero.
+ */
+function readUsage(raw) {
+  const u = raw ?? {};
+  const s = typeof u.usage === 'object' && u.usage !== null ? u.usage : u;
+  if (Array.isArray(s.modelUsage)) {
+    const acc = { llmPromptTokens: 0, llmPromptCachedTokens: 0, llmCompletionTokens: 0, ttsCharactersCount: 0, sttAudioDurationMs: 0 };
+    for (const m of s.modelUsage) {
+      if (m?.type === 'llm_usage') {
+        acc.llmPromptTokens += num(m.inputTokens);
+        acc.llmPromptCachedTokens += num(m.inputCachedTokens);
+        acc.llmCompletionTokens += num(m.outputTokens);
+      } else if (m?.type === 'tts_usage') acc.ttsCharactersCount += num(m.charactersCount);
+      else if (m?.type === 'stt_usage') acc.sttAudioDurationMs += num(m.audioDurationMs);
+    }
+    return acc;
+  }
+  return s;
+}
+
+/** Priced per component, so a re-priced row can carry the same breakdown shape a live one does. */
+function priceCall(rawUsage, durationSec) {
+  const u = readUsage(rawUsage);
   const prompt = num(u.llmPromptTokens);
   const cached = Math.min(num(u.llmPromptCachedTokens), prompt);
   const llmUsd =
@@ -89,7 +120,22 @@ function costOfCall(usage, durationSec) {
   const sttUsd = (num(u.sttAudioDurationMs) / 60_000) * RATES.sttPerMinuteUsd;
   const ttsUsd = (num(u.ttsCharactersCount) / 1e6) * RATES.ttsPerMCharsUsd;
   const platformUsd = (num(durationSec) / 60) * RATES.platformPerMinuteUsd;
-  return toMilliAgorot(llmUsd) + toMilliAgorot(sttUsd) + toMilliAgorot(ttsUsd) + toMilliAgorot(platformUsd);
+  const llmMilliAgorot = toMilliAgorot(llmUsd);
+  const sttMilliAgorot = toMilliAgorot(sttUsd);
+  const ttsMilliAgorot = toMilliAgorot(ttsUsd);
+  const platformMilliAgorot = toMilliAgorot(platformUsd);
+  return {
+    llmMilliAgorot,
+    sttMilliAgorot,
+    ttsMilliAgorot,
+    platformMilliAgorot,
+    totalMilliAgorot: llmMilliAgorot + sttMilliAgorot + ttsMilliAgorot + platformMilliAgorot,
+    rateVersion: `${RATES.version}-reconciled`,
+  };
+}
+
+function costOfCall(usage, durationSec) {
+  return priceCall(usage, durationSec).totalMilliAgorot;
 }
 
 /**
@@ -245,6 +291,67 @@ async function main() {
       );
       if (periodId) touchedPeriods.add(periodId);
     }
+  }
+
+  // ── 2b. Re-price call events (--reprice) ─────────────────────────────────────
+  // The header of pricing.ts promised this: "a corrected rate card can re-price history rather
+  // than invalidate it". The first thing it has to correct is a PARSER, not a rate — every call
+  // metered before the modelUsage[] fix priced its LLM, STT and TTS at zero and billed the
+  // platform leg alone, about a fifth of the real figure. The usage itself was never lost; it is
+  // in call_learnings.call_report, which is exactly why this is recoverable.
+  //
+  // Opt-in and separate from --apply: rewriting money-shaped rows that already exist is a bigger
+  // claim than filling in ones that are missing.
+  if (REPRICE) {
+    const priced = await client.query(
+      `SELECT e.id, e.cost_milli_agorot AS stored, e.metadata, c.duration_secs,
+              c.call_report -> 'usage' AS usage
+         FROM usage_events e
+         JOIN call_learnings c
+           ON c.tenant_id = e.tenant_id AND c.conference_name = e.dedupe_key
+        WHERE e.kind = 'call' AND c.call_report IS NOT NULL
+          ${TENANT ? 'AND e.tenant_id = $1' : ''}`,
+      TENANT ? [TENANT] : [],
+    );
+
+    let changed = 0;
+    let deltaTotal = 0;
+    for (const row of priced.rows) {
+      const cost = priceCall(row.usage, row.duration_secs);
+      const stored = Number(row.stored);
+      if (cost.totalMilliAgorot === stored) continue;
+      changed++;
+      deltaTotal += cost.totalMilliAgorot - stored;
+      console.log(
+        `  ${row.duration_secs}s  ₪${(stored / 100_000).toFixed(2)} → ₪${(cost.totalMilliAgorot / 100_000).toFixed(2)}` +
+          `  [llm ₪${(cost.llmMilliAgorot / 100_000).toFixed(2)} · tts ₪${(cost.ttsMilliAgorot / 100_000).toFixed(2)}` +
+          ` · stt ₪${(cost.sttMilliAgorot / 100_000).toFixed(2)} · platform ₪${(cost.platformMilliAgorot / 100_000).toFixed(2)}]`,
+      );
+      if (APPLY) {
+        await client.query(
+          `UPDATE usage_events
+              SET cost_milli_agorot = $2,
+                  metadata = jsonb_set(
+                    jsonb_set(metadata, '{breakdown}', $3::jsonb, true),
+                    '{repricedAt}', to_jsonb(now()::text), true)
+            WHERE id = $1`,
+          [row.id, cost.totalMilliAgorot, JSON.stringify(cost)],
+        );
+        if (row.metadata?.periodId) touchedPeriods.add(row.metadata.periodId);
+      }
+    }
+    const events = await client.query(
+      `SELECT DISTINCT period_id FROM usage_events WHERE kind='call' AND period_id IS NOT NULL
+        ${TENANT ? 'AND tenant_id = $1' : ''}`,
+      TENANT ? [TENANT] : [],
+    );
+    if (APPLY) for (const r of events.rows) touchedPeriods.add(r.period_id);
+
+    console.log(
+      `\ncall events whose price changed: ${changed}` +
+        (changed ? `  (total ${deltaTotal >= 0 ? '+' : ''}₪${(deltaTotal / 100_000).toFixed(2)})` : ''),
+    );
+    if (changed && !APPLY) console.log('  dry run — pass --apply to write these');
   }
 
   // ── 3. Counter drift ─────────────────────────────────────────────────────────

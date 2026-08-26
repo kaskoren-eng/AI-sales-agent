@@ -143,6 +143,49 @@ export function costOfCall(usage: CallUsageInput, rates: RateCard = RATE_CARD): 
 export function readUsageSummary(raw: unknown, durationSec?: number): CallUsageInput {
   const u = (raw ?? {}) as Record<string, unknown>;
   const summary = (typeof u.usage === 'object' && u.usage !== null ? u.usage : u) as Record<string, unknown>;
+
+  // THE SHAPE CHANGE THIS FILE WARNED ABOUT, ARRIVED.
+  //
+  // The deprecated flat `UsageSummary` is gone; the SDK now reports `modelUsage[]`, one entry per
+  // provider. Reading only the flat fields did exactly what the header promised it would — every
+  // LLM, STT and TTS figure came back 0 and each call was priced on its platform minutes alone,
+  // roughly a fifth of its real cost. Prefer the array, keep the flat read as a fallback so an
+  // older payload still prices.
+  const models = Array.isArray(summary.modelUsage) ? (summary.modelUsage as Record<string, unknown>[]) : null;
+  if (models) {
+    // SUMMED, not taken from the first match: a call that switched voice or model mid-way reports
+    // one entry per model, and picking one would silently drop the rest.
+    let promptTokens = 0;
+    let cachedTokens = 0;
+    let completionTokens = 0;
+    let ttsChars = 0;
+    let sttMs = 0;
+    for (const m of models) {
+      switch (m?.type) {
+        case 'llm_usage':
+          promptTokens += num(m.inputTokens);
+          cachedTokens += num(m.inputCachedTokens);
+          completionTokens += num(m.outputTokens);
+          break;
+        case 'tts_usage':
+          ttsChars += num(m.charactersCount);
+          break;
+        case 'stt_usage':
+          sttMs += num(m.audioDurationMs);
+          break;
+        // Other kinds (interruption_usage, …) carry no billable quantity of their own.
+      }
+    }
+    return {
+      llmPromptTokens: promptTokens,
+      llmPromptCachedTokens: cachedTokens,
+      llmCompletionTokens: completionTokens,
+      ttsCharactersCount: ttsChars,
+      sttAudioDurationMs: sttMs,
+      ...(durationSec !== undefined ? { durationSec: num(durationSec) } : {}),
+    };
+  }
+
   return {
     llmPromptTokens: num(summary.llmPromptTokens),
     llmPromptCachedTokens: num(summary.llmPromptCachedTokens),

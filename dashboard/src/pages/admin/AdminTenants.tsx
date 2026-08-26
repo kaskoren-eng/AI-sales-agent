@@ -195,14 +195,32 @@ function TenantDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                     const minutesUsed = Math.ceil(op.secondsUsed / 60)
                     const costShekels = op.measuredCostMilliAgorot / 1000 / 100
                     const overage = op.includedMinutes == null ? 0 : Math.max(0, minutesUsed - op.includedMinutes)
+                    const cb = op.costByComponent
+                    const shk = (milliAgorot: number) => `₪${(milliAgorot / 100_000).toFixed(2)}`
+                    // A component sitting at exactly zero while the others move is the signature of
+                    // a provider we failed to parse, not a provider that was free.
+                    const unmeasured = (['llm', 'stt', 'tts'] as const).filter((k) => cb[k] === 0 && minutesUsed > 0)
                     return (
-                      <StatGrid items={[
-                        ['Minutes used', op.includedMinutes == null ? `${num(minutesUsed)} (unmetered)` : `${num(minutesUsed)} / ${num(op.includedMinutes)}`],
-                        ['Overage', overage > 0 ? `${num(overage)} min · ₪${((overage * op.overagePerMinuteAgorot) / 100).toFixed(2)}` : '—'],
-                        ['Our cost', `₪${costShekels.toFixed(2)}`],
-                        // The number the whole cost question was really about.
-                        ['Cost / minute', minutesUsed > 0 ? `₪${(costShekels / minutesUsed).toFixed(3)}` : '—'],
-                      ]} />
+                      <>
+                        <StatGrid items={[
+                          ['Minutes used', op.includedMinutes == null ? `${num(minutesUsed)} (unmetered)` : `${num(minutesUsed)} / ${num(op.includedMinutes)}`],
+                          ['Overage', overage > 0 ? `${num(overage)} min · ₪${((overage * op.overagePerMinuteAgorot) / 100).toFixed(2)}` : '—'],
+                          ['Our cost', `₪${costShekels.toFixed(2)}`],
+                          // The number the whole cost question was really about.
+                          ['Cost / minute', minutesUsed > 0 ? `₪${(costShekels / minutesUsed).toFixed(3)}` : '—'],
+                          // The rubrics: what we are paying for, not just how much.
+                          ['↳ LLM', shk(cb.llm)],
+                          ['↳ TTS (speech)', shk(cb.tts)],
+                          ['↳ STT (transcription)', shk(cb.stt)],
+                          ['↳ Platform + SIP', shk(cb.platform)],
+                        ]} />
+                        {unmeasured.length > 0 && (
+                          <p style={{ fontSize: '12px', color: 'var(--status-warning)', marginBlockStart: '8px', lineHeight: 1.5 }}>
+                            {unmeasured.map((k) => k.toUpperCase()).join(', ')} priced at zero across {num(minutesUsed)} minutes —
+                            that is almost certainly usage we failed to read, not a provider that was free. Cost below is understated.
+                          </p>
+                        )}
+                      </>
                     )
                   })()}
                 </Section>

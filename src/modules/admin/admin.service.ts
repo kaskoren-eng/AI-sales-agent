@@ -1,4 +1,4 @@
-import { and, count, eq, gte, max, sum } from 'drizzle-orm';
+import { and, count, eq, gte, max, sql, sum } from 'drizzle-orm';
 import type { Database } from '../../db/client.js';
 import {
   tenants,
@@ -9,6 +9,7 @@ import {
   callLearnings,
   plans,
   usagePeriods,
+  usageEvents,
   phoneNumbers,
 } from '../../db/schema/index.js';
 import { NotFoundError } from '../../shared/errors.js';
@@ -79,6 +80,13 @@ export interface TenantDetail {
     overagePerMinuteAgorot: number;
     secondsUsed: number;
     measuredCostMilliAgorot: number;
+    /**
+     * The same cost, split by what we are actually paying for. A total answers "are we making
+     * money"; the split answers "on what", which is the only version you can act on — and it is
+     * how a mis-parsed provider shows up at all, as a line sitting at exactly zero while the
+     * others move.
+     */
+    costByComponent: { llm: number; stt: number; tts: number; platform: number };
   } | null;
 }
 
@@ -158,6 +166,33 @@ export class AdminService {
     // No open period is normal, not an error: one is created lazily on the tenant's first metered
     // unit. A tenant that has never had a lead or a call simply has nothing to reprice.
     return { ...tenant, openPeriod: open ?? null };
+  }
+
+  /**
+   * One period's cost, split by provider, summed from the per-call breakdowns in the ledger.
+   *
+   * Read from `usage_events.metadata.breakdown` rather than recomputed: each event stored the rate
+   * version it was priced under, so re-deriving now would silently re-price history against
+   * today's rates and make two different numbers share a label.
+   */
+  private async costByComponent(periodId: string): Promise<{ llm: number; stt: number; tts: number; platform: number }> {
+    const part = (key: string) =>
+      sql<number>`coalesce(sum((${usageEvents.metadata} -> 'breakdown' ->> ${key})::bigint), 0)`;
+    const [row] = await this.db
+      .select({
+        llm: part('llmMilliAgorot'),
+        stt: part('sttMilliAgorot'),
+        tts: part('ttsMilliAgorot'),
+        platform: part('platformMilliAgorot'),
+      })
+      .from(usageEvents)
+      .where(eq(usageEvents.periodId, periodId));
+    return {
+      llm: Number(row?.llm ?? 0),
+      stt: Number(row?.stt ?? 0),
+      tts: Number(row?.tts ?? 0),
+      platform: Number(row?.platform ?? 0),
+    };
   }
 
   /**
@@ -272,6 +307,7 @@ export class AdminService {
       this.db.select({ upcoming: count() }).from(scheduledCalls).where(and(eq(scheduledCalls.tenantId, id), gte(scheduledCalls.scheduledAt, now))),
       this.db
         .select({
+          id: usagePeriods.id,
           periodStart: usagePeriods.periodStart,
           periodEnd: usagePeriods.periodEnd,
           includedMinutes: usagePeriods.includedMinutes,
@@ -327,7 +363,9 @@ export class AdminService {
         calls: { total: callsTotal, voiceMinutes: Math.round(Number(callMins[0]?.s ?? 0) / 60), byOutcome },
         meetings: { total: Number(meetTotalRow?.c ?? 0), upcoming: Number(meetRows[0]?.upcoming ?? 0) },
       },
-      openPeriod: openPeriodRows[0] ? { ...openPeriodRows[0] } : null,
+      openPeriod: openPeriodRows[0]
+        ? { ...openPeriodRows[0], costByComponent: await this.costByComponent(openPeriodRows[0].id) }
+        : null,
     };
   }
 }
