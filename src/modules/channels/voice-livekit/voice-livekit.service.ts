@@ -57,8 +57,19 @@ export class LiveKitVoiceService {
    * Dials a lead. Returns the room name, which is our call id — it is what ties the call to the
    * `conversations` row via `channelRef`.
    *
-   * Returns `{ callId: 'skipped' }` when the outbound trunk isn't configured, so a missing
-   * config degrades rather than throws mid-flow.
+   * THROWS when the outbound trunk is not configured.
+   *
+   * It used to return `{ callId: 'skipped' }` on the reasoning that a missing config should
+   * degrade rather than throw mid-flow. That reasoning was wrong, and it cost a day:
+   * `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` was never set on Railway, so every production dial returned
+   * `skipped` — and because nothing threw, the flow executor logged `outbound_call_placed` and
+   * `POST /calls/outbound` answered `{ ok: true, callId: 'skipped' }`. Production reported
+   * placing calls, for weeks, while dialling nothing. The only symptom was a phone that did not
+   * ring, which nobody can see in a log.
+   *
+   * A config gap that reads as success is strictly worse than a failed job: the failed job lands
+   * in the dead-letter queue, where it is someone's problem. So this throws, and the caller's
+   * existing retry/DLQ path does the rest.
    */
   async initiateOutboundCall(
     to: string,
@@ -67,7 +78,22 @@ export class LiveKitVoiceService {
   ): Promise<{ callId: string }> {
     const trunkId = this.env.LIVEKIT_SIP_OUTBOUND_TRUNK_ID;
     if (!trunkId) {
-      return { callId: 'skipped' };
+      // Logged as well as thrown: the throw is caught by BullMQ's retry, so without this line the
+      // only trace is a job failure reason. No `to` — that is a lead's phone number.
+      console.error(
+        'livekit_dial_no_trunk',
+        JSON.stringify({
+          event: 'dial_failed_no_trunk',
+          tenantId,
+          leadId: leadContext?.leadId,
+          reason: 'LIVEKIT_SIP_OUTBOUND_TRUNK_ID is unset',
+        }),
+      );
+      throw new AppError(
+        'Outbound calling is not configured (LIVEKIT_SIP_OUTBOUND_TRUNK_ID is unset)',
+        503,
+        'SIP_TRUNK_NOT_CONFIGURED',
+      );
     }
 
     // Toll-fraud brake at the dial itself (defense in depth with the flow-executor pre-check).

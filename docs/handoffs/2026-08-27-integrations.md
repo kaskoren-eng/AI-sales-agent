@@ -103,12 +103,10 @@ dark until that flip. Nothing in this work depends on it.
 
 ## Blocked on Koren
 
-1. **`AIRTABLE_LEADS_PAT`** — set the real `data.records:write`-scoped PAT on Railway (and
-   locally). The probe used the existing `AIRTABLE_API_KEY`, which happens to reach this base;
-   the dedicated scoped token is what should ship.
-2. **`PLATFORM_TENANT_ID`** — set to the ClickScales tenant. It is **not in the local `.env`**;
-   confirm it is set on Railway too, or the push silently never fires (fail-closed by design).
-3. **Merge** — branch is unmerged. `main` is the trunk Railway deploys.
+~~2. `PLATFORM_TENANT_ID`~~ and ~~3. Merge~~ — both **done**, see GO-LIVE above.
+
+1. **`AIRTABLE_LEADS_PAT`** — still references `AIRTABLE_API_KEY` rather than a dedicated
+   `data.records:write`-scoped PAT. Functional and proven, but it is the broad account key.
 
 Note: I deleted the `.env` I created in this worktree rather than leaving a second copy of
 production secrets on disk. Copy your own in before running it.
