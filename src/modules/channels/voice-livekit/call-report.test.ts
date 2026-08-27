@@ -94,3 +94,21 @@ describe('CallReport dead air', () => {
     expect(deadAir).toEqual({ medianMs: null, p90Ms: null, minMs: null, maxMs: null, samples: 0 });
   });
 });
+
+describe('CallReport repeatedPhraseCount — the anti-repetition gate (2026-08-27)', () => {
+  it('counts distinct 4-grams the agent said 2+ times, over the agent lines only', () => {
+    const report = newReport();
+    report.recordTranscript('assistant', 'נשמע מעולה, בוא נקבע שיחת דמו קצרה השבוע.');
+    report.recordTranscript('user', 'בוא נקבע שיחת דמו קצרה'); // the CALLER echoing is not her repeat
+    report.recordTranscript('assistant', 'אין בעיה, בוא נקבע שיחת דמו קצרה ליום שני.');
+    expect(report.toJson().summary.repeatedPhraseCount).toBeGreaterThan(0);
+  });
+
+  it('is zero on a varied call — the gate is ≤2, the target is 0', () => {
+    const report = newReport();
+    report.recordTranscript('assistant', 'שלום, מדברת קרן מקליקסקיילס.');
+    report.recordTranscript('assistant', 'איזה עסק יש לך בדיוק?');
+    report.recordTranscript('assistant', 'מעולה, אז נתקדם לתיאום.');
+    expect(report.toJson().summary.repeatedPhraseCount).toBe(0);
+  });
+});

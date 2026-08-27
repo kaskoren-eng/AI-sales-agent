@@ -84,6 +84,20 @@ describe('Keren v2 — the call flow', () => {
     expect(SYSTEM_PROMPT_HE).toMatch(/one question at a time/u);
   });
 
+  it('discovery questions are INTENTS with phrasing banks, never a fixed script (2026-08-27)', () => {
+    // Humanization §4's top offenders: the name question and the discovery bank were bare
+    // literals, so every call opened with the same sentences. Each intent now carries 5
+    // phrasings and an explicit never-verbatim rule — the phrase ledger enforces it in code.
+    expect(SYSTEM_PROMPT_HE).toMatch(/Each entry is an INTENT with example phrasings/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/never the same sentence twice in one call/u);
+    // The name question kept its original phrasing as ONE of the bank's entries…
+    expect(SYSTEM_PROMPT_HE).toMatch(/עם מי אני מדברת/u);
+    // …alongside real variants, for both the name question and the discovery bank.
+    expect(SYSTEM_PROMPT_HE).toContain('איך קוראים לך');
+    expect(SYSTEM_PROMPT_HE).toContain('ספר לי קצת על העסק');
+    expect(SYSTEM_PROMPT_HE).toContain('מאיפה מגיעות אליך רוב הפניות');
+  });
+
   it('treats general uncertainty as an objection to handle, NOT a disqualifier', () => {
     expect(SYSTEM_PROMPT_HE).toMatch(/General uncertainty is not a disqualifier/u);
   });

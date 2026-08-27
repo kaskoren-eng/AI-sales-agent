@@ -36,6 +36,7 @@ import {
   timeFirstChunk,
   withFiller,
 } from './speech-guard.js';
+import { PhraseLedger } from './phrase-ledger.js';
 import { ShadowSTT } from './stt/shadow-stt.js';
 import { DeepdubTTS } from './tts/deepdub.tts.js';
 import { buildAgentTools } from './tools/index.js';
@@ -158,6 +159,16 @@ class ClickScalesAgent extends voice.Agent {
    * starts masculine. See AddressGenderTracker in speech-guard.ts for the full rules.
    */
   readonly genderTracker = new AddressGenderTracker();
+
+  /**
+   * What she has already said this call, as 4-grams — the anti-repetition ledger
+   * (VOICE_PHRASE_LEDGER_ENABLED). Fed from committed assistant items; its note is injected at
+   * turn boundaries by injectPhraseNote() below. One per call, like the gender tracker.
+   */
+  readonly phraseLedger = new PhraseLedger();
+
+  /** The last ledger note injected, so an unchanged note is never re-written into the ctx. */
+  lastPhraseNote: string | null = null;
 
   constructor(
     opts: ConstructorParameters<typeof voice.Agent>[0],
@@ -389,6 +400,45 @@ function timeFirstAudioFrame(
   });
 }
 
+
+/** The ledger note's stable chat-item id — replaced in place on each injection. */
+const PHRASE_NOTE_ID = 'phrase-ledger-note';
+
+/**
+ * Injects (or refreshes) the phrase ledger's "do not reuse these phrasings" note.
+ *
+ * WHERE AND WHY: called only from the ConversationItemAdded handler, after an ASSISTANT item
+ * committed — the same safe point trimHistory uses. Her reply is done, the next preemptive draft
+ * has not been snapshotted yet, so `isEquivalent()` holds on the next turn and no draft is ever
+ * invalidated (mutating the ctx in onUserTurnCompleted was the documented way to silently kill
+ * preemptive generation — this is the other way, the one that doesn't).
+ *
+ * CACHE SHAPE: the note is APPENDED at the tail as a system item; the previous note (1–2 items
+ * from the tail) is removed first. OpenAI caches the longest common prompt PREFIX, so everything
+ * before the old note's position — the system prompt and nearly all history — stays cached.
+ * Rewriting the instructions instead would churn the prefix and collapse the 92% hit rate to
+ * zero (measured, the sliding-window lesson).
+ *
+ * A call with no repetition never enters this function's update path at all — note() is null and
+ * the mechanism costs zero tokens.
+ */
+async function injectPhraseNote(agent: ClickScalesAgent): Promise<void> {
+  try {
+    const note = agent.phraseLedger.note();
+    if (!note || note === agent.lastPhraseNote) return;
+    const ctx = agent.chatCtx.copy();
+    ctx.items = ctx.items.filter((it) => it.id !== PHRASE_NOTE_ID);
+    ctx.addMessage({ role: 'system', content: note, id: PHRASE_NOTE_ID });
+    await agent.updateChatCtx(ctx);
+    agent.lastPhraseNote = note;
+    console.log(
+      `phrase_ledger ${JSON.stringify({ repeated4grams: agent.phraseLedger.repeatedGramCount, note: note.slice(0, 120) })}`,
+    );
+  } catch (err) {
+    // Advisory mechanism — never fail a live call over a style reminder.
+    console.error('phrase_ledger_inject_failed', err instanceof Error ? err.message : String(err));
+  }
+}
 
 /**
  * Keeps the conversation history bounded, WITHOUT invalidating a preemptive draft.
@@ -813,7 +863,15 @@ export default defineAgent({
       // 1b. Advance the conversation state machine on committed turns (opening→discovery→…).
       //     No-op when the advisory layer is disabled (callState undefined).
       if (item?.role === 'user') callState?.onUserTurn();
-      else if (item?.role === 'assistant') callState?.onAgentTurn();
+      else if (item?.role === 'assistant') {
+        callState?.onAgentTurn();
+        // Anti-repetition ledger: fold her committed reply in, then (below, after the trim)
+        // refresh the per-turn "do not reuse these phrasings" note. The ledger itself dedupes
+        // the preemptive-draft echo this event delivers.
+        if (env.VOICE_PHRASE_LEDGER_ENABLED && item.textContent) {
+          agent.phraseLedger.observe(item.textContent);
+        }
+      }
 
       // 1c. The caller stating their gender outright ("אני אישה", "אפשר בלשון זכר") switches the
       //     pronunciation table IMMEDIATELY — before the LLM's next reply, not one reply late.
@@ -830,7 +888,12 @@ export default defineAgent({
 
       // 2. Trim the history — HERE, between turns, and never inside onUserTurnCompleted, where it
       //    invalidated LiveKit's preemptive draft on every single turn. See trimHistory().
-      void trimHistory(agent, env.VOICE_MAX_HISTORY_ITEMS);
+      //    The ledger note rides the SAME promise chain, never concurrently: both do a
+      //    copy→mutate→updateChatCtx, and two racing copies would silently drop one change.
+      const trimmed = trimHistory(agent, env.VOICE_MAX_HISTORY_ITEMS);
+      if (env.VOICE_PHRASE_LEDGER_ENABLED && item?.role === 'assistant') {
+        void trimmed.then(() => injectPhraseNote(agent));
+      }
 
       // 3. FLUSH THE REPORT AFTER EVERY TURN, not just at shutdown.
       //

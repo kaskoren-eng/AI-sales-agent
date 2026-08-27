@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ShadowSttTranscript } from '../../../db/schema/call-learnings.js';
+import { countRepeatedFourGrams } from './phrase-ledger.js';
 
 /**
  * A durable record of one call: what was heard, what was said, and how slow it was.
@@ -141,6 +142,17 @@ export interface CallReportJson {
      * A log line is not evidence of a sound.
      */
     duplicateReplies: number;
+    /**
+     * Distinct 4-grams the agent spoke 2+ times on this call — the "sounds like a robot" number.
+     *
+     * `duplicateReplies` above catches only a WHOLE reply said twice; this catches the failure
+     * Koren actually hears (2026-08-27): the same phrasings recycled inside different replies.
+     * The humanization plan's baseline measured up to 62 per call; the phrase ledger
+     * (VOICE_PHRASE_LEDGER_ENABLED) is the enforcement and THIS is its gate — ≤2 per call on the
+     * scenario suite. Computed by countRepeatedFourGrams (phrase-ledger.ts), the same function
+     * the baseline backfill (scripts/repeated-phrases-baseline.mjs) uses, so the numbers compare.
+     */
+    repeatedPhraseCount: number;
     /**
      * Share of LLM input tokens served from OpenAI's prompt cache, across the call.
      *
@@ -517,6 +529,9 @@ export class CallReport {
         cutOffs: this.#cutOffs,
         fragmentedTurns,
         duplicateReplies,
+        repeatedPhraseCount: countRepeatedFourGrams(
+          this.#transcript.filter((t) => t.role === 'assistant').map((t) => t.text),
+        ),
         promptCacheHitPct,
         draftsDiscarded,
         endOfTurnMedianMs: eouMed,

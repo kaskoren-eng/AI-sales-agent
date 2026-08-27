@@ -415,6 +415,12 @@ const envSchema = z.object({
   // Speech-only — transcripts/chatCtx keep the digits, same contract as the gender tables.
   // Default ON (Koren, 2026-08-27). Set false to restore raw digit read-out.
   VOICE_SPEECH_NUMBERS_ENABLED: envBool(true),
+  // Kill-switch for the anti-repetition phrase ledger (phrase-ledger.ts): tracks 4-grams she has
+  // already said this call and appends a per-turn "do not reuse these phrasings" system note at
+  // turn boundaries (tail-appended — never churns the prompt-cache prefix, never touches an
+  // in-flight preemptive draft). Default ON (Koren, 2026-08-27). Set false to remove the note
+  // entirely; the repeatedPhraseCount metric in CallReport keeps reporting either way.
+  VOICE_PHRASE_LEDGER_ENABLED: envBool(true),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),
