@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TOOL_NAMES } from '../tools/index.js';
-import { GREETING_HE, SYSTEM_PROMPT_HE, buildSystemPrompt } from './system-prompt.he.js';
+import { GREETING_HE, SPOKEN_REGISTER_SLANG, SYSTEM_PROMPT_HE, buildSystemPrompt } from './system-prompt.he.js';
 
 const TOOLS_PROMPT = buildSystemPrompt({ toolsEnabled: true });
 
@@ -427,5 +427,55 @@ describe('Keren — emotional color (round 4, 2026-08-26)', () => {
     expect(SYSTEM_PROMPT_HE).toMatch(/never stage directions or bracketed tags/iu);
     // And the section itself must not demonstrate one, or the model will copy it.
     expect(SYSTEM_PROMPT_HE).not.toMatch(/\[laughter\]|\[sigh\]/u);
+  });
+});
+
+/**
+ * The spoken register (2026-08-27). Koren's third live-call complaint: her Hebrew is too formal
+ * and scripted. Simple spoken Hebrew + LIGHT slang (סבבה/אחלה level), heavy street slang
+ * explicitly out. Same discipline as EMOTIONAL_COLOR: devices + beats, one touch per reply,
+ * never verbatim. Kill-switch: VOICE_SPOKEN_REGISTER_ENABLED → spokenRegister option.
+ */
+describe('Keren — spoken register (2026-08-27)', () => {
+  it('carries the Spoken Register section by default, in BOTH variants', () => {
+    expect(SYSTEM_PROMPT_HE).toContain('## Spoken Register');
+    expect(buildSystemPrompt({ toolsEnabled: true })).toContain('## Spoken Register');
+  });
+
+  it('the kill-switch drops the section entirely — the pre-register prompt on that axis', () => {
+    const off = buildSystemPrompt({ toolsEnabled: true, spokenRegister: false });
+    expect(off).not.toContain('## Spoken Register');
+    expect(off).not.toContain('סבבה');
+  });
+
+  it('bans the bookish lexemes and puts structure FIRST', () => {
+    // The corpus scan found the formality lives in sentence structure, not fancy words — so the
+    // section leads with structure rules; the word list is the guard-rail.
+    expect(SYSTEM_PROMPT_HE).toMatch(/Structure first/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/לפיכך, בכדי, ברצוני, אודות, הנני, כמו כן/u);
+  });
+
+  it('one slang touch per reply MAX, varied — the same word every reply is the new robot', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/At most ONE slang touch per reply/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/if you used a word recently, pick another or none/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/never copy these verbatim/u);
+  });
+
+  it('heavy street slang is banned BY NAME — Koren\'s explicit choice', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/NO heavy street slang/u);
+    // The banned words appear exactly once each — inside the ban itself, never as examples.
+    for (const banned of ['אין מצב', 'וואי', 'פצצה']) {
+      const hits = SYSTEM_PROMPT_HE.split(banned).length - 1;
+      expect(hits, `${banned} must appear exactly once (in the ban)`).toBe(1);
+    }
+  });
+
+  it('every slang-bank word is in the prompt, and the ledger tracks the same list', () => {
+    // SPOKEN_REGISTER_SLANG is consumed by the PhraseLedger (agent.ts) — the bank and the
+    // tracked-word list must never drift apart, and every entry passed round-5 screening.
+    expect(SPOKEN_REGISTER_SLANG).toEqual(['סבבה', 'אחלה', 'מעולה', 'בקטנה', 'על הדרך']);
+    for (const word of SPOKEN_REGISTER_SLANG) {
+      expect(SYSTEM_PROMPT_HE).toContain(word);
+    }
   });
 });

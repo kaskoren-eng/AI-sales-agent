@@ -21,7 +21,12 @@ import { decideSilenceAction, decideVoicemailAction } from './call-reflexes.js';
 import { HOLD_CHECKBACK_HE } from './call-state-lines.he.js';
 import { hasAiDisclosure } from './compliance/ai-disclosure.js';
 import { playRecordingNotice } from './compliance/recording-notice.js';
-import { GREETING_HE, buildSystemPrompt, readBusinessProfile } from './prompts/system-prompt.he.js';
+import {
+  GREETING_HE,
+  SPOKEN_REGISTER_SLANG,
+  buildSystemPrompt,
+  readBusinessProfile,
+} from './prompts/system-prompt.he.js';
 import {
   FILLER_COOLDOWN_MS,
   MAX_FILLERS_PER_CALL,
@@ -165,7 +170,7 @@ class ClickScalesAgent extends voice.Agent {
    * (VOICE_PHRASE_LEDGER_ENABLED). Fed from committed assistant items; its note is injected at
    * turn boundaries by injectPhraseNote() below. One per call, like the gender tracker.
    */
-  readonly phraseLedger = new PhraseLedger();
+  readonly phraseLedger = new PhraseLedger(SPOKEN_REGISTER_SLANG);
 
   /** The last ledger note injected, so an unchanged note is never re-written into the ctx. */
   lastPhraseNote: string | null = null;
@@ -926,6 +931,7 @@ export default defineAgent({
           // Must track the same flag the ack itself reads. If the prompt forbids her opener while
           // no acknowledgement is being spoken, she starts every reply cold.
           instantAck: env.VOICE_INSTANT_ACK,
+          spokenRegister: env.VOICE_SPOKEN_REGISTER_ENABLED,
         }),
         ...(runtime ? { tools: buildAgentTools(runtime) } : {}),
       },

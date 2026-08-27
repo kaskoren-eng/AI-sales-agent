@@ -96,6 +96,48 @@ The craft rules:
 - **Questions with a choice** — prefer an either/or phrasing: "מתי הכי נוח לך — בבוקר, או אחר הצהריים?" It carries a natural asking melody where a flat question does not.
 - Between the beats, stay natural — not every sentence excited, that is a machine again. This never overrides the Speech Rhythm rule above: the emotional touch lives INSIDE the reply, never as another opener. Only speakable words — never stage directions or bracketed tags.`;
 
+/**
+ * The light-slang device bank — ALSO consumed by the phrase ledger (agent.ts), which tracks these
+ * as unigrams so the same slang word every reply gets flagged like any repeated phrasing.
+ *
+ * EVERY word here passed the round-5 pronunciation screening (tests/hebrew-tts-niqqud-ab/round5.py,
+ * 2026-08-27, sonic-3.5: synth → 8kHz phone band → Soniox round-trip, all heard back intact) —
+ * the written-laughter lesson (round 4b) is why nothing enters this list without that gate. A new
+ * candidate goes through round 5 BEFORE it is added.
+ */
+export const SPOKEN_REGISTER_SLANG = ['סבבה', 'אחלה', 'מעולה', 'בקטנה', 'על הדרך'] as const;
+
+/**
+ * The spoken register — simple everyday Hebrew, lightly seasoned.
+ *
+ * Koren, 2026-08-27, live calls: her Hebrew is too formal and scripted. He wants simple spoken
+ * Hebrew with LIGHT everyday slang — סבבה/אחלה level — explicitly NOT heavy street slang. The
+ * corpus scan behind the ban list: 166 real agent lines contained essentially none of the classic
+ * formal lexemes (2× בהחלט, 2× מצוין), so the formality Koren hears lives in SENTENCE STRUCTURE
+ * — which is why the structural rules below come first and the word list is a guard-rail.
+ * Same discipline as EMOTIONAL_COLOR: devices + beats, one touch per reply, never verbatim.
+ */
+const SPOKEN_REGISTER = `## Spoken Register — talk like a person on the phone, not like a letter
+
+Your Hebrew must sound like everyday SPOKEN Hebrew — the way a friendly, sharp salesperson actually talks on the phone. Written-Hebrew register is what makes you sound scripted.
+
+**Structure first — this is where formality actually lives:**
+
+- One idea per sentence. Short, direct sentences beat long clauses every time.
+- Say it the simple way: "בוא נסגור" not "אשמח שנתאם", "אני אבדוק" not "אבצע בדיקה", "זה עוזר ל..." not "הדבר מסייע ל...".
+- Never use bookish words: לפיכך, בכדי, ברצוני, אודות, הנני, כמו כן, מבעוד מועד, באפשרותי. If a word would look at home in an official letter, pick the word you would say to a friend.
+
+**Light slang — a seasoning, never a flood:**
+
+Everyday softeners are welcome and make you human: סבבה, אחלה, מעולה, בקטנה, על הדרך. Examples of the register (write your own words each time, never copy these verbatim): "סבבה, אז נתקדם." · "אחלה, זה בדיוק מה שרציתי לשמוע." · "אפשר להתחיל בקטנה ולראות איך זה עובד." · "ועל הדרך זה גם חוסך לך זמן."
+
+The craft rules:
+
+- **At most ONE slang touch per reply.** A slang word in every sentence is a different kind of robot.
+- **Vary them.** The same סבבה every reply is as scripted as no slang at all — if you used a word recently, pick another or none.
+- **NO heavy street slang. Ever.** Not "אין מצב", not "וואי", not "פצצה", not "מהמם", not "אש". Light and professional, not טיקטוק.
+- Slang belongs in reactions and transitions — never inside the important facts (a price, a time, a name stays clean and clear).`;
+
 interface PromptSlots {
   /** "Then call \`end_call\`..." lines — with reasons in tools mode, bare in legacy mode. */
   endCallBadTime: string;
@@ -111,6 +153,8 @@ interface PromptSlots {
   objectionPlaybook: string;
   /** Whether she writes her own opener, or we speak one for her. See SPEECH_RHYTHM_* above. */
   speechRhythm: string;
+  /** The SPOKEN_REGISTER section (VOICE_SPOKEN_REGISTER_ENABLED), or '' when the flag is off. */
+  spokenRegister: string;
   /** Per-tenant business facts, injected after the Role section. Empty string when the tenant
    * has no businessProfile — the prompt then reads exactly as it did before this existed. The
    * PROSE inside is Koren's (tenant content); this file only plumbs the fields into labelled
@@ -322,7 +366,7 @@ ${slots.speechRhythm}
 
 ---
 
-${EMOTIONAL_COLOR}
+${EMOTIONAL_COLOR}${slots.spokenRegister}
 
 ---
 
@@ -520,6 +564,7 @@ export function buildSystemPrompt({
   businessProfile = null,
   objectionHandling = true,
   instantAck = false,
+  spokenRegister = true,
 }: {
   toolsEnabled: boolean;
   /** Per-tenant grounding. Absent/null → the prompt is byte-for-byte the pre-existing one. */
@@ -529,12 +574,17 @@ export function buildSystemPrompt({
   objectionHandling?: boolean;
   /** `VOICE_INSTANT_ACK`. True → we speak her opener, so the prompt must forbid her writing one. */
   instantAck?: boolean;
+  /** `VOICE_SPOKEN_REGISTER_ENABLED`. False drops the Spoken Register section — the kill-switch
+   * back to the pre-2026-08-27 register. */
+  spokenRegister?: boolean;
 }): string {
   const businessContext = renderBusinessContext(businessProfile);
   const speechRhythm = instantAck ? SPEECH_RHYTHM_ACK_INJECTED : SPEECH_RHYTHM_OWN_OPENER;
+  const spokenRegisterSection = spokenRegister ? `\n\n---\n\n${SPOKEN_REGISTER}` : '';
   if (!toolsEnabled) {
     return assemble({
       speechRhythm,
+      spokenRegister: spokenRegisterSection,
       endCallBadTime: 'Then call `end_call`.',
       endCallDisqualified: 'Then call `end_call`.',
       endCallHandoff: 'call `end_call`.',
@@ -547,6 +597,7 @@ export function buildSystemPrompt({
   }
   return assemble({
     speechRhythm,
+    spokenRegister: spokenRegisterSection,
     endCallBadTime: 'Then call `end_call` with reason "bad_time".',
     endCallDisqualified: 'Then call `end_call` with reason "not_qualified".',
     endCallHandoff: 'call `end_call` with reason "callback_requested".',

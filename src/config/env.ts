@@ -421,6 +421,10 @@ const envSchema = z.object({
   // in-flight preemptive draft). Default ON (Koren, 2026-08-27). Set false to remove the note
   // entirely; the repeatedPhraseCount metric in CallReport keeps reporting either way.
   VOICE_PHRASE_LEDGER_ENABLED: envBool(true),
+  // Kill-switch for the Spoken Register prompt section (simple spoken Hebrew + the light-slang
+  // bank — סבבה/אחלה level, no heavy street slang; Koren's explicit register choice 2026-08-27).
+  // Default ON. Set false to drop the section and restore the previous register.
+  VOICE_SPOKEN_REGISTER_ENABLED: envBool(true),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),
