@@ -309,6 +309,8 @@ class ClickScalesAgent extends voice.Agent {
             // ("קבעתי לך ליום ראשון") must already be allowed through.
             () => this.toolRuntime?.bookingCompleted === true,
             this.genderTracker,
+            // Digits → colloquial Hebrew words in the SPOKEN text only (times, phones, prices).
+            env.VOICE_SPEECH_NUMBERS_ENABLED,
           ),
           startedAt,
           (ms) => {

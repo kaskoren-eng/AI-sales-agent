@@ -172,11 +172,22 @@ describe('Keren Phase 4 — tools-mode prompt', () => {
 
   it('day-first booking flow: offer TOMORROW, then the day, then the free RANGE', () => {
     // The flow Koren specified 2026-07-29: default to tomorrow, pick a day together if not, then
-    // offer the calendar's free hours as a RANGE ("יש לי פנוי מ-10:00 עד 15:00"), not a slot list.
+    // offer the calendar's free hours as a RANGE ("יש לי פנוי מעשר עד שלוש"), not a slot list.
     expect(TOOLS_PROMPT).toMatch(/Offer TOMORROW first/u);
     expect(TOOLS_PROMPT).toMatch(/for THAT DAY ONLY/u);
     expect(TOOLS_PROMPT).toMatch(/Offer the free RANGE/u);
-    expect(TOOLS_PROMPT).toContain('יש לי פנוי מ-10:00 עד 15:00');
+    expect(TOOLS_PROMPT).toContain('יש לי פנוי מעשר עד שלוש');
+  });
+
+  it('hours are spoken as colloquial words, never digits (Koren, 2026-08-27)', () => {
+    // The speech-guard normalizer is the safety net; the prompt is the first line. The range
+    // example itself models the colloquial form — a digit example here would teach the opposite.
+    expect(TOOLS_PROMPT).toMatch(/Say hours the way people say them/u);
+    expect(TOOLS_PROMPT).toContain('ארבע וחצי');
+    expect(TOOLS_PROMPT).toContain('רבע לחמש');
+    // The banned forms are NAMED as anti-examples exactly once each, in the rule itself.
+    expect(TOOLS_PROMPT).toMatch(/never raw digits \("16:30"\)/u);
+    expect(TOOLS_PROMPT).toMatch(/שש עשרה ושלושים/u);
   });
 
   it('carries the objection-handling playbook (tools variant), absent from the legacy variant', () => {

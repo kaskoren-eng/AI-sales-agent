@@ -410,6 +410,11 @@ const envSchema = z.object({
   // Default ON. Set false to run Keren exactly as she was before the state machine — used to A/B
   // whether the advisory layer affects call behaviour. Tools and the gate are unaffected either way.
   VOICE_STATE_MACHINE_ENABLED: envBool(true),
+  // Kill-switch for the Hebrew number/time SPEECH normalizer (speech-numbers.he.ts): clock times
+  // ("16:30" → "ארבע וחצי"), phone digits and round prices are spoken as colloquial Hebrew words.
+  // Speech-only — transcripts/chatCtx keep the digits, same contract as the gender tables.
+  // Default ON (Koren, 2026-08-27). Set false to restore raw digit read-out.
+  VOICE_SPEECH_NUMBERS_ENABLED: envBool(true),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),

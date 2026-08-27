@@ -1,4 +1,5 @@
 import { dropEchoedOpener } from './prompts/acknowledgements.he.js';
+import { normalizeSpokenNumbers } from './speech-numbers.he.js';
 
 /**
  * The last thing between the LLM and the caller's ear.
@@ -361,6 +362,12 @@ export async function* guardStream(
    * table. Omitted (tests, legacy callers) → masculine, the pre-round-3 behaviour.
    */
   genderTracker?: AddressGenderTracker,
+  /**
+   * VOICE_SPEECH_NUMBERS_ENABLED — digits become colloquial Hebrew words before the TTS.
+   * Default false here (tests, legacy callers keep digit behaviour); the agent threads the env
+   * flag in, same pattern as allowBookingClaims.
+   */
+  spokenNumbers = false,
 ): AsyncIterable<string> {
   let buffer = '';
 
@@ -374,6 +381,7 @@ export async function* guardStream(
     const guarded = guardSpeech(chunk, {
       allowBookingClaims: allowBookingClaims(),
       addressGender: genderTracker?.current,
+      spokenNumbers,
     });
     for (const note of guarded.interventions) {
       console.log(`speech_guard ${JSON.stringify({ note, said: guarded.text.slice(0, 80) })}`);
@@ -589,7 +597,12 @@ export interface GuardResult {
  */
 export function guardSpeech(
   text: string,
-  opts: { allowBookingClaims?: boolean; addressGender?: AddressGender } = {},
+  opts: {
+    allowBookingClaims?: boolean;
+    addressGender?: AddressGender;
+    /** Digits → colloquial Hebrew words (times, phones, prices). See speech-numbers.he.ts. */
+    spokenNumbers?: boolean;
+  } = {},
 ): GuardResult {
   const interventions: string[] = [];
   let out = text;
@@ -610,6 +623,18 @@ export function guardSpeech(
         interventions.push(`rewrote a false booking claim: "${out.match(pattern)?.[0]?.slice(0, 50)}"`);
         out = out.replace(pattern, TRUTH);
       }
+    }
+  }
+
+  // Digits → colloquial Hebrew words (clock times, phone read-outs, round prices). Speech-only,
+  // like everything in this file — the transcript keeps the digits. Runs BEFORE the niqqud strip
+  // and the tables, so a future pronunciation-dictionary entry applies to number words too; the
+  // position is pinned by a test. Kill-switch: VOICE_SPEECH_NUMBERS_ENABLED.
+  if (opts.spokenNumbers) {
+    const spoken = normalizeSpokenNumbers(out);
+    if (spoken !== out) {
+      interventions.push('spoke digits as Hebrew words (time/phone/price)');
+      out = spoken;
     }
   }
 

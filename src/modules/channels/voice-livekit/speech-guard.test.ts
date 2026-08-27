@@ -560,3 +560,68 @@ describe('dropAckEcho — the acknowledgement must never be delayed', () => {
     expect(Date.now() - startedAt).toBeLessThan(100);
   });
 });
+
+/**
+ * The number/time speech normalizer INSIDE the guard (VOICE_SPEECH_NUMBERS_ENABLED). The full
+ * digits→words table lives in speech-numbers.test.ts; here we pin the wiring: opt-in flag,
+ * ordering against the other fixes, and the streaming contract.
+ */
+describe('guardSpeech — digits become colloquial Hebrew words (opt-in)', () => {
+  it('is OFF by default — legacy callers and the kill-switch keep digit read-out', () => {
+    const t = 'הדמו נקבע ל-10:30 מחר בבוקר.';
+    expect(guardSpeech(t).text).toBe(t);
+  });
+
+  it('ON: the complaint sentence — "16:30" is spoken "ארבע וחצי"', () => {
+    const r = guardSpeech('נתראה מחר ב-16:30.', { spokenNumbers: true });
+    expect(r.text).toBe('נתראה מחר בארבע וחצי.');
+    expect(r.interventions).toContain('spoke digits as Hebrew words (time/phone/price)');
+  });
+
+  it('THE ORDER IS PINNED: normalizer runs BEFORE the gender tables, in one sentence', () => {
+    // A time and an ambiguous suffix in the same sentence: both fixes must land. If the
+    // normalizer ever moves after the tables, this still passes — but if it moves after
+    // stripNiqqud's own position the dictionary stops seeing number words; keep it first.
+    const r = guardSpeech('נדבר ב-16:30, מה השם שלך?', { spokenNumbers: true });
+    expect(r.text).toBe('נדבר בארבע וחצי, מה השם שלךָ?');
+  });
+
+  it('model-emitted niqqud in the same sentence is still stripped, the words still convert', () => {
+    const r = guardSpeech('שָׁלוֹם, נדבר ב-10:00.', { spokenNumbers: true });
+    expect(r.text).toBe('שלום, נדבר בעשר.');
+  });
+
+  it('a false booking claim carrying a time is rewritten FIRST — no digits survive either way', () => {
+    const r = guardSpeech('קבעתי לך שיחת דמו ל-16:30 מחר.', { spokenNumbers: true });
+    expect(r.text).not.toMatch(/16:30|קבעתי/u);
+    expect(r.text).toMatch(/אעביר את הבקשה לצוות/u);
+  });
+});
+
+describe('guardStream — a time can never straddle a chunk boundary', () => {
+  const chunks = async function* (...c: string[]) {
+    for (const x of c) yield x;
+  };
+  const drain = async (it: AsyncIterable<string>) => {
+    const out: string[] = [];
+    for await (const x of it) out.push(x);
+    return out;
+  };
+
+  it('a time split across LLM chunks is reassembled before it is normalized', async () => {
+    // sentenceEnd refuses to flush at a mark without trailing whitespace, so the buffer holds
+    // "…10:" until the rest arrives — the normalizer only ever sees whole sentences.
+    const out = (
+      await drain(guardStream(chunks('מ-10:', '30 עד 15:0', '0.'), () => false, undefined, true))
+    ).join('');
+    expect(out.trim()).toBe('מעשר וחצי עד שלוש.');
+  });
+
+  it('streaming still flushes sentence-by-sentence with the normalizer on', async () => {
+    const out = await drain(
+      guardStream(chunks('מעולה. ', 'נתראה ב-16:30.'), () => false, undefined, true),
+    );
+    expect(out.length).toBeGreaterThan(1);
+    expect(out.join('')).toContain('בארבע וחצי');
+  });
+});

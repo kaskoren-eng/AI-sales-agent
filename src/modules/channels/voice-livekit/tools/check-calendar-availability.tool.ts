@@ -127,8 +127,9 @@ export async function executeCheckAvailability(
       : '';
 
   return (
-    `Availability for ${duration}-minute demos (Israel time). Offer the free RANGE(s) out loud — ` +
-    `e.g. "יש לי פנוי מ-10:00 עד 15:00, איזו שעה מתאימה לך?" — do NOT read out every time. When he ` +
+    `Availability for ${duration}-minute demos (Israel time). Offer the free RANGE(s) out loud, ` +
+    `saying hours as colloquial Hebrew words, not digits — e.g. "יש לי פנוי מעשר עד שלוש, איזו שעה ` +
+    `מתאימה לך?" — do NOT read out every time. When he ` +
     `names a time, book the MATCHING slot below by passing its slot_datetime to book_meeting VERBATIM. ` +
     `If his time is not listed, tell him the nearest available times. Never invent a time.\n\n` +
     `${blocks.join('\n\n')}${truncated}`
