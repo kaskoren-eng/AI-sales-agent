@@ -25,6 +25,7 @@ import { createFlowExecutorWorker } from './queues/workers/flow-executor.worker.
 import { createCsvImportWorker } from './queues/workers/csv-import.worker.js';
 import { createCallAnalysisWorker } from './queues/workers/call-analysis.worker.js';
 import { createMeetingRemindersWorker } from './queues/workers/meeting-reminders.worker.js';
+import { createAirtableLeadPushWorker } from './queues/workers/airtable-lead-push.worker.js';
 import { WhatsAppService } from './modules/channels/whatsapp/whatsapp.service.js';
 import { EmailService } from './modules/channels/email/email.service.js';
 import { LiveKitVoiceService } from './modules/channels/voice-livekit/voice-livekit.service.js';
@@ -322,6 +323,16 @@ export async function buildApp(): Promise<FastifyInstance> {
     logger: app.log,
   });
 
+  // Pushes new PLATFORM_TENANT_ID leads onto ClickScales' own Airtable sales board. Runs even
+  // when AIRTABLE_LEADS_* is unset — the worker skips each job loudly rather than the queue
+  // silently filling up with work nothing will ever drain.
+  const airtableLeadPushWorker = createAirtableLeadPushWorker({
+    db: app.db,
+    env,
+    redis: app.redis,
+    deadLetterQueue: app.queues.deadLetter,
+  });
+
   app.addHook('onClose', async () => {
     await messageProcessorWorker.close();
     await outboundSenderWorker.close();
@@ -329,6 +340,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     await csvImportWorker.close();
     await callAnalysisWorker.close();
     await meetingRemindersWorker.close();
+    await airtableLeadPushWorker.close();
   });
 
   return app;

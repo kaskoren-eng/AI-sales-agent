@@ -7,6 +7,7 @@ import { enqueueFlowStep } from '../../queues/flow-executor.queue.js';
 import { verifyMetaSignature, normalizeMetaLeadPayload } from './meta.utils.js';
 import { isTimestampFresh } from '../../shared/webhook-timestamp.js';
 import { meterLead } from '../billing/usage.service.js';
+import { enqueueAirtableLeadPush } from '../../queues/airtable-lead-push.queue.js';
 
 /**
  * Generic lead intake webhook.
@@ -165,6 +166,28 @@ export async function leadIntakeRoutes(app: FastifyInstance) {
       // again is the same lead, and charging twice for one person is the complaint that ends a
       // pilot. (The dedupe key would catch it anyway; not calling it says so explicitly.)
       if (created) await meterLead(app.db, { tenantId, leadId: created.id, source: created.source });
+
+      // Mirror the lead onto ClickScales' own Airtable sales board. Platform tenant only — this
+      // is Koren's private pipeline, not a per-tenant feature — and only for genuinely NEW leads,
+      // for the same reason meterLead sits in this branch: a returning prospect resubmitting the
+      // form is one person, not a second row to work.
+      //
+      // Enqueue only; the Airtable call itself happens in the worker. Nothing here may add
+      // latency to the response, because this handler also arms the outbound call.
+      const pushConfigured =
+        app.env.AIRTABLE_LEADS_PAT && app.env.AIRTABLE_LEADS_BASE_ID && app.env.AIRTABLE_LEADS_TABLE_ID;
+      if (created && pushConfigured && tenantId === app.env.PLATFORM_TENANT_ID) {
+        try {
+          await enqueueAirtableLeadPush(app.queues.airtableLeadPush, { tenantId, leadId: created.id });
+        } catch (err) {
+          // A Redis blip must not turn a captured lead into a 500 that makes the website form
+          // look broken. The lead row already exists; only the board row is lost.
+          app.log.error(
+            { leadId: created.id, tenantId, err },
+            'Lead intake: failed to enqueue Airtable leads-board push',
+          );
+        }
+      }
     } else if (consentRecord && !(lead.whatsappConsent as { granted?: boolean } | null)?.granted) {
       // Existing lead ticked the box on a new form — record it (never downgrade existing consent).
       await app.db
