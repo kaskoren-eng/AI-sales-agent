@@ -279,6 +279,18 @@ export async function buildApp(): Promise<FastifyInstance> {
     app.log.warn('LiveKit voice not configured — outbound calls will be skipped');
   }
 
+  // Say it at boot, not at dial time. The service constructs fine without a trunk id — it is only
+  // read inside initiateOutboundCall — so an instance with no trunk looks completely healthy right
+  // up until a lead does not get called. This line is the one that would have caught
+  // LIVEKIT_SIP_OUTBOUND_TRUNK_ID missing from Railway on the deploy that dropped it, instead of
+  // weeks later from the outside.
+  if (voiceLivekitService && !env.LIVEKIT_SIP_OUTBOUND_TRUNK_ID) {
+    app.log.error(
+      { event: 'outbound_dialling_disabled' },
+      'LIVEKIT_SIP_OUTBOUND_TRUNK_ID is unset — OUTBOUND CALLING IS DISABLED. Inbound is unaffected. Every make_call step will fail to the DLQ until this is set.',
+    );
+  }
+
   const outboundSenderWorker = createOutboundSenderWorker({
     db: app.db,
     redis: app.redis,
