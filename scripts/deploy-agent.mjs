@@ -23,6 +23,7 @@
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { assertDeployableCode, assertNotBehindMain } from './lib/deploy-guard.mjs';
+import { assertNotDroppingLiveWork, recordDeploy } from './lib/deploy-ledger.mjs';
 
 const MODE = process.argv[2] ?? 'deploy';
 const STAGE = '.agent-build';
@@ -106,8 +107,14 @@ async function assertDeployableSecrets(file) {
   }
 }
 
+// Three questions, in widening scope: is this build broken (markers), is it a rollback of merged
+// work (main), is it a rollback of work that is LIVE but never merged (the ledger). Only the third
+// can see another session's unmerged worktree, which is the common case on this machine.
 await assertDeployableCode(STAGE);
 assertNotBehindMain({ allowBehind: process.argv.includes('--allow-behind') });
+if (MODE !== 'create') {
+  assertNotDroppingLiveWork({ allowDrop: process.argv.includes('--allow-drop') });
+}
 
 if (MODE === 'create') await assertDeployableSecrets('.env.agent');
 
@@ -121,4 +128,9 @@ const args = [
 
 console.log(`lk ${args.join(' ')}\n`);
 const r = spawnSync('lk', args, { stdio: 'inherit', shell: true });
+
+// Record AFTER success only. A ref for a version that never shipped would make the next deploy's
+// comparison wrong in the one direction that matters — claiming work is live when it is not.
+if (r.status === 0) recordDeploy();
+
 process.exit(r.status ?? 1);
