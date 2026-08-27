@@ -458,6 +458,15 @@ const envSchema = z.object({
   AIRTABLE_PHONE_FIELD: z.string().min(1).optional(),
   AIRTABLE_EMAIL_FIELD: z.string().min(1).optional(),
 
+  // Integrations - Airtable: ClickScales' OWN sales lead board (a DIFFERENT base from the
+  // AIRTABLE_* keys above, which are the per-tenant CRM sync target). New leads from the
+  // website form and Meta Lead Ads are pushed onto it one-way. Scoped to PLATFORM_TENANT_ID —
+  // there is deliberately no per-tenant equivalent, this is Koren's private pipeline board.
+  // All three must be set or the push is skipped loudly; none of them is read back from.
+  AIRTABLE_LEADS_PAT: z.string().min(1).optional(),
+  AIRTABLE_LEADS_BASE_ID: z.string().min(1).optional(),
+  AIRTABLE_LEADS_TABLE_ID: z.string().min(1).optional(),
+
   // Integrations - Google Sheets
   GOOGLE_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
