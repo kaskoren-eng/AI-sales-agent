@@ -1,0 +1,37 @@
+# Ownership map — mirrors the TERRITORY RULES section of CLAUDE.md.
+# GitHub uses this for review routing; scripts/ci/territory-check.sh uses the same lanes.
+# Keep the two in sync: if CLAUDE.md changes a lane, change it here in the same commit.
+
+# VOICE
+/src/modules/channels/voice-livekit/   @kaskoren-eng
+/src/modules/channels/whatsapp/        @kaskoren-eng
+/src/queues/workers/meeting-reminders* @kaskoren-eng
+/src/modules/scheduling/               @kaskoren-eng
+/docs/phase-4-*                        @kaskoren-eng
+/docs/go-live-plan.md                  @kaskoren-eng
+
+# DASHBOARD
+/dashboard/                            @kaskoren-eng
+/src/modules/admin/                    @kaskoren-eng
+/src/modules/metrics/                  @kaskoren-eng
+/docs/phase-5-dashboard-*              @kaskoren-eng
+/brand_assets/                         @kaskoren-eng
+
+# WEBSITE
+/website/                              @kaskoren-eng
+
+# INTEGRATIONS
+/src/modules/integrations/             @kaskoren-eng
+
+# SHARED / collision zone — always needs a human eye
+/src/config/env.ts                     @kaskoren-eng
+/.env.example                          @kaskoren-eng
+/package.json                          @kaskoren-eng
+/src/server.ts                         @kaskoren-eng
+/src/plugins/                          @kaskoren-eng
+/src/db/                               @kaskoren-eng
+/CLAUDE.md                             @kaskoren-eng
+/CODEOWNERS                            @kaskoren-eng
+/.github/                              @kaskoren-eng
+/scripts/deploy-agent.mjs              @kaskoren-eng
+/scripts/lib/                          @kaskoren-eng

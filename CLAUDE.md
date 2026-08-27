@@ -40,6 +40,17 @@ Multi-channel AI sales agent (WhatsApp, Email, Voice) that qualifies leads and b
 
 ## Parallel workstreams — see ⚠️ TERRITORY RULES below (single source of truth)
 
+### Every session, before the first edit (non-negotiable)
+
+Several Claude Code sessions run on this machine at once, each in its own worktree/branch. The only shared truth is `origin/main`.
+
+1. `git fetch origin && git status` — confirm which branch/worktree you are in and that it is clean. If you find changes you didn't make → rule 4 below.
+2. `git rebase origin/main` (or `git merge origin/main` if the branch is shared). **Every day, not just at PR time** — a branch 30 commits behind is how the 2026-08-26 wrong-tenant deploy happened.
+3. Read the newest file in `docs/handoffs/` for EVERY workstream, not only yours — that is where the other sessions tell you what changed under you.
+4. `git worktree prune` if `git worktree list` shows `prunable` entries.
+
+**How work reaches production:** branch → PR to `main` → CI green (`ci.yml`: typecheck, tests, dashboard build, both Docker images; `guardrails.yml`: lane check, migration-claims check) → merge → deploy. Never push to `main` directly; never deploy from a feature branch. The LiveKit agent is deployed only via `npm run agent:deploy`, which refuses a tree behind `origin/main` or one that would drop another session's live work (`scripts/deploy-agent.mjs`, `refs/deploys/agent/*`).
+
 An earlier version of this section contradicted the TERRITORY RULES on `src/modules/calls/` and `src/modules/leads/` ownership. **The TERRITORY RULES section below is canonical.** Resolution of the contradiction: within `calls/` and `leads/`, ownership splits by file role — VOICE owns services/workers/guards, DASHBOARD owns/extends API routes additively (details below).
 
 ### Dev servers — shared machine rules
@@ -57,7 +68,7 @@ An earlier version of this section contradicted the TERRITORY RULES on `src/modu
 
 TypeScript + Fastify 5 + Drizzle ORM + PostgreSQL + Redis + BullMQ + Zod + OpenAI gpt-5.4
 
-## ⚠️ PARALLEL WORKSTREAMS — TERRITORY RULES (two Claude Code sessions on this repo)
+## ⚠️ PARALLEL WORKSTREAMS — TERRITORY RULES (multiple Claude Code sessions on this repo — lanes are enforced by `scripts/ci/territory-check.sh` + `CODEOWNERS`; change all three together)
 
 Two agents work this repo simultaneously. Respect your lane:
 
@@ -79,7 +90,7 @@ Two agents work this repo simultaneously. Respect your lane:
 - `src/db/schema/**` + migrations — **migration numbers are claimed in the table below BEFORE generating.** Never renumber someone else's migration.
 - `CLAUDE.md`, `tenants` settings keys — announce in the claims lists below before changing.
 
-**Migration number claims:** 0004 = leads whatsapp fields · 0005 = scheduled_calls.reminders · 0006–0010 = identity/audit/monday-lookup · 0011 = `phone_numbers` (DID→tenant routing) · 0012 = `oauth_connections` (per-tenant Google Calendar) · 0013 = billing (`plans`, `usage_events`, `usage_periods`, tenant billing columns) · 0014 = `scheduled_calls.lead_id` DROP NOT NULL · 0015 = `scheduled_calls.provider` default → 'google' (both hand-written schema-drift repairs — the snapshots already matched the schema, so `db:generate` could never emit them) · **next free: 0016.**
+**Migration number claims:** 0000–0003 = initial schema, api-key hash, call_learnings (pre-claims era) · 0004 = leads whatsapp fields · 0005 = scheduled_calls.reminders · 0006–0010 = identity/audit/monday-lookup · 0011 = `phone_numbers` (DID→tenant routing) · 0012 = `oauth_connections` (per-tenant Google Calendar) · 0013 = billing (`plans`, `usage_events`, `usage_periods`, tenant billing columns) · 0014 = `scheduled_calls.lead_id` DROP NOT NULL · 0015 = `scheduled_calls.provider` default → 'google' (both hand-written schema-drift repairs — the snapshots already matched the schema, so `db:generate` could never emit them) · 0016 = billable minutes (`usage_events` minutes columns) · **next free: 0017.** CI (`guardrails.yml`) fails a PR whose migration is missing from this line or whose number ≥ "next free".
 
 ⚠️ **Schema drift is invisible to both the tests and `db:generate`** — tests build tables from the schema, and snapshots are
 generated from the schema, so both agree with it by construction. Two `scheduled_calls` columns had disagreed with the
