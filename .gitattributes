@@ -1,3 +1,8 @@
+# Task 0 (supervisor, 2026-08-28): repo-wide default — every file git detects as text
+# is normalized to LF in the repo AND checked out as LF. The specific rules below
+# predate this line and stay authoritative where they overlap (last match wins).
+* text=auto eol=lf
+
 # Line endings are pinned to LF, and for one file type it is not a style preference.
 #
 # `src/modules/channels/voice-livekit/prompts/__fixtures__/*.txt` hold the system prompt exactly as
