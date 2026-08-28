@@ -82,6 +82,9 @@ const envSchema = z.object({
   LEAD_WEBHOOK_SECRET: z.string().min(1).optional(),
   // Tenant that receives generic (non-Meta) webhook leads — prevents body spoofing
   LEAD_WEBHOOK_TENANT_ID: z.string().uuid().optional(),
+  // Shared secret for Netlify Forms' outgoing webhook (signature_secret on the site's `url` hook).
+  // The clickscales.com demo form posts to Netlify Forms, and Netlify relays it here signed.
+  NETLIFY_FORMS_WEBHOOK_SECRET: z.string().min(1).optional(),
 
   // App base URL (for callback URLs)
   BASE_URL: z.string().url().optional(),

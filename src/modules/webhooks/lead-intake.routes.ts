@@ -5,6 +5,7 @@ import { leads, tenants } from '../../db/schema/index.js';
 import { flowDefinitionSchema } from '../flows/flow.schemas.js';
 import { enqueueFlowStep } from '../../queues/flow-executor.queue.js';
 import { verifyMetaSignature, normalizeMetaLeadPayload } from './meta.utils.js';
+import { verifyNetlifyJws, normalizeNetlifyFormSubmission } from './netlify-forms.utils.js';
 import { isTimestampFresh } from '../../shared/webhook-timestamp.js';
 import { meterLead } from '../billing/usage.service.js';
 import { enqueueAirtableLeadPush } from '../../queues/airtable-lead-push.queue.js';
@@ -50,9 +51,14 @@ export async function leadIntakeRoutes(app: FastifyInstance) {
   // Lead intake (POST)
   app.post('/', async (request, reply) => {
     // Auto-detect Meta: they always send x-hub-signature-256; fallback to explicit header or generic
+    // Netlify signs with x-webhook-signature; Meta with x-hub-signature-256. Both are detected by
+    // their own header rather than a caller-supplied hint, so neither can be spoofed into the
+    // generic branch (which authenticates with a shared secret instead).
     const source = request.headers['x-hub-signature-256']
       ? 'meta'
-      : ((request.headers['x-lead-source'] as string) ?? 'generic');
+      : request.headers['x-webhook-signature']
+        ? 'netlify'
+        : ((request.headers['x-lead-source'] as string) ?? 'generic');
 
     // 1. Verify signature + resolve tenantId — source-specific
     let tenantId: string;
@@ -74,6 +80,28 @@ export async function leadIntakeRoutes(app: FastifyInstance) {
       }
       tenantId = qTenantId;
       rawLead = normalizeMetaLeadPayload(request.body as Record<string, any>, tenantId);
+    } else if (source === 'netlify') {
+      // The clickscales.com demo form submits to Netlify Forms; Netlify then fires this webhook on
+      // submission_created. See netlify-forms.utils.ts for why the bridge is here and not in the
+      // (undeployed) website function.
+      const secret = app.env.NETLIFY_FORMS_WEBHOOK_SECRET;
+      const token = request.headers['x-webhook-signature'] as string | undefined;
+      if (!secret || !token) {
+        return reply.status(401).send({ error: 'Missing Netlify signature or secret' });
+      }
+      if (!verifyNetlifyJws(JSON.stringify(request.body), token, secret)) {
+        app.log.warn('Lead intake: Netlify signature verification failed');
+        return reply.status(401).send({ error: 'Invalid signature' });
+      }
+
+      // Same rule as the generic branch: the tenant comes from server config, never the payload.
+      const envTenantId = app.env.LEAD_WEBHOOK_TENANT_ID;
+      if (!envTenantId) {
+        app.log.error('Lead intake: LEAD_WEBHOOK_TENANT_ID not configured');
+        return reply.status(503).send({ error: 'Webhook intake not configured' });
+      }
+      tenantId = envTenantId;
+      rawLead = normalizeNetlifyFormSubmission(request.body as Record<string, any>);
     } else {
       // Generic / website: verify shared secret header
       const secret = request.headers['x-webhook-secret'] as string | undefined;
