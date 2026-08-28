@@ -1,0 +1,29 @@
+name: Guardrails
+
+# Mechanical enforcement of CLAUDE.md's multi-session rules. CI (ci.yml) proves the code works;
+# this proves the sessions stayed in their lanes and kept the shared claims tables honest.
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  territory:
+    name: Territory (lane) check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # ADVISORY for now: it annotates the PR but does not block. Flip to false once every open
+    # branch has seen it at least once, then add it to branch protection's required checks.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: git fetch origin main
+      - run: scripts/ci/territory-check.sh "${{ github.head_ref }}" origin/main
+
+  migration-claims:
+    name: Migration claims table
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/ci/migration-claims-check.sh
