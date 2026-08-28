@@ -176,6 +176,26 @@ export function createFlowExecutorWorker(deps: WorkerDeps) {
       }
 
       case 'make_call': {
+        // Nothing to dial. Checked before every other guard because it needs no DB read and no
+        // spend evaluation — an email-only lead is ordinary (the lead-intake webhook accepts
+        // phone OR email, and the Netlify Forms bridge relays whatever the form collected), so
+        // this is data, not misconfiguration, and it must skip rather than fail. Without it the
+        // dial went ahead with an empty callee, LiveKit answered "missing sip callee number", and
+        // the job burnt all three attempts into the dead-letter queue.
+        if (!ctx.leadPhone || ctx.leadPhone.trim().length === 0) {
+          logger?.warn(
+            {
+              event: 'flow_step_skip',
+              reason: 'no_phone',
+              tenantId: ctx.tenantId,
+              leadId: ctx.leadId,
+              stepIndex: ctx.stepIndex,
+            },
+            'Flow executor: lead has no phone number — skipping make_call',
+          );
+          return {};
+        }
+
         // DO-NOT-CALL, checked FIRST — before the dial, so it covers every call path
         // alike. A lead whose status is 'opted_out' (set by the voice agent's end_call tool when
         // the caller asks not to be contacted) must never be dialed again: Israeli spam law, not
