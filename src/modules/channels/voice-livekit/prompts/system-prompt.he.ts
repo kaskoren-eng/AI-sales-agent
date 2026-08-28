@@ -1,5 +1,5 @@
 /**
- * Keren — the ClickScales sales agent. Ported from docs/system-prompt-keren-v2.md, now built in
+ * Keren — the ClickScales sales agent. Ported from docs/archive/system-prompt-keren-v2.md, now built in
  * TWO VARIANTS by `buildSystemPrompt({ toolsEnabled })`:
  *
  *   toolsEnabled: false  →  the pre-Phase-4 prompt, verbatim. Still what every call gets when the
