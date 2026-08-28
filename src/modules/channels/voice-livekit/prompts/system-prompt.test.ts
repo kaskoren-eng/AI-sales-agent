@@ -5,7 +5,7 @@ import { GREETING_HE, SYSTEM_PROMPT_HE, buildSystemPrompt } from './system-promp
 const TOOLS_PROMPT = buildSystemPrompt({ toolsEnabled: true });
 
 /**
- * Prompt regression tests for the Keren v2 prompt (ported from docs/system-prompt-keren-v2.md).
+ * Prompt regression tests for the Keren v2 prompt (ported from docs/archive/system-prompt-keren-v2.md).
  *
  * Required by `docs/voice-agent-development-methodology.md` principle #1: never edit the system
  * prompt without a test proving the fix works and old behaviour still holds.

@@ -177,7 +177,7 @@ Phase 3 (SIP integration) — get the phone calls working first, then polish the
 ## Related Files
 
 - Current system prompt: `src/modules/channels/voice-livekit/prompts/system-prompt.he.ts`
-- Reference (v2 prompt): `docs/system-prompt-keren-v2.md`
+- Reference (v2 prompt): `docs/archive/system-prompt-keren-v2.md`
 - Development methodology: `docs/voice-agent-development-methodology.md` (follow rules 1, 7, 10 especially)
 - Call learnings schema: `src/db/schema/call-learnings.ts` (extend `analysis` field)
 
