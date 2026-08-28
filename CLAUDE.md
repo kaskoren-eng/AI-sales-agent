@@ -121,7 +121,7 @@ The voice engine migration is **complete and live in production since 2026-07-29
 
 ### The voice stack, as built
 
-`src/modules/channels/voice-livekit/` — Zadarma SIP → LiveKit → **Soniox `stt-rt-v5`** (STT) → OpenAI `gpt-5.4` (LLM) → **Cartesia `sonic-3`** (TTS). `tenants.settings.voice_engine` survives, but NOT as an engine selector — LiveKit is the only engine. It is now one half of the agent's fail-closed tool gate: tools run only when `voice_engine='livekit'` AND `functions_enabled=true` (see `tools/tool-context.ts`). A tenant without it gets a working call with no tools.
+`src/modules/channels/voice-livekit/` — Zadarma SIP → LiveKit → **Soniox `stt-rt-v5`** (STT) → OpenAI `gpt-5.4` (LLM) → **Cartesia `sonic-3`** (TTS). `tenants.settings.voice_engine` survives, but NOT as an engine selector — LiveKit is the only engine. It is now one half of the agent's fail-closed tool gate: tools run only when `voice_engine='livekit'` AND `functions_enabled=true` (see `tools/tool-context.ts`). A tenant without it gets a working call with no tools. (The `VOICE_ENGINE_DEFAULT` env var, by contrast, WAS removed with the Retell code on 2026-08-05.)
 
 Two divergences from the original plan that trip people up: **STT is Soniox, not OpenAI Realtime** (semantic WER 4.3% vs 34.9% on real Hebrew calls — don't "fix" it back), and **DeepDub is a fully built TTS alternative behind `VOICE_TTS_PROVIDER`** that is deliberately not the default despite winning a blind A/B 6:1.
 
@@ -131,7 +131,7 @@ Two divergences from the original plan that trip people up: **STT is Soniox, not
 1. `VOICE_MIGRATION_PLAN.md` (project root) — the 7 phases, as-built corrections, and what postdates the plan
 2. `docs/voice-agent-development-methodology.md` — 10 non-negotiable rules for every voice commit
 3. `docs/hebrew-voice-agent-dev-plan.md` — Hebrew-specific stack, prompts, business logic for lead-booking use case
-4. `docs/retell-ai-dashboard-reference.md` — feature parity checklist (what Retell has, what we replicate, what we skip)
+4. `docs/retell-ai-dashboard-reference.md` — **archived** feature-parity checklist; still the clearest statement of the dashboard backlog (what we replicate, what we skip)
 5. `docs/voice-ai-learning-resources.md` — 30 curated engineering guides + case studies (start with Tier 1)
 
 ## Commands
@@ -189,7 +189,7 @@ Billing (0013): `plans`, `usage_events`, `usage_periods` + billing columns on `t
 - `channels/whatsapp` — UChat inbound/outbound, signature verification, 24h window fallback
 - `channels/email` — Resend inbound/outbound, svix signature verification
 - `channels/voice-livekit` — **the only voice engine, live in production since 2026-07-29.** Zadarma SIP inbound trunk → LiveKit Agents (Node.js SDK) → **Soniox `stt-rt-v5`** STT → OpenAI `gpt-5.4` LLM → **Cartesia `sonic-3`** TTS (DeepDub adapter available behind `VOICE_TTS_PROVIDER`). Six agent tools, conversation state machine + reflexes, speech-guard, compliance (recording notice + AI disclosure), per-call `CallReport`, browser web-call path for the dashboard Simulator. Reuses `google-calendar.provider.ts`, `ai-engine.service.ts`, `SettingsService`, `CallAnalysisService`, `scheduled_calls` and `call_learnings`.
-- `channels/zadarma` — Zadarma recording-notification webhooks at `/webhooks/voice/zadarma`, feeding `call_learnings`. Engine-independent; Twilio retained for the WhatsApp bridge and conference monitoring.
+- `channels/zadarma` — Zadarma recording-notification webhooks at `/webhooks/voice/zadarma`, feeding `call_learnings`. Engine-independent; extracted when the legacy Retell module was deleted (2026-08-05). **The URL is configured in the Zadarma portal — do not change the prefix.** Twilio retained for the WhatsApp bridge and conference monitoring.
 - `scheduling` — Google Calendar (default provider), Trafft provider also available; slots query, booking, cancel, and `GET /scheduling/bookings` (tenant-scoped, upcoming-first — consumed by the dashboard Bookings page). **Per-tenant since 2026-08-16:** a booking goes into the tenant's OWN connected Google account (`oauth_connections`, OAuth consent from the Integrations page), or — for the ClickScales tenant alone, keyed on `PLATFORM_TENANT_ID` — the service account. There is deliberately NO fallback from "not connected" to the platform credentials: that fallback was the bug (every tenant's meetings landed in ClickScales' diary). A tenant with no calendar gets no booking tools. A grant is verified against the API before it is stored, and an `invalid_grant` from any calendar tool marks the connection revoked.
 - `integrations` — Monday.com (sync/push/webhook), Airtable, CSV import, Google Sheets, `crm-sync.service.ts` (post-call outcome + summary push, per-tenant `crm_sync`). *(Nango was removed.)* Airtable and Monday are self-service from the dashboard Integrations page; the global `AIRTABLE_*` env credentials are ClickScales' own and only `PLATFORM_TENANT_ID` may fall back to them.
   ⚠️ **There are now THREE distinct Airtable write paths — do not merge them.** (1) `crm-sync.service.ts`, post-call outcome → the *tenant's own* base, tenant-settings-only. (2) the `update_airtable` flow step, tenant settings with a `PLATFORM_TENANT_ID`-gated `AIRTABLE_*` env fallback — updates only, never creates. (3) `airtable/lead-board.ts` + the `airtable-lead-push` queue, new lead → **ClickScales' own sales board**, a DIFFERENT base (`AIRTABLE_LEADS_*` env, `PLATFORM_TENANT_ID` only, one-way, creates only, never reads back). They cache their record ids under **different** metadata keys — `airtableRecordId` for (1)/(2), `clickscalesLeadsRecordId` for (3) — because they point at different bases. All three share the one module-level `airtable` circuit breaker.
@@ -241,7 +241,7 @@ All four root docs were refreshed on **2026-08-02** and are current as of that d
 - `phase-4-known-issues.md` — tribal knowledge: levers that look worth pulling and aren't
 - `phase-6-verification-checklist.md` — the launch gates, layers 0–6 (Layer 0 green, 1–6 open)
 - `learnings-dreamserver-voice-agent.md` — postmortem lessons from an external LiveKit agent
-- `retell-ai-dashboard-reference.md` — Retell feature parity checklist *(Retell is deprecated; historical)*
+- `retell-ai-dashboard-reference.md` — **archived** feature-parity checklist *(Retell removed 2026-08-05; kept for the feature→phase backlog table)*
 - `voice-ai-learning-resources.md` — 30 curated engineering guides & case studies with reading order
 
 **`docs/` subfolders:**

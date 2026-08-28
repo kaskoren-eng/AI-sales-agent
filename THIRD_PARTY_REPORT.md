@@ -17,7 +17,7 @@
 | **DeepDub** | Alternative Hebrew TTS (`dd-etts-3.2`), full adapter built | Platform (Koren) | Built, behind `VOICE_TTS_PROVIDER` — **not default** |
 | OpenAI (LLM) | Agent brain — `gpt-5.4` via `AI_MODEL` / `VOICE_LLM_MODEL` | Platform (Koren) | Live |
 | OpenAI Realtime (`gpt-realtime-whisper`) | Streaming STT — **superseded by Soniox**, kept as fallback | Platform (Koren) | Fallback only |
-| Retell AI | Voice agent orchestration (STT + LLM + TTS wrapper) | Platform (Koren) | **Deprecated — not a rollback path** |
+| ~~Retell AI~~ | ~~Voice agent orchestration~~ | — | **Removed 2026-08-05.** Vendor no longer available; code deleted from the repo |
 | Zadarma | SIP number / caller ID → direct SIP trunk into LiveKit | Platform (Koren) | Live |
 | Twilio | WhatsApp bridge + conference-call monitoring | Platform (Koren) | Live (WhatsApp templates pending approval) |
 | WhatsApp Business API | WhatsApp messaging — direct Meta, no middleware | Platform (Koren) | Needs rebuild |
@@ -55,7 +55,7 @@
 - Why we migrated: (1) Retell didn't expose human-sounding features for Hebrew — our primary language; (2) per-minute cost; (3) no vendor lock-in on the orchestration layer.
 - Full plan and as-built notes: `VOICE_MIGRATION_PLAN.md` in project root.
 
-**Deprecated:** Retell AI. The code is still on disk and the `voice_engine` flag still flips, but Retell is unmaintained here — treat it as a dead path, not a fallback.
+**Removed:** Retell AI. Deleted from the repo on 2026-08-05 — the vendor is no longer available to us. The `voice_engine` flag is gone; there is one engine and no rollback.
 **Retired:** ElevenLabs (original POC voice provider, phased out before Retell).
 
 ### 3. Platform LLM (OpenAI with web search) — Onboarding + Market Research
@@ -159,7 +159,7 @@ The onboarding agent (powered by the PLATFORM LLM) asks questions, explains each
 
 ## PLATFORM MINIMUM (what you always pay for)
 
-Post-migration; Retell is no longer in the running cost.
+Post-migration; Retell is no longer in the running cost (removed from the repo 2026-08-05).
 
 | Service | Estimated cost |
 |---|---|
@@ -199,5 +199,5 @@ Post-migration; Retell is no longer in the running cost.
 
 - **Per-tenant voice selection:** partially answered in practice — three Cartesia voice slots exist (`CARTESIA_VOICE_ID_PRIMARY` / `_SECONDARY` / `_TERTIARY`), so the mechanism is there. Still undecided whether tenants pick their own voice or standardize on one, and this ties into the proposed `agent_persona` setting (each tenant names and genders their own agent).
 - **DeepDub vs Cartesia:** DeepDub won a blind A/B 6:1 but is not switched on. Decide whether to flip the default.
-- **Retell decommission:** the 30-day clean-operation clock started 2026-07-29 but clean operation isn't demonstrated (4 calls). Decide whether to delete the Retell code or keep it frozen.
+- ~~**Retell decommission:** decide whether to delete the Retell code or keep it frozen.~~ **Resolved 2026-08-05 — deleted.** Removing it also fixed two live bugs: `POST /api/v1/calls/outbound` was still dialling via Retell, and the call-detail page was fetching the dead Retell API on every view.
 - **Cost verification:** nobody has checked a real per-minute bill since cutover.

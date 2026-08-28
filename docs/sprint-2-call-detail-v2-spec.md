@@ -13,7 +13,7 @@ end reason, compliance evidence (recording notice + AI disclosure), and — afte
 effectiveness score, recommendations).
 
 **None of it reaches the dashboard.** `GET /api/v1/calls/:id` only fetches analysis live from
-Retell (legacy path). The LiveKit path — our future — renders as an empty "AI Analysis" card.
+the retired engine's legacy path. The LiveKit path — our future — renders as an empty "AI Analysis" card.
 
 This sprint closes that gap. Outcome: opening a call page shows *everything the agent knew,
 did, and learned* — turning the agent from a black box into an evaluable product
@@ -27,7 +27,7 @@ did, and learned* — turning the agent from a black box into an evaluable produ
 
 | Path | Conversation link | Analysis source |
 |---|---|---|
-| Retell (legacy) | `conversations.channelRef` = Retell `call_id` | Live fetch from Retell API (already works) |
+| Retired engine (historical rows) | `conversations.channelRef` = the old vendor's `call_id` | Rendered from the DB (`messages`, content_type='transcript'). The live API fetch was deleted 2026-08-05 |
 | LiveKit (current) | `conversations.channelRef` = LiveKit room name (`call-out-<uuid>` / `web-call-<uuid>`) | `call_learnings` row where `conferenceName` = room name |
 
 `call_learnings` columns of interest (see `src/db/schema/call-learnings.ts`):
@@ -72,7 +72,7 @@ const [learnings] = await this.db
 
 Rules:
 - Only attempt when `row.channelRef` is set. Missing row → `learnings: null` (never 500).
-- If `learnings.transcript` is non-empty and the existing transcript (Retell/messages fallback)
+- If `learnings.transcript` is non-empty and the existing transcript (`messages` fallback)
   is empty, map `TranscriptSegment[]` → `CallTranscriptTurn[]`
   (`speaker` → `role` (map `'agent'|'assistant'` → `'agent'`, else `'user'`), `text` → `message`,
   `start` → `time_in_call_secs`).
@@ -177,7 +177,7 @@ transcripts currently render misaligned.
 
 1. Open a LiveKit call (`label='livekit'` learnings row exists) → header chips, tool-call strip,
    and Sales Analysis card all render with real data.
-2. Open a legacy Retell call (no learnings row) → page renders exactly as today, zero regressions.
+2. Open a historical call from the retired engine (no learnings row) → transcript and summary still render from the DB.
 3. A learnings row with `status='pending'` → "Analysis in progress…" chip; no empty cards.
 4. `ai_disclosure: 'missed'` renders as a red/error chip (it's an audit finding, not a formality).
 5. Hebrew analysis text renders right-aligned inside its blocks (`dir="auto"` everywhere).
@@ -205,4 +205,4 @@ transcripts currently render misaligned.
 - Writing/editing outcome labels from the UI (that's a later slice — needs a PATCH endpoint).
 - Latency-per-turn charts (data not yet written per turn).
 - Kanban board, Calendar view (Sprints 3–4).
-- Any Retell-side enrichment — Retell is being sunset.
+- Any enrichment from the retired vendor — removed from the repo 2026-08-05.

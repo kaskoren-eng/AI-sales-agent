@@ -266,7 +266,6 @@ None of these are confirmed fixed.
 | `LIVEKIT_URL` | Voice — **current engine** | ✅ Set |
 | `LIVEKIT_API_KEY` | Voice — current engine | ✅ Set |
 | `LIVEKIT_API_SECRET` | Voice — current engine | ✅ Set |
-| `VOICE_ENGINE_DEFAULT` | Voice — `retell` \| `livekit` default (per-tenant override in settings) | ✅ Set |
 | `VOICE_LANGUAGE` | Voice — agent spoken language (`he`) | ✅ Set |
 | `STT_PROVIDER` | Voice — `soniox` (default) \| `openai` | ✅ Set |
 | `SONIOX_API_KEY` | Voice — STT | ✅ Set |

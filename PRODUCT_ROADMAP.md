@@ -24,7 +24,7 @@ The voice engine migration is **done and live in production** (since 2026-07-29)
 - **Self-built voice pipeline** — Zadarma SIP → LiveKit → Soniox STT → OpenAI `gpt-5.4` → Cartesia TTS. Live in production. Six agent tools (calendar availability, booking, lead capture, two confirmations, end call), prompt-injection defense, DNC handling, recording notice + AI disclosure, toll-fraud spend caps
 - Conversation state machine + reflexes (silence / barge-in / voicemail) and an objection playbook *(built, unmerged)*
 - Meeting reminders — DST-safe, quiet-hours aware
-- Voice engine history: ElevenLabs (POC, retired) → Retell (deprecated) → self-built LiveKit (live)
+- Voice engine history: ElevenLabs (POC, retired) → Retell (removed from the repo 2026-08-05) → self-built LiveKit (live)
 
 **Leads, CRM & automation**
 - Lead intake webhooks: Meta Lead Ads, generic POST endpoint

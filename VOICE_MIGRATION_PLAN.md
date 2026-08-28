@@ -1,6 +1,6 @@
 # Voice Engine Migration — Retell → Self-Built LiveKit Pipeline
 
-**Status (2026-08-02):** **Phases 1–5 complete. Phase 6 cutover is LIVE in production since 2026-07-29** on the ClickScales tenant (`613d826c`). Phase 6's own success criteria are **not yet met** — 4 production calls of the required 10, all internal verification calls, and per-minute cost is still unverified. Phase 7 (weekly iteration loop) not started.
+**Status (2026-08-05):** **Phases 1–5 complete. Phase 6 cutover is LIVE in production since 2026-07-29** on the ClickScales tenant (`613d826c`). **Retell was removed from the repo entirely on 2026-08-05 — see "Removal" near the end of this document.** Phase 6's own success criteria are **not yet met** — 4 production calls of the required 10, all internal verification calls, and per-minute cost is still unverified. Phase 7 (weekly iteration loop) not started.
 **Owner:** Koren
 **Goal:** Replace the Retell AI voice engine with a self-built voice pipeline using LiveKit + Soniox + Cartesia + OpenAI, keeping the rest of the AI Sales Agent codebase intact.
 
@@ -88,13 +88,14 @@ Node.js Voice Agent (new: src/modules/channels/voice-livekit/agent.ts)
 We do NOT delete Retell code on day one. Instead:
 
 1. ✅ **Build in parallel** at `src/modules/channels/voice-livekit/` — completely separate directory.
-2. ✅ **Feature flag** per tenant: `settings.voice_engine = 'retell' | 'livekit'`. Default: `retell`.
+2. ✅ **Feature flag** per tenant: `settings.voice_engine = 'retell' | 'livekit'`, default `retell`.
+   *(Removed 2026-08-05 along with the Retell code — there is only one engine now.)*
 3. ✅ **Switch our own tenant to `livekit`** — done 2026-07-29 (tenant `613d826c`).
 4. ⏳ **Migrate other tenants gradually** if there ever are any.
-5. ⏳ **Delete Retell code** only after 30 days of clean operation on LiveKit. Clock started 2026-07-29,
-   but "clean operation" is not yet demonstrated — only 4 production calls so far.
+5. ✅ **Delete Retell code** — done 2026-08-05. The 30-day clock was overtaken by events: the vendor
+   is no longer available to us, so keeping a dead path frozen bought nothing. See "Removal" below.
 
-The flag still flips, but see the rollback section at the bottom: rolling back is no longer a real option.
+The flag no longer exists — it was removed with the Retell code. See "Rollback plan" and "Removal" at the bottom.
 
 ---
 
@@ -193,8 +194,8 @@ Three bugs were found and fixed during the cutover-day verification: the `captur
 presented as the agent going silent for 20–44s), calendar offering one slot per day instead of a range,
 and WhatsApp E.164 normalization (Twilio error 21211).
 
-⚠️ **Rollback is no longer real.** Flipping a tenant back to `retell` still works mechanically, but Retell
-is deprecated and unmaintained here — treat it as a dead path, not a fallback. Fix forward instead.
+⚠️ **There is no rollback.** The Retell code was deleted on 2026-08-05 and the `voice_engine` setting
+no longer exists. Fix forward.
 
 ### Phase 7: Weekly iteration loop — ⏳ NOT STARTED
 - Monday morning script: pulls 20 recent calls, drops them into `weekly_review/YYYY-WW/`
@@ -319,8 +320,6 @@ VOICE_ENDPOINTING_MAX_DELAY_MS=3000
 # LLM — falls back to AI_MODEL (gpt-5.4) when unset
 VOICE_LLM_MODEL=
 
-# Feature flag (per-tenant override in tenants.settings JSON; this is the default)
-VOICE_ENGINE_DEFAULT=retell
 VOICE_LANGUAGE=he
 ```
 
@@ -329,16 +328,33 @@ Zadarma and Google Calendar env vars were already present. One was added later:
 
 ---
 
-## Rollback plan — ⚠️ historical, no longer a real option
+## Rollback plan — ⚠️ none exists
 
-The original plan was:
-```sql
-UPDATE tenants SET settings = jsonb_set(settings, '{voice_engine}', '"retell"') WHERE id = 'KOREN_TENANT_ID';
-```
+The original plan was a one-line SQL flip of `tenants.settings.voice_engine` back to `'retell'`.
 
-This still executes, and the Retell code is still on disk. **But do not treat it as a fallback.** Since the
-2026-07-29 cutover, Retell is deprecated and no longer maintained in this repo; rolling back would move
-production onto a dead path that nobody is testing. Fix forward.
+**That is gone.** As of 2026-08-05 the Retell code is deleted, the `voice_engine` setting no longer
+exists, and `VOICE_ENGINE_DEFAULT` was removed from the env schema. There is one engine. Fix forward.
+
+## Removal (2026-08-05)
+
+Retell was removed entirely — it is no longer available to us as a vendor, and the code was still
+treating it as the DEFAULT engine while making live HTTP calls to a dead API.
+
+What went: `src/modules/channels/voice/` (webhooks, HMAC verification, REST client, types), the
+`voice_engine` setting and its env default, the dialer branch, the Retell live-fetch on call detail,
+the audio proxy, and `RETELL_API_KEY` / `RETELL_AGENT_ID`.
+
+What stayed: the **Zadarma recording webhooks**, which lived inside that module but are
+engine-independent — extracted to `src/modules/channels/zadarma/`, still mounted at
+`/webhooks/voice/zadarma` because that URL is configured in the Zadarma portal.
+
+Two live bugs surfaced and were fixed: `POST /api/v1/calls/outbound` dialled via Retell
+unconditionally (broken in production), and the call-detail page fetched the dead Retell API on
+every view. Historical call transcripts were unaffected — they persist in `messages` and render
+from the DB.
+
+The sections above are kept as the record of WHY this migration happened. They describe a system
+that no longer exists.
 
 ---
 

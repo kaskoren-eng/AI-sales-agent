@@ -1,7 +1,11 @@
 # Phase 4: Agent Functions (Feature Parity with Retell)
 
-**Status:** Ready to start
-**Reference:** `docs/retell-ai-dashboard-reference.md` (Retell's Functions section)
+> **Historical framing.** Retell was removed from the repo on 2026-08-05. The "Retell equivalent"
+> lines below are kept deliberately: they record WHY each tool exists and what it was specced
+> against. They are not a live integration.
+
+**Status:** Built and live (six tools)
+**Reference:** `docs/retell-ai-dashboard-reference.md` (archived Functions section)
 **Goal:** Wire up the tools/functions Keren needs to actually perform sales work — book meetings, capture lead data, send confirmations, transfer to human.
 
 ---
@@ -172,7 +176,7 @@ Priority 3 functions (implement in Phase 4.3, only if needed):
      verify meeting appears in Koren's Google Calendar within 5 seconds
 
 CONSTRAINTS:
-- Do NOT modify src/modules/channels/voice/ (legacy Retell code)
+- The legacy `src/modules/channels/voice/` module no longer exists (deleted 2026-08-05)
 - Follow all conventions in CLAUDE.md (imports with .js, Fastify plugins, 
   AppError subclasses, tenant isolation on every DB query)
 - Circuit breaker on every external API call (LiveKit registered breakers pattern)
@@ -254,4 +258,4 @@ Remaining tasks:
 - Phase 7: Weekly iteration loop (human review + prompt tuning)
 - Ongoing: latency optimization, Hebrew quality tuning, prompt evolution
 
-**At the end of Phase 4, Retell is fully replaceable for your use case.** You can flip the tenant flag to `voice_engine='livekit'` permanently and shut off Retell whenever you're ready.
+**Phase 4 made Retell fully replaceable — and it was replaced.** LiveKit went live on 2026-07-29 and the Retell code was deleted on 2026-08-05. There is no engine flag any more.
