@@ -313,6 +313,43 @@ describe('flow-executor worker', () => {
     expect(result).toMatchObject({ action: 'make_call' }); // job SUCCEEDS — no DLQ poisoning
   });
 
+  it('make_call step — SKIPS an email-only lead instead of dead-lettering it', async () => {
+    // A lead with no phone is ordinary: the lead-intake webhook accepts phone OR email, and the
+    // Netlify Forms bridge relays whatever the form collected. Before this guard the dial went
+    // ahead with an empty callee, LiveKit answered "missing sip callee number", and the job burnt
+    // all three attempts into the DLQ — steady noise in the one queue that should be worth reading.
+    const tenant = makeTenantWithFlow('onboarding', [CALL_STEP]);
+    const deps = makeDeps();
+    deps.db.select
+      .mockReturnValueOnce(makeSelectChain([tenant])) // flow lookup
+      .mockReturnValueOnce(makeSelectChain([{ status: 'new' }])); // DNC check — not opted out
+
+    const voiceLivekit = { initiateOutboundCall: vi.fn() };
+    deps.voiceLivekit = voiceLivekit;
+
+    createFlowExecutorWorker(deps);
+    const result = await capturedProcessors[0](makeJob({ stepIndex: 0, leadPhone: '' }));
+
+    expect(voiceLivekit.initiateOutboundCall).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ action: 'make_call' }); // job SUCCEEDS — no DLQ poisoning
+  });
+
+  it('make_call step — treats a whitespace-only phone as no phone', async () => {
+    const tenant = makeTenantWithFlow('onboarding', [CALL_STEP]);
+    const deps = makeDeps();
+    deps.db.select
+      .mockReturnValueOnce(makeSelectChain([tenant]))
+      .mockReturnValueOnce(makeSelectChain([{ status: 'new' }]));
+
+    const voiceLivekit = { initiateOutboundCall: vi.fn() };
+    deps.voiceLivekit = voiceLivekit;
+
+    createFlowExecutorWorker(deps);
+    await capturedProcessors[0](makeJob({ stepIndex: 0, leadPhone: '   ' }));
+
+    expect(voiceLivekit.initiateOutboundCall).not.toHaveBeenCalled();
+  });
+
   it('make_call step — skips when voice service not configured', async () => {
     const tenant = makeTenantWithFlow('onboarding', [CALL_STEP]);
     const deps = makeDeps();
