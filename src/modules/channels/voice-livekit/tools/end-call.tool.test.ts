@@ -103,9 +103,11 @@ describe('end-call reason vocabulary', () => {
   it('keeps the system-only reasons OUT of the LLM enum but IN the full vocabulary', () => {
     expect(LLM_END_REASONS).not.toContain('no_answer');
     expect(LLM_END_REASONS).not.toContain('voicemail');
+    expect(LLM_END_REASONS).not.toContain('handoff_requested');
     expect(END_CALL_REASONS).toContain('no_answer');
     expect(END_CALL_REASONS).toContain('voicemail');
-    expect(SYSTEM_END_REASONS).toEqual(['no_answer', 'voicemail']);
+    expect(END_CALL_REASONS).toContain('handoff_requested');
+    expect(SYSTEM_END_REASONS).toEqual(['no_answer', 'voicemail', 'handoff_requested']);
   });
 
   it('the tool rejects a system-only reason the model tried to self-select', async () => {

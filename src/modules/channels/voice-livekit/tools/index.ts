@@ -3,6 +3,7 @@ import { bookMeetingTool } from './book-meeting.tool.js';
 import { captureLeadInfoTool } from './capture-lead-info.tool.js';
 import { checkCalendarAvailabilityTool } from './check-calendar-availability.tool.js';
 import { endCallTool } from './end-call.tool.js';
+import { requestHumanHandoffTool } from './request-human-handoff.tool.js';
 import {
   sendEmailConfirmationTool,
   sendWhatsappConfirmationTool,
@@ -36,6 +37,7 @@ export const TOOL_NAMES = [
   'capture_lead_info',
   'send_whatsapp_confirmation',
   'send_email_confirmation',
+  'request_human_handoff',
 ] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
@@ -48,5 +50,6 @@ export function buildAgentTools(rt: ToolRuntimeContext): llm.FunctionTool[] {
     captureLeadInfoTool(rt),
     sendWhatsappConfirmationTool(rt),
     sendEmailConfirmationTool(rt),
+    requestHumanHandoffTool(rt),
   ] as llm.FunctionTool[];
 }

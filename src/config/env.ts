@@ -191,7 +191,20 @@ const envSchema = z.object({
   SONIOX_MODEL: z.string().default('stt-rt-v5'),
   // How long Soniox waits after speech stops before declaring an endpoint. Only used when
   // VOICE_TURN_DETECTION=stt, which you should not turn on — see below.
-  SONIOX_MAX_ENDPOINT_DELAY_MS: z.coerce.number().int().min(500).max(3000).default(500),
+  // RAISED FROM THE 500ms FLOOR ON PURPOSE — it is not the latency lever it looks like.
+  //
+  // The intuition says shorter = faster, and that is why it sat at the floor. What it actually
+  // controls is how long Soniox waits after speech stops before declaring the endpoint, and that
+  // window is the ONLY place preemptive generation can happen: the plugin emits its own PREFLIGHT
+  // exactly when every token is final and the endpoint has not fired yet (_internal.js:211), and
+  // a draft built from THAT text is the only kind that survives the SDK's equality check against
+  // the committed transcript (agent_activity.js:1711). At 500ms Soniox finalises and endpoints
+  // almost simultaneously, the window is ~0, and no draft is ever started — so the LLM's ~900ms
+  // lands on top of the wait instead of inside it.
+  //
+  // Trading ~500ms of endpoint delay for ~900ms of hidden LLM is the deal. It also stops Hebrew
+  // mid-clause pauses being read as end-of-turn, which shredded one caller sentence into three.
+  SONIOX_MAX_ENDPOINT_DELAY_MS: z.coerce.number().int().min(500).max(3000).default(1000),
   // How the turn ends. LEAVE THIS ON 'vad'.
   //
   // 'stt' drives end-of-turn from Soniox's own endpoint instead of the Silero silence timer. It
@@ -295,6 +308,27 @@ const envSchema = z.object({
   // Costs a little: once the filler starts, the real reply queues behind it. That is the trade —
   // it makes the wait feel HUMAN, not shorter. Set to 0 to switch it off entirely.
   VOICE_THINKING_FILLER_MS: z.coerce.number().int().nonnegative().default(2500),
+  // Say "אוקיי" the instant the turn ends, before the model has written a word.
+  //
+  // THE ONLY THING THAT PUTS FIRST AUDIO UNDER A SECOND. Measured budget: end-of-turn ~400ms +
+  // LLM time-to-first-token ~974ms + TTS first byte ~217ms (`npm run bench:path`). The middle term
+  // is not tunable — the speech guard releases the opener 25ms after the first token, so the
+  // pipeline already streams correctly and the wait is simply how long gpt-5.4 takes to start.
+  // A real answer cannot arrive before ~1.6s; an acknowledgement arrives at ~620ms.
+  //
+  // This changes how she sounds on EVERY turn, so it is one env var to switch off. If it reads as
+  // a tic rather than as listening, that is the knob — do not start editing the phrase list first.
+  VOICE_INSTANT_ACK: envBool(true),
+  // How long she may stay deliberately silent before checking back in.
+  //
+  // The caller asking her to hold makes the model emit NO_RESPONSE_NEEDED, the guard strips it,
+  // and she says nothing — correct, and with no exit of its own. On 2026-08-16 that ran for
+  // twenty seconds of a live call before the caller asked whether anyone was still there. Nothing
+  // downstream can tell deliberate quiet from a dead agent, so this is the timer that ends it.
+  //
+  // Long enough that a caller who genuinely said "רגע" is not nagged; short enough that the call
+  // never feels dropped. 0 disables the watchdog and restores the indefinite silence.
+  VOICE_HOLD_CHECKBACK_MS: z.coerce.number().int().nonnegative().default(7000),
 
   // Agent spoken language (ISO 639-1) — drives both STT and TTS
   VOICE_LANGUAGE: z.string().default('he'),
@@ -321,6 +355,28 @@ const envSchema = z.object({
   // Run TTS on the draft reply before the turn is confirmed, so Cartesia's ~390ms doesn't land
   // on top of the endpointing wait. Costs Cartesia characters on drafts we discard.
   VOICE_PREEMPTIVE_TTS: envBool(false),
+  // How long the caller must stop producing new words before we draft a reply from what they have
+  // said so far. VOICE_TURN_DETECTION=stt only — see stt/soniox.stt.ts withPausePreflight.
+  //
+  // DEFAULT 0 = OFF, because against Soniox this cannot win, and the reason is worth knowing
+  // before anyone turns it back on.
+  //
+  // A preemptive draft survives only if `preemptive.info.newTranscript === userMessage.textContent`
+  // — a strict string equality against the committed transcript (agent_activity.js:1711). The
+  // Soniox plugin builds an INTERIM as `finalTokens + nonFinalTokens` and the FINAL as
+  // `finalTokens` alone (_internal.js:211). So a draft started from an interim is, by definition,
+  // built on tokens Soniox has not committed to and will still rewrite — most visibly by adding
+  // the closing punctuation. Measured on a real call at 200ms: 6 drafts started, 6 discarded,
+  // 0 used, ~6 LLM calls paid for and nothing heard by the caller.
+  //
+  // This is structural, not a tuning problem: no pause length makes non-final tokens final. The
+  // route that CAN work is Soniox's own PREFLIGHT, which it emits when every token is finalised
+  // and the endpoint has not fired yet — see SONIOX_MAX_ENDPOINT_DELAY_MS, which is what opens
+  // that window.
+  //
+  // Kept, not deleted: the mechanism is sound against an STT whose interims are stable, and it is
+  // covered by tests. It is the trigger's premise that Soniox violates.
+  VOICE_PREEMPTIVE_PAUSE_MS: z.coerce.number().int().nonnegative().default(0),
   // How loud a sound must be before Silero calls it speech. THE lever for phone lines: a phone
   // is never digitally silent (hiss, comfort noise), so at the default 0.5 the VAD keeps hearing
   // "speech" and the end-of-turn silence timer never fires — measured 1030ms on a real call even
@@ -406,6 +462,21 @@ const envSchema = z.object({
   // Default ON. Set false to run Keren exactly as she was before the state machine — used to A/B
   // whether the advisory layer affects call behaviour. Tools and the gate are unaffected either way.
   VOICE_STATE_MACHINE_ENABLED: envBool(true),
+  // Kill-switch for the Hebrew number/time SPEECH normalizer (speech-numbers.he.ts): clock times
+  // ("16:30" → "ארבע וחצי"), phone digits and round prices are spoken as colloquial Hebrew words.
+  // Speech-only — transcripts/chatCtx keep the digits, same contract as the gender tables.
+  // Default ON (Koren, 2026-08-27). Set false to restore raw digit read-out.
+  VOICE_SPEECH_NUMBERS_ENABLED: envBool(true),
+  // Kill-switch for the anti-repetition phrase ledger (phrase-ledger.ts): tracks 4-grams she has
+  // already said this call and appends a per-turn "do not reuse these phrasings" system note at
+  // turn boundaries (tail-appended — never churns the prompt-cache prefix, never touches an
+  // in-flight preemptive draft). Default ON (Koren, 2026-08-27). Set false to remove the note
+  // entirely; the repeatedPhraseCount metric in CallReport keeps reporting either way.
+  VOICE_PHRASE_LEDGER_ENABLED: envBool(true),
+  // Kill-switch for the Spoken Register prompt section (simple spoken Hebrew + the light-slang
+  // bank — סבבה/אחלה level, no heavy street slang; Koren's explicit register choice 2026-08-27).
+  // Default ON. Set false to drop the section and restore the previous register.
+  VOICE_SPOKEN_REGISTER_ENABLED: envBool(true),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),

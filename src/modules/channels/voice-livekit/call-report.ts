@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ShadowSttTranscript } from '../../../db/schema/call-learnings.js';
+import { countRepeatedFourGrams } from './phrase-ledger.js';
 
 /**
  * A durable record of one call: what was heard, what was said, and how slow it was.
@@ -142,6 +143,17 @@ export interface CallReportJson {
      */
     duplicateReplies: number;
     /**
+     * Distinct 4-grams the agent spoke 2+ times on this call — the "sounds like a robot" number.
+     *
+     * `duplicateReplies` above catches only a WHOLE reply said twice; this catches the failure
+     * Koren actually hears (2026-08-27): the same phrasings recycled inside different replies.
+     * The humanization plan's baseline measured up to 62 per call; the phrase ledger
+     * (VOICE_PHRASE_LEDGER_ENABLED) is the enforcement and THIS is its gate — ≤2 per call on the
+     * scenario suite. Computed by countRepeatedFourGrams (phrase-ledger.ts), the same function
+     * the baseline backfill (scripts/repeated-phrases-baseline.mjs) uses, so the numbers compare.
+     */
+    repeatedPhraseCount: number;
+    /**
      * Share of LLM input tokens served from OpenAI's prompt cache, across the call.
      *
      * There is no switch for this — OpenAI caches automatically, on the longest common PREFIX of the
@@ -155,10 +167,73 @@ export interface CallReportJson {
      */
     promptCacheHitPct: number | null;
     endOfTurnMedianMs: number | null;
+    /**
+     * Time to the first chunk out of `llmNode` — WHICH IS NOT THE MODEL when the instant
+     * acknowledgement is on.
+     *
+     * `performLLMInference` stamps its ttft on whatever comes out of `llmNode` first
+     * (generation.js:381), and with VOICE_INSTANT_ACK that is our own "אוקיי." emitted before the
+     * model has done anything. So this reads near zero and tells you nothing about GPT. Read
+     * `modelTtftMedianMs` for that. Both are kept because their DIFFERENCE is the point: it is
+     * how much of the model's thinking the acknowledgement is hiding.
+     */
     llmTtftMedianMs: number | null;
+    /**
+     * The model's real time-to-first-token, measured in `llmNode` from reply start.
+     *
+     * Null when the instant acknowledgement is off — there is nothing to disentangle then, and
+     * `llmTtftMedianMs` already is the model's number.
+     */
+    modelTtftMedianMs: number | null;
     ttsTtfbMedianMs: number | null;
-    /** Sum of the three medians: the worst case, if no stage overlapped any other. */
+    /**
+     * Preemptive drafts the SDK threw away — LLM calls paid for and never heard.
+     *
+     * A draft survives only if `preemptive.info.newTranscript === userMessage.textContent`
+     * (agent_activity.js:1711) — a STRICT string equality against the committed transcript. The
+     * Soniox plugin builds an interim as `finalTokens + nonFinalTokens` but the FINAL as
+     * `finalTokens` alone, so a draft started from an interim carries text Soniox has not
+     * committed to yet and almost never matches: on 2026-08-16, 6 drafts, 6 discarded, 0 used.
+     *
+     * If this is non-zero and `deadAir` is not falling, drafting is costing money and buying
+     * nothing. Both numbers have to be read together.
+     */
+    draftsDiscarded: number;
+    /**
+     * Sum of the three medians: the worst case, if no stage overlapped any other.
+     *
+     * NOT WHAT THE CALLER HEARS, and it has been read that way. It is a synthetic figure built
+     * from three medians that never co-occurred on any single turn, and it is BLIND to preemptive
+     * generation — the one mechanism that actually decides how long the silence is, because it
+     * moves the LLM and TTS INSIDE the end-of-turn wait instead of after it. On the 2026-08-16
+     * call this said 1466ms while the real median silence was 2535ms. Use `deadAir` below.
+     */
     worstCaseMs: number | null;
+    /**
+     * PERCEIVED DEAD AIR — the caller stopped talking, and this is how long until they heard
+     * anything back. Milliseconds, measured per turn.
+     *
+     * THE ONLY LATENCY NUMBER THAT DESCRIBES THE PRODUCT. Everything above measures a stage of
+     * our pipeline; this measures the silence a human sat through, which is the thing that is
+     * either under a second or is not. It is deliberately taken from session STATE transitions
+     * (user stopped → agent started speaking) rather than from stage metrics, so it counts the
+     * real gap including anything we do not have an instrument for: queueing, fragmentation, a
+     * draft being discarded and regenerated, the agent thinking twice.
+     *
+     * Read `p90` before `median`. The median hides the turns that lose the call — on the call
+     * that prompted this metric the median was 2.5s and the two worst turns were ~6s, and it is
+     * the 6s ones the caller remembers.
+     *
+     * `samples` is how many turns it was measured over. A single-digit sample on a short call is
+     * not evidence of anything; do not report a median over three turns as a result.
+     */
+    deadAir: {
+      medianMs: number | null;
+      p90Ms: number | null;
+      minMs: number | null;
+      maxMs: number | null;
+      samples: number;
+    };
   };
   /**
    * THE ACTUAL CONVERSATION — both sides of it.
@@ -199,6 +274,9 @@ export class CallReport {
   #shadow: ShadowSttTranscript | null = null;
   #cutOffs = 0;
   #restoreStderr: (() => void) | null = null;
+  /** When the caller last stopped speaking, with no agent audio since. Null = already answered. */
+  #userStoppedAt: number | null = null;
+  #deadAir: number[] = [];
 
   constructor(room: string, callerPhone: string | null, config: CallReportJson['config']) {
     this.#room = room;
@@ -304,6 +382,55 @@ export class CallReport {
     this.#transcript.push({ atMs: Date.now() - this.#startedAt, role, text: trimmed });
   }
 
+  /**
+   * The caller stopped speaking. Starts (or restarts) the dead-air stopwatch.
+   *
+   * RESTARTING ON EVERY STOP IS THE POINT, not a bug to fix later. When the turn detector shreds
+   * one sentence into three, the caller does not experience three waits — they experience one,
+   * measured from the last thing they said. Keeping the earliest stop instead would charge the
+   * agent for the caller's own thinking pause and make fragmentation look like latency.
+   */
+  noteUserStoppedSpeaking(): void {
+    this.#userStoppedAt = Date.now();
+  }
+
+  /** The caller started speaking again — there is no silence to measure until they stop. */
+  noteUserStartedSpeaking(): void {
+    this.#userStoppedAt = null;
+  }
+
+  /**
+   * How long the caller has been waiting right now, or null if they are still talking.
+   *
+   * THE MEASUREMENT THAT WAS MISSING. `latency audio_path` timed the reply from the moment the
+   * reply STARTED, and by that clock the acknowledgement leaves in 1-2ms — which looked like
+   * success. But dead air on the same call ran to a median of 1254ms when end-of-turn (200ms) plus
+   * TTS (229ms) predicts ~430ms. Both numbers were right; neither could see the ~800ms BEFORE
+   * `llmNode` was ever called. Stamping the same log line against the caller's clock is what
+   * distinguishes "our pipeline is slow" from "our pipeline was started late".
+   */
+  msSinceUserStopped(): number | null {
+    return this.#userStoppedAt === null ? null : Date.now() - this.#userStoppedAt;
+  }
+
+  /**
+   * The agent's first audio of a reply reached the caller. Closes the stopwatch.
+   *
+   * Only the FIRST speech after a stop counts: the stopwatch is cleared here, so the second and
+   * third segments of one long answer do not each score a near-zero and drag the median down.
+   */
+  noteAgentStartedSpeaking(): void {
+    if (this.#userStoppedAt === null) return;
+    const ms = Date.now() - this.#userStoppedAt;
+    this.#userStoppedAt = null;
+    // A barge-in can put the agent into 'speaking' a hair before the caller's stop registers.
+    // Negative silence is not a thing; drop the sample rather than record a flattering zero.
+    if (ms < 0) return;
+    this.#deadAir.push(ms);
+    this.#metrics.push({ atMs: Date.now() - this.#startedAt, stage: 'dead_air', durationMs: ms });
+    console.log(`latency dead_air ms=${ms}`);
+  }
+
   recordUsage(usage: unknown): void {
     this.#usage = usage;
   }
@@ -355,15 +482,29 @@ export class CallReport {
     const eou = this.#metrics
       .map((m) => m.endOfUtteranceDelayMs)
       .filter((v): v is number => typeof v === 'number' && v > 0);
+    // -1 is LiveKit's sentinel for a generation that was CANCELLED before its first token — a
+    // preemptive draft the caller's next word invalidated. Averaging those in does not measure a
+    // fast LLM, it measures a wasted one, and it drags the median toward zero in exactly the
+    // situation where the caller is waiting longest. It reported 314ms on a call whose real
+    // time-to-first-token was 820-950ms on every turn that actually produced speech, and I read
+    // that as the fix working. Cancelled drafts are counted separately, as `draftsDiscarded`.
     const ttft = this.#metrics
       .map((m) => m.ttftMs)
-      .filter((v): v is number => typeof v === 'number');
+      .filter((v): v is number => typeof v === 'number' && v >= 0);
+    const draftsDiscarded = this.#metrics.filter((m) => m.ttftMs === -1).length;
     const ttfb = this.#metrics
       .map((m) => m.ttfbMs)
       .filter((v): v is number => typeof v === 'number');
 
     const eouMed = median(eou);
     const ttftMed = median(ttft);
+    // Recorded by llmNode under its own stage so it can never mix with the SDK's ttft above.
+    const modelTtftMed = median(
+      this.#metrics
+        .filter((m) => m.stage === 'model_ttft')
+        .map((m) => m.durationMs)
+        .filter((v): v is number => typeof v === 'number'),
+    );
     const ttfbMed = median(ttfb);
 
     // Cache hit rate across the whole call, weighted by tokens (not a mean of per-turn ratios —
@@ -405,14 +546,28 @@ export class CallReport {
         cutOffs: this.#cutOffs,
         fragmentedTurns,
         duplicateReplies,
+        repeatedPhraseCount: countRepeatedFourGrams(
+          this.#transcript.filter((t) => t.role === 'assistant').map((t) => t.text),
+        ),
         promptCacheHitPct,
+        draftsDiscarded,
         endOfTurnMedianMs: eouMed,
         llmTtftMedianMs: ttftMed,
+        modelTtftMedianMs: modelTtftMed,
         ttsTtfbMedianMs: ttfbMed,
+        // Uses the MODEL's ttft when we have it. Otherwise the instant acknowledgement would
+        // silently shave ~840ms off this figure without a single stage getting faster.
         worstCaseMs:
-          eouMed === null || ttftMed === null || ttfbMed === null
+          eouMed === null || (modelTtftMed ?? ttftMed) === null || ttfbMed === null
             ? null
-            : Math.round(eouMed + ttftMed + ttfbMed),
+            : Math.round(eouMed + (modelTtftMed ?? ttftMed)! + ttfbMed),
+        deadAir: {
+          medianMs: median(this.#deadAir),
+          p90Ms: percentile(this.#deadAir, 90),
+          minMs: this.#deadAir.length ? Math.min(...this.#deadAir) : null,
+          maxMs: this.#deadAir.length ? Math.max(...this.#deadAir) : null,
+          samples: this.#deadAir.length,
+        },
       },
       transcript: this.#transcript,
       metrics: this.#metrics,
@@ -444,4 +599,16 @@ function median(values: number[]): number | null {
   const s = [...values].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
   return Math.round(s.length % 2 === 0 ? (s[mid - 1]! + s[mid]!) / 2 : s[mid]!);
+}
+
+/**
+ * Nearest-rank percentile. On the handful of turns a sales call produces, this reduces to "the
+ * worst one or two", which is exactly the intent: the median says how the call felt on average,
+ * this says how it felt when it went wrong.
+ */
+function percentile(values: number[], p: number): number | null {
+  if (values.length === 0) return null;
+  const s = [...values].sort((a, b) => a - b);
+  const rank = Math.ceil((p / 100) * s.length);
+  return Math.round(s[Math.min(s.length - 1, Math.max(0, rank - 1))]!);
 }

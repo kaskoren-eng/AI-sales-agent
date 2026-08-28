@@ -87,6 +87,9 @@ export interface ToolRuntimeContext {
    */
   lastCheckedDurationMinutes: number | null;
   bookingCompleted: boolean;
+  /** One-way latch: request_human_handoff flips it once; a repeat call is a no-op (no re-flag,
+   * no double-ping to the owner). Same pattern as bookingCompleted. */
+  handoffRequested: boolean;
   endReason: string | null;
   /** Raw tenants.settings loaded at gate time — previously discarded; tools read per-tenant
    * config (templates, reminders, limits) from here without a second DB round trip. */
@@ -559,6 +562,7 @@ export async function buildToolRuntime(
       env,
       lastCheckedDurationMinutes: null,
       bookingCompleted: false,
+      handoffRequested: false,
       endReason: null,
       settings,
       outboundQueue,

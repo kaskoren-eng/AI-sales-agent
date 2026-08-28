@@ -344,7 +344,18 @@ Do not touch the context inside that hook.
 
 ---
 
-## 13. Niqqud (Hebrew diacritics) makes Cartesia sonic-3 WORSE, not better. Do not send it.
+## 13. FULL niqqud makes Cartesia WORSE — but ONE mark on ONE letter is the shipped fix (2026-08-26)
+
+> **⚠️ 2026-08-26 amendment — read before citing this section.** The headline below is about
+> **blanket** diacritization (pointing every word), and it stands: do not send fully-pointed
+> Hebrew. But the later rounds this section originally didn't cover (July round 2, D/E/F —
+> then round 3 on sonic-3.5, `round3.py` / `index-round3.html`) tested **minimal niqqud** — a
+> single vowel mark on only the ambiguous letter, rest of the sentence plain — and it **won the
+> listening A/B against both plain text and the שלכה respelling**. It now ships:
+> `speech-guard.ts` sends שלךָ (one kamatz), לוודֵא (one tsere), and a per-word feminine table.
+> One mark answers exactly the question the TTS was guessing at; full pointing pushes the whole
+> sentence out of the model's training distribution. Both facts are true at once — that is why
+> `guardSpeech` STRIPS model-emitted niqqud first, then injects only these verified marks.
 
 The idea keeps coming back because it sounds obviously right: Hebrew doesn't write vowels, so the
 gender bug (שלך = shel-KHA vs shel-AKH) is a missing-vowel problem — so *add the vowels* with niqqud
@@ -369,28 +380,106 @@ why the audio dragged — but stripping it in variant C did not save the approac
 This is the SECOND time niqqud has been rejected on real audio — the first was manual niqqud in the
 system prompt ("אין משהו אחיד"). Two independent attempts, same verdict.
 
-**What to do instead — and it already ships.** `speech-guard.ts::forceMasculineAddress` does NOT add
-niqqud. It **respells the few ambiguous words with ordinary letters** (שלך → שלכה), so the rest of the
-sentence stays plain, un-diacritized text — exactly what sonic-3 handles well. The surgical
-letter-swap beats the blanket diacritization precisely because it does not poison the whole utterance.
-Verified round-trip (TTS → 8kHz line → Soniox) as correct masculine. That is the answer; niqqud is not.
+**What to do instead — surgical, not blanket. This evolved; the current answer is minimal niqqud.**
+The first shipped fix respelled with ordinary letters (שלך → שלכה) — it worked because it kept the
+rest of the sentence plain. Round 3 (2026-08-26, sonic-3.5) put that respelling head-to-head against
+**minimal niqqud** (one mark on the ambiguous letter only: שלך → שלךָ) and minimal niqqud won by
+Koren's ear on every masculine word and most feminine ones — `speech-guard.ts::forceAddressGender`
+now ships the per-word winners, plus a gender-neutral dictionary (לוודא → לוודֵא). Every entry is
+double-verified: listening-page pick + round-trip (TTS → 8kHz line → Soniox → the intended plain
+word — `roundtrip.ts`, 27 clips). What remains true: never diacritize the whole utterance, and
+`guardSpeech` strips any niqqud the LLM emits before injecting the verified marks.
 
-The A/B/C harness and audio are kept under `tests/hebrew-tts-niqqud-ab/` as the evidence, so this does
-not get re-litigated. The 293MB ONNX model is gitignored (re-fetch instructions in that folder's README).
+The harnesses and audio for all three rounds are kept under `tests/hebrew-tts-niqqud-ab/` as the
+evidence, so this does not get re-litigated in either direction. The 293MB ONNX model is gitignored
+(re-fetch instructions in that folder's README).
 
 ---
 
+## 14. Preemptive generation cannot work against Soniox. Stop trying.
+
+Three sessions went into making LiveKit draft the reply during the end-of-turn wait. It does not
+work here, the reason is structural, and the point of this entry is that the next person does not
+spend a fourth.
+
+A draft is only used if it passes this, in `agent_activity.js:1711`:
+
+```js
+preemptive.info.newTranscript === userMessage.textContent && preemptive.chatCtx.isEquivalent(chatCtx) && ...
+```
+
+**Strict string equality against the committed transcript.** And the Soniox plugin builds an
+INTERIM as `finalTokens + nonFinalTokens` but the FINAL as `finalTokens` alone
+(`_internal.js:211`), so any draft taken from an interim carries text Soniox has not committed to
+and will still rewrite. What actually happened, across four real calls:
+
+| date | drafts started | used |
+|---|---|---|
+| 2026-08-16 (pause trigger @200ms) | 6 | 0 |
+| 2026-08-16 (endpoint delay 1000ms) | 3 | 1 |
+| 2026-08-16 (same config, next call) | 0 | 0 |
+
+The one that survived produced **248ms** of dead air; its neighbours on the same call produced
+2222ms and 2958ms. So the mechanism is real — it is the *trigger* that cannot be made reliable.
+The two that died on that call differed from the commit by **one character** of trailing
+punctuation, which is why `withPreflightSurvival` in `stt/soniox.stt.ts` exists. It was not enough:
+the next call produced no preflights at all.
+
+Left in the tree, off: `VOICE_PREEMPTIVE_PAUSE_MS=0`. The code and its tests are sound against an
+STT with stable interims. It is the premise Soniox violates.
+
+**Two instruments were wrong while this was being chased, which is why it took three sessions:**
+
+- `summary.worstCaseMs` sums three medians that never co-occurred on one turn and is blind to
+  overlap by construction. It read 1466ms on a call the caller experienced as 2535ms. Use
+  `summary.deadAir` — caller stopped → agent audio out.
+- `llmTtftMedianMs` averaged in LiveKit's `-1` sentinel for cancelled drafts, so six discarded
+  drafts pulled the median to 314ms on a call whose real time-to-first-token was 820–950ms. That
+  was reported as the fix working. Cancelled drafts are now excluded and counted as
+  `draftsDiscarded`.
+
+## 15. The speech guard is NOT the latency cost. Measure before blaming it.
+
+`npm run bench:path` runs the live model on the real prompt through the REAL `guardStream`:
+
+```
+ttft 974ms   firstSentence 999ms   fullReply 2387ms
+```
+
+**The guard releases the opener 25ms after the first token.** Its per-sentence flush works; the
+pipeline already streams correctly. Two deploys were spent on the theory that it buffered the whole
+reply, on the strength of a per-turn correlation between dead air and full generation time that
+turned out to be coincidence on short replies.
+
+Run the bench before touching the guard. It costs cents and no phone call.
+
 ## Realistic latency budget for Hebrew
 
-| Stage | Measured | English guides assume |
-|---|---|---|
-| End-of-turn | ~950ms | 300ms |
-| LLM first token | ~1100ms | 300ms |
-| TTS first audio | ~450ms | 100ms |
-| **Total** | **~2.5s** | ~800ms |
+Re-measured 2026-08-16 on the live stack (Soniox `stt-rt-v5` → gpt-5.4 `priority`/`effort=none`
+→ Cartesia `sonic-3.5`), with `SONIOX_MAX_ENDPOINT_DELAY_MS=1000`:
 
-**MVP target: ~1.5s** (Koren, 2026-07-13). Sub-second is likely unreachable for Hebrew on a
-cascade pipeline with today's vendors.
+| Stage | 2026-07 | 2026-08-16 | Note |
+|---|---|---|---|
+| End-of-turn | ~950ms | **~400ms** | the endpoint delay is what fixed this |
+| LLM first token | ~1100ms | **~974ms** | not tunable; see §3 and §14 |
+| TTS first audio | ~450ms | **~217ms** | sonic-3.5 |
+| **First audio, real answer** | ~2.5s | **~1.6s** | |
+
+**THE FLOOR ON A REAL ANSWER IS ~1.6s AND NO PIPELINE WORK GETS UNDER IT.** End-of-turn is already
+near the useful limit, TTS is 217ms, and the LLM's ~974ms is simply how long gpt-5.4 takes to
+start. That is the arithmetic §14 was trying to beat and could not.
+
+**Under 1s is reached by speaking sooner, not by answering sooner.** `VOICE_INSTANT_ACK` emits a
+short receipt ("אוקיי.") from `llmNode` before the model has written a word, so first audio lands at
+end-of-turn + TTS ≈ **620ms** and the real answer follows behind it. Koren's framing, 2026-08-16:
+*"the reply time is not the problem here, the problem is the time until the agent starts speaking."*
+
+It must be injected in `llmNode`, never `session.say()` — see the note in `agent.ts`. The speech
+queue is `[priority, insertion-time]`, `say()` takes no priority, and the reply's handle is
+scheduled *before* the `thinking` event fires, so anything armed from that event plays AFTER her
+reply. That bug shipped once already.
+
+**MVP target: ~1.5s** (Koren, 2026-07-13); superseded by the <1s first-audio target (2026-08-16).
 
 The one genuinely novel fix — a **custom Hebrew end-of-turn predictor**, running a small model over
 the live transcript to judge "has he finished?" instead of waiting on silence — is **deferred**.

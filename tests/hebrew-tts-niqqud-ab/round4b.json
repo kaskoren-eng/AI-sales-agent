@@ -1,0 +1,89 @@
+{
+  "model": "sonic-3.5",
+  "cards": [
+    {
+      "id": "w1",
+      "section": "ps",
+      "word": "צחוק כתוב — חח",
+      "variants": [
+        {
+          "key": "A",
+          "label": "רגיל",
+          "text": "חח, זה באמת מצחיק.",
+          "file": "r4_w1_A.wav",
+          "dur": 1.84
+        }
+      ]
+    },
+    {
+      "id": "w2",
+      "section": "ps",
+      "word": "צחוק כתוב — חהחה",
+      "variants": [
+        {
+          "key": "A",
+          "label": "רגיל",
+          "text": "חהחה, לא ציפיתי לזה.",
+          "file": "r4_w2_A.wav",
+          "dur": 2.16
+        }
+      ]
+    },
+    {
+      "id": "w3",
+      "section": "ps",
+      "word": "אנחה — אוף",
+      "variants": [
+        {
+          "key": "A",
+          "label": "רגיל",
+          "text": "אוף... זה באמת מבאס.",
+          "file": "r4_w3_A.wav",
+          "dur": 2.16
+        }
+      ]
+    },
+    {
+      "id": "w4",
+      "section": "ps",
+      "word": "אנחה — אוו",
+      "variants": [
+        {
+          "key": "A",
+          "label": "רגיל",
+          "text": "אוו... אני מבינה אותך לגמרי.",
+          "file": "r4_w4_A.wav",
+          "dur": 2.16
+        }
+      ]
+    },
+    {
+      "id": "w5",
+      "section": "ps",
+      "word": "שמחה — איזה כיף",
+      "variants": [
+        {
+          "key": "A",
+          "label": "רגיל",
+          "text": "איזה כיף! ממש שמחה לשמוע.",
+          "file": "r4_w5_A.wav",
+          "dur": 2.4
+        }
+      ]
+    },
+    {
+      "id": "w6",
+      "section": "ps",
+      "word": "הפתעה — וואלה",
+      "variants": [
+        {
+          "key": "A",
+          "label": "רגיל",
+          "text": "וואלה? זה ממש מעניין.",
+          "file": "r4_w6_A.wav",
+          "dur": 2.08
+        }
+      ]
+    }
+  ]
+}

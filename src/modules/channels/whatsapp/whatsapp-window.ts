@@ -24,6 +24,7 @@ export const WHATSAPP_TEMPLATE_KEYS = [
   'reminder_t24',
   'reminder_t1',
   'first_touch', // wired into lead-intake in Workstream B/C2 — the plumbing is ready now
+  'handoff_alert', // owner ping when a lead asks for a human (voice request_human_handoff tool)
 ] as const;
 export type WhatsappTemplateKey = (typeof WHATSAPP_TEMPLATE_KEYS)[number];
 export type WhatsappTemplatesConfig = Partial<Record<WhatsappTemplateKey, { contentSid: string }>>;

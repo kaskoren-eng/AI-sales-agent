@@ -27,6 +27,14 @@ import {
  *
  * If one of these fails, the question is never "update the fixture". It is "which live call did I
  * just change".
+ *
+ * Regenerated once, 2026-08-28, when `feature/voice-human-handoff` merged into main: the
+ * humanization content (emotional color beats, spoken register, variation banks, hold-word rework
+ * — round-5 verified 17/17 on real TTS, each behind its own env kill-switch) changed the default
+ * prompt BY DESIGN. The answer to "which live call did I just change" was: the ones Koren asked
+ * for. The new bytes are independently pinned by system-prompt.test.ts; the greeting fixture and
+ * every persona-owned section (Role, FAQ, gender rules) were verified unchanged before
+ * regenerating.
  */
 
 const FIXTURES = fileURLToPath(new URL('./__fixtures__/', import.meta.url));

@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>אימות זכר/נקבה · ניקוד מינימלי</title>
+<style>
+  :root { --bg:#0e1116; --card:#171b22; --line:#252b36; --txt:#e6e9ef; --dim:#9aa4b2;
+          --a:#3b82f6; --b:#22c55e; --m:#3b82f6; --f:#ec4899; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:"Segoe UI",Arial,sans-serif; }
+  header { padding:26px 20px 8px; max-width:1000px; margin:0 auto; }
+  h1 { margin:0 0 6px; font-size:22px; }
+  .sub { color:var(--dim); font-size:14px; max-width:78ch; }
+  h2 { max-width:1000px; margin:22px auto 4px; padding:0 20px; font-size:17px; }
+  h2 .pill { font-size:13px; padding:2px 10px; border-radius:20px; margin-inline-start:8px; }
+  .pill.m { background:#12233f; color:#7ab3ff; } .pill.f { background:#3a1330; color:#ff9ad4; }
+  main { max-width:1000px; margin:0 auto; padding:0 20px 70px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin:14px 0; }
+  .chead { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .cid { font-weight:700; font-size:20px; }
+  .gtag { font-size:12px; padding:2px 10px; border-radius:20px; }
+  .gtag.m { background:#12233f; color:#7ab3ff; } .gtag.f { background:#3a1330; color:#ff9ad4; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:640px) { .grid { grid-template-columns:1fr; } }
+  .col { border:1px solid var(--line); border-radius:10px; padding:12px; background:#0f131a; }
+  .col.a { border-top:3px solid var(--a); } .col.b { border-top:3px solid var(--b); }
+  .lbl { font-size:13px; color:var(--dim); margin-bottom:8px; display:flex; justify-content:space-between; }
+  .dur { font-family:monospace; }
+  .he { font-size:22px; margin-bottom:10px; }
+  audio { width:100%; height:34px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>אימות: ניקוד מינימלי לשני המגדרים</h1>
+  <p class="sub">אותן 4 מילות פנייה, פעם לגבר ופעם לאישה. <b>A</b> = רגיל (מה ש-sonic-3 מנחש).
+  <b style="color:#22c55e">B</b> = ניקוד מינימלי לפי המגדר (כמו שה-CRM היה אומר לנו).
+  המבחן: האם B <b>לזכר</b> נשמע זכר, ו-B <b>לנקבה</b> נשמע נקבה — ושניהם נקיים?</p>
+</header>
+<h2>זכר <span class="pill m">שלך→שלךָ · אליך→אליךָ</span></h2>
+<main style="padding-top:0">
+    <div class="card">
+      <div class="chead"><span class="cid">שלך</span>
+        <span class="gtag m">זכר</span></div>
+      <div class="grid">
+        <div class="col a">
+          <div class="lbl">A · רגיל <span class="dur">0.93s</span></div>
+          <div class="he" dir="rtl">מה השם שלך?</div>
+          <audio controls preload="none" src="vm1_A.wav"></audio>
+        </div>
+        <div class="col b">
+          <div class="lbl">B · ניקוד מינימלי <span class="dur">1.53s</span></div>
+          <div class="he" dir="rtl">מה השם שלךָ?</div>
+          <audio controls preload="none" src="vm1_B.wav"></audio>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span class="cid">אליך</span>
+        <span class="gtag m">זכר</span></div>
+      <div class="grid">
+        <div class="col a">
+          <div class="lbl">A · רגיל <span class="dur">1.72s</span></div>
+          <div class="he" dir="rtl">אני אחזור אליך היום.</div>
+          <audio controls preload="none" src="vm2_A.wav"></audio>
+        </div>
+        <div class="col b">
+          <div class="lbl">B · ניקוד מינימלי <span class="dur">1.81s</span></div>
+          <div class="he" dir="rtl">אני אחזור אליךָ היום.</div>
+          <audio controls preload="none" src="vm2_B.wav"></audio>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span class="cid">אותך</span>
+        <span class="gtag m">זכר</span></div>
+      <div class="grid">
+        <div class="col a">
+          <div class="lbl">A · רגיל <span class="dur">1.11s</span></div>
+          <div class="he" dir="rtl">נעים מאוד להכיר אותך.</div>
+          <audio controls preload="none" src="vm3_A.wav"></audio>
+        </div>
+        <div class="col b">
+          <div class="lbl">B · ניקוד מינימלי <span class="dur">1.95s</span></div>
+          <div class="he" dir="rtl">נעים מאוד להכיר אותךָ.</div>
+          <audio controls preload="none" src="vm3_B.wav"></audio>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span class="cid">לך</span>
+        <span class="gtag m">זכר</span></div>
+      <div class="grid">
+        <div class="col a">
+          <div class="lbl">A · רגיל <span class="dur">2.14s</span></div>
+          <div class="he" dir="rtl">שלחתי לך עכשיו מייל.</div>
+          <audio controls preload="none" src="vm4_A.wav"></audio>
+        </div>
+        <div class="col b">
+          <div class="lbl">B · ניקוד מינימלי <span class="dur">1.58s</span></div>
+          <div class="he" dir="rtl">שלחתי לךָ עכשיו מייל.</div>
+          <audio controls preload="none" src="vm4_B.wav"></audio>
+        </div>
+      </div>
+    </div></main>
+<h2>נקבה <span class="pill f">שלך→שלָךְ · אליך→אלַיִךְ</span></h2>
+<main style="padding-top:0">
+    <div class="card">
+      <div class="chead"><span class="cid">שלך</span>
+        <span class="gtag f">נקבה</span></div>
+      <div class="grid">
+        <div class="col a">
+          <div class="lbl">A · רגיל <span class="dur">0.84s</span></div>
+          <div class="he" dir="rtl">מה השם שלך?</div>
+          <audio controls preload="none" src="vf1_A.wav"></audio>
+        </div>
+        <div class="col b">
+          <div class="lbl">B · ניקוד מינימלי <span class="dur">0.93s</span></div>
+          <div class="he" dir="rtl">מה השם שלָךְ?</div>
+          <audio controls preload="none" src="vf1_B.wav"></audio>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span class="cid">אליך</span>
+        <span class="gtag f">נקבה</span></div>
+      <div class="grid">
+        <div class="col a">
+          <div class="lbl">A · רגיל <span class="dur">1.16s</span></div>
+          <div class="he" dir="rtl">אני אחזור אליך היום.</div>
+          <audio controls preload="none" src="vf2_A.wav"></audio>
+        </div>
+        <div class="col b">
+          <div class="lbl">B · ניקוד מינימלי <span class="dur">1.63s</span></div>
+          <div class="he" dir="rtl">אני אחזור אלַיִךְ היום.</div>
+          <audio controls preload="none" src="vf2_B.wav"></audio>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span class="cid">אותך</span>
+        <span class="gtag f">נקבה</span></div>
+      <div class="grid">
+        <div class="col a">
+          <div class="lbl">A · רגיל <span class="dur">1.11s</span></div>
+          <div class="he" dir="rtl">נעים מאוד להכיר אותך.</div>
+          <audio controls preload="none" src="vf3_A.wav"></audio>
+        </div>
+        <div class="col b">
+          <div class="lbl">B · ניקוד מינימלי <span class="dur">1.76s</span></div>
+          <div class="he" dir="rtl">נעים מאוד להכיר אותָךְ.</div>
+          <audio controls preload="none" src="vf3_B.wav"></audio>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span class="cid">לך</span>
+        <span class="gtag f">נקבה</span></div>
+      <div class="grid">
+        <div class="col a">
+          <div class="lbl">A · רגיל <span class="dur">1.90s</span></div>
+          <div class="he" dir="rtl">שלחתי לך עכשיו מייל.</div>
+          <audio controls preload="none" src="vf4_A.wav"></audio>
+        </div>
+        <div class="col b">
+          <div class="lbl">B · ניקוד מינימלי <span class="dur">1.63s</span></div>
+          <div class="he" dir="rtl">שלחתי לָךְ עכשיו מייל.</div>
+          <audio controls preload="none" src="vf4_B.wav"></audio>
+        </div>
+      </div>
+    </div></main>
+</body>
+</html>

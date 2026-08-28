@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>סבב 3 · ליטוש הגייה · sonic-3.5</title>
+<style>
+  :root { --bg:#0e1116; --card:#171b22; --line:#252b36; --txt:#e6e9ef; --dim:#9aa4b2; --acc:#3b82f6; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:"Segoe UI",Arial,sans-serif; }
+  header, main { max-width:1050px; margin:0 auto; padding:0 20px; }
+  header { padding-top:26px; }
+  h1 { margin:0 0 6px; font-size:22px; }
+  h2 { font-size:18px; margin:30px 0 2px; }
+  .sub { color:var(--dim); font-size:14px; margin:4px 0 10px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin:14px 0; }
+  .chead { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .cid { font-weight:700; font-size:19px; }
+  .tag { font-size:12px; color:var(--dim); font-family:monospace; }
+  .grid { display:grid; gap:12px; } .g3 { grid-template-columns:1fr 1fr 1fr; }
+  @media (max-width:820px) { .g3 { grid-template-columns:1fr; } }
+  .col { border:1px solid var(--line); border-radius:10px; padding:12px; background:#0f131a; }
+  .col:has(input:checked) { border-color:var(--acc); }
+  .lbl { font-size:13px; color:var(--dim); display:flex; align-items:center; gap:6px; margin-bottom:8px; cursor:pointer; }
+  .dur { font-family:monospace; margin-inline-start:auto; }
+  .he { font-size:21px; margin-bottom:10px; }
+  audio { width:100%; height:34px; }
+  .psrow { display:flex; gap:16px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+  .psrow .lbl { margin:0; }
+  .note { flex:1; min-width:220px; background:#0e1116; border:1px solid var(--line); border-radius:8px;
+           color:var(--txt); padding:8px 10px; font-size:14px; }
+  #summary { width:100%; min-height:130px; background:#0f131a; color:var(--txt); border:1px solid var(--line);
+              border-radius:10px; padding:12px; font-family:monospace; font-size:13px; direction:ltr; }
+  button { background:var(--acc); border:0; color:#fff; border-radius:8px; padding:10px 18px;
+            font-size:14px; cursor:pointer; margin:10px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>סבב 3 — ליטוש הגייה (sonic-3.5)</h1>
+  <p class="sub">לכל כרטיס: להאזין ולסמן. הבחירות נשמרות בדפדפן. בסוף — "סיכום" ולהעתיק לצ׳אט.</p>
+</header>
+<main>
+<h2>תגים — [laughter] / [sigh]</h2><p class="sub">המבחן: התג מתעלם (לא נורא), נאמר בקול (אסור!), או באמת נשמע צחוק/אנחה (מעולה)? בחר B רק אם התג באמת עבד.</p>
+    <div class="card" data-id="t1">
+      <div class="chead"><span class="cid">[laughter]</span>
+        <span class="tag">t1</span></div>
+      <div class="grid g2">
+        <div class="col">
+          <label class="lbl"><input type="radio" name="pick_t1" value="A">
+            <b>A</b> · בלי תג <span class="dur">2.56s</span></label>
+          <div class="he" dir="rtl">זה מצוין, באמת שמחתי לשמוע.</div>
+          <audio controls preload="none" src="r4_t1_A.wav"></audio>
+        </div>
+        <div class="col">
+          <label class="lbl"><input type="radio" name="pick_t1" value="B">
+            <b>B</b> · עם [laughter] <span class="dur">2.72s</span></label>
+          <div class="he" dir="rtl">זה מצוין! [laughter] באמת שמחתי לשמוע.</div>
+          <audio controls preload="none" src="r4_t1_B.wav"></audio>
+        </div></div>
+    </div>
+    <div class="card" data-id="t2">
+      <div class="chead"><span class="cid">[sigh]</span>
+        <span class="tag">t2</span></div>
+      <div class="grid g2">
+        <div class="col">
+          <label class="lbl"><input type="radio" name="pick_t2" value="A">
+            <b>A</b> · בלי תג <span class="dur">2.16s</span></label>
+          <div class="he" dir="rtl">אני מבינה, זה באמת מתסכל.</div>
+          <audio controls preload="none" src="r4_t2_A.wav"></audio>
+        </div>
+        <div class="col">
+          <label class="lbl"><input type="radio" name="pick_t2" value="B">
+            <b>B</b> · עם [sigh] <span class="dur">2.32s</span></label>
+          <div class="he" dir="rtl">אני מבינה, [sigh] זה באמת מתסכל.</div>
+          <audio controls preload="none" src="r4_t2_B.wav"></audio>
+        </div></div>
+    </div><h2>פיסוק כרגש</h2><p class="sub">אותו משפט, פיסוק שונה. המבחן: האם !! או ... או ניסוח עם ברירה באמת משנים את ההגשה?</p>
+    <div class="card" data-id="p1">
+      <div class="chead"><span class="cid">התלהבות</span>
+        <span class="tag">p1</span></div>
+      <div class="grid g3">
+        <div class="col">
+          <label class="lbl"><input type="radio" name="pick_p1" value="A">
+            <b>A</b> · נייטרלי <span class="dur">2.08s</span></label>
+          <div class="he" dir="rtl">מעולה. נקבע לשבוע הבא.</div>
+          <audio controls preload="none" src="r4_p1_A.wav"></audio>
+        </div>
+        <div class="col">
+          <label class="lbl"><input type="radio" name="pick_p1" value="B">
+            <b>B</b> · סימני קריאה <span class="dur">2.24s</span></label>
+          <div class="he" dir="rtl">מעולה!! נקבע לשבוע הבא!</div>
+          <audio controls preload="none" src="r4_p1_B.wav"></audio>
+        </div>
+        <div class="col">
+          <label class="lbl"><input type="radio" name="pick_p1" value="C">
+            <b>C</b> · קריאת ביניים + קריאה <span class="dur">2.96s</span></label>
+          <div class="he" dir="rtl">וואו, מעולה! נקבע לשבוע הבא!</div>
+          <audio controls preload="none" src="r4_p1_C.wav"></audio>
+        </div></div>
+    </div>
+    <div class="card" data-id="p2">
+      <div class="chead"><span class="cid">אמפתיה / האטה</span>
+        <span class="tag">p2</span></div>
+      <div class="grid g2">
+        <div class="col">
+          <label class="lbl"><input type="radio" name="pick_p2" value="A">
+            <b>A</b> · נייטרלי <span class="dur">1.76s</span></label>
+          <div class="he" dir="rtl">אני מבינה שזה מתסכל.</div>
+          <audio controls preload="none" src="r4_p2_A.wav"></audio>
+        </div>
+        <div class="col">
+          <label class="lbl"><input type="radio" name="pick_p2" value="B">
+            <b>B</b> · שלוש נקודות <span class="dur">2.40s</span></label>
+          <div class="he" dir="rtl">אני מבינה... זה באמת מתסכל.</div>
+          <audio controls preload="none" src="r4_p2_B.wav"></audio>
+        </div></div>
+    </div>
+    <div class="card" data-id="p3">
+      <div class="chead"><span class="cid">אינטונציית שאלה (ps4)</span>
+        <span class="tag">p3</span></div>
+      <div class="grid g3">
+        <div class="col">
+          <label class="lbl"><input type="radio" name="pick_p3" value="A">
+            <b>A</b> · רגיל <span class="dur">1.76s</span></label>
+          <div class="he" dir="rtl">באיזו שעה נוח לך?</div>
+          <audio controls preload="none" src="r4_p3_A.wav"></audio>
+        </div>
+        <div class="col">
+          <label class="lbl"><input type="radio" name="pick_p3" value="B">
+            <b>B</b> · סימן שאלה כפול <span class="dur">1.52s</span></label>
+          <div class="he" dir="rtl">באיזו שעה נוח לך??</div>
+          <audio controls preload="none" src="r4_p3_B.wav"></audio>
+        </div>
+        <div class="col">
+          <label class="lbl"><input type="radio" name="pick_p3" value="C">
+            <b>C</b> · ניסוח עם ברירה <span class="dur">3.60s</span></label>
+          <div class="he" dir="rtl">מתי הכי נוח לך — בבוקר, או אחר הצהריים?</div>
+          <audio controls preload="none" src="r4_p3_C.wav"></audio>
+        </div></div>
+    </div><h2>ניסוח רגשי</h2><p class="sub">מה שהנחיה בפרומפט תייצר בפועל. המבחן: איזו גרסה נשמעת יותר אנושית ופחות רובוטית?</p>
+    <div class="card" data-id="e1">
+      <div class="chead"><span class="cid">התלהבות במכירה</span>
+        <span class="tag">e1</span></div>
+      <div class="grid g2">
+        <div class="col">
+          <label class="lbl"><input type="radio" name="pick_e1" value="A">
+            <b>A</b> · נייטרלי <span class="dur">2.80s</span></label>
+          <div class="he" dir="rtl">אנחנו יכולים לעזור לך עם זה. נקבע פגישה?</div>
+          <audio controls preload="none" src="r4_e1_A.wav"></audio>
+        </div>
+        <div class="col">
+          <label class="lbl"><input type="radio" name="pick_e1" value="B">
+            <b>B</b> · צבוע רגשית <span class="dur">4.48s</span></label>
+          <div class="he" dir="rtl">אה, זה בדיוק מה שאנחנו עושים! שמחה שסיפרת לי. נקבע פגישה?</div>
+          <audio controls preload="none" src="r4_e1_B.wav"></audio>
+        </div></div>
+    </div>
+    <div class="card" data-id="e2">
+      <div class="chead"><span class="cid">אמפתיה במכירה</span>
+        <span class="tag">e2</span></div>
+      <div class="grid g2">
+        <div class="col">
+          <label class="lbl"><input type="radio" name="pick_e2" value="A">
+            <b>A</b> · נייטרלי <span class="dur">2.96s</span></label>
+          <div class="he" dir="rtl">הבנתי. לידים שמתפספסים זו בעיה.</div>
+          <audio controls preload="none" src="r4_e2_A.wav"></audio>
+        </div>
+        <div class="col">
+          <label class="lbl"><input type="radio" name="pick_e2" value="B">
+            <b>B</b> · צבוע רגשית <span class="dur">5.12s</span></label>
+          <div class="he" dir="rtl">אוף, אני לגמרי מבינה אותך... כל ליד שמתפספס זה כסף על השולחן.</div>
+          <audio controls preload="none" src="r4_e2_B.wav"></audio>
+        </div></div>
+    </div>
+<h2>סיכום</h2>
+<button id="btn">צור סיכום</button>
+<textarea id="summary" readonly placeholder="הסיכום יופיע כאן"></textarea>
+</main>
+<script>
+const KEY = 'r3-verdicts';
+const state = JSON.parse(localStorage.getItem(KEY) || '{}');
+document.querySelectorAll('input').forEach(el => {
+  if (el.type === 'radio' && state[el.name] === el.value) el.checked = true;
+  if (el.type === 'text' && state[el.name]) el.value = state[el.name];
+  el.addEventListener(el.type === 'text' ? 'input' : 'change', () => {
+    state[el.name] = el.type === 'text' ? el.value : el.value;
+    localStorage.setItem(KEY, JSON.stringify(state));
+  });
+});
+document.getElementById('btn').addEventListener('click', () => {
+  const lines = ['round3 verdicts (sonic-3.5)'];
+  document.querySelectorAll('.card').forEach(card => {
+    const id = card.dataset.id;
+    const pick = state['pick_' + id] || '-';
+    const note = state['note_' + id] ? '  note: ' + state['note_' + id] : '';
+    lines.push(id + ': ' + pick + note);
+  });
+  const box = document.getElementById('summary');
+  box.value = lines.join('\n');
+  box.select();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>מחשבון עלות TTS · Cartesia מול DeepDub</title>
+<style>
+  :root { --bg:#0e1116; --card:#171b22; --line:#252b36; --txt:#e6e9ef; --dim:#9aa4b2;
+          --ct:#3b82f6; --dd:#a855f7; --re:#ef4444; --ok:#22c55e; --warn:#f59e0b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:"Segoe UI",Arial,sans-serif; line-height:1.5; }
+  header { padding:24px 20px 6px; max-width:960px; margin:0 auto; }
+  h1 { margin:0 0 4px; font-size:22px; }
+  .sub { color:var(--dim); font-size:13.5px; max-width:80ch; }
+  main { max-width:960px; margin:0 auto; padding:8px 20px 70px; }
+  .controls { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin:14px 0; display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:640px){ .controls{ grid-template-columns:1fr; } }
+  label { font-size:13px; color:var(--dim); display:block; margin-bottom:6px; }
+  input[type=number]{ width:100%; background:#0b0e13; border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:8px 10px; font-size:16px; }
+  input[type=range]{ width:100%; }
+  .val { color:#fff; font-weight:700; }
+  .cards { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-top:6px; }
+  @media (max-width:720px){ .cards{ grid-template-columns:1fr; } }
+  .c { border:1px solid var(--line); border-radius:12px; padding:16px; background:var(--card); }
+  .c.ct { border-top:3px solid var(--ct); } .c.dd { border-top:3px solid var(--dd); } .c.re { border-top:3px solid var(--re); }
+  .c h3 { margin:0 0 2px; font-size:16px; } .c .plan { color:var(--dim); font-size:12.5px; min-height:16px; }
+  .big { font-size:30px; font-weight:800; margin:10px 0 2px; }
+  .permin { color:var(--dim); font-size:13px; }
+  .stack { margin-top:10px; padding-top:10px; border-top:1px solid var(--line); font-size:13px; }
+  .stack b { color:#fff; }
+  table { width:100%; border-collapse:collapse; margin-top:14px; font-size:13px; }
+  th,td { text-align:right; padding:7px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--dim); font-weight:600; }
+  .note { color:var(--dim); font-size:12.5px; margin-top:14px; }
+  .warn { color:var(--warn); }
+  .tag { font-size:11px; padding:1px 7px; border-radius:20px; background:#0b0e13; border:1px solid var(--line); color:var(--dim); }
+</style>
+</head>
+<body>
+<header>
+  <h1>מחשבון עלות TTS — Cartesia מול DeepDub מול Retell</h1>
+  <p class="sub">הזן נפח שיחות חודשי. המחשבון בוחר את החבילה הזולה שמתאימה לכל ספק ומראה עלות חודשית + לדקה,
+  גם ל-TTS לבד וגם ל-stack המלא. מחירי DeepDub הם ה<b>אמיתיים</b> מהחשבון (Starter $0.043/דק', Scale $0.040/דק',
+  1,000 קרדיט = דקת אודיו). שני הספקים מחייבים לפי <b>דקת אודיו שהופקה</b> — לכן יש מחוון "יחס דיבור הסוכן".</p>
+</header>
+<main>
+  <div class="controls">
+    <div>
+      <label>דקות שיחה בחודש: <span class="val" id="minLbl">3,000</span></label>
+      <input type="range" id="minutes" min="100" max="30000" step="100" value="3000">
+      <input type="number" id="minutesN" value="3000" style="margin-top:8px">
+    </div>
+    <div>
+      <label>יחס דיבור הסוכן בשיחה: <span class="val" id="talkLbl">50%</span> <span class="tag">כמה מהזמן הסוכן מדבר</span></label>
+      <input type="range" id="talk" min="20" max="100" step="5" value="50">
+      <label style="margin-top:12px">תווים לדקת אודיו (Cartesia מחייב לפי תו): <span class="val" id="cpmLbl">900</span> <span class="tag">עברית ~900; Cartesia מניחים 750</span></label>
+      <input type="range" id="cpm" min="500" max="1300" step="10" value="900">
+      <label style="margin-top:12px">שאר ה-stack לדקת שיחה (STT+LLM+LiveKit+SIP): <span class="val" id="othLbl">$0.040</span></label>
+      <input type="range" id="other" min="0" max="0.12" step="0.005" value="0.04">
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="c ct">
+      <h3 style="color:#7ab3ff">Cartesia sonic-3</h3>
+      <div class="plan" id="ctPlan"></div>
+      <div class="big" id="ctMo"></div>
+      <div class="permin" id="ctMin"></div>
+      <div class="stack" id="ctStack"></div>
+    </div>
+    <div class="c dd">
+      <h3 style="color:#c58bff">DeepDub eTTS</h3>
+      <div class="plan" id="ddPlan"></div>
+      <div class="big" id="ddMo"></div>
+      <div class="permin" id="ddMin"></div>
+      <div class="stack" id="ddStack"></div>
+    </div>
+    <div class="c re">
+      <h3 style="color:#ff8a8a">Retell (בסיס ישן)</h3>
+      <div class="plan">~$0.25/דקה all-in</div>
+      <div class="big" id="reMo"></div>
+      <div class="permin" id="reMin"></div>
+      <div class="stack" id="reStack"></div>
+    </div>
+  </div>
+
+  <table>
+    <thead><tr><th>ספק</th><th>חבילה</th><th>עלות TTS/חודש</th><th>TTS $/דקה</th><th>Stack מלא $/דקה</th></tr></thead>
+    <tbody id="tbl"></tbody>
+  </table>
+
+  <p class="note">
+    <b>מקורות (מדויקים):</b> DeepDub (מהחשבון) — Starter $49/1,150 דק' אודיו ($0.043/דק'), Scale $299/7,400 דק' ($0.040/דק'), 1,000 קרדיט=דקת אודיו.
+    Cartesia (cartesia.ai/pricing) — Pro $5/100K, Startup $49/1.25M, Scale $299/8M קרדיטים; <b>1 קרדיט = תו אחד</b>, בלי גלישה/PAYG, קרדיטים לא מתגלגלים.
+    <span class="warn">הערות:</span> (1) DeepDub מחייב לפי <b>דקת אודיו</b>; Cartesia לפי <b>תו</b> — "יחס דיבור" ממיר דקות-שיחה→דקות-אודיו, ו"תווים לדקה" ממיר לתווים ל-Cartesia.
+    (2) שתי החבילות קבועות — בניצול חלקי העלות בפועל לדקה גבוהה יותר. (3) Retell ($0.25/דק') לבסיס בלבד.
+  </p>
+</main>
+<script>
+  // Cartesia REAL plans (cartesia.ai/pricing): 1 credit = 1 CHARACTER, no rollover, no PAYG.
+  const CT_PLANS = [
+    { name:'Free $0', price:0, credits:20_000 },
+    { name:'Pro $5', price:5, credits:100_000 },
+    { name:'Startup $49', price:49, credits:1_250_000 },
+    { name:'Scale $299', price:299, credits:8_000_000 },
+  ];
+  const CT_ENT_PER_1M = 37;   // Scale effective rate, used to extrapolate Enterprise volume
+  // DeepDub REAL plans (account): 1,000 credits = 1 AUDIO MINUTE.
+  const DD_TIERS = [
+    { name:'Sandbox $0', price:0, minutes:15 },
+    { name:'Starter $49', price:49, minutes:1150 },   // $0.043/min
+    { name:'Scale $299', price:299, minutes:7400 },   // $0.040/min
+  ];
+  const $ = id => document.getElementById(id);
+  const money = n => '$' + (n>=100 ? Math.round(n).toLocaleString() : n.toFixed(n<10?3:2));
+  const perMin = n => '$' + n.toFixed(3) + '/דקה';
+
+  function cartesia(chars) {   // billed per character
+    for (const p of CT_PLANS) if (p.credits >= chars && p.price > 0) return { name:p.name, price:p.price };
+    return { name:'Enterprise', price: Math.max(299, Math.ceil((chars/1e6) * CT_ENT_PER_1M)) };
+  }
+  function deepdub(audioMin) { // billed per audio minute
+    for (const t of DD_TIERS) if (t.minutes >= audioMin && t.price > 0) return { name:t.name, price:t.price };
+    return { name:'Enterprise', price: Math.max(299, Math.ceil(audioMin * 0.040)) };
+  }
+
+  function render() {
+    const callMin = +$('minutes').value;
+    const talk = +$('talk').value / 100;
+    const cpm = +$('cpm').value;
+    const other = +$('other').value;
+    const audioMin = callMin * talk;         // both providers bill per audio minute
+    const chars = audioMin * cpm;
+    $('minLbl').textContent = callMin.toLocaleString();
+    $('talkLbl').textContent = (talk*100)+'%';
+    $('cpmLbl').textContent = cpm;
+    $('othLbl').textContent = '$'+other.toFixed(3);
+
+    const minutes = callMin;                 // per-CALL-minute denominators below
+    const ct = cartesia(chars);
+    const dd = deepdub(audioMin);
+    const ctPerMin = ct.price/minutes, ddPerMin = dd.price/minutes;
+    const rePerMin = 0.25, reMo = 0.25*minutes;
+
+    $('ctPlan').textContent = ct.name;
+    $('ctMo').textContent = money(ct.price)+'/חודש';
+    $('ctMin').textContent = perMin(ctPerMin)+' (TTS)';
+    $('ctStack').innerHTML = 'Stack מלא: <b>'+perMin(ctPerMin+other)+'</b><br>= '+money((ctPerMin+other)*minutes)+'/חודש';
+
+    $('ddPlan').textContent = dd.name;
+    $('ddMo').textContent = money(dd.price)+'/חודש';
+    $('ddMin').textContent = perMin(ddPerMin)+' (TTS)';
+    $('ddStack').innerHTML = 'Stack מלא: <b>'+perMin(ddPerMin+other)+'</b><br>= '+money((ddPerMin+other)*minutes)+'/חודש';
+
+    $('reMo').textContent = money(reMo)+'/חודש';
+    $('reMin').textContent = perMin(rePerMin)+' (all-in)';
+    const ddVsRe = ((rePerMin - (ddPerMin+other))/rePerMin*100);
+    $('reStack').innerHTML = 'DeepDub-stack חוסך <b>'+ddVsRe.toFixed(0)+'%</b><br>מול Retell';
+
+    $('tbl').innerHTML = [
+      ['Cartesia', ct.name, money(ct.price), perMin(ctPerMin), perMin(ctPerMin+other)],
+      ['DeepDub', dd.name, money(dd.price), perMin(ddPerMin), perMin(ddPerMin+other)],
+      ['Retell', '—', money(reMo), '—', perMin(rePerMin)],
+    ].map(r=>'<tr>'+r.map((c,i)=>'<td'+(i===0?' style="color:#fff;font-weight:600"':'')+'>'+c+'</td>').join('')+'</tr>').join('');
+  }
+  ['minutes','talk','cpm','other'].forEach(id=>$(id).addEventListener('input', ()=>{ if(id==='minutes')$('minutesN').value=$('minutes').value; render(); }));
+  $('minutesN').addEventListener('input', ()=>{ $('minutes').value=$('minutesN').value; render(); });
+  render();
+</script>
+</body>
+</html>

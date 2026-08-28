@@ -45,6 +45,20 @@ export function buildVoicemailMessage(persona: AgentPersona = DEFAULT_PERSONA): 
 export const VOICEMAIL_MESSAGE_HE = buildVoicemailMessage();
 
 /**
+ * Spoken when a whole reply was guarded down to nothing and she would otherwise stay mute.
+ *
+ * THIS EXISTS BECAUSE SHE WENT SILENT FOR TWENTY SECONDS ON A REAL CALL (2026-08-16). The caller
+ * said "רגע, מה..." — a question opening with a hold word — the model answered with the
+ * NO_RESPONSE_NEEDED control token, the guard stripped it to an empty string, and nothing in the
+ * stack ever brought her back. He waited, then asked "הלו, מישהו שם?", then told her
+ * "נעלמת לי ממש". From his side the call had dropped.
+ *
+ * Deliberately says she is present without demanding anything: if he really did ask her to hold,
+ * this must not read as nagging him.
+ */
+export const HOLD_CHECKBACK_HE = 'אני כאן, קח את הזמן שאתה צריך.';
+
+/**
  * The objection playbook rendered into the tools-variant system prompt (see system-prompt.he.ts).
  * STARTER content — expand each play with the wording Keren should actually use. Keep it as a
  * labelled list so she can recognise the objection TYPE and reach for the matching response.

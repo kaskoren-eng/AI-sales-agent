@@ -27,6 +27,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
+# Must precede `npm ci` — postinstall runs patch-package against it.
+COPY patches ./patches
 # NOT --omit=dev: the build needs typescript + tsx, and this is a single-stage image.
 RUN npm ci
 

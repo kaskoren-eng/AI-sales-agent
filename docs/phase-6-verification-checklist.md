@@ -93,6 +93,11 @@
 - כשלים: כלים שנפלו, אישורים שלא נשלחו, תמלול שגוי
 - עלות בפועל לשיחה
 
+**Human handoff (`request_human_handoff`, migration 0017 — added 2026-08-28):** one Simulator
+call and one PSTN call where the lead asks for a human: the owner gets the WhatsApp within 10s,
+the lead hears the handoff line, the call ends cleanly with `end_reason='handoff_requested'`, and
+the lead row shows `handoff_requested_at`. *(Not a live transfer — SIP REFER is post-launch.)*
+
 **סיום שלב 6 = 10 שיחות ללא תקלה שדורשת התערבות.**
 
 ---

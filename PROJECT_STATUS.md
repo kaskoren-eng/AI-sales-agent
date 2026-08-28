@@ -190,8 +190,23 @@ deleted with the engine. It is no longer an engine selector; it is one half of t
 fail-closed tool gate (tools run only when `voice_engine='livekit'` AND `functions_enabled=true`,
 see `voice-livekit/tools/tool-context.ts`). A tenant missing it gets a working call with no tools.
 
-**Success criteria (carried over from the decommissioning gate) — status:**
-- Latency P50 < 500ms ✅ / **P95 < 800ms ❌** (EOU-bound, see 7.2)
+**Launch gate — human handoff (added 2026-08-28, branch `feature/voice-human-handoff`).** A seventh
+agent tool, `request_human_handoff`, answers sales objection #1 ("what if the customer wants a
+human?"): it stamps `leads.handoff_requested_at` (migration 0017), pings the tenant owner on
+WhatsApp + email from `tenants.settings.handoff`, then ends the call on the shared `end_call`
+teardown with `end_reason='handoff_requested'`. Built and unit-tested; **not yet verified live.**
+Gate: one Simulator call and one PSTN call where the owner gets the WhatsApp within 10s, the lead
+hears the handoff line, the call ends cleanly, and the lead row shows `handoff_requested_at`.
+Add the same item to Layer 6 of `docs/phase-6-verification-checklist.md` — that file lives on
+another branch, not this one. NOT a live transfer: SIP REFER is explicitly post-launch.
+
+**Success criteria (carried over from the decommissioning gate — still open) — status:**
+- **Time to first audio < 1000ms median** (restated 2026-08-16; the old "P95 < 800ms / P50 < 500ms
+  per turn" was never achievable and was never measured against a real definition). Measured floor
+  for a real ANSWER on this stack is **~1.6s** — end-of-turn ~400ms + LLM first token ~974ms + TTS
+  first byte ~217ms (`npm run bench:path`, `bench:llm`, `bench:tier`; known-issues §14-15). Under
+  1s is reached by SPEAKING sooner: `VOICE_INSTANT_ACK` puts a short receipt on the line at ~620ms.
+  Judge it by `summary.deadAir.medianMs` in the call report, never by `worstCaseMs`.
 - Blind test: 3+ humans can't reliably identify agent as bot — **not formally run**
 - 30 days of clean operation — clock started 2026-07-29, **not demonstrated**
 - Verified cost < $0.12/min — **never measured**

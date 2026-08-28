@@ -57,8 +57,23 @@ export function cartesiaOptions(env: Env): {
   return opts;
 }
 
-/** Models that accept an explicit `language`. Others must be called without it. */
-const MODELS_ACCEPTING_LANGUAGE = new Set(['sonic-3', 'sonic-2', 'sonic', 'sonic-lite']);
+/**
+ * Models that accept an explicit `language`. Others must be called without it.
+ *
+ * `sonic-3.5` WAS MISSING HERE AND IT BROKE HEBREW ON EVERY CALL (2026-08-16). Without
+ * `language`, Cartesia does not reliably infer Hebrew from the text — it renders Hebrew
+ * characters with English phonetics, and the caller hears confident gibberish in the right
+ * voice. It does not error, it does not warn, and the transcript in the call report is
+ * perfect Hebrew, so the logs look healthy while the call is unusable.
+ *
+ * Verified against the live API before adding: sonic-3.5 + `language: 'he'` returns 200, and
+ * the audio differs from the same request without it (133198 vs 125518 bytes) — proof the
+ * parameter changes synthesis rather than being ignored.
+ *
+ * If you add a model here, TEST IT against /tts/bytes first. A model that rejects `language`
+ * fails the call outright; one that silently ignores it is the trap above, in reverse.
+ */
+const MODELS_ACCEPTING_LANGUAGE = new Set(['sonic-3.5', 'sonic-3', 'sonic-2', 'sonic', 'sonic-lite']);
 
 /**
  * Synthesizes Hebrew speech for the *synthetic caller* — i.e. this is the fake human, not the

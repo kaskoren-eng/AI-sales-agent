@@ -90,7 +90,7 @@ Two agents work this repo simultaneously. Respect your lane:
 - `src/db/schema/**` + migrations — **migration numbers are claimed in the table below BEFORE generating.** Never renumber someone else's migration.
 - `CLAUDE.md`, `tenants` settings keys — announce in the claims lists below before changing.
 
-**Migration number claims:** 0000–0003 = initial schema, api-key hash, call_learnings (pre-claims era) · 0004 = leads whatsapp fields · 0005 = scheduled_calls.reminders · 0006–0010 = identity/audit/monday-lookup · 0011 = `phone_numbers` (DID→tenant routing) · 0012 = `oauth_connections` (per-tenant Google Calendar) · 0013 = billing (`plans`, `usage_events`, `usage_periods`, tenant billing columns) · 0014 = `scheduled_calls.lead_id` DROP NOT NULL · 0015 = `scheduled_calls.provider` default → 'google' (both hand-written schema-drift repairs — the snapshots already matched the schema, so `db:generate` could never emit them) · 0016 = billable minutes (`usage_events` minutes columns) · **next free: 0017.** CI (`guardrails.yml`) fails a PR whose migration is missing from this line or whose number ≥ "next free".
+**Migration number claims:** 0000–0003 = initial schema, api-key hash, call_learnings (pre-claims era) · 0004 = leads whatsapp fields · 0005 = scheduled_calls.reminders · 0006–0010 = identity/audit/monday-lookup · 0011 = `phone_numbers` (DID→tenant routing) · 0012 = `oauth_connections` (per-tenant Google Calendar) · 0013 = billing (`plans`, `usage_events`, `usage_periods`, tenant billing columns) · 0014 = `scheduled_calls.lead_id` DROP NOT NULL · 0015 = `scheduled_calls.provider` default → 'google' (both hand-written schema-drift repairs — the snapshots already matched the schema, so `db:generate` could never emit them) · 0016 = billable minutes (`usage_events` minutes columns) · 0017 = `leads.handoff_requested_at` (VOICE, human-handoff tool) · **next free: 0018.** CI (`guardrails.yml`) fails a PR whose migration is missing from this line or whose number ≥ "next free".
 
 ⚠️ **Schema drift is invisible to both the tests and `db:generate`** — tests build tables from the schema, and snapshots are
 generated from the schema, so both agree with it by construction. Two `scheduled_calls` columns had disagreed with the
@@ -98,7 +98,7 @@ live database since migration 0000; the first surfaced only when a booking was c
 the row insert failed. **Run `npm run db:drift` after any schema change** — it replays every migration into a throwaway
 Postgres (Docker) and diffs the result against the schema. Exit 1 = drift, listed.
 
-**tenants.settings key claims:** `voice_engine` (VOICE) · `functions_enabled` (VOICE) · `whatsapp_templates` (VOICE) · `toll_fraud` (VOICE) · `reminders` (VOICE) · `crm_sync` (VOICE, Workstream B) · `businessProfile` (shared) · `zadarma` (VOICE) · `monday` (shared) · `airtable` (shared) · `flows` (pre-existing, shared) · `billing_provider` (reserved, Workstream D) · `agent_persona` (**CLAIMED 2026-08-16, VOICE-owned** — agent name/gender/company/FAQ/voice. Operator-only through the generic settings escape hatch, because a wrong TTS `voiceId` makes Cartesia and ElevenLabs return a *silent stream* rather than an error. Tenants edit the CONTENT half through the typed route `PUT /settings/agent-persona`, which has no `tts` field and is `.strict()`. See `src/modules/channels/voice-livekit/persona.ts`) · `ui_locale` (**reserved** for dashboard interface language — never `language`). New keys → add here in the same commit.
+**tenants.settings key claims:** `voice_engine` (VOICE) · `functions_enabled` (VOICE) · `whatsapp_templates` (VOICE) · `toll_fraud` (VOICE) · `reminders` (VOICE) · `crm_sync` (VOICE, Workstream B) · `businessProfile` (shared) · `zadarma` (VOICE) · `monday` (shared) · `airtable` (shared) · `flows` (pre-existing, shared) · `billing_provider` (reserved, Workstream D) · `agent_persona` (**CLAIMED 2026-08-16, VOICE-owned** — agent name/gender/company/FAQ/voice. Operator-only through the generic settings escape hatch, because a wrong TTS `voiceId` makes Cartesia and ElevenLabs return a *silent stream* rather than an error. Tenants edit the CONTENT half through the typed route `PUT /settings/agent-persona`, which has no `tts` field and is `.strict()`. See `src/modules/channels/voice-livekit/persona.ts`) · `ui_locale` (**reserved** for dashboard interface language — never `language`). · `handoff` (VOICE — human-handoff owner contact + notify channels, migration 0017) · New keys → add here in the same commit.
 
 **Rules of engagement:**
 1. NEVER edit files in the other agent's territory — if you think you must, STOP and tell Koren why.
@@ -215,6 +215,20 @@ Billing (0013): `plans`, `usage_events`, `usage_periods` + billing columns on `t
 - Errors use `AppError` subclasses from `src/shared/errors.ts`
 - Schema changes go in `src/db/schema/` then run `npm run db:generate`
 - `AI_MODEL` env var controls the OpenAI model (default: `gpt-5.4`)
+
+## Claims made on this branch (feature/voice-human-handoff)
+
+⚠️ This branch's copy of CLAUDE.md predates the migration/settings-key claims tables that live on
+`main` — the claims below are recorded here so the "claim in the same commit" rule is satisfied,
+and MUST be folded into `main`'s canonical tables when this branch merges.
+
+- **Migration `0017` = `leads.handoff_requested_at`** (VOICE). Numbered against `main`'s applied
+  history (0006–0016 are already live in production), NOT against this branch's journal, which
+  stops at 0005. Hand-written for that reason — `db:generate` on this branch would emit a
+  colliding `0006`. Next free after this: 0018.
+- **`tenants.settings.handoff`** (VOICE-owned) — `{ ownerName, ownerPhone, ownerEmail,
+  notify: ('whatsapp'|'email')[] }`. Who gets pinged when a lead asks for a human, and the name the
+  agent speaks on the call. Resolver: `src/modules/channels/voice-livekit/tools/handoff-settings.ts`.
 
 ## Security rules
 

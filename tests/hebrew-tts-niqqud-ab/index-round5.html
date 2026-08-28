@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>סבב 5 · מספרים בדיבור + סלנג · sonic-3.5</title>
+<style>
+  :root { --bg:#0e1116; --card:#171b22; --line:#252b36; --txt:#e6e9ef; --dim:#9aa4b2; --acc:#3b82f6; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:"Segoe UI",Arial,sans-serif; }
+  header, main { max-width:1050px; margin:0 auto; padding:0 20px; }
+  header { padding-top:26px; }
+  h1 { margin:0 0 6px; font-size:22px; }
+  h2 { font-size:18px; margin:30px 0 2px; }
+  .sub { color:var(--dim); font-size:14px; margin:4px 0 10px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin:14px 0; }
+  .chead { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .cid { font-weight:700; font-size:19px; }
+  .tag { font-size:12px; color:var(--dim); font-family:monospace; }
+  .col { border:1px solid var(--line); border-radius:10px; padding:12px; background:#0f131a; }
+  .col:has(input:checked) { border-color:var(--acc); }
+  .lbl { font-size:13px; color:var(--dim); display:flex; align-items:center; gap:6px; cursor:pointer; }
+  .he { font-size:21px; margin-bottom:10px; }
+  audio { width:100%; height:34px; }
+  .psrow { display:flex; gap:16px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+  .note { flex:1; min-width:220px; background:#0e1116; border:1px solid var(--line); border-radius:8px;
+           color:var(--txt); padding:8px 10px; font-size:14px; }
+  #summary { width:100%; min-height:130px; background:#0f131a; color:var(--txt); border:1px solid var(--line);
+              border-radius:10px; padding:12px; font-family:monospace; font-size:13px; direction:ltr; }
+  button { background:var(--acc); border:0; color:#fff; border-radius:8px; padding:10px 18px;
+            font-size:14px; cursor:pointer; margin:10px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>סבב 5 — מספרים בדיבור + סלנג קל (sonic-3.5)</h1>
+  <p class="sub">לכל כרטיס: להאזין ולסמן. הבחירות נשמרות בדפדפן. בסוף — "סיכום" ולהעתיק לצ׳אט.</p>
+</header>
+<main>
+<h2>שעות בדיבור — הצורות הנקביות</h2><p class="sub">המבחן: השעה נשמעת טבעית ונכונה? (ארבע וחצי, רבע לחמש, עשר וחמישה...)</p>
+    <div class="card" data-id="t1">
+      <div class="chead"><span class="cid">16:30 → ארבע וחצי</span>
+        <span class="tag">t1</span></div>
+      <div class="col">
+        <div class="he" dir="rtl">נתראה מחר בארבע וחצי.</div>
+        <audio controls preload="none" src="r5_t1_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_t1" value="ok"> תקין</label>
+          <label class="lbl"><input type="radio" name="pick_t1" value="bad"> יש בעיה</label>
+          <input type="text" class="note" name="note_t1" dir="rtl" placeholder="מה שמעת?">
+        </div>
+      </div>
+    </div>
+    <div class="card" data-id="t2">
+      <div class="chead"><span class="cid">16:45 → רבע לחמש</span>
+        <span class="tag">t2</span></div>
+      <div class="col">
+        <div class="he" dir="rtl">אפשר גם רבע לחמש.</div>
+        <audio controls preload="none" src="r5_t2_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_t2" value="ok"> תקין</label>
+          <label class="lbl"><input type="radio" name="pick_t2" value="bad"> יש בעיה</label>
+          <input type="text" class="note" name="note_t2" dir="rtl" placeholder="מה שמעת?">
+        </div>
+      </div>
+    </div>
+    <div class="card" data-id="t3">
+      <div class="chead"><span class="cid">10:05 → עשר וחמישה</span>
+        <span class="tag">t3</span></div>
+      <div class="col">
+        <div class="he" dir="rtl">הפגישה מתחילה בעשר וחמישה.</div>
+        <audio controls preload="none" src="r5_t3_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_t3" value="ok"> תקין</label>
+          <label class="lbl"><input type="radio" name="pick_t3" value="bad"> יש בעיה</label>
+          <input type="text" class="note" name="note_t3" dir="rtl" placeholder="מה שמעת?">
+        </div>
+      </div>
+    </div>
+    <div class="card" data-id="t4">
+      <div class="chead"><span class="cid">טווח → מעשר עד שלוש</span>
+        <span class="tag">t4</span></div>
+      <div class="col">
+        <div class="he" dir="rtl">יש לי פנוי מעשר עד שלוש.</div>
+        <audio controls preload="none" src="r5_t4_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_t4" value="ok"> תקין</label>
+          <label class="lbl"><input type="radio" name="pick_t4" value="bad"> יש בעיה</label>
+          <input type="text" class="note" name="note_t4" dir="rtl" placeholder="מה שמעת?">
+        </div>
+      </div>
+    </div>
+    <div class="card" data-id="t5">
+      <div class="chead"><span class="cid">16:15 → ארבע ורבע</span>
+        <span class="tag">t5</span></div>
+      <div class="col">
+        <div class="he" dir="rtl">נדבר בארבע ורבע.</div>
+        <audio controls preload="none" src="r5_t5_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_t5" value="ok"> תקין</label>
+          <label class="lbl"><input type="radio" name="pick_t5" value="bad"> יש בעיה</label>
+          <input type="text" class="note" name="note_t5" dir="rtl" placeholder="מה שמעת?">
+        </div>
+      </div>
+    </div>
+    <div class="card" data-id="t6">
+      <div class="chead"><span class="cid">20:00 → שמונה בערב</span>
+        <span class="tag">t6</span></div>
+      <div class="col">
+        <div class="he" dir="rtl">אתקשר אליך בשמונה בערב.</div>
+        <audio controls preload="none" src="r5_t6_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_t6" value="ok"> תקין</label>
+          <label class="lbl"><input type="radio" name="pick_t6" value="bad"> יש בעיה</label>
+          <input type="text" class="note" name="note_t6" dir="rtl" placeholder="מה שמעת?">
+        </div>
+      </div>
+    </div>
+    <div class="card" data-id="t7">
+      <div class="chead"><span class="cid">16:50 → עשרה לחמש</span>
+        <span class="tag">t7</span></div>
+      <div class="col">
+        <div class="he" dir="rtl">בוא נסגור על עשרה לחמש.</div>
+        <audio controls preload="none" src="r5_t7_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_t7" value="ok"> תקין</label>
+          <label class="lbl"><input type="radio" name="pick_t7" value="bad"> יש בעיה</label>
+          <input type="text" class="note" name="note_t7" dir="rtl" placeholder="מה שמעת?">
+        </div>
+      </div>
+    </div>
+    <div class="card" data-id="t8">
+      <div class="chead"><span class="cid">16:20 → ארבע ועשרים</span>
+        <span class="tag">t8</span></div>
+      <div class="col">
+        <div class="he" dir="rtl">נקבע לארבע ועשרים.</div>
+        <audio controls preload="none" src="r5_t8_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_t8" value="ok"> תקין</label>
+          <label class="lbl"><input type="radio" name="pick_t8" value="bad"> יש בעיה</label>
+          <input type="text" class="note" name="note_t8" dir="rtl" placeholder="מה שמעת?">
+        </div>
+      </div>
+    </div><h2>מספר טלפון — ספרה-ספרה</h2><p class="sub">המבחן: הספרות ברורות, ההפסקות בין הקבוצות נשמעות?</p>
+    <div class="card" data-id="p1">
+      <div class="chead"><span class="cid">טלפון ספרה-ספרה</span>
+        <span class="tag">p1</span></div>
+      <div class="col">
+        <div class="he" dir="rtl">המספר הוא אפס חמש אפס, אחת שתיים שלוש ארבע, חמש שש שבע.</div>
+        <audio controls preload="none" src="r5_p1_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_p1" value="ok"> תקין</label>
+          <label class="lbl"><input type="radio" name="pick_p1" value="bad"> יש בעיה</label>
+          <input type="text" class="note" name="note_p1" dir="rtl" placeholder="מה שמעת?">
+        </div>
+      </div>
+    </div><h2>מחיר</h2><p class="sub">המבחן: הסכום נשמע נכון וטבעי?</p>
+    <div class="card" data-id="pr1">
+      <div class="chead"><span class="cid">500 שקל → חמש מאות</span>
+        <span class="tag">pr1</span></div>
+      <div class="col">
+        <div class="he" dir="rtl">זה עולה חמש מאות שקל לחודש.</div>
+        <audio controls preload="none" src="r5_pr1_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_pr1" value="ok"> תקין</label>
+          <label class="lbl"><input type="radio" name="pick_pr1" value="bad"> יש בעיה</label>
+          <input type="text" class="note" name="note_pr1" dir="rtl" placeholder="מה שמעת?">
+        </div>
+      </div>
+    </div><h2>מספרים קטנים</h2><p class="sub">המבחן: המין הדקדוקי נכון (חמש דקות, שלושה ימים)?</p>
+    <div class="card" data-id="si1">
+      <div class="chead"><span class="cid">5 דקות → חמש דקות</span>
+        <span class="tag">si1</span></div>
+      <div class="col">
+        <div class="he" dir="rtl">זה לוקח בערך חמש דקות.</div>
+        <audio controls preload="none" src="r5_si1_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_si1" value="ok"> תקין</label>
+          <label class="lbl"><input type="radio" name="pick_si1" value="bad"> יש בעיה</label>
+          <input type="text" class="note" name="note_si1" dir="rtl" placeholder="מה שמעת?">
+        </div>
+      </div>
+    </div>
+    <div class="card" data-id="si2">
+      <div class="chead"><span class="cid">3 ימים → שלושה ימים</span>
+        <span class="tag">si2</span></div>
+      <div class="col">
+        <div class="he" dir="rtl">ההקמה לוקחת שלושה ימים.</div>
+        <audio controls preload="none" src="r5_si2_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_si2" value="ok"> תקין</label>
+          <label class="lbl"><input type="radio" name="pick_si2" value="bad"> יש בעיה</label>
+          <input type="text" class="note" name="note_si2" dir="rtl" placeholder="מה שמעת?">
+        </div>
+      </div>
+    </div><h2>סלנג קל — מועמדים ל-SPOKEN_REGISTER</h2><p class="sub">המבחן: נשמע טבעי ורגוע? מילה שנשמעת מוזר — נפסלת מהבנק.</p>
+    <div class="card" data-id="s1">
+      <div class="chead"><span class="cid">סבבה</span>
+        <span class="tag">s1</span></div>
+      <div class="col">
+        <div class="he" dir="rtl">סבבה, אז נתקדם.</div>
+        <audio controls preload="none" src="r5_s1_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_s1" value="ok"> תקין</label>
+          <label class="lbl"><input type="radio" name="pick_s1" value="bad"> יש בעיה</label>
+          <input type="text" class="note" name="note_s1" dir="rtl" placeholder="מה שמעת?">
+        </div>
+      </div>
+    </div>
+    <div class="card" data-id="s2">
+      <div class="chead"><span class="cid">אחלה</span>
+        <span class="tag">s2</span></div>
+      <div class="col">
+        <div class="he" dir="rtl">אחלה, מתי נוח לך?</div>
+        <audio controls preload="none" src="r5_s2_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_s2" value="ok"> תקין</label>
+          <label class="lbl"><input type="radio" name="pick_s2" value="bad"> יש בעיה</label>
+          <input type="text" class="note" name="note_s2" dir="rtl" placeholder="מה שמעת?">
+        </div>
+      </div>
+    </div>
+    <div class="card" data-id="s3">
+      <div class="chead"><span class="cid">מעולה</span>
+        <span class="tag">s3</span></div>
+      <div class="col">
+        <div class="he" dir="rtl">מעולה, אז סגרנו.</div>
+        <audio controls preload="none" src="r5_s3_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_s3" value="ok"> תקין</label>
+          <label class="lbl"><input type="radio" name="pick_s3" value="bad"> יש בעיה</label>
+          <input type="text" class="note" name="note_s3" dir="rtl" placeholder="מה שמעת?">
+        </div>
+      </div>
+    </div>
+    <div class="card" data-id="s4">
+      <div class="chead"><span class="cid">בקטנה</span>
+        <span class="tag">s4</span></div>
+      <div class="col">
+        <div class="he" dir="rtl">אפשר להתחיל בקטנה ולראות איך זה עובד.</div>
+        <audio controls preload="none" src="r5_s4_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_s4" value="ok"> תקין</label>
+          <label class="lbl"><input type="radio" name="pick_s4" value="bad"> יש בעיה</label>
+          <input type="text" class="note" name="note_s4" dir="rtl" placeholder="מה שמעת?">
+        </div>
+      </div>
+    </div>
+    <div class="card" data-id="s5">
+      <div class="chead"><span class="cid">על הדרך</span>
+        <span class="tag">s5</span></div>
+      <div class="col">
+        <div class="he" dir="rtl">ועל הדרך אפשר לחבר גם את הוואטסאפ.</div>
+        <audio controls preload="none" src="r5_s5_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_s5" value="ok"> תקין</label>
+          <label class="lbl"><input type="radio" name="pick_s5" value="bad"> יש בעיה</label>
+          <input type="text" class="note" name="note_s5" dir="rtl" placeholder="מה שמעת?">
+        </div>
+      </div>
+    </div>
+<h2>סיכום</h2>
+<button id="btn">צור סיכום</button>
+<textarea id="summary" readonly placeholder="הסיכום יופיע כאן"></textarea>
+</main>
+<script>
+const KEY = 'r5-verdicts';
+const state = JSON.parse(localStorage.getItem(KEY) || '{}');
+document.querySelectorAll('input').forEach(el => {
+  if (el.type === 'radio' && state[el.name] === el.value) el.checked = true;
+  if (el.type === 'text' && state[el.name]) el.value = state[el.name];
+  el.addEventListener(el.type === 'text' ? 'input' : 'change', () => {
+    state[el.name] = el.type === 'text' ? el.value : el.value;
+    localStorage.setItem(KEY, JSON.stringify(state));
+  });
+});
+document.getElementById('btn').addEventListener('click', () => {
+  const lines = ['round5 verdicts (sonic-3.5)'];
+  document.querySelectorAll('.card').forEach(card => {
+    const id = card.dataset.id;
+    const pick = state['pick_' + id] || '-';
+    const note = state['note_' + id] ? '  note: ' + state['note_' + id] : '';
+    lines.push(id + ': ' + pick + note);
+  });
+  const box = document.getElementById('summary');
+  box.value = lines.join('\n');
+  box.select();
+});
+</script>
+</body>
+</html>

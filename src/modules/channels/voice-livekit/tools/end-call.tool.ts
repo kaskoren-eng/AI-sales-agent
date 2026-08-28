@@ -43,11 +43,12 @@ export const LLM_END_REASONS = [
 ] as const;
 
 /**
- * Reasons set ONLY by a code reflex (silence → no_answer, answering machine → voicemail) — never
- * offered to the model. Kept out of the tool's enum so the LLM can't self-select them; the reflexes
- * in agent.ts write `rt.endReason` directly.
+ * Reasons set ONLY by code — a reflex (silence → no_answer, answering machine → voicemail) or the
+ * request_human_handoff tool (→ handoff_requested) — never offered to the model HERE. Kept out of
+ * end_call's enum so the LLM can't self-select them; the reflexes in agent.ts and the handoff tool
+ * write `rt.endReason` directly.
  */
-export const SYSTEM_END_REASONS = ['no_answer', 'voicemail'] as const;
+export const SYSTEM_END_REASONS = ['no_answer', 'voicemail', 'handoff_requested'] as const;
 
 /** The full analytics/CRM vocabulary: what the model can pick PLUS what reflexes set. */
 export const END_CALL_REASONS = [...LLM_END_REASONS, ...SYSTEM_END_REASONS] as const;
@@ -199,7 +200,8 @@ export function endCallTool(rt: ToolRuntimeContext) {
     execute: (args, { ctx, abortSignal }) =>
       timedTool(rt, 'end_call', args, async () => {
         const { reason } = args;
-        rt.endReason = reason;
+        // A handoff already owns the end reason — a chained end_call must not relabel the call.
+        if (rt.endReason !== 'handoff_requested') rt.endReason = reason;
         rt.callState?.onToolCall('end_call', true); // → terminal stage
 
         // The DNC mark happens BEFORE teardown — a shutdown race must not lose a legal request.

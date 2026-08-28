@@ -14,13 +14,15 @@ import { type AudioFrame, RoomEvent, type RemoteAudioTrack, TrackKind } from '@l
 import { loadEnv } from '../../../config/env.js';
 import { callLearnings } from '../../../db/schema/index.js';
 import { buildSessionComponents, buildTTS, describeTtsModel } from './agent.config.js';
+import { finalizeTranscriptNow } from './stt/soniox.stt.js';
 import { CallReport } from './call-report.js';
 import { probeDatabase } from './db-probe.js';
 import { CallStateMachine } from './call-state.js';
 import { decideSilenceAction, decideVoicemailAction } from './call-reflexes.js';
+import { HOLD_CHECKBACK_HE } from './call-state-lines.he.js';
 import { hasAiDisclosure } from './compliance/ai-disclosure.js';
 import { NOT_IN_SERVICE_PATH, playRecordingNotice } from './compliance/recording-notice.js';
-import { buildSystemPrompt, readBusinessProfile } from './prompts/system-prompt.he.js';
+import { SPOKEN_REGISTER_SLANG, buildSystemPrompt, readBusinessProfile } from './prompts/system-prompt.he.js';
 import { buildGreeting, isDefaultPersona, readAgentPersona } from './persona.js';
 import { buildVoicemailMessage } from './call-state-lines.he.js';
 import {
@@ -28,7 +30,16 @@ import {
   MAX_FILLERS_PER_CALL,
   pickThinkingFiller,
 } from './prompts/thinking-fillers.he.js';
-import { guardStream, withFiller } from './speech-guard.js';
+import { pickAcknowledgement } from './prompts/acknowledgements.he.js';
+import {
+  AddressGenderTracker,
+  dropAckEcho,
+  guardStream,
+  notifyIfSilent,
+  timeFirstChunk,
+  withFiller,
+} from './speech-guard.js';
+import { PhraseLedger } from './phrase-ledger.js';
 import { ShadowSTT } from './stt/shadow-stt.js';
 import { DeepdubTTS } from './tts/deepdub.tts.js';
 import { buildAgentTools } from './tools/index.js';
@@ -102,12 +113,75 @@ class ClickScalesAgent extends voice.Agent {
    */
   pendingFiller: string | null = null;
 
+  /**
+   * Called when a whole reply was guarded down to nothing — she is about to stay silent.
+   *
+   * Deliberate silence is a REAL feature (the caller asked her to hold), but it has no exit of its
+   * own: nothing in the pipeline distinguishes "quiet on purpose" from "dead". On 2026-08-16 that
+   * cost twenty seconds of a live call. Whoever sets this arms the way back out.
+   */
+  onSilentReply: (() => void) | null = null;
+
+  /**
+   * The MODEL's real time-to-first-token, which the SDK's own metric can no longer see.
+   *
+   * `performLLMInference` stamps `data.ttft` on the first chunk out of `llmNode`
+   * (generation.js:381) — and with VOICE_INSTANT_ACK that chunk is OUR acknowledgement, emitted
+   * before the model has done anything. So `llmTtftMedianMs` in the call report reads ~0ms and the
+   * ~840ms it used to report vanishes from the instrument.
+   *
+   * That is the exact failure this session spent three days undoing (a metric that flatters the
+   * change being measured), so it is not acceptable to introduce one. This reports the real
+   * number, measured from reply start to the model's first chunk.
+   */
+  onModelFirstToken: ((ms: number) => void) | null = null;
+
   /** Null when the per-tenant tool gate is closed — the guard then behaves exactly as pre-Phase-4. */
   readonly toolRuntime: ToolRuntimeContext | null;
 
-  constructor(opts: ConstructorParameters<typeof voice.Agent>[0], toolRuntime: ToolRuntimeContext | null = null) {
+  /** Speak an instant acknowledgement at the start of every reply. See llmNode below. */
+  readonly instantAck: boolean;
+
+  /**
+   * How long the CALLER has been waiting, asked at the moment we hand text to the voice.
+   *
+   * `latency audio_path` measures the reply against its own start, and by that clock the
+   * acknowledgement leaves in 1-2ms. That reads as success and is not: on the 2026-08-18 call dead
+   * air ran to a median of 1254ms while end-of-turn (200ms) + TTS (229ms) predicts ~430ms. The
+   * ~800ms is unaccounted for because no instrument spans the join — one clock starts when the
+   * reply starts, the other when the caller stops, and nothing measured the distance between them.
+   * This closes it: if the guard's first chunk is already 1000ms into the caller's silence, the
+   * reply was STARTED late and no amount of pipeline tuning will help.
+   */
+  msSinceUserStopped: (() => number | null) | null = null;
+
+  /**
+   * Which gender table the pronunciation fix speaks. Masculine by default; follows the LATEST
+   * unambiguous evidence in either direction — her own conjugation (תרצי / אתה) via guardStream,
+   * and the caller saying it outright ("אני אישה") via the ConversationItemAdded hook below.
+   * One per call by construction: the agent instance is created per session, so a new call
+   * starts masculine. See AddressGenderTracker in speech-guard.ts for the full rules.
+   */
+  readonly genderTracker = new AddressGenderTracker();
+
+  /**
+   * What she has already said this call, as 4-grams — the anti-repetition ledger
+   * (VOICE_PHRASE_LEDGER_ENABLED). Fed from committed assistant items; its note is injected at
+   * turn boundaries by injectPhraseNote() below. One per call, like the gender tracker.
+   */
+  readonly phraseLedger = new PhraseLedger(SPOKEN_REGISTER_SLANG);
+
+  /** The last ledger note injected, so an unchanged note is never re-written into the ctx. */
+  lastPhraseNote: string | null = null;
+
+  constructor(
+    opts: ConstructorParameters<typeof voice.Agent>[0],
+    toolRuntime: ToolRuntimeContext | null = null,
+    instantAck = false,
+  ) {
     super(opts);
     this.toolRuntime = toolRuntime;
+    this.instantAck = instantAck;
   }
 
   /**
@@ -142,6 +216,74 @@ class ClickScalesAgent extends voice.Agent {
    * "קבעתי לך" is still a lie and is still rewritten. After it, rewriting the truth would itself
    * be the lie. The control-token removal and the pronunciation fix stay unconditional forever.
    */
+  /** The acknowledgement spoken on this reply, so ttsNode can drop the model's echo of it. */
+  #spokenAck: string | null = null;
+
+  #lastAck: string | null = null;
+
+  /**
+   * SAYS "אוקיי" THE INSTANT THE TURN ENDS, BEFORE THE MODEL HAS WRITTEN A WORD.
+   *
+   * This is the change that puts first audio under a second, and llmNode is the only place it can
+   * live. Measured budget: end-of-turn ~400ms + LLM first token ~974ms + TTS first byte ~217ms.
+   * The middle term cannot be tuned away — `npm run bench:path` shows the speech guard releasing
+   * the opener 25ms after the first token, so the pipeline is already streaming correctly and the
+   * wait is simply how long gpt-5.4 takes to start. A real answer cannot beat ~1.6s.
+   *
+   * WHY NOT `session.say()`, WHICH IS THE OBVIOUS WAY. Because it would land the acknowledgement
+   * at the END of her reply, which is the exact bug this project already shipped once. The speech
+   * queue is `[priority, insertion-time]` (agent_activity.js:2926) and `say()` has no priority
+   * parameter, while the reply's handle is scheduled BEFORE `_updateAgentState('thinking')` fires
+   * (agent_activity.js:~2035) — so anything we schedule from that event is behind it. Read the
+   * scheduler, do not test this by ear on a phone call.
+   *
+   * llmNode has no such problem: its output IS the reply's text stream, so a string yielded here
+   * is the first thing the TTS sees, in the same segment, ordered by construction. It also runs at
+   * reply start rather than at first token, which is the whole point — Cartesia begins
+   * synthesising while OpenAI is still thinking.
+   */
+  override async llmNode(
+    chatCtx: Parameters<voice.Agent['llmNode']>[0],
+    toolCtx: Parameters<voice.Agent['llmNode']>[1],
+    modelSettings: Parameters<voice.Agent['llmNode']>[2],
+  ): ReturnType<voice.Agent['llmNode']> {
+    const startedAt = Date.now();
+    const inner = await voice.Agent.default.llmNode(this, chatCtx, toolCtx, modelSettings);
+    if (!this.instantAck || inner === null) {
+      this.#spokenAck = null;
+      return inner;
+    }
+
+    const ack = pickAcknowledgement(this.#lastAck);
+    this.#lastAck = ack;
+    this.#spokenAck = ack;
+
+    const reader = inner.getReader();
+    let sawModelToken = false;
+    const withAck = new ReadableStream({
+      // Enqueued before the first read, so it reaches the TTS without waiting on the model at all.
+      start: (controller) => controller.enqueue(`${ack} `),
+      pull: async (controller) => {
+        const { done, value } = await reader.read();
+        if (done) {
+          controller.close();
+          return;
+        }
+        // The model's real first token — see onModelFirstToken. The SDK's own ttft is now measuring
+        // the acknowledgement above, so this is the only place the true number still exists.
+        if (!sawModelToken) {
+          sawModelToken = true;
+          this.onModelFirstToken?.(Date.now() - startedAt);
+        }
+        controller.enqueue(value as string);
+      },
+      cancel: (reason) => reader.cancel(reason),
+    });
+    // The SDK types this channel as ChatChunk | string | FlushSentinel; we only ever add a string,
+    // and pass every model chunk through untouched. The cast is over the union, not over behaviour.
+    return withAck as unknown as NonNullable<Awaited<ReturnType<voice.Agent['llmNode']>>>;
+  }
+
   override async ttsNode(
     text: Parameters<voice.Agent['ttsNode']>[0],
     modelSettings: voice.ModelSettings,
@@ -151,16 +293,154 @@ class ClickScalesAgent extends voice.Agent {
     const filler = this.pendingFiller;
     this.pendingFiller = null;
 
-    return voice.Agent.default.ttsNode(
+    // Both ends of the speech path, on one line per reply. See timeFirstChunk() for why: dead air
+    // is end-of-turn + <something> + TTS first byte, and `<something>` behaved differently on a
+    // short reply (218ms after the LLM's first token) than on a long one (1416ms). This says
+    // whether our sentence buffering is the cost or whether the delay is downstream of us.
+    const startedAt = Date.now();
+    let llmFirstChunk = -1;
+
+    // The acknowledgement is already committed to audio by the time the model writes its opener,
+    // so if the model opens with the same word we cannot un-say ours — we drop theirs instead.
+    const ack = this.#spokenAck;
+    this.#spokenAck = null;
+
+    const synthesized = await voice.Agent.default.ttsNode(
       this,
-      guardStream(
-        withFiller(filler, text as AsyncIterable<string>),
-        // Read PER SENTENCE: book_meeting can succeed mid-reply, and the very next sentence
-        // ("קבעתי לך ליום ראשון") must already be allowed through.
-        () => this.toolRuntime?.bookingCompleted === true,
+      notifyIfSilent(
+        timeFirstChunk(
+          guardStream(
+            dropAckEcho(
+              ack,
+              timeFirstChunk(
+                withFiller(filler, text as AsyncIterable<string>),
+                startedAt,
+                (ms) => {
+                  llmFirstChunk = ms;
+                },
+              ),
+            ),
+            // Read PER SENTENCE: book_meeting can succeed mid-reply, and the very next sentence
+            // ("קבעתי לך ליום ראשון") must already be allowed through.
+            () => this.toolRuntime?.bookingCompleted === true,
+            this.genderTracker,
+            // Digits → colloquial Hebrew words in the SPOKEN text only (times, phones, prices).
+            env.VOICE_SPEECH_NUMBERS_ENABLED,
+          ),
+          startedAt,
+          (ms) => {
+            const waited = this.msSinceUserStopped?.() ?? null;
+            console.log(
+              `latency audio_path llmFirstChunk=${llmFirstChunk} guardFirstOut=${ms} ` +
+                `heldMs=${ms - llmFirstChunk} sinceCallerStopped=${waited ?? -1}`,
+            );
+          },
+        ),
+        () => this.onSilentReply?.(),
       ),
       modelSettings,
     );
+
+    // THE LAST BLIND SPOT, and the reason two theories in a row were wrong.
+    //
+    // We know the acknowledgement's TEXT reaches the voice ~530ms after the caller stops, and that
+    // Cartesia reports ~240ms to first byte. That predicts sound at ~770ms. The caller waits
+    // ~1690ms. Turning preemptive TTS off moved that by 180ms — i.e. it was not the cause, and I
+    // had no instrument that could have told me so beforehand.
+    //
+    // `ttfbMs` is the TTS plugin's own stopwatch, started when IT decides to open the request. It
+    // cannot see time spent before that, and neither could we. This times the first AUDIO FRAME
+    // leaving the node against the CALLER's clock, which brackets the gap from both sides:
+    //
+    //   firstFrame ~= 800ms  -> audio exists on time and something downstream sits on it
+    //   firstFrame ~= 1700ms -> the synthesis never started when we thought it did
+    if (synthesized === null) return null;
+    // `as unknown as` for the same reason llmNode does it: the SDK types this as node:stream/web's
+    // ReadableStream while the global one is DOM's. Structurally identical, nominally not.
+    return timeFirstAudioFrame(
+      synthesized as unknown as ReadableStream<AudioFrame>,
+      () => this.msSinceUserStopped?.() ?? null,
+    ) as unknown as NonNullable<Awaited<ReturnType<voice.Agent['ttsNode']>>>;
+  }
+}
+
+/**
+ * Reports when the first audio frame of a reply left the TTS node, on the caller's clock.
+ *
+ * A passthrough with a counter — instrumentation that changes the timing it measures is worse
+ * than none.
+ */
+function timeFirstAudioFrame(
+  frames: ReadableStream<AudioFrame>,
+  waited: () => number | null,
+): ReadableStream<AudioFrame> {
+  // EAGER, and that is the entire point. The first version used `pull`, which only advances when
+  // the CONSUMER asks — so it timed when LiveKit played the frame, not when Cartesia produced it,
+  // and duly reported a number identical to dead air on every single turn. That looked like proof
+  // that nothing holds finished audio. It was proof of nothing but the shape of the wrapper.
+  //
+  // The SDK's own ttsNode drains its TTS with an eager `start` loop (agent.js:353), so consuming
+  // eagerly here changes no buffering that was not already happening one layer down.
+  const reader = frames.getReader();
+  return new ReadableStream<AudioFrame>({
+    start: async (controller) => {
+      let seen = false;
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (!seen) {
+            seen = true;
+            console.log(`latency first_audio_frame sinceCallerStopped=${waited() ?? -1}`);
+          }
+          controller.enqueue(value as AudioFrame);
+        }
+        controller.close();
+      } catch (err) {
+        controller.error(err);
+      }
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
+}
+
+
+/** The ledger note's stable chat-item id — replaced in place on each injection. */
+const PHRASE_NOTE_ID = 'phrase-ledger-note';
+
+/**
+ * Injects (or refreshes) the phrase ledger's "do not reuse these phrasings" note.
+ *
+ * WHERE AND WHY: called only from the ConversationItemAdded handler, after an ASSISTANT item
+ * committed — the same safe point trimHistory uses. Her reply is done, the next preemptive draft
+ * has not been snapshotted yet, so `isEquivalent()` holds on the next turn and no draft is ever
+ * invalidated (mutating the ctx in onUserTurnCompleted was the documented way to silently kill
+ * preemptive generation — this is the other way, the one that doesn't).
+ *
+ * CACHE SHAPE: the note is APPENDED at the tail as a system item; the previous note (1–2 items
+ * from the tail) is removed first. OpenAI caches the longest common prompt PREFIX, so everything
+ * before the old note's position — the system prompt and nearly all history — stays cached.
+ * Rewriting the instructions instead would churn the prefix and collapse the 92% hit rate to
+ * zero (measured, the sliding-window lesson).
+ *
+ * A call with no repetition never enters this function's update path at all — note() is null and
+ * the mechanism costs zero tokens.
+ */
+async function injectPhraseNote(agent: ClickScalesAgent): Promise<void> {
+  try {
+    const note = agent.phraseLedger.note();
+    if (!note || note === agent.lastPhraseNote) return;
+    const ctx = agent.chatCtx.copy();
+    ctx.items = ctx.items.filter((it) => it.id !== PHRASE_NOTE_ID);
+    ctx.addMessage({ role: 'system', content: note, id: PHRASE_NOTE_ID });
+    await agent.updateChatCtx(ctx);
+    agent.lastPhraseNote = note;
+    console.log(
+      `phrase_ledger ${JSON.stringify({ repeated4grams: agent.phraseLedger.repeatedGramCount, note: note.slice(0, 120) })}`,
+    );
+  } catch (err) {
+    // Advisory mechanism — never fail a live call over a style reminder.
+    console.error('phrase_ledger_inject_failed', err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -373,7 +653,15 @@ export default defineAgent({
     session.on(voice.AgentSessionEventTypes.MetricsCollected, (ev) => {
       const m = ev.metrics as Record<string, unknown>;
       const stage = String(m.type ?? 'unknown');
-      const timings = (['endOfUtteranceDelayMs', 'ttftMs', 'ttfbMs', 'durationMs'] as const)
+      // `transcriptionDelayMs` is how long the turn waited for SONIOX's final transcript after
+      // Silero already said the caller stopped. The two run on tee'd copies of the same audio
+      // (audio_recognition.js: `primaryInputStream.tee()`) and the turn commits on the LATER of
+      // them — so with the VAD timer at 100ms and end-of-turn measuring ~600ms, this is the number
+      // that says whether the missing 500ms is Soniox finalising. The SDK has always emitted it;
+      // we simply never read it.
+      const timings = (
+        ['endOfUtteranceDelayMs', 'transcriptionDelayMs', 'ttftMs', 'ttfbMs', 'durationMs'] as const
+      )
         .filter((k) => typeof m[k] === 'number')
         .map((k) => `${k}=${Math.round(m[k] as number)}`);
 
@@ -397,6 +685,83 @@ export default defineAgent({
         report.recordMetric(stage, m);
         console.log(`latency ${stage} ${timings.join(' ')}`);
       }
+    });
+
+    // PERCEIVED DEAD AIR — the caller stopped talking; how long until they heard anything back.
+    //
+    // The stage metrics above cannot answer that question. They measure our pipeline one piece at
+    // a time and their sum (`worstCaseMs`) assumes nothing overlaps — which is false precisely
+    // when things go WELL, because preemptive generation's whole job is to run the LLM and TTS
+    // inside the end-of-turn wait. On the 2026-08-16 call the stage maths said 1466ms and the
+    // caller sat through a median of 2535ms. We optimised against an instrument that could not
+    // see the thing we were optimising.
+    //
+    // Session state transitions can. 'speaking' → not-speaking on the user side is the caller
+    // stopping; 'speaking' on the agent side is audio actually going out. The gap between them is
+    // the silence, whatever caused it — including the causes we have no metric for (a discarded
+    // draft, a fragmented turn, queueing).
+    //
+    // Deliberately NOT inside the `if (callState)` block below: this is instrumentation, and it
+    // must keep working when the state machine kill-switch is off.
+    session.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
+      if (ev.newState === 'speaking') report.noteUserStartedSpeaking();
+      else if (ev.oldState === 'speaking') {
+        report.noteUserStoppedSpeaking();
+        // MAKE SILERO AND SONIOX TALK TO EACH OTHER. They run on tee'd copies of the same audio
+        // and never exchange a word, yet a turn needs both: the VAD's stop time AND the final
+        // transcript. So every turn waits on Soniox re-deriving, from the audio alone, the thing
+        // Silero just decided. Measured on 17 turns (2026-08-18): end-of-turn median 565ms, of
+        // which Silero's share was 1ms. On the turns whose transcript happened to be ready
+        // already, end-of-turn was 128ms — the VAD timer and nothing else.
+        //
+        // Soniox's own docs recommend exactly this: wait ~200ms of silence after speech ends,
+        // then finalise. VOICE_VAD_MIN_SILENCE_MS is what defines "after speech ends" here.
+        finalizeTranscriptNow(components.stt);
+      }
+    });
+    session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) => {
+      if (ev.newState === 'speaking') report.noteAgentStartedSpeaking();
+    });
+
+    // ── MUTE WATCHDOG ─────────────────────────────────────────────────────────────────────────
+    // Deliberate silence needs a way back out, and it did not have one.
+    //
+    // When the caller asks her to hold, the model answers with the NO_RESPONSE_NEEDED control
+    // token and the guard strips it to an empty reply. That is correct — and terminal. Nothing
+    // downstream can tell "quiet on purpose" from "dead", so she stays mute until the CALLER
+    // rescues the call. On 2026-08-16 he waited twenty seconds, asked "הלו, מישהו שם?", and told
+    // her "נעלמת לי ממש". A hold that never ends is indistinguishable from a dropped call.
+    //
+    // The existing silence reflex does not cover this: it keys off the user going 'away', which
+    // needs the user's own turn to have ended, and the turn that provoked the silence had not.
+    // This one keys off HER saying nothing, which is the actual condition.
+    let muteTimer: ReturnType<typeof setTimeout> | null = null;
+    const cancelMuteWatchdog = (): void => {
+      if (muteTimer) {
+        clearTimeout(muteTimer);
+        muteTimer = null;
+      }
+    };
+    // Armed below, once the agent exists (it is constructed further down this function).
+    const armMuteWatchdog = (): void => {
+      if (env.VOICE_HOLD_CHECKBACK_MS === 0) return;
+      cancelMuteWatchdog();
+      muteTimer = setTimeout(() => {
+        muteTimer = null;
+        // Anything that made noise in the meantime already ended the silence.
+        if (session.agentState === 'speaking' || session.agentState === 'thinking') return;
+        if (callState?.isTerminal()) return;
+        console.log('reflex_mute_checkback', JSON.stringify({ afterMs: env.VOICE_HOLD_CHECKBACK_MS }));
+        session.say(HOLD_CHECKBACK_HE, { allowInterruptions: true });
+      }, env.VOICE_HOLD_CHECKBACK_MS);
+      muteTimer.unref?.();
+    };
+    // The caller speaking, or her speaking, is the silence ending — whichever comes first.
+    session.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
+      if (ev.newState === 'speaking') cancelMuteWatchdog();
+    });
+    session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) => {
+      if (ev.newState === 'speaking') cancelMuteWatchdog();
     });
 
     // Per-call usage, so cost is a measured number and not an estimate. LiveKit tallies LLM
@@ -564,11 +929,37 @@ export default defineAgent({
       // 1b. Advance the conversation state machine on committed turns (opening→discovery→…).
       //     No-op when the advisory layer is disabled (callState undefined).
       if (item?.role === 'user') callState?.onUserTurn();
-      else if (item?.role === 'assistant') callState?.onAgentTurn();
+      else if (item?.role === 'assistant') {
+        callState?.onAgentTurn();
+        // Anti-repetition ledger: fold her committed reply in, then (below, after the trim)
+        // refresh the per-turn "do not reuse these phrasings" note. The ledger itself dedupes
+        // the preemptive-draft echo this event delivers.
+        if (env.VOICE_PHRASE_LEDGER_ENABLED && item.textContent) {
+          agent.phraseLedger.observe(item.textContent);
+        }
+      }
+
+      // 1c. The caller stating their gender outright ("אני אישה", "אפשר בלשון זכר") switches the
+      //     pronunciation table IMMEDIATELY — before the LLM's next reply, not one reply late.
+      //     On the 2026-08-26 test call the correction was heard a full turn after it was asked
+      //     for, because only her own conjugation was being watched.
+      if (item?.role === 'user' && item.textContent) {
+        const flipped = agent.genderTracker.observeUser(item.textContent);
+        if (flipped) {
+          console.log(
+            `speech_guard ${JSON.stringify({ note: `address gender -> ${flipped === 'f' ? 'feminine' : 'masculine'} (caller self-identified)` })}`,
+          );
+        }
+      }
 
       // 2. Trim the history — HERE, between turns, and never inside onUserTurnCompleted, where it
       //    invalidated LiveKit's preemptive draft on every single turn. See trimHistory().
-      void trimHistory(agent, env.VOICE_MAX_HISTORY_ITEMS);
+      //    The ledger note rides the SAME promise chain, never concurrently: both do a
+      //    copy→mutate→updateChatCtx, and two racing copies would silently drop one change.
+      const trimmed = trimHistory(agent, env.VOICE_MAX_HISTORY_ITEMS);
+      if (env.VOICE_PHRASE_LEDGER_ENABLED && item?.role === 'assistant') {
+        void trimmed.then(() => injectPhraseNote(agent));
+      }
 
       // 3. FLUSH THE REPORT AFTER EVERY TURN, not just at shutdown.
       //
@@ -614,6 +1005,10 @@ export default defineAgent({
           businessProfile,
           objectionHandling: env.VOICE_STATE_MACHINE_ENABLED,
           persona,
+          // Must track the same flag the ack itself reads. If the prompt forbids her opener while
+          // no acknowledgement is being spoken, she starts every reply cold.
+          instantAck: env.VOICE_INSTANT_ACK,
+          spokenRegister: env.VOICE_SPOKEN_REGISTER_ENABLED,
         }),
         ...(runtime ? { tools: buildAgentTools(runtime) } : {}),
         // A per-tenant VOICE, and ONLY when the tenant actually configured one.
@@ -626,6 +1021,7 @@ export default defineAgent({
         ...(persona.tts ? { tts: buildTTS(env, persona.tts) } : {}),
       },
       runtime,
+      env.VOICE_INSTANT_ACK,
     );
     if (persona.tts) {
       // Otherwise the CallReport names the PLATFORM default engine for a call that used a
@@ -643,6 +1039,20 @@ export default defineAgent({
         customVoice: persona.tts !== null,
       }),
     );
+
+    // Now that she exists, give her deliberate silence a way out. See the MUTE WATCHDOG above.
+    agent.onSilentReply = armMuteWatchdog;
+
+    // The model's REAL first-token time. The SDK's own ttft now measures our acknowledgement, so
+    // without this the ~840ms GPT actually takes would simply disappear from the report and every
+    // future reading would flatter the change that hid it.
+    agent.onModelFirstToken = (ms) => {
+      report.recordMetric('model_ttft', { durationMs: ms });
+      console.log(`latency model_ttft ${ms}ms`);
+    };
+
+    // The caller's clock, readable from inside ttsNode. See ClickScalesAgent.msSinceUserStopped.
+    agent.msSinceUserStopped = () => report.msSinceUserStopped();
 
     // SHE HESITATES WHEN SHE IS THINKING — AT THE START OF HER REPLY, NEVER AFTER IT.
     //
@@ -712,6 +1122,11 @@ export default defineAgent({
     session.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
       if (ev.newState !== 'away' || callState.isTerminal()) return;
       if (session.agentState === 'speaking' || session.agentState === 'thinking') return;
+      // AND NOT WHILE HE IS TALKING. This guard checked only whether SHE was busy, so on
+      // 2026-08-16 she cut across Koren mid-sentence with "רגע, אתה עוד על הקו?" — asking whether
+      // he was still there while he was in the middle of answering her. A nudge is for silence;
+      // if there is speech on the line there is nothing to nudge.
+      if (session.userState === 'speaking') return;
       const action = decideSilenceAction(callState.onSilenceStrike(), callState.stage);
       // Past the nudge cap: hold the line quietly and keep waiting — never hang up on silence.
       if (!action) return;

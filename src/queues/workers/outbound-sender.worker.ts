@@ -68,13 +68,20 @@ export function createOutboundSenderWorker(deps: WorkerDeps) {
 
           // EVERY outbound WhatsApp passes the window+consent decision — Meta's 24h rule and
           // Israeli spam law are enforced HERE, at the choke point, not by sender goodwill.
+          //
+          // notifyRole:'owner' (voice human-handoff alert): the recipient is the tenant OWNER,
+          // not the lead — `leadId` on the job is only attribution, so the window lookup goes by
+          // the recipient PHONE, and consent is implied (the owner put their own number in
+          // `settings.handoff`). The 24h-window/template mechanics still apply unchanged: out of
+          // window this needs the `handoff_alert` template SID, else it blocks (email covers it).
+          const isOwnerNotify = job.data.metadata?.notifyRole === 'owner';
           const [lead, tenantRow] = await Promise.all([
-            loadLeadForSend(db, tenantId, job.data.leadId, to),
+            loadLeadForSend(db, tenantId, isOwnerNotify ? undefined : job.data.leadId, to),
             db.select({ settings: tenants.settings }).from(tenants).where(eq(tenants.id, tenantId)).limit(1),
           ]);
           const decision = resolveWhatsappSendMode({
             lastInboundWhatsappAt: lead?.lastInboundWhatsappAt ?? null,
-            consentGranted: lead?.consentGranted ?? false,
+            consentGranted: isOwnerNotify ? true : (lead?.consentGranted ?? false),
             templates: resolveWhatsappTemplates(tenantRow[0]?.settings),
             templateKey: job.data.template?.key ?? null,
             providerSupportsTemplates: whatsapp.supportsTemplates,

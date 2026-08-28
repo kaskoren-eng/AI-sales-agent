@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TOOL_NAMES } from '../tools/index.js';
-import { GREETING_HE, SYSTEM_PROMPT_HE, buildSystemPrompt } from './system-prompt.he.js';
+import { GREETING_HE, SPOKEN_REGISTER_SLANG, SYSTEM_PROMPT_HE, buildSystemPrompt } from './system-prompt.he.js';
 
 const TOOLS_PROMPT = buildSystemPrompt({ toolsEnabled: true });
 
@@ -84,6 +84,20 @@ describe('Keren v2 — the call flow', () => {
     expect(SYSTEM_PROMPT_HE).toMatch(/one question at a time/u);
   });
 
+  it('discovery questions are INTENTS with phrasing banks, never a fixed script (2026-08-27)', () => {
+    // Humanization §4's top offenders: the name question and the discovery bank were bare
+    // literals, so every call opened with the same sentences. Each intent now carries 5
+    // phrasings and an explicit never-verbatim rule — the phrase ledger enforces it in code.
+    expect(SYSTEM_PROMPT_HE).toMatch(/Each entry is an INTENT with example phrasings/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/never the same sentence twice in one call/u);
+    // The name question kept its original phrasing as ONE of the bank's entries…
+    expect(SYSTEM_PROMPT_HE).toMatch(/עם מי אני מדברת/u);
+    // …alongside real variants, for both the name question and the discovery bank.
+    expect(SYSTEM_PROMPT_HE).toContain('איך קוראים לך');
+    expect(SYSTEM_PROMPT_HE).toContain('ספר לי קצת על העסק');
+    expect(SYSTEM_PROMPT_HE).toContain('מאיפה מגיעות אליך רוב הפניות');
+  });
+
   it('treats general uncertainty as an objection to handle, NOT a disqualifier', () => {
     expect(SYSTEM_PROMPT_HE).toMatch(/General uncertainty is not a disqualifier/u);
   });
@@ -94,6 +108,26 @@ describe('Keren v2 — the call flow', () => {
 
   it('stays silent when the caller asks her to hold', () => {
     expect(SYSTEM_PROMPT_HE).toMatch(/NO_RESPONSE_NEEDED/u);
+  });
+
+  /**
+   * THE RULE THAT MUTED HER FOR TWENTY SECONDS ON A LIVE CALL (2026-08-16).
+   *
+   * It used to read: if the lead says "רגע"/"שנייה"/"חכה", answer with NO_RESPONSE_NEEDED. The
+   * caller said "רגע, מה..." — a QUESTION that happens to open with a hold word — and got silence.
+   * He waited, asked "הלו, מישהו שם?", then told her "נעלמת לי ממש".
+   *
+   * `רגע` is one of the most common things an Israeli says mid-sentence, so a rule that matches it
+   * anywhere in the turn mutes the agent on a large share of real calls. The scope ("the lead's
+   * ENTIRE turn") and the tie-breaker ("if unsure, ANSWER IT") are the fix, and both are load
+   * bearing — this test exists so neither is tidied away by someone shortening the prompt.
+   */
+  it('only holds when the hold request is the WHOLE turn, and answers when unsure', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/ENTIRE turn/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/NOT a hold request/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/unsure.*ANSWER IT/su);
+    // The counter-example that actually happened, kept in the prompt so the model sees the shape.
+    expect(SYSTEM_PROMPT_HE).toMatch(/רגע, מה אתם עושים/u);
   });
 });
 
@@ -152,11 +186,22 @@ describe('Keren Phase 4 — tools-mode prompt', () => {
 
   it('day-first booking flow: offer TOMORROW, then the day, then the free RANGE', () => {
     // The flow Koren specified 2026-07-29: default to tomorrow, pick a day together if not, then
-    // offer the calendar's free hours as a RANGE ("יש לי פנוי מ-10:00 עד 15:00"), not a slot list.
+    // offer the calendar's free hours as a RANGE ("יש לי פנוי מעשר עד שלוש"), not a slot list.
     expect(TOOLS_PROMPT).toMatch(/Offer TOMORROW first/u);
     expect(TOOLS_PROMPT).toMatch(/for THAT DAY ONLY/u);
     expect(TOOLS_PROMPT).toMatch(/Offer the free RANGE/u);
-    expect(TOOLS_PROMPT).toContain('יש לי פנוי מ-10:00 עד 15:00');
+    expect(TOOLS_PROMPT).toContain('יש לי פנוי מעשר עד שלוש');
+  });
+
+  it('hours are spoken as colloquial words, never digits (Koren, 2026-08-27)', () => {
+    // The speech-guard normalizer is the safety net; the prompt is the first line. The range
+    // example itself models the colloquial form — a digit example here would teach the opposite.
+    expect(TOOLS_PROMPT).toMatch(/Say hours the way people say them/u);
+    expect(TOOLS_PROMPT).toContain('ארבע וחצי');
+    expect(TOOLS_PROMPT).toContain('רבע לחמש');
+    // The banned forms are NAMED as anti-examples exactly once each, in the rule itself.
+    expect(TOOLS_PROMPT).toMatch(/never raw digits \("16:30"\)/u);
+    expect(TOOLS_PROMPT).toMatch(/שש עשרה ושלושים/u);
   });
 
   it('carries the objection-handling playbook (tools variant), absent from the legacy variant', () => {
@@ -225,6 +270,59 @@ describe('Keren Phase 4 — tools-mode prompt', () => {
       expect(prompt).toMatch(/SHORT first sentence/u);
       expect(prompt).toMatch(/2 to 4 words/u);
     }
+  });
+
+  it('forbids her own opener when VOICE_INSTANT_ACK speaks one for her', () => {
+    // Both rules on is what the 2026-08-17 call sounded like: our acknowledgement, then hers, then
+    // a third from the reply itself — "בסדר. שומעת מצוין. כן, אני שומעת אותכה טוב." Three receipts
+    // before a single fact. The short-first-sentence rule survives; the reaction word does not.
+    const acked = buildSystemPrompt({ toolsEnabled: true, instantAck: true });
+
+    expect(acked).toMatch(/NEVER an acknowledgment/u);
+    expect(acked).toMatch(/Do NOT begin your reply with an acknowledgment/u);
+    expect(acked).toMatch(/SHORT/u); // the latency rule it replaces must not be lost with it
+    expect(acked).not.toMatch(/2 to 4 words/u); // …and the old instruction must be GONE, not merely contradicted
+  });
+
+  // The seventh tool (2026-08-28). Sales objection #1 is "what if the customer wants a human?" —
+  // before this the agent had no answer and improvised one. The escalation LADDER is the product
+  // decision worth pinning: one honest attempt to help, then hand off without arguing.
+  describe('human handoff — the escalation ladder', () => {
+    it('names the tool and the four triggers a lead actually uses', () => {
+      expect(TOOLS_PROMPT).toMatch(/`request_human_handoff`/u);
+      expect(TOOLS_PROMPT).toMatch(/בן אדם/u); // "a human being" — the phrase Israeli leads say
+      expect(TOOLS_PROMPT).toMatch(/EXPLICITLY insists on a human/u);
+      expect(TOOLS_PROMPT).toMatch(/refuses to continue with an AI/u);
+      expect(TOOLS_PROMPT).toMatch(/asks for a person a SECOND time/u);
+      expect(TOOLS_PROMPT).toMatch(/אפשר לדבר עם מישהו/u); // the mild first ask, quoted
+    });
+
+    it('tries ONCE before escalating — a mild first ask is not a handoff', () => {
+      // Firing on the first "אפשר לדבר עם מישהו?" burns a lead who only wanted their question
+      // answered; refusing to ever escalate is how the agent argues with a person. Both are bugs.
+      expect(TOOLS_PROMPT).toMatch(/Try this exactly ONCE/u);
+      expect(TOOLS_PROMPT).toMatch(/do not argue and do not try to convince again/u);
+    });
+
+    it('never promises a live transfer — the human CALLS BACK', () => {
+      // There is no SIP REFER path (post-launch). A promise to "connect you now" is a lie the
+      // lead hears within seconds.
+      expect(TOOLS_PROMPT).toMatch(/NEVER promise to transfer or connect them right now/u);
+      expect(TOOLS_PROMPT).toMatch(/CALL THEM BACK/u);
+    });
+
+    it('the no-tools variant keeps the old message-relay answer and names NO tool', () => {
+      // Tool-gated-off calls must not be told to call a tool they do not have.
+      expect(SYSTEM_PROMPT_HE).not.toMatch(/request_human_handoff/u);
+      expect(SYSTEM_PROMPT_HE).toMatch(/אני סוכנת AI, אבל אני יכולה להעביר הודעה לצוות שלנו/u);
+      // …and the tools variant must NOT still carry the old relay script.
+      expect(TOOLS_PROMPT).not.toMatch(/יכולה להעביר הודעה לצוות שלנו שיחזרו אליך/u);
+    });
+
+    it('the handoff does not leak into the ordinary end_call vocabulary', () => {
+      // handoff_requested is set by the TOOL, never self-selected by the model in end_call.
+      expect(TOOLS_PROMPT).not.toMatch(/end_call` with reason "handoff_requested"/u);
+    });
   });
 
   it('shared guarantees hold in BOTH variants', () => {
@@ -326,5 +424,99 @@ describe('Keren v2.1 — fixes from the first live call', () => {
   it('knows קורן is the founder and the one giving the demo', () => {
     // Asked "עם מי אמורה להיות השיחה?", she answered "אין לי כרגע את המידע הזה."
     expect(SYSTEM_PROMPT_HE).toMatch(/קורן הוא המייסד/u);
+  });
+});
+
+describe('Keren — emotional color (round 4, 2026-08-26)', () => {
+  // Cartesia's emotion tags do NOTHING on Hebrew (verified by ear: [laughter]/[sigh] silently
+  // ignored on sonic-3.5 — tests/hebrew-tts-niqqud-ab round 4). Emotion therefore travels in the
+  // TEXT: sonic reads emotional subtext from wording and punctuation. Koren's verdicts picked
+  // exactly three devices; the prompt teaches those and nothing else.
+
+  it('teaches ONLY devices that won a listening verdict, in both prompt variants', () => {
+    for (const prompt of [SYSTEM_PROMPT_HE, TOOLS_PROMPT]) {
+      expect(prompt).toMatch(/Emotional Color/u);
+      expect(prompt).toMatch(/וואו, מעולה!/u); // r4 p1=C: interjection + exclamation
+      expect(prompt).toMatch(/אני מבינה\.\.\. זה באמת מתסכל/u); // r4 p2=B: ellipsis for empathy
+      expect(prompt).toMatch(/בבוקר, או אחר הצהריים/u); // r4 p3=C: either/or question melody
+      expect(prompt).toMatch(/איזה כיף/u); // r4b w5 ok: joy
+      expect(prompt).toMatch(/וואלה\?/u); // r4b w6 ok: surprise
+      expect(prompt).toMatch(/אוף\.\.\./u); // r4b w3 ok: the shared sigh
+    }
+  });
+
+  it('BANS written laughter — sonic-3.5 reads חח as the letter khet, not a laugh (r4b w1/w2)', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/You CANNOT laugh/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/do not write it, ever/u);
+  });
+
+  it('anchors the color to BEATS — the 2026-08-26 evening call used one device in 32 turns', () => {
+    // "Sparingly, at most one per reply" made the model play it safe to the point of silence:
+    // a whole call with a single emotional touch, copied verbatim from the example. The section
+    // now names the moments that ALWAYS deserve color and demands the model's own words.
+    expect(SYSTEM_PROMPT_HE).toMatch(/These beats always deserve emotional color/iu);
+    expect(SYSTEM_PROMPT_HE).toMatch(/never copy these examples verbatim/iu);
+    expect(SYSTEM_PROMPT_HE).toMatch(/acknowledge the feeling first/iu);
+    expect(SYSTEM_PROMPT_HE).not.toMatch(/at most one emotional touch per reply/iu);
+  });
+
+  it('keeps the color out of the opener slot — the instant-ack double-receipt bug must not return', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/never as another opener/iu);
+  });
+
+  it('bans bracketed stage-direction tags — they are silently ignored on Hebrew, dead words in a transcript', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/never stage directions or bracketed tags/iu);
+    // And the section itself must not demonstrate one, or the model will copy it.
+    expect(SYSTEM_PROMPT_HE).not.toMatch(/\[laughter\]|\[sigh\]/u);
+  });
+});
+
+/**
+ * The spoken register (2026-08-27). Koren's third live-call complaint: her Hebrew is too formal
+ * and scripted. Simple spoken Hebrew + LIGHT slang (סבבה/אחלה level), heavy street slang
+ * explicitly out. Same discipline as EMOTIONAL_COLOR: devices + beats, one touch per reply,
+ * never verbatim. Kill-switch: VOICE_SPOKEN_REGISTER_ENABLED → spokenRegister option.
+ */
+describe('Keren — spoken register (2026-08-27)', () => {
+  it('carries the Spoken Register section by default, in BOTH variants', () => {
+    expect(SYSTEM_PROMPT_HE).toContain('## Spoken Register');
+    expect(buildSystemPrompt({ toolsEnabled: true })).toContain('## Spoken Register');
+  });
+
+  it('the kill-switch drops the section entirely — the pre-register prompt on that axis', () => {
+    const off = buildSystemPrompt({ toolsEnabled: true, spokenRegister: false });
+    expect(off).not.toContain('## Spoken Register');
+    expect(off).not.toContain('סבבה');
+  });
+
+  it('bans the bookish lexemes and puts structure FIRST', () => {
+    // The corpus scan found the formality lives in sentence structure, not fancy words — so the
+    // section leads with structure rules; the word list is the guard-rail.
+    expect(SYSTEM_PROMPT_HE).toMatch(/Structure first/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/לפיכך, בכדי, ברצוני, אודות, הנני, כמו כן/u);
+  });
+
+  it('one slang touch per reply MAX, varied — the same word every reply is the new robot', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/At most ONE slang touch per reply/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/if you used a word recently, pick another or none/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/never copy these verbatim/u);
+  });
+
+  it('heavy street slang is banned BY NAME — Koren\'s explicit choice', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/NO heavy street slang/u);
+    // The banned words appear exactly once each — inside the ban itself, never as examples.
+    for (const banned of ['אין מצב', 'וואי', 'פצצה']) {
+      const hits = SYSTEM_PROMPT_HE.split(banned).length - 1;
+      expect(hits, `${banned} must appear exactly once (in the ban)`).toBe(1);
+    }
+  });
+
+  it('every slang-bank word is in the prompt, and the ledger tracks the same list', () => {
+    // SPOKEN_REGISTER_SLANG is consumed by the PhraseLedger (agent.ts) — the bank and the
+    // tracked-word list must never drift apart, and every entry passed round-5 screening.
+    expect(SPOKEN_REGISTER_SLANG).toEqual(['סבבה', 'אחלה', 'מעולה', 'בקטנה', 'על הדרך']);
+    for (const word of SPOKEN_REGISTER_SLANG) {
+      expect(SYSTEM_PROMPT_HE).toContain(word);
+    }
   });
 });
