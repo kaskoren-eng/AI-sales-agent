@@ -29,3 +29,6 @@ el-ws-probe/
 
 # Browser-automation snapshots — can capture env-var panels with live secrets
 .playwright-cli/
+
+# Local Netlify folder
+.netlify
