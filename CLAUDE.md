@@ -72,6 +72,20 @@ TypeScript + Fastify 5 + Drizzle ORM + PostgreSQL + Redis + BullMQ + Zod + OpenA
 - Schema changes go in `src/db/schema/` then run `npm run db:generate`
 - `AI_MODEL` env var controls the OpenAI model (default: `gpt-5.4`)
 
+## Claims made on this branch (feature/voice-human-handoff)
+
+⚠️ This branch's copy of CLAUDE.md predates the migration/settings-key claims tables that live on
+`main` — the claims below are recorded here so the "claim in the same commit" rule is satisfied,
+and MUST be folded into `main`'s canonical tables when this branch merges.
+
+- **Migration `0017` = `leads.handoff_requested_at`** (VOICE). Numbered against `main`'s applied
+  history (0006–0016 are already live in production), NOT against this branch's journal, which
+  stops at 0005. Hand-written for that reason — `db:generate` on this branch would emit a
+  colliding `0006`. Next free after this: 0018.
+- **`tenants.settings.handoff`** (VOICE-owned) — `{ ownerName, ownerPhone, ownerEmail,
+  notify: ('whatsapp'|'email')[] }`. Who gets pinged when a lead asks for a human, and the name the
+  agent speaks on the call. Resolver: `src/modules/channels/voice-livekit/tools/handoff-settings.ts`.
+
 ## Security rules
 
 - Tenant secrets encrypted AES-256-GCM — use `src/shared/crypto.ts`

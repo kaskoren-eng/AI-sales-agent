@@ -150,6 +150,16 @@ Replace Retell with LiveKit + Cartesia + OpenAI Realtime pipeline. Full plan in 
 
 **Rollback plan:** ⚠️ **None.** The previous engine was decommissioned and its code removed from the repo (2026-08-05). `voice_engine` no longer exists as a setting. Fix forward.
 
+**Launch gate — human handoff (added 2026-08-28, branch `feature/voice-human-handoff`).** A seventh
+agent tool, `request_human_handoff`, answers sales objection #1 ("what if the customer wants a
+human?"): it stamps `leads.handoff_requested_at` (migration 0017), pings the tenant owner on
+WhatsApp + email from `tenants.settings.handoff`, then ends the call on the shared `end_call`
+teardown with `end_reason='handoff_requested'`. Built and unit-tested; **not yet verified live.**
+Gate: one Simulator call and one PSTN call where the owner gets the WhatsApp within 10s, the lead
+hears the handoff line, the call ends cleanly, and the lead row shows `handoff_requested_at`.
+Add the same item to Layer 6 of `docs/phase-6-verification-checklist.md` — that file lives on
+another branch, not this one. NOT a live transfer: SIP REFER is explicitly post-launch.
+
 **Success criteria (carried over from the decommissioning gate — still open):**
 - **Time to first audio < 1000ms median.** Restated 2026-08-16: the old "P95 < 800ms / P50 < 500ms
   per turn" was never achievable and was never measured against a real definition. Measured floor

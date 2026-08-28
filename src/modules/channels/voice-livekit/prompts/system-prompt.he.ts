@@ -142,7 +142,9 @@ interface PromptSlots {
   /** "Then call \`end_call\`..." lines — with reasons in tools mode, bare in legacy mode. */
   endCallBadTime: string;
   endCallDisqualified: string;
-  endCallHandoff: string;
+  /** The entire "## Human Handoff Request" section. Legacy mode keeps the pre-existing
+   * message-relay text; tools mode escalates through `request_human_handoff`. */
+  handoffSection: string;
   endCallOptOut: string;
   /** The capture_lead_info instruction after the discovery bank — tools variant only. */
   captureInstruction: string;
@@ -513,15 +515,7 @@ Then return to whatever step you were in.
 
 ---
 
-## Human Handoff Request
-
-If the lead insists on speaking with a person at any point, respond exactly with:
-
-> "אני סוכנת AI, אבל אני יכולה להעביר הודעה לצוות שלנו שיחזרו אליך. זה יעבוד?"
-
-<*Wait for lead response*>
-
-After the lead responds, thank them and ${slots.endCallHandoff} Do not return to discovery or booking — this ends the call.
+${slots.handoffSection}
 
 ---
 
@@ -552,6 +546,36 @@ If you are ever unsure whether a turn is a pure hold request, ANSWER IT. Saying 
 harmless costs a sentence; saying nothing costs the call.
 `.trim();
 }
+
+/**
+ * The legacy handoff section — a relayed message, no tool. MUST stay byte-identical to the
+ * pre-request_human_handoff render: legacy (tool-gated-off) calls are pinned by regression tests.
+ */
+const HANDOFF_SECTION_NO_TOOLS = `## Human Handoff Request
+
+If the lead insists on speaking with a person at any point, respond exactly with:
+
+> "אני סוכנת AI, אבל אני יכולה להעביר הודעה לצוות שלנו שיחזרו אליך. זה יעבוד?"
+
+<*Wait for lead response*>
+
+After the lead responds, thank them and call \`end_call\`. Do not return to discovery or booking — this ends the call.`;
+
+/**
+ * The tools-mode handoff policy. The escalation ladder is a product decision (architect,
+ * 2026-08-27): answer a first MILD ask if you actually can — many leads just want their question
+ * handled — but an explicit insistence, an AI refusal, or a second ask is never argued with.
+ */
+const HANDOFF_SECTION_TOOLS = `## Human Handoff Request
+
+The lead may ask to speak with a human — a person, a manager, "בן אדם" — or say they don't want to talk with an AI.
+
+- FIRST mild ask ("אפשר לדבר עם מישהו?") where you can genuinely answer the underlying question: be honest — "אני סוכנת AI, אבל אני יכולה לעזור לך עם זה" — answer it, and offer to keep helping right here. Many leads just want their question handled. Try this exactly ONCE.
+- The lead EXPLICITLY insists on a human, refuses to continue with an AI, or asks for a person a SECOND time: do not argue and do not try to convince again. Call \`request_human_handoff\` with a short \`reason\` — what they want the human for, in their own words.
+
+After the tool returns, follow its instruction exactly: ONE warm sentence saying who you are passing this to and that they will get back to the lead soon, then one short goodbye. Nothing else. Do not return to discovery or booking — this ends the call.
+
+NEVER promise to transfer or connect them right now — a human will CALL THEM BACK.`;
 
 /**
  * Builds the system prompt for a call. `toolsEnabled` mirrors the per-call tool gate in
@@ -587,7 +611,7 @@ export function buildSystemPrompt({
       spokenRegister: spokenRegisterSection,
       endCallBadTime: 'Then call `end_call`.',
       endCallDisqualified: 'Then call `end_call`.',
-      endCallHandoff: 'call `end_call`.',
+      handoffSection: HANDOFF_SECTION_NO_TOOLS,
       endCallOptOut: 'Then immediately call `end_call`.',
       captureInstruction: '',
       step4: STEP4_NO_TOOLS,
@@ -600,7 +624,7 @@ export function buildSystemPrompt({
     spokenRegister: spokenRegisterSection,
     endCallBadTime: 'Then call `end_call` with reason "bad_time".',
     endCallDisqualified: 'Then call `end_call` with reason "not_qualified".',
-    endCallHandoff: 'call `end_call` with reason "callback_requested".',
+    handoffSection: HANDOFF_SECTION_TOOLS,
     endCallOptOut: 'Then immediately call `end_call` with reason "opt_out".',
     captureInstruction:
       '\nAs you learn facts about the lead — business type, pain point, budget, timeline, contact details, or your hot/warm/cold read — call `capture_lead_info` to save them. It is silent and instant: never announce it, never invent values, and call it again whenever a fact changes.',

@@ -30,6 +30,10 @@ export const leads = pgTable('leads', {
   // lead's LAST INBOUND message. Updated by every inbound WhatsApp webhook (UChat + Twilio).
   lastInboundWhatsappAt: timestamp('last_inbound_whatsapp_at', { withTimezone: true }),
   whatsappConsent: jsonb('whatsapp_consent').$type<WhatsappConsent>(),
+  // Set by the voice agent's request_human_handoff tool. NULL = never asked; a timestamp is the
+  // "urgent since" the dashboard sorts on. Deliberately NOT a status value — a lead can be both
+  // `qualified` and urgent.
+  handoffRequestedAt: timestamp('handoff_requested_at', { withTimezone: true }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [
@@ -37,4 +41,5 @@ export const leads = pgTable('leads', {
   index('leads_email_idx').on(table.tenantId, table.email),
   index('leads_phone_idx').on(table.tenantId, table.phone),
   index('leads_status_idx').on(table.tenantId, table.status),
+  index('leads_handoff_idx').on(table.tenantId, table.handoffRequestedAt),
 ]);

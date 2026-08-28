@@ -277,4 +277,70 @@ describe('outbound-sender worker', () => {
     );
     expect(result).toMatchObject({ skipped: 'no_consent' });
   });
+
+  // ── owner notifications (voice human-handoff alert) ───────────────────────
+  //
+  // The recipient here is the TENANT OWNER, not a lead. Without notifyRole the owner looks like
+  // an unknown number with no consent and every handoff alert is silently blocked — which is
+  // exactly the alert you cannot afford to lose.
+
+  const HANDOFF_TEMPLATES = { whatsapp_templates: { handoff_alert: { contentSid: 'HXHAND' } } };
+
+  function ownerJob(extra: Record<string, unknown> = {}) {
+    return makeJob({
+      to: '+972501112222',
+      content: 'ליד מבקש נציג',
+      template: { key: 'handoff_alert', variables: { '1': 'דנה' } },
+      metadata: { source: 'voice-livekit', callId: 'call-1', notifyRole: 'owner' },
+      ...extra,
+    });
+  }
+
+  it('owner alert out of window → template send, NOT blocked for missing lead consent', async () => {
+    const whatsapp = makeWhatsAppMock();
+    const db = makeDbMock({ lead: null, tenantSettings: HANDOFF_TEMPLATES });
+    createOutboundSenderWorker(makeDeps({ whatsapp, db }) as any);
+
+    const result = await capturedProcessors[0](ownerJob());
+
+    expect(whatsapp.sendTemplate).toHaveBeenCalledWith('+972501112222', 'HXHAND', { '1': 'דנה' });
+    expect(result).not.toMatchObject({ skipped: expect.anything() });
+  });
+
+  it('owner alert inside an open window → freeform, the cheaper natural path', async () => {
+    const whatsapp = makeWhatsAppMock();
+    const db = makeDbMock({
+      lead: { lastInboundWhatsappAt: new Date(Date.now() - 60_000), whatsappConsent: null },
+      tenantSettings: HANDOFF_TEMPLATES,
+    });
+    createOutboundSenderWorker(makeDeps({ whatsapp, db }) as any);
+
+    await capturedProcessors[0](ownerJob());
+
+    expect(whatsapp.sendMessage).toHaveBeenCalledWith('+972501112222', 'ליד מבקש נציג');
+    expect(whatsapp.sendTemplate).not.toHaveBeenCalled();
+  });
+
+  it('owner alert with no configured template SID still blocks — email is the fallback', async () => {
+    // The consent shortcut is exactly that: consent. It does not conjure a Meta-approved template.
+    const whatsapp = makeWhatsAppMock();
+    const db = makeDbMock({ lead: null, tenantSettings: {} });
+    createOutboundSenderWorker(makeDeps({ whatsapp, db }) as any);
+
+    const result = await capturedProcessors[0](ownerJob());
+
+    expect(result).toMatchObject({ skipped: 'no_template' });
+  });
+
+  it('the consent shortcut is scoped to notifyRole:owner — a lead job is unaffected', async () => {
+    const whatsapp = makeWhatsAppMock();
+    const db = makeDbMock({ lead: null, tenantSettings: HANDOFF_TEMPLATES });
+    createOutboundSenderWorker(makeDeps({ whatsapp, db }) as any);
+
+    const result = await capturedProcessors[0](
+      ownerJob({ metadata: { source: 'voice-livekit', callId: 'call-1' } }),
+    );
+
+    expect(result).toMatchObject({ skipped: 'no_consent' });
+  });
 });

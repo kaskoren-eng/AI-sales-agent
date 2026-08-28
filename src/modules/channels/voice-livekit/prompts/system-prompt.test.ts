@@ -284,6 +284,47 @@ describe('Keren Phase 4 — tools-mode prompt', () => {
     expect(acked).not.toMatch(/2 to 4 words/u); // …and the old instruction must be GONE, not merely contradicted
   });
 
+  // The seventh tool (2026-08-28). Sales objection #1 is "what if the customer wants a human?" —
+  // before this the agent had no answer and improvised one. The escalation LADDER is the product
+  // decision worth pinning: one honest attempt to help, then hand off without arguing.
+  describe('human handoff — the escalation ladder', () => {
+    it('names the tool and the four triggers a lead actually uses', () => {
+      expect(TOOLS_PROMPT).toMatch(/`request_human_handoff`/u);
+      expect(TOOLS_PROMPT).toMatch(/בן אדם/u); // "a human being" — the phrase Israeli leads say
+      expect(TOOLS_PROMPT).toMatch(/EXPLICITLY insists on a human/u);
+      expect(TOOLS_PROMPT).toMatch(/refuses to continue with an AI/u);
+      expect(TOOLS_PROMPT).toMatch(/asks for a person a SECOND time/u);
+      expect(TOOLS_PROMPT).toMatch(/אפשר לדבר עם מישהו/u); // the mild first ask, quoted
+    });
+
+    it('tries ONCE before escalating — a mild first ask is not a handoff', () => {
+      // Firing on the first "אפשר לדבר עם מישהו?" burns a lead who only wanted their question
+      // answered; refusing to ever escalate is how the agent argues with a person. Both are bugs.
+      expect(TOOLS_PROMPT).toMatch(/Try this exactly ONCE/u);
+      expect(TOOLS_PROMPT).toMatch(/do not argue and do not try to convince again/u);
+    });
+
+    it('never promises a live transfer — the human CALLS BACK', () => {
+      // There is no SIP REFER path (post-launch). A promise to "connect you now" is a lie the
+      // lead hears within seconds.
+      expect(TOOLS_PROMPT).toMatch(/NEVER promise to transfer or connect them right now/u);
+      expect(TOOLS_PROMPT).toMatch(/CALL THEM BACK/u);
+    });
+
+    it('the no-tools variant keeps the old message-relay answer and names NO tool', () => {
+      // Tool-gated-off calls must not be told to call a tool they do not have.
+      expect(SYSTEM_PROMPT_HE).not.toMatch(/request_human_handoff/u);
+      expect(SYSTEM_PROMPT_HE).toMatch(/אני סוכנת AI, אבל אני יכולה להעביר הודעה לצוות שלנו/u);
+      // …and the tools variant must NOT still carry the old relay script.
+      expect(TOOLS_PROMPT).not.toMatch(/יכולה להעביר הודעה לצוות שלנו שיחזרו אליך/u);
+    });
+
+    it('the handoff does not leak into the ordinary end_call vocabulary', () => {
+      // handoff_requested is set by the TOOL, never self-selected by the model in end_call.
+      expect(TOOLS_PROMPT).not.toMatch(/end_call` with reason "handoff_requested"/u);
+    });
+  });
+
   it('shared guarantees hold in BOTH variants', () => {
     for (const prompt of [SYSTEM_PROMPT_HE, TOOLS_PROMPT]) {
       expect(prompt).toMatch(/קרן \(Keren\)/u);
