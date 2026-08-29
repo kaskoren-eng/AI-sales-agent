@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ACKNOWLEDGEMENTS_HE, dropEchoedOpener, pickAcknowledgement } from './acknowledgements.he.js';
+import {
+  ACKNOWLEDGEMENTS_HE,
+  ACKNOWLEDGEMENTS_HE_WIDE,
+  AcknowledgementLedger,
+  dropEchoedOpener,
+  pickAcknowledgement,
+} from './acknowledgements.he.js';
 
 /**
  * The acknowledgement is the ONLY thing that puts first audio under a second — end-of-turn ~400ms
@@ -58,5 +64,81 @@ describe('dropEchoedOpener', () => {
     // Only the FIRST word can be the echo. Anywhere else it is the model's own sentence.
     const reply = 'בטח, זה בסדר גמור.';
     expect(dropEchoedOpener('בסדר.', reply)).toBe(reply);
+  });
+});
+
+/**
+ * P1-1. `repeatedPhraseCount` read 0 on a call where six of eight turns opened with one of three
+ * words. The counter is fixed in phrase-ledger.ts; this is the other half — making there be less
+ * to count.
+ */
+describe('the widened bank', () => {
+  it('holds every original word, so the switch-off path is a strict subset', () => {
+    for (const ack of ACKNOWLEDGEMENTS_HE) expect(ACKNOWLEDGEMENTS_HE_WIDE).toContain(ack);
+  });
+
+  it('every new member obeys the two rules the original three were chosen by', () => {
+    // Never a word she opens replies with herself (2026-08-16 observations)…
+    const herOpeners = ['בשמחה', 'מעולה', 'בטח', 'הבנתי', 'נשמע', 'שאלה'];
+    // …and never a word that could be heard as an ANSWER to a question ("כן." — 2026-08-29).
+    const answers = ['כן', 'לא', 'נכון', 'בטח', 'אולי', 'טוב'];
+    for (const ack of ACKNOWLEDGEMENTS_HE_WIDE) {
+      const bare = ack.replace(/[.,!?…]/gu, '');
+      expect(herOpeners).not.toContain(bare);
+      expect(answers).not.toContain(bare);
+    }
+  });
+});
+
+describe('AcknowledgementLedger — a deck, not a dice roll', () => {
+  it('spends every word once before repeating any', () => {
+    const ledger = new AcknowledgementLedger(ACKNOWLEDGEMENTS_HE_WIDE);
+    const round = ACKNOWLEDGEMENTS_HE_WIDE.map(() => ledger.next());
+    expect(new Set(round).size).toBe(ACKNOWLEDGEMENTS_HE_WIDE.length);
+    expect(ledger.repeatedCount).toBe(0);
+  });
+
+  it('never says the same word twice running, including across a refill', () => {
+    // The refill boundary is the only place a deck CAN repeat, so it is the only place worth
+    // testing hard. Every seed, not one lucky one.
+    for (let seed = 0; seed < 50; seed++) {
+      let n = seed;
+      const ledger = new AcknowledgementLedger(ACKNOWLEDGEMENTS_HE_WIDE, () => {
+        n = (n * 1103515245 + 12345) % 2147483648;
+        return n / 2147483648;
+      });
+      let previous: string | null = null;
+      for (let i = 0; i < 40; i++) {
+        const word = ledger.next();
+        expect(word).not.toBe(previous);
+        previous = word;
+      }
+    }
+  });
+
+  it('THE 2026-08-29 SHAPE: eight turns, and no word is heard more than twice', () => {
+    const ledger = new AcknowledgementLedger(ACKNOWLEDGEMENTS_HE_WIDE);
+    const spoken = Array.from({ length: 8 }, () => ledger.next());
+    const counts = new Map<string, number>();
+    for (const w of spoken) counts.set(w, (counts.get(w) ?? 0) + 1);
+    expect(Math.max(...counts.values())).toBeLessThanOrEqual(2);
+    // Three words over eight turns cannot beat "each one twice"; five can, and does.
+    expect(ledger.repeatedCount).toBeLessThanOrEqual(3);
+  });
+
+  it('counts its own repeats — the number the call report was missing', () => {
+    const ledger = new AcknowledgementLedger(['א.', 'ב.']);
+    ledger.next();
+    ledger.next();
+    expect(ledger.repeatedCount).toBe(0);
+    ledger.next();
+    ledger.next();
+    expect(ledger.repeatedCount).toBe(2);
+  });
+
+  it('a one-word bank degrades rather than looping forever', () => {
+    const ledger = new AcknowledgementLedger(['אוקיי.']);
+    expect(ledger.next()).toBe('אוקיי.');
+    expect(ledger.next()).toBe('אוקיי.');
   });
 });

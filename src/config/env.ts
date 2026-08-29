@@ -473,6 +473,32 @@ const envSchema = z.object({
   // in-flight preemptive draft). Default ON (Koren, 2026-08-27). Set false to remove the note
   // entirely; the repeatedPhraseCount metric in CallReport keeps reporting either way.
   VOICE_PHRASE_LEDGER_ENABLED: envBool(true),
+  // Kill-switch for the call's identity memory (fact-memory.ts): remembers which facts the lead has
+  // already given and which questions she has already asked, appends a turn-boundary reminder, and
+  // stops capture_lead_info REPLACING an established name/phone/email without an explicit
+  // correction from the lead. Default ON. Set false to restore the 2026-08-29 behaviour, where a
+  // garbled turn ("טל, אוזן") could rename a lead who had already introduced himself.
+  VOICE_FACT_MEMORY_ENABLED: envBool(true),
+  // Kill-switch for the spoken-register nudge (register-tracker.ts, 2026-08-30). The Spoken
+  // Register section asks for an everyday word every second or third reply; on the 2026-08-29 call
+  // it produced two in eight turns and Koren perceived none. ON appends a turn-boundary reminder
+  // after two consecutive replies with no register word — the same guidance/enforcement split as the
+  // phrase ledger. Inert when VOICE_SPOKEN_REGISTER_ENABLED is off (nothing to be reminded of).
+  VOICE_REGISTER_NUDGE_ENABLED: envBool(true),
+  // Kill-switch for the acknowledgement ledger (2026-08-30). ON spends a WIDER bank (5 words) like a
+  // shuffled deck — every word used once before any is used twice — instead of picking at random
+  // while avoiding only the previous one. Six of eight turns on the 2026-08-29 call opened with one
+  // of three words, twice each, and three words cannot be spread more thinly than that. OFF restores
+  // the original three-word bank and the random pick exactly, including in the prompt's own
+  // illustration of what she will hear.
+  VOICE_ACK_LEDGER_ENABLED: envBool(true),
+  // Kill-switch for the negation-safety work (2026-08-30). On a real call she said
+  // "ועוזרים לא לפספס לידים" and the lead heard "מה עוזרים לו לפספס?" — the unstressed
+  // "לא" does not survive an 8kHz line, so the value proposition advertised its own opposite. ON adds
+  // the "Say It So It Cannot Be Misheard" prompt section AND rewords the five fixed lines whose
+  // meaning hung on one particle (opt-out, disqualification, bad-time apology, one name-ask
+  // variant, the security decline). Set false to restore the previous wording exactly.
+  VOICE_NEGATION_SAFETY: envBool(true),
   // Kill-switch for the Spoken Register prompt section (simple spoken Hebrew + the light-slang
   // bank — סבבה/אחלה level, no heavy street slang; Koren's explicit register choice 2026-08-27).
   // Default ON. Set false to drop the section and restore the previous register.

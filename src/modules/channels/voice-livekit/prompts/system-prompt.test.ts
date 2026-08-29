@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { TOOL_NAMES } from '../tools/index.js';
 import { ACKNOWLEDGEMENTS_HE } from './acknowledgements.he.js';
-import { GREETING_HE, SPOKEN_REGISTER_SLANG, SYSTEM_PROMPT_HE, buildSystemPrompt } from './system-prompt.he.js';
+import {
+  GREETING_HE,
+  REGISTER_VOCABULARY,
+  SPOKEN_REGISTER_SLANG,
+  SYSTEM_PROMPT_HE,
+  buildSystemPrompt,
+} from './system-prompt.he.js';
 
 const TOOLS_PROMPT = buildSystemPrompt({ toolsEnabled: true });
 
@@ -104,7 +110,14 @@ describe('Keren v2 — the call flow', () => {
   });
 
   it('stops immediately on a hostile or opt-out request', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/לא נתקשר אליך יותר/u);
+    // The wording changed on 2026-08-30 and the promise did not. It used to be "לא נתקשר אליך יותר",
+    // whose whole meaning hung on an unstressed לא — the particle that failed to reach a caller on
+    // the 2026-08-29 call. An opt-out is the worst possible sentence to be heard inside out, so it
+    // is now a positive statement of the same fact. See the negation-safety block at the bottom.
+    expect(SYSTEM_PROMPT_HE).toMatch(/אני מסירה אותך מרשימת הפניות שלנו/u);
+    expect(buildSystemPrompt({ toolsEnabled: true, negationSafety: false })).toMatch(
+      /לא נתקשר אליך יותר/u,
+    );
   });
 
   it('stays silent when the caller asks her to hold', () => {
@@ -367,7 +380,8 @@ describe('Keren Phase 4 — tools-mode prompt', () => {
       expect(prompt).toMatch(/address the lead in the MASCULINE/iu);
       expect(prompt).toMatch(/קורן הוא המייסד/u);
       expect(prompt).toMatch(/אני סוכנת AI/u);
-      expect(prompt).toMatch(/לא נתקשר אליך יותר/u);
+      // The opt-out promise, in its negation-safe wording (2026-08-30). Both variants carry it.
+      expect(prompt).toMatch(/אני מסירה אותך מרשימת הפניות שלנו/u);
       expect(prompt).toMatch(/NO_RESPONSE_NEEDED/u);
     }
   });
@@ -546,7 +560,20 @@ describe('Keren — spoken register (2026-08-27)', () => {
 
   it('makes the register a QUOTA, not a permission — "welcome" was read as "optional"', () => {
     expect(SYSTEM_PROMPT_HE).toMatch(/EXPECTED, not merely permitted/u);
-    expect(SYSTEM_PROMPT_HE).toMatch(/every second or third reply should carry one/u);
+    // Tightened 2026-08-27 → 2026-08-30. "Roughly every second or third reply" produced two touches
+    // in eight turns, and the person on the call perceived none of them, so the quota now names a
+    // floor and a countable trigger the model can apply to itself between turns. The code-side
+    // enforcement is register-tracker.ts — same guidance/enforcement split as the phrase ledger.
+    expect(SYSTEM_PROMPT_HE).toMatch(/At least one of them in every second reply/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/never fewer than one in three/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/two replies in a row went by/u);
+  });
+
+  it('BOUNDS the vocabulary — a word nobody screened can fail silently on a phone line', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/These eight are the whole vocabulary/u);
+    // Both banks are named in the section, so "the register vocabulary" has ONE meaning. וואלה was
+    // reported as an invented word; it is in EMOTIONAL_COLOR and passed round 4b.
+    for (const word of REGISTER_VOCABULARY) expect(SYSTEM_PROMPT_HE).toContain(word);
   });
 
   it('resolves the conflict with the Speech Rhythm rule that was silently suppressing it', () => {
@@ -588,5 +615,107 @@ describe('Keren — spoken register (2026-08-27)', () => {
     for (const word of SPOKEN_REGISTER_SLANG) {
       expect(SYSTEM_PROMPT_HE).toContain(word);
     }
+  });
+});
+
+/**
+ * P0-1, the prompt half. The enforcement half is fact-memory.ts and its own test file; these two
+ * must be gated by the SAME switch, or the instructions and the guard describe different rules and
+ * the model is told one thing while the tool does another.
+ */
+describe('Call Memory — the 2026-08-29 identity failure, in the prompt', () => {
+  it('forbids asking twice for a fact he already gave', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/## Call Memory/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/Never ask for it a second time/u);
+  });
+
+  it('caps an UNANSWERED question at one repeat — the third ask is what he reacted to', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/ask at most ONE more time/u);
+  });
+
+  it('says a stray noun in a later turn is a mishearing, not a new name', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/mishearing, not a new name/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/ONLY an explicit correction out loud/u);
+  });
+
+  it('the tools variant tells her which tool field carries a correction', () => {
+    const tools = buildSystemPrompt({ toolsEnabled: true });
+    expect(tools).toMatch(/`is_correction`/u);
+    // ...and it is the exception to "call it again whenever a fact changes", stated next to it.
+    expect(tools).toMatch(/His NAME, phone and email are the exception/u);
+  });
+
+  it('the kill-switch removes the section entirely, and nothing else', () => {
+    const on = buildSystemPrompt({ toolsEnabled: true });
+    const off = buildSystemPrompt({ toolsEnabled: true, factMemory: false });
+    expect(off).not.toMatch(/## Call Memory/u);
+    // Additive by construction: deleting the section's own block from the ON prompt reproduces the
+    // OFF prompt byte for byte, so the switch can never quietly reshape anything around it. (The
+    // `is_correction` sentence is deliberately NOT gated — the tool field exists either way.)
+    const start = on.indexOf('---\n\n## Call Memory');
+    const end = on.indexOf('---', on.indexOf('## Call Memory'));
+    expect(on.slice(0, start) + on.slice(end)).toBe(off);
+  });
+});
+
+/**
+ * P0-2. She said "ועוזרים לא לפספס לידים"; the lead's next words were "מה עוזרים לו לפספס?".
+ *
+ * NOTHING HERE CAN PROVE THE FIX. The transcript was always correct — the inversion happens between
+ * the TTS and the caller's ear, where no test reaches. What these DO prove is that the rule is
+ * present, that the fixed lines carry no single-particle meaning any more, and that a future edit
+ * cannot quietly reintroduce one. The sweep is the part that keeps earning its keep.
+ */
+describe('negation safety — a sentence must not be able to invert', () => {
+  const speakableLines = (prompt: string): string[] =>
+    prompt
+      .split('\n')
+      .filter((line) => line.startsWith('> '))
+      .map((line) => line.slice(2));
+
+  it('THE SWEEP: no line she is told to say verbatim rests on a bare unstressed particle', () => {
+    // Blockquote lines are HER lines — every one is "respond exactly with" or "a natural variation
+    // of". Inline quotes elsewhere are the LEAD's words (objection labels, hold examples, the
+    // "אני לא בטוח" she is answering), which she never speaks and must not be rewritten.
+    //
+    // `אין` is excluded on purpose: it is a full stressed word, and dropping it leaves
+    // ungrammatical noise ("לי בדיוק את הזמן הזה פנוי") rather than a clean, plausible opposite.
+    for (const variant of [SYSTEM_PROMPT_HE, buildSystemPrompt({ toolsEnabled: true })]) {
+      for (const line of speakableLines(variant)) {
+        expect(line, `spoken line relies on a bare particle: ${line}`).not.toMatch(
+          /(^|\s)(לא|אל|בלי)\s/u,
+        );
+      }
+    }
+  });
+
+  it('the five reworded lines say the positive version of the same fact', () => {
+    const tools = buildSystemPrompt({ toolsEnabled: true });
+    expect(tools).toContain('אני מסירה אותך מרשימת הפניות שלנו'); // was: לא נתקשר אליך יותר
+    expect(tools).toContain('נראה שהתזמון פחות מתאים כרגע'); // was: נראה שזה לא הכיוון המתאים
+    expect(tools).toContain('מצטערת על התזמון'); // was: שתפסתי אותך לא בזמן
+    expect(tools).toContain('אגב, אשמח לדעת את השם שלך'); // was: לא תפסתי את השם שלך
+    expect(tools).toContain('מה גורם לך להרגיש ככה?'); // was: שזה לא מתאים?
+    expect(tools).toContain('זה מחוץ למה שאני עושה כאן'); // was: אני לא יכולה לעזור עם זה
+  });
+
+  it('teaches the rule with the real sentence that failed, not an invented one', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/## Say It So It Cannot Be Misheard/u);
+    expect(SYSTEM_PROMPT_HE).toContain('ועוזרים לא לפספס לידים');
+    expect(SYSTEM_PROMPT_HE).toContain('מה עוזרים לו לפספס?');
+    // The positive replacement she should reach for instead.
+    expect(SYSTEM_PROMPT_HE).toContain('דואגים שכל פנייה מקבלת מענה');
+  });
+
+  it('gives her a way to keep a negative when she means one — mark it twice', () => {
+    expect(SYSTEM_PROMPT_HE).toContain('אף פנייה לא נופלת');
+  });
+
+  it('the kill-switch restores the previous wording exactly, section and lines together', () => {
+    const off = buildSystemPrompt({ toolsEnabled: true, negationSafety: false });
+    expect(off).not.toMatch(/## Say It So It Cannot Be Misheard/u);
+    expect(off).toContain('לא נתקשר אליך יותר');
+    expect(off).toContain('אני לא יכולה לעזור עם זה');
+    expect(off).toContain('לא תפסתי את השם שלך');
   });
 });

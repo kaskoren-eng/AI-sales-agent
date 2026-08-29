@@ -29,7 +29,6 @@
  * acceptable answer here — it is the extra word that made her sound like a machine, never the
  * missing one.
  */
-import { pickAcknowledgement } from './prompts/acknowledgements.he.js';
 
 export type TurnOpener =
   /** A receipt spoken before the model has written a word — the <1s mechanism. */
@@ -44,8 +43,13 @@ export function chooseTurnOpener(input: {
   afterToolCall: boolean;
   /** `VOICE_THINKING_FILLER_MS !== 0` — the existing thinking-filler kill-switch. */
   fillersEnabled: boolean;
-  /** The acknowledgement spoken on the previous step, so we never repeat it back-to-back. */
-  lastAck: string | null;
+  /**
+   * Where the next receipt comes from. A SUPPLIER rather than a word, because the choice is now a
+   * per-call decision the agent owns: an AcknowledgementLedger deck when VOICE_ACK_LEDGER_ENABLED
+   * is on, `pickAcknowledgement(lastAck)` when it is off. This function only decides WHETHER a
+   * receipt is the right sound for this step.
+   */
+  nextAck: () => string;
   /** The call's filler budget — `ThinkingFillerLedger.offer()`. Returns null when spent. */
   offerFiller: () => string | null;
 }): TurnOpener {
@@ -56,7 +60,7 @@ export function chooseTurnOpener(input: {
     const filler = input.offerFiller();
     return filler ? { kind: 'hesitation', word: filler } : { kind: 'silent' };
   }
-  return { kind: 'ack', word: pickAcknowledgement(input.lastAck) };
+  return { kind: 'ack', word: input.nextAck() };
 }
 
 /**

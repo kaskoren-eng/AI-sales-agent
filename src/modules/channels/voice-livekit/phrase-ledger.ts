@@ -57,6 +57,44 @@ export function countRepeatedFourGrams(agentLines: string[]): number {
   return repeated;
 }
 
+/**
+ * THE OPENERS — the half of the repetition the 4-gram counter could never see.
+ *
+ * 2026-08-29: `repeatedPhraseCount: 0`, while six of her eight turns opened with `אהה.`, `בסדר.` or
+ * `אוקיי.` — two uses each. Both numbers were correct. A 4-gram starting at a one-word opener
+ * continues into the sentence that follows it, and that sentence is different every time, so a
+ * repeated opener never produces a repeated 4-gram. The metric stayed green through exactly the
+ * defect it exists to catch, which is worse than having no metric.
+ *
+ * An OPENER here is the first token of a line when it is punctuated off from the rest — "אהה. קודם
+ * כל…", "אוקיי, אז…". That is the shape of both our injected acknowledgements and her own short
+ * openers, and it is precisely what a caller hears as "she keeps saying the same thing". A line
+ * that simply begins with a word and runs on has no opener.
+ *
+ * Returns DISTINCT openers used twice or more — the same currency as countRepeatedFourGrams, so
+ * the two can be added. On that call it would have returned 3.
+ */
+export function countRepeatedOpeners(agentLines: string[]): number {
+  const counts = new Map<string, number>();
+  for (const line of agentLines) {
+    const opener = leadingOpener(line);
+    if (opener) counts.set(opener, (counts.get(opener) ?? 0) + 1);
+  }
+  let repeated = 0;
+  for (const n of counts.values()) if (n >= 2) repeated++;
+  return repeated;
+}
+
+/** The first token of a line, when a punctuation mark separates it from what follows. */
+export function leadingOpener(line: string): string | null {
+  const match = /^\s*([^\s.,!?…׃]+)\s*[.,!?…׃]/u.exec(line.replace(NIQQUD, ''));
+  if (!match) return null;
+  const word = match[1] ?? '';
+  // A whole short sentence is not an "opener" — "מעולה!" alone is a turn, and a number or a name
+  // that happens to be followed by a comma is not a reaction word either.
+  return word.length > 0 && !/^\d+$/u.test(word) ? word : null;
+}
+
 /** How many phrases the reminder lists at most — enough to steer, small enough to stay cheap. */
 const MAX_NOTE_PHRASES = 8;
 

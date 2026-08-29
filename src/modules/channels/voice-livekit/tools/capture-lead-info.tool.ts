@@ -51,6 +51,19 @@ export const captureLeadInfoSchema = z.object({
     .optional()
     .describe('Your current read: hot = ready to book now, warm = interested, cold = weak fit'),
   notes: z.string().nullable().optional().describe('Short Hebrew free-text observation worth keeping'),
+  // THE ONLY WAY AN ESTABLISHED NAME/PHONE/EMAIL CAN CHANGE. See fact-memory.ts for the call this
+  // came from: a garbled turn ("טל, אוזן") renamed a lead who had already given his name and had
+  // it acknowledged. A bare noun in a noisy turn must not be able to do that; an explicit act by
+  // the model, described in a sentence it has to mean, can.
+  is_correction: z
+    .boolean()
+    .nullable()
+    .optional()
+    .describe(
+      'Set true ONLY when the lead EXPLICITLY corrected a detail you had already used out loud ' +
+        '("actually my name is X", "no, the email is Y"). Never set it because you heard a new ' +
+        'word that might be a name — an unclear or garbled turn is not a correction.',
+    ),
 });
 
 export type CaptureLeadInfoArgs = z.infer<typeof captureLeadInfoSchema>;
@@ -60,15 +73,35 @@ export async function executeCaptureLeadInfo(
   args: CaptureLeadInfoArgs,
 ): Promise<string> {
   // `!= null` catches BOTH undefined (omitted) and null (the model's "no value here") — an all-empty
-  // call is nothing to save, whichever way the field came in.
-  if (!Object.values(args).some((v) => v != null)) {
+  // call is nothing to save, whichever way the field came in. `is_correction` is a MODIFIER, not a
+  // fact: on its own it saves nothing, so it must not make an otherwise empty call look non-empty.
+  const { is_correction: _isCorrection, ...facts } = args;
+  if (!Object.values(facts).some((v) => v != null)) {
     throw new llm.ToolError('Nothing to save — call this only with at least one learned fact.');
   }
+  // IDENTITY IS HARDER TO OVERWRITE THAN TO SET. `rt.factMemory` is undefined when
+  // VOICE_FACT_MEMORY_ENABLED is off, and then every offered value is accepted exactly as before.
+  const verdict = rt.factMemory?.guardIdentity(
+    { name: args.name, email: args.email, phone: args.phone },
+    args.is_correction === true,
+  ) ?? {
+    accepted: {
+      ...(args.name ? { name: args.name } : {}),
+      ...(args.email ? { email: args.email } : {}),
+      ...(args.phone ? { phone: args.phone } : {}),
+    },
+    refused: [],
+  };
+
   const leadId = await upsertLead(
     rt.db,
     rt.tenantId,
     { leadId: rt.leadId, callerPhone: rt.callerPhone },
-    { name: args.name?.trim(), email: args.email?.trim().toLowerCase(), phone: args.phone ?? undefined },
+    {
+      name: verdict.accepted.name?.trim(),
+      email: verdict.accepted.email?.trim().toLowerCase(),
+      phone: verdict.accepted.phone,
+    },
   );
   if (!leadId) {
     throw new llm.ToolError('Could not save right now. Continue the call normally; nothing was lost from the conversation.');
@@ -97,16 +130,38 @@ export async function executeCaptureLeadInfo(
 
   // Mirror the gathered facts into the state machine's working memory ("what we know so far") and
   // advance discovery→qualifying on a qualification read. The DB write above stays the source of truth.
+  // The NAME mirrored here is the guarded one: the working memory feeds the handoff summary, and a
+  // rename we refused out loud must not reappear in the alert an owner reads.
   rt.callState?.onToolCall('capture_lead_info', true, {
-    name: args.name ?? undefined,
+    name: verdict.accepted.name ?? undefined,
     businessType: args.business_type ?? undefined,
     painPoint: args.pain_point ?? undefined,
     budget: args.budget ?? undefined,
     timeline: args.timeline ?? undefined,
     qualification: args.qualification ?? undefined,
   });
+  // Qualification facts we DID accept are established too, so the reminder can stop her re-asking
+  // for a business she already has (the fact-memory note; see fact-memory.ts).
+  if (args.business_type) rt.factMemory?.establish('business', args.business_type);
 
-  return 'Saved. Continue the conversation naturally — do not mention that you saved anything.';
+  if (verdict.refused.length === 0) {
+    return 'Saved. Continue the conversation naturally — do not mention that you saved anything.';
+  }
+
+  // THE CORRECTION LANDS IN HER CONTEXT IMMEDIATELY, which is the point: the tool result is read
+  // by the very next inference step, i.e. before she can say the wrong name out loud. A silent
+  // refusal would have kept the CRM right and let her greet him as somebody else — which is
+  // precisely what happened on 2026-08-29, when the DB coalesce refused the rename and nothing
+  // told the model.
+  const corrections = verdict.refused
+    .map((r) => `${r.field} stays «${r.kept}» (you offered «${r.offered}»)`)
+    .join('; ');
+  return (
+    `Saved. IMPORTANT — I did NOT change what the lead already told you on this call: ${corrections}. ` +
+    'Keep using the established value out loud. If he genuinely corrected it, say it back to him ' +
+    'to confirm first, and only then call this tool again with is_correction=true. ' +
+    'Do not mention any of this to the lead.'
+  );
 }
 
 export function captureLeadInfoTool(rt: ToolRuntimeContext) {

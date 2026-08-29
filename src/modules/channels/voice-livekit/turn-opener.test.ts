@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACKNOWLEDGEMENTS_HE } from './prompts/acknowledgements.he.js';
+import { ACKNOWLEDGEMENTS_HE, pickAcknowledgement } from './prompts/acknowledgements.he.js';
 import { THINKING_FILLERS_HE } from './prompts/thinking-fillers.he.js';
 import { chooseTurnOpener, chunkCallsTool } from './turn-opener.js';
 
@@ -15,7 +15,7 @@ describe('chooseTurnOpener — a tool call changes what she says next', () => {
     const opener = chooseTurnOpener({
       afterToolCall: false,
       fillersEnabled: true,
-      lastAck: null,
+      nextAck: () => pickAcknowledgement(null),
       offerFiller: anyFiller,
     });
     expect(opener.kind).toBe('ack');
@@ -28,7 +28,7 @@ describe('chooseTurnOpener — a tool call changes what she says next', () => {
     const opener = chooseTurnOpener({
       afterToolCall: true,
       fillersEnabled: true,
-      lastAck: 'אוקיי.',
+      nextAck: () => pickAcknowledgement('אוקיי.'),
       offerFiller: anyFiller,
     });
     expect(opener.kind).toBe('hesitation');
@@ -39,7 +39,7 @@ describe('chooseTurnOpener — a tool call changes what she says next', () => {
     const opener = chooseTurnOpener({
       afterToolCall: true,
       fillersEnabled: true,
-      lastAck: 'אוקיי.',
+      nextAck: () => pickAcknowledgement('אוקיי.'),
       offerFiller: () => null,
     });
     expect(opener.kind).toBe('silent');
@@ -49,12 +49,37 @@ describe('chooseTurnOpener — a tool call changes what she says next', () => {
     const opener = chooseTurnOpener({
       afterToolCall: true,
       fillersEnabled: false,
-      lastAck: 'אוקיי.',
+      nextAck: () => pickAcknowledgement('אוקיי.'),
       offerFiller: () => {
         throw new Error('must not be consulted when fillers are off');
       },
     });
     expect(opener.kind).toBe('silent');
+  });
+
+  it('asks the SUPPLIER for the word — the deck, or the random pick, is the agent choice', () => {
+    // chooseTurnOpener decides WHETHER a receipt is the right sound here. WHICH receipt is a
+    // per-call decision (AcknowledgementLedger when VOICE_ACK_LEDGER_ENABLED, pickAcknowledgement
+    // when not), so this function must not reach for a bank of its own.
+    const opener = chooseTurnOpener({
+      afterToolCall: false,
+      fillersEnabled: true,
+      nextAck: () => 'בדיוק כמו שביקשת.',
+      offerFiller: anyFiller,
+    });
+    expect(opener).toEqual({ kind: 'ack', word: 'בדיוק כמו שביקשת.' });
+  });
+
+  it('never consults the supplier on a post-tool step — that step must not acknowledge again', () => {
+    const opener = chooseTurnOpener({
+      afterToolCall: true,
+      fillersEnabled: true,
+      nextAck: () => {
+        throw new Error('must not be consulted after a tool call');
+      },
+      offerFiller: anyFiller,
+    });
+    expect(opener.kind).toBe('hesitation');
   });
 
   it('never repeats the previous acknowledgement back-to-back', () => {
@@ -63,7 +88,7 @@ describe('chooseTurnOpener — a tool call changes what she says next', () => {
         const opener = chooseTurnOpener({
           afterToolCall: false,
           fillersEnabled: true,
-          lastAck: previous,
+          nextAck: () => pickAcknowledgement(previous),
           offerFiller: anyFiller,
         });
         expect((opener as { word: string }).word).not.toBe(previous);

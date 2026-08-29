@@ -1,7 +1,8 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ShadowSttTranscript } from '../../../db/schema/call-learnings.js';
-import { countRepeatedFourGrams } from './phrase-ledger.js';
+import { countRepeatedFourGrams, countRepeatedOpeners } from './phrase-ledger.js';
+import { hasRegisterTouch } from './register-tracker.js';
 
 /**
  * A durable record of one call: what was heard, what was said, and how slow it was.
@@ -37,10 +38,44 @@ export interface TurnMetric {
 
 /** One line of the conversation, either side of it. */
 export interface TranscriptLine {
+  /**
+   * When the line was COMMITTED, not when it was said. Kept as-is for comparability with every
+   * report written before 2026-08-30, and it is the field that misled the P1-2 analysis: the SDK
+   * commits an assistant message at the END of its playout (agent_activity.js, `_conversationItemAdded`
+   * runs after `agentStoppedSpeakingAt`), so the interval between two of these contains the whole
+   * of the second reply's SPEAKING TIME. Read `spokeAtMs`/`spokeUntilMs` for the sound.
+   */
   atMs: number;
   /** 'user' = the caller, 'assistant' = the agent. */
   role: string;
   text: string;
+  /**
+   * When her voice STARTED and STOPPED, ms since call start, from the SDK's own per-message
+   * metrics (`MetricsReport.startedSpeakingAt` / `stoppedSpeakingAt`, epoch seconds). Assistant
+   * lines only, and absent when the reply produced no audio (a tool-only step with the
+   * acknowledgement off, or an interrupted one).
+   */
+  spokeAtMs?: number;
+  spokeUntilMs?: number;
+}
+
+/**
+ * A silence INSIDE one reply — between two things she said with no caller turn between them.
+ *
+ * THE MEASUREMENT THAT DID NOT EXIST. `deadAir` closes its stopwatch on her FIRST audio of a turn
+ * (`noteAgentStartedSpeaking` clears `#userStoppedAt`), so on a tool-calling turn it measures the
+ * gap to the acknowledgement — ~1.5s, healthy — and then stops looking. Everything after that
+ * receipt, which is where a tool round-trip and a second inference step live, was unmeasured.
+ */
+export interface AgentGap {
+  /** ms since call start, when her previous audio stopped. */
+  fromMs: number;
+  /** How long the caller heard nothing, between the two. */
+  gapMs: number;
+  /** Tools that ran inside the gap, and what they cost — usually the reason it exists. */
+  tools: Array<{ name: string; durationMs: number }>;
+  /** How much of the gap the tools account for. The remainder is the next step's TTFT + TTS. */
+  toolMs: number;
 }
 
 /**
@@ -153,6 +188,54 @@ export interface CallReportJson {
      * the baseline backfill (scripts/repeated-phrases-baseline.mjs) uses, so the numbers compare.
      */
     repeatedPhraseCount: number;
+    /**
+     * The half of that number the 4-gram counter is blind to: distinct one-word OPENERS she used
+     * twice or more.
+     *
+     * 2026-08-29 reported `repeatedPhraseCount: 0` on a call where six of eight turns opened with
+     * `אהה.`, `בסדר.` or `אוקיי.`. Nothing was wrong with the 4-gram count — a repeated opener runs
+     * into a different sentence each time, so it never forms a repeated 4-gram. The metric was
+     * green through the exact defect it exists to catch, and a metric that does that is worse than
+     * none. It is broken out here rather than only folded in, so the 4-gram figure stays comparable
+     * with the humanization baseline (scripts/repeated-phrases-baseline.mjs, which measures
+     * 4-grams alone). On that call this would have read 3.
+     */
+    repeatedOpenerCount: number;
+    /**
+     * Share of her replies carrying one of the eight screened everyday words — the Spoken Register
+     * quota, measured instead of assumed.
+     *
+     * The section asks for one every second or third reply, i.e. 33-50%. The 2026-08-29 call ran
+     * at 25% (two touches in eight turns) and the person on the phone perceived none of them, so
+     * treat anything under ~40% as a miss rather than a near-pass. Read it next to
+     * repeatedPhraseCount: high repetition with a high touch rate means she found ONE everyday word
+     * and is leaning on it, which is its own kind of robot.
+     *
+     * Deliberately generous — `מעולה` is also an ordinary adjective and counts either way. The bias
+     * is toward over-reporting, so a low number here is a real miss.
+     */
+    registerTouchPct: number | null;
+    /**
+     * Silence INSIDE a reply — after she has already spoken once on this turn.
+     *
+     * P1-2, measured rather than argued. The 2026-08-30 plan read 5.7s and 6.2s "post-tool gaps"
+     * off consecutive transcript timestamps and called most of it unexplained. Those timestamps are
+     * COMMIT times, and the SDK commits an assistant message after its playout finishes, so the
+     * interval between two of them is `silence + the second reply's entire speaking time`. This
+     * measures the silence alone, from the SDK's own speaking timestamps, and reports how much of
+     * it the tools account for.
+     *
+     * Read it WITH `deadAir`: dead air is what the caller waits before she says anything at all,
+     * this is what he waits after the receipt. A healthy call has both under ~1.5s; the receipt
+     * makes the first one look fine on its own.
+     */
+    agentGap: {
+      medianMs: number | null;
+      maxMs: number | null;
+      samples: number;
+      /** Every gap, with the tools that ran inside it — small enough to read, few per call. */
+      gaps: AgentGap[];
+    };
     /**
      * Share of LLM input tokens served from OpenAI's prompt cache, across the call.
      *
@@ -365,7 +448,12 @@ export class CallReport {
    * The lesson is not "add a dedupe". It is that a log line is not evidence of a sound. When the
    * transcript and the person who was actually on the phone disagree, the person wins.
    */
-  recordTranscript(role: string, text: string): void {
+  recordTranscript(
+    role: string,
+    text: string,
+    /** The SDK's own per-message speaking timestamps, in EPOCH SECONDS as it reports them. */
+    spoken?: { startedSpeakingAt?: number; stoppedSpeakingAt?: number },
+  ): void {
     const trimmed = text?.trim();
     if (!trimmed) return;
 
@@ -379,7 +467,30 @@ export class CallReport {
       if (isDraftEcho) return;
     }
 
-    this.#transcript.push({ atMs: Date.now() - this.#startedAt, role, text: trimmed });
+    const rel = (seconds: number | undefined): number | undefined =>
+      typeof seconds === 'number' && Number.isFinite(seconds)
+        ? Math.round(seconds * 1000 - this.#startedAt)
+        : undefined;
+    const spokeAtMs = rel(spoken?.startedSpeakingAt);
+    const spokeUntilMs = rel(spoken?.stoppedSpeakingAt);
+
+    this.#transcript.push({
+      atMs: Date.now() - this.#startedAt,
+      role,
+      text: trimmed,
+      ...(spokeAtMs !== undefined ? { spokeAtMs } : {}),
+      ...(spokeUntilMs !== undefined ? { spokeUntilMs } : {}),
+    });
+
+    // Say it out loud as it happens, in the same shape as the other latency lines, so a live call
+    // can be diagnosed by grepping the agent log instead of waiting for the report file.
+    const gap = this.#agentGaps().at(-1);
+    if (gap && gap.fromMs === this.#transcript.at(-2)?.spokeUntilMs) {
+      console.log(
+        `latency agent_gap ms=${gap.gapMs} toolMs=${gap.toolMs} ` +
+          `unexplainedMs=${gap.gapMs - gap.toolMs} tools=${gap.tools.map((t) => t.name).join(',') || 'none'}`,
+      );
+    }
   }
 
   /**
@@ -534,6 +645,10 @@ export class CallReport {
       }
     }
 
+    const agentLines = this.#transcript.filter((t) => t.role === 'assistant').map((t) => t.text);
+
+    const agentGaps = this.#agentGaps();
+
     return {
       room: this.#room,
       callerPhone: this.#callerPhone,
@@ -546,9 +661,18 @@ export class CallReport {
         cutOffs: this.#cutOffs,
         fragmentedTurns,
         duplicateReplies,
-        repeatedPhraseCount: countRepeatedFourGrams(
-          this.#transcript.filter((t) => t.role === 'assistant').map((t) => t.text),
-        ),
+        // `repeatedPhraseCount` is now 4-grams PLUS repeated openers — the number a person would
+        // give if you asked them how often she repeated herself. `repeatedOpenerCount` keeps the
+        // two halves legible, and countRepeatedFourGrams alone is still what the baseline script
+        // compares against.
+        repeatedPhraseCount: countRepeatedFourGrams(agentLines) + countRepeatedOpeners(agentLines),
+        repeatedOpenerCount: countRepeatedOpeners(agentLines),
+        registerTouchPct:
+          agentLines.length === 0
+            ? null
+            : Math.round(
+                (agentLines.filter((line) => hasRegisterTouch(line)).length / agentLines.length) * 100,
+              ),
         promptCacheHitPct,
         draftsDiscarded,
         endOfTurnMedianMs: eouMed,
@@ -561,6 +685,12 @@ export class CallReport {
           eouMed === null || (modelTtftMed ?? ttftMed) === null || ttfbMed === null
             ? null
             : Math.round(eouMed + (modelTtftMed ?? ttftMed)! + ttfbMed),
+        agentGap: {
+          medianMs: median(agentGaps.map((g) => g.gapMs)),
+          maxMs: agentGaps.length ? Math.max(...agentGaps.map((g) => g.gapMs)) : null,
+          samples: agentGaps.length,
+          gaps: agentGaps,
+        },
         deadAir: {
           medianMs: median(this.#deadAir),
           p90Ms: percentile(this.#deadAir, 90),
@@ -576,6 +706,43 @@ export class CallReport {
       usage: this.#usage,
       shadow: this.#shadow,
     };
+  }
+
+  /**
+   * The intra-turn silences, paired with the tools that ran inside them.
+   *
+   * A gap is counted only between two ASSISTANT lines with no user line between: that is one reply
+   * that spoke, stopped, and spoke again — the tool-call shape. Two replies either side of a caller
+   * turn are not a gap, they are a conversation.
+   *
+   * Needs the SDK's speaking timestamps on both lines. A call recorded before those existed, or a
+   * step that produced no audio at all, simply contributes nothing rather than a wrong number.
+   */
+  #agentGaps(): AgentGap[] {
+    const gaps: AgentGap[] = [];
+    for (let i = 1; i < this.#transcript.length; i++) {
+      const prev = this.#transcript[i - 1]!;
+      const curr = this.#transcript[i]!;
+      if (prev.role !== 'assistant' || curr.role !== 'assistant') continue;
+      const from = prev.spokeUntilMs;
+      const to = curr.spokeAtMs;
+      if (from === undefined || to === undefined) continue;
+      const gapMs = to - from;
+      if (gapMs <= 0) continue;
+
+      // A tool "ran inside the gap" if it FINISHED in it — recordToolCall stamps atMs at
+      // completion, so its window is [atMs - durationMs, atMs].
+      const tools = this.#toolCalls
+        .filter((t) => t.atMs > from && t.atMs <= to + 250)
+        .map((t) => ({ name: t.name, durationMs: t.durationMs }));
+      gaps.push({
+        fromMs: from,
+        gapMs,
+        tools,
+        toolMs: tools.reduce((n, t) => n + t.durationMs, 0),
+      });
+    }
+    return gaps;
   }
 
   /** Writes the report and returns its path. Never throws — losing a report must not fail a call. */

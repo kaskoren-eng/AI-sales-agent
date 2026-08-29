@@ -36,6 +36,14 @@ import {
   withFiller,
 } from './speech-guard.js';
 import { PhraseLedger } from './phrase-ledger.js';
+import { FactMemory } from './fact-memory.js';
+import { SpokenRegisterTracker } from './register-tracker.js';
+import {
+  ACKNOWLEDGEMENTS_HE,
+  ACKNOWLEDGEMENTS_HE_WIDE,
+  AcknowledgementLedger,
+  pickAcknowledgement,
+} from './prompts/acknowledgements.he.js';
 import { ShadowSTT } from './stt/shadow-stt.js';
 import { DeepdubTTS } from './tts/deepdub.tts.js';
 import { buildAgentTools } from './tools/index.js';
@@ -184,17 +192,41 @@ class ClickScalesAgent extends voice.Agent {
    */
   readonly phraseLedger = new PhraseLedger(SPOKEN_REGISTER_SLANG);
 
-  /** The last ledger note injected, so an unchanged note is never re-written into the ctx. */
-  lastPhraseNote: string | null = null;
+  /**
+   * What the call already knows, and what she has already asked for (VOICE_FACT_MEMORY_ENABLED).
+   *
+   * Shared with the tool runtime — see fact-memory.ts. The agent feeds it her committed questions;
+   * capture_lead_info feeds it the answers and reads it before letting a name be replaced.
+   * `undefined` when the switch is off, and every reader is written for that.
+   */
+  readonly factMemory: FactMemory | undefined;
+
+  /**
+   * Whether she is actually using the spoken register (VOICE_REGISTER_NUDGE_ENABLED).
+   *
+   * Two touches in eight turns on 2026-08-29, and the person on the call perceived none. The
+   * tracker notices a dry streak and its note rides the same turn-boundary injection as the phrase
+   * ledger's. `undefined` when the nudge is off, or when the register section itself is off — a
+   * reminder to use a section she was never given would be nonsense.
+   */
+  readonly registerTracker: SpokenRegisterTracker | undefined =
+    env.VOICE_REGISTER_NUDGE_ENABLED && env.VOICE_SPOKEN_REGISTER_ENABLED
+      ? new SpokenRegisterTracker()
+      : undefined;
+
+  /** The last coach note injected, so an unchanged note is never re-written into the ctx. */
+  lastCoachNote: string | null = null;
 
   constructor(
     opts: ConstructorParameters<typeof voice.Agent>[0],
     toolRuntime: ToolRuntimeContext | null = null,
     instantAck = false,
+    factMemory: FactMemory | undefined = undefined,
   ) {
     super(opts);
     this.toolRuntime = toolRuntime;
     this.instantAck = instantAck;
+    this.factMemory = factMemory;
   }
 
   /**
@@ -233,6 +265,17 @@ class ClickScalesAgent extends voice.Agent {
   #spokenAck: string | null = null;
 
   #lastAck: string | null = null;
+
+  /**
+   * The acknowledgement deck (VOICE_ACK_LEDGER_ENABLED), one per call.
+   *
+   * `undefined` restores `pickAcknowledgement` over the original three-word bank — the behaviour
+   * that produced six of eight turns opening with one of three words on 2026-08-29. The deck cannot
+   * do that: it spends every word once before repeating any. See acknowledgements.he.ts.
+   */
+  readonly ackLedger: AcknowledgementLedger | undefined = env.VOICE_ACK_LEDGER_ENABLED
+    ? new AcknowledgementLedger()
+    : undefined;
 
   /**
    * SAYS "אוקיי" THE INSTANT THE TURN ENDS, BEFORE THE MODEL HAS WRITTEN A WORD.
@@ -280,7 +323,8 @@ class ClickScalesAgent extends voice.Agent {
     const opener = chooseTurnOpener({
       afterToolCall,
       fillersEnabled: env.VOICE_THINKING_FILLER_MS !== 0,
-      lastAck: this.#lastAck,
+      nextAck: () =>
+        this.ackLedger ? this.ackLedger.next() : pickAcknowledgement(this.#lastAck),
       offerFiller: () => this.fillerLedger.offer(),
     });
 
@@ -484,11 +528,20 @@ function timeFirstAudioFrame(
 }
 
 
-/** The ledger note's stable chat-item id — replaced in place on each injection. */
-const PHRASE_NOTE_ID = 'phrase-ledger-note';
+/**
+ * The coach note's stable chat-item id — replaced in place on each injection.
+ *
+ * ONE item, not one per mechanism. Three advisory notes (phrasing variety, call memory, spoken
+ * register) would otherwise be three tail items and three `updateChatCtx` round-trips per turn;
+ * they are concatenated instead, so the tail grows by exactly one message however many mechanisms
+ * have something to say. The id is unchanged from when this held only the phrase note — ids are
+ * per-call, so nothing outlives the rename.
+ */
+const COACH_NOTE_ID = 'phrase-ledger-note';
 
 /**
- * Injects (or refreshes) the phrase ledger's "do not reuse these phrasings" note.
+ * Injects (or refreshes) the per-turn advisory notes: "do not reuse these phrasings" (phrase
+ * ledger), "you already know / already asked this" (fact memory) and the spoken-register nudge.
  *
  * WHERE AND WHY: called only from the ConversationItemAdded handler, after an ASSISTANT item
  * committed — the same safe point trimHistory uses. Her reply is done, the next preemptive draft
@@ -502,24 +555,33 @@ const PHRASE_NOTE_ID = 'phrase-ledger-note';
  * Rewriting the instructions instead would churn the prefix and collapse the 92% hit rate to
  * zero (measured, the sliding-window lesson).
  *
- * A call with no repetition never enters this function's update path at all — note() is null and
- * the mechanism costs zero tokens.
+ * A call with nothing to correct never enters this function's update path at all — every note() is
+ * null and the mechanism costs zero tokens.
  */
-async function injectPhraseNote(agent: ClickScalesAgent): Promise<void> {
+async function injectCoachNote(agent: ClickScalesAgent): Promise<void> {
   try {
-    const note = agent.phraseLedger.note();
-    if (!note || note === agent.lastPhraseNote) return;
+    const phraseNote = env.VOICE_PHRASE_LEDGER_ENABLED ? agent.phraseLedger.note() : null;
+    const factNote = agent.factMemory?.note() ?? null;
+    const note = [phraseNote, factNote].filter(Boolean).join('\n');
+    if (!note || note === agent.lastCoachNote) return;
     const ctx = agent.chatCtx.copy();
-    ctx.items = ctx.items.filter((it) => it.id !== PHRASE_NOTE_ID);
-    ctx.addMessage({ role: 'system', content: note, id: PHRASE_NOTE_ID });
+    ctx.items = ctx.items.filter((it) => it.id !== COACH_NOTE_ID);
+    ctx.addMessage({ role: 'system', content: note, id: COACH_NOTE_ID });
     await agent.updateChatCtx(ctx);
-    agent.lastPhraseNote = note;
+    agent.lastCoachNote = note;
     console.log(
-      `phrase_ledger ${JSON.stringify({ repeated4grams: agent.phraseLedger.repeatedGramCount, note: note.slice(0, 120) })}`,
+      `coach_note ${JSON.stringify({
+        repeated4grams: agent.phraseLedger.repeatedGramCount,
+        facts: agent.factMemory?.snapshot() ?? null,
+        registerTouched: agent.registerTracker
+          ? `${agent.registerTracker.touched}/${agent.registerTracker.replies}`
+          : null,
+        note: note.slice(0, 200),
+      })}`,
     );
   } catch (err) {
     // Advisory mechanism — never fail a live call over a style reminder.
-    console.error('phrase_ledger_inject_failed', err instanceof Error ? err.message : String(err));
+    console.error('coach_note_inject_failed', err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -652,6 +714,12 @@ export default defineAgent({
     // and the objection prompt section all fall away, running Keren exactly as she was before it.
     const callState = env.VOICE_STATE_MACHINE_ENABLED ? new CallStateMachine() : undefined;
 
+    // WHAT SHE ALREADY KNOWS AND ALREADY ASKED (VOICE_FACT_MEMORY_ENABLED). One per call, like the
+    // state machine, and shared with the tool runtime for the same reason: capture_lead_info is
+    // where a name gets set, and this is what decides whether an offered name may REPLACE one the
+    // lead already gave. `undefined` runs the pre-fact-memory behaviour exactly. See fact-memory.ts.
+    const factMemory = env.VOICE_FACT_MEMORY_ENABLED ? new FactMemory() : undefined;
+
     const { runtime, disabledReason, settings: tenantSettings } = await buildToolRuntime(env, {
       callId: ctx.room.name ?? 'unknown',
       callerPhone: caller.callerPhone,
@@ -661,6 +729,7 @@ export default defineAgent({
       participantMetadata: participant.metadata,
       report,
       callState,
+      factMemory,
     });
 
     // THE CALL IS NOT OURS TO ANSWER.
@@ -1000,9 +1069,20 @@ export default defineAgent({
       // 1. The transcript: BOTH sides of the conversation.
       //    We used to record only what she HEARD, never what she SAID — so the call record was
       //    half a conversation, and useless for judging whether she actually answered the question.
-      const item = ev.item as { role?: string; textContent?: string };
+      //
+      //    P1-2 (2026-08-30): the SDK stamps `metrics.startedSpeakingAt` / `stoppedSpeakingAt` on
+      //    the committed message — the only clock in the system that says when her voice actually
+      //    started and stopped. The event itself fires when the message COMMITS, which is after
+      //    playout, so recording only `Date.now()` here is what made two consecutive transcript
+      //    timestamps look like a 6-second gap when most of that was her talking. Free to collect;
+      //    it is already on the object.
+      const item = ev.item as {
+        role?: string;
+        textContent?: string;
+        metrics?: { startedSpeakingAt?: number; stoppedSpeakingAt?: number };
+      };
       if (item?.role && item?.textContent) {
-        report.recordTranscript(item.role, item.textContent);
+        report.recordTranscript(item.role, item.textContent, item.metrics);
       }
 
       // 1b. Advance the conversation state machine on committed turns (opening→discovery→…).
@@ -1016,6 +1096,12 @@ export default defineAgent({
         if (env.VOICE_PHRASE_LEDGER_ENABLED && item.textContent) {
           agent.phraseLedger.observe(item.textContent);
         }
+        // Call memory: count the QUESTIONS in what she just said. Fed from the committed item
+        // rather than from the model's intent, so the count is of asks the caller actually heard —
+        // which is what he was reacting to when he said "we already covered this".
+        if (item.textContent) agent.factMemory?.observeAgentUtterance(item.textContent);
+        // Spoken register: is she actually reaching for an everyday word, or only being told to?
+        if (item.textContent) agent.registerTracker?.observe(item.textContent);
       }
 
       // 1c. The caller stating their gender outright ("אני אישה", "אפשר בלשון זכר") switches the
@@ -1033,11 +1119,14 @@ export default defineAgent({
 
       // 2. Trim the history — HERE, between turns, and never inside onUserTurnCompleted, where it
       //    invalidated LiveKit's preemptive draft on every single turn. See trimHistory().
-      //    The ledger note rides the SAME promise chain, never concurrently: both do a
+      //    The coach note rides the SAME promise chain, never concurrently: both do a
       //    copy→mutate→updateChatCtx, and two racing copies would silently drop one change.
       const trimmed = trimHistory(agent, env.VOICE_MAX_HISTORY_ITEMS);
-      if (env.VOICE_PHRASE_LEDGER_ENABLED && item?.role === 'assistant') {
-        void trimmed.then(() => injectPhraseNote(agent));
+      if (
+        item?.role === 'assistant' &&
+        (env.VOICE_PHRASE_LEDGER_ENABLED || agent.factMemory || agent.registerTracker)
+      ) {
+        void trimmed.then(() => injectCoachNote(agent));
       }
 
       // 3. FLUSH THE REPORT AFTER EVERY TURN, not just at shutdown.
@@ -1088,6 +1177,15 @@ export default defineAgent({
           // no acknowledgement is being spoken, she starts every reply cold.
           instantAck: env.VOICE_INSTANT_ACK,
           spokenRegister: env.VOICE_SPOKEN_REGISTER_ENABLED,
+          // The prompt half of the call memory. Same flag as the code half, so the instructions and
+          // the enforcement can never describe different rules.
+          factMemory: env.VOICE_FACT_MEMORY_ENABLED,
+          negationSafety: env.VOICE_NEGATION_SAFETY,
+          // The prompt lists the words the caller will actually hear, so the bank and its
+          // description can never disagree about what she has already said.
+          acknowledgements: env.VOICE_ACK_LEDGER_ENABLED
+            ? ACKNOWLEDGEMENTS_HE_WIDE
+            : ACKNOWLEDGEMENTS_HE,
         }),
         ...(runtime ? { tools: buildAgentTools(runtime) } : {}),
         // A per-tenant VOICE, and ONLY when the tenant actually configured one.
@@ -1101,6 +1199,7 @@ export default defineAgent({
       },
       runtime,
       env.VOICE_INSTANT_ACK,
+      factMemory,
     );
     if (persona.tts) {
       // Otherwise the CallReport names the PLATFORM default engine for a call that used a

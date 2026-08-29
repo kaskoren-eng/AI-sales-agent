@@ -28,6 +28,30 @@ import {
  * If one of these fails, the question is never "update the fixture". It is "which live call did I
  * just change".
  *
+ * Regenerated again, 2026-08-30, on `feature/voice-identity-character`, from the call report of
+ * 2026-08-29 18:30 (docs/handoffs/2026-08-30-voice-character-plan.md). The deliberate changes:
+ *   - A "Call Memory" section (P0-1). On that call she asked the lead's name THREE times until he
+ *     said "we already covered this", and then a garbled turn transcribed as `טל, אוזן` renamed him.
+ *     The section says a given fact is settled, caps an unanswered question at one repeat, and
+ *     states that a stray noun is a mishearing rather than a correction. Gated by
+ *     VOICE_FACT_MEMORY_ENABLED, together with the code enforcement in fact-memory.ts.
+ *   - The `capture_lead_info` instruction now names `is_correction` as the only way a saved name,
+ *     phone or email changes.
+ *   - A "Say It So It Cannot Be Misheard" section, and five reworded fixed lines (P0-2). She said
+ *     "ועוזרים לא לפספס לידים" and the lead's next words were "מה עוזרים לו לפספס?" — the unstressed
+ *     לא does not survive an 8kHz line, so the value proposition sold its own opposite. The five
+ *     lines whose meaning hung on one particle (the opt-out promise above all) now state the same
+ *     fact positively. Gated by VOICE_NEGATION_SAFETY, section and lines together.
+ *   - The Spoken Register quota tightened, and the vocabulary BOUNDED (P1-3). "Roughly every second
+ *     or third reply" produced two touches in eight turns and Koren perceived none, so the quota now
+ *     names a floor and a countable trigger; and the section now names both screened banks (the
+ *     slang five plus the three Emotional Color devices) as the whole vocabulary. `וואלה`, which the
+ *     plan recorded as an invented word, turns out to be in the second bank and round-4b screened.
+ * "Which live call did I just change" — Koren's 2026-08-29 18:30 call, in the direction the plan
+ * asked for. The greeting fixture is byte-identical and every persona-owned section (Role, FAQ,
+ * gender rules) was verified unchanged before regenerating; the new bytes are independently pinned
+ * by system-prompt.test.ts.
+ *
  * Regenerated a SECOND time, 2026-08-29, on `feature/voice-call-fixes`. Two deliberate changes,
  * both from Koren's live PSTN call that morning (docs/handoffs/2026-08-29-voice-worklist.md):
  *   - The Spoken Register section was rewritten. It had been in the prompt for the whole 194-second
