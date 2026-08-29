@@ -26,6 +26,7 @@
 <link rel="stylesheet" href="/assets/styles.css">
 </head>
 <body>
+<a class="skip" href="#main">דילוג לתוכן העיקרי</a>
 
 <!-- ================= ניווט ================= -->
 <nav class="nav">
@@ -46,6 +47,7 @@
 </nav>
 
 <!-- ================= HERO ================= -->
+<main id="main">
 <header class="hero" id="top">
   <div class="wrap hero__grid">
     <div>
@@ -183,9 +185,9 @@
         <h2>שיחה שנכנסה ב־21:40.<br>הנה מה שיצא ממנה.</h2>
       </div>
       <div class="tabs" role="tablist" aria-label="תוצרי השיחה">
-        <button class="tab" role="tab" aria-selected="true" data-pane="p1">פגישה נקבעה</button>
-        <button class="tab" role="tab" aria-selected="false" data-pane="p2">עדכון CRM</button>
-        <button class="tab" role="tab" aria-selected="false" data-pane="p3">ניתוח שיחה</button>
+        <button class="tab" role="tab" aria-selected="true" id="tab-p1" aria-controls="p1" data-pane="p1">פגישה נקבעה</button>
+        <button class="tab" role="tab" aria-selected="false" id="tab-p2" aria-controls="p2" data-pane="p2">עדכון CRM</button>
+        <button class="tab" role="tab" aria-selected="false" id="tab-p3" aria-controls="p3" data-pane="p3">ניתוח שיחה</button>
       </div>
     </div>
 
@@ -219,7 +221,7 @@
       </div>
 
       <div class="stage__right">
-        <div class="pane" id="p1" data-on>
+        <div class="pane" role="tabpanel" tabindex="0" aria-labelledby="tab-p1" id="p1" data-on>
           <p class="stage__lbl">נכתב ליומן שלכם</p>
           <div class="out">יום חמישי 14:00 — 30 דקות
 שיחת היכרות · מיכל לוי, סוכנות שיווק
@@ -233,7 +235,7 @@
 במשבצת שבאמת הייתה פנויה.</div>
         </div>
 
-        <div class="pane" id="p2">
+        <div class="pane" role="tabpanel" tabindex="0" aria-labelledby="tab-p2" id="p2">
           <p class="stage__lbl">נכתב חזרה ל־CRM שלכם</p>
           <dl>
             <div class="field"><dt>סטטוס</dt><dd>חדש ← פגישה נקבעה</dd></div>
@@ -245,7 +247,7 @@
           </dl>
         </div>
 
-        <div class="pane" id="p3">
+        <div class="pane" role="tabpanel" tabindex="0" aria-labelledby="tab-p3" id="p3">
           <p class="stage__lbl">מה הסוכן למד</p>
           <dl>
             <div class="field"><dt>זמן מענה</dt><dd>38 שניות מרגע הטופס</dd></div>
@@ -429,6 +431,8 @@
 </section>
 
 <!-- ================= פוטר ================= -->
+</main>
+
 <footer>
   <div class="wrap">
     <div class="foot">
@@ -451,6 +455,9 @@
           <li><a href="#faq">שאלות נפוצות</a></li>
           <li><a href="mailto:koren@clickscales.com">צרו קשר</a></li>
           <li><a href="/" hreflang="en" lang="en">English</a></li>
+          <li><a href='/accessibility#he'>הצהרת נגישות</a></li>
+          <li><a href='/privacy#he'>מדיניות פרטיות</a></li>
+          <li><a href='/terms#he'>תקנון ותנאי שימוש</a></li>
         </ul>
       </div>
       <div>

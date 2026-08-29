@@ -26,6 +26,7 @@
 <link rel="stylesheet" href="/assets/styles.css">
 </head>
 <body>
+<a class="skip" href="#main">Skip to main content</a>
 
 <!-- ================= NAV ================= -->
 <nav class="nav">
@@ -46,6 +47,7 @@
 </nav>
 
 <!-- ================= HERO ================= -->
+<main id="main">
 <header class="hero" id="top">
   <div class="wrap hero__grid">
     <div>
@@ -184,9 +186,9 @@
         <h2>A call that came in at 21:40.<br>Here is what came out of it.</h2>
       </div>
       <div class="tabs" role="tablist" aria-label="Call outputs">
-        <button class="tab" role="tab" aria-selected="true" data-pane="p1">Meeting booked</button>
-        <button class="tab" role="tab" aria-selected="false" data-pane="p2">CRM update</button>
-        <button class="tab" role="tab" aria-selected="false" data-pane="p3">Call analysis</button>
+        <button class="tab" role="tab" aria-selected="true" id="tab-p1" aria-controls="p1" data-pane="p1">Meeting booked</button>
+        <button class="tab" role="tab" aria-selected="false" id="tab-p2" aria-controls="p2" data-pane="p2">CRM update</button>
+        <button class="tab" role="tab" aria-selected="false" id="tab-p3" aria-controls="p3" data-pane="p3">Call analysis</button>
       </div>
     </div>
 
@@ -220,7 +222,7 @@
       </div>
 
       <div class="stage__right">
-        <div class="pane" id="p1" data-on>
+        <div class="pane" role="tabpanel" tabindex="0" aria-labelledby="tab-p1" id="p1" data-on>
           <p class="stage__lbl">Written to your calendar</p>
           <div class="out">Thursday 14:00 — 30 min
 Discovery · Michal Levi, marketing agency
@@ -234,7 +236,7 @@ Booked directly into your calendar,
 in a slot that was actually free.</div>
         </div>
 
-        <div class="pane" id="p2">
+        <div class="pane" role="tabpanel" tabindex="0" aria-labelledby="tab-p2" id="p2">
           <p class="stage__lbl">Written back to your CRM</p>
           <dl>
             <div class="field"><dt>Status</dt><dd>New → Meeting booked</dd></div>
@@ -246,7 +248,7 @@ in a slot that was actually free.</div>
           </dl>
         </div>
 
-        <div class="pane" id="p3">
+        <div class="pane" role="tabpanel" tabindex="0" aria-labelledby="tab-p3" id="p3">
           <p class="stage__lbl">What the agent learned</p>
           <dl>
             <div class="field"><dt>Answered in</dt><dd>38 seconds from form submit</dd></div>
@@ -429,6 +431,8 @@ in a slot that was actually free.</div>
 </section>
 
 <!-- ================= FOOTER ================= -->
+</main>
+
 <footer>
   <div class="wrap">
     <div class="foot">
@@ -451,6 +455,9 @@ in a slot that was actually free.</div>
           <li><a href="#faq">FAQ</a></li>
           <li><a href="mailto:koren@clickscales.com">Contact</a></li>
           <li><a href="/he/" hreflang="he" lang="he">עברית</a></li>
+          <li><a href='/accessibility#en'>Accessibility</a></li>
+          <li><a href='/privacy#en'>Privacy Policy</a></li>
+          <li><a href='/terms#en'>Terms of Service</a></li>
         </ul>
       </div>
       <div>
