@@ -1069,9 +1069,20 @@ export default defineAgent({
       // 1. The transcript: BOTH sides of the conversation.
       //    We used to record only what she HEARD, never what she SAID — so the call record was
       //    half a conversation, and useless for judging whether she actually answered the question.
-      const item = ev.item as { role?: string; textContent?: string };
+      //
+      //    P1-2 (2026-08-30): the SDK stamps `metrics.startedSpeakingAt` / `stoppedSpeakingAt` on
+      //    the committed message — the only clock in the system that says when her voice actually
+      //    started and stopped. The event itself fires when the message COMMITS, which is after
+      //    playout, so recording only `Date.now()` here is what made two consecutive transcript
+      //    timestamps look like a 6-second gap when most of that was her talking. Free to collect;
+      //    it is already on the object.
+      const item = ev.item as {
+        role?: string;
+        textContent?: string;
+        metrics?: { startedSpeakingAt?: number; stoppedSpeakingAt?: number };
+      };
       if (item?.role && item?.textContent) {
-        report.recordTranscript(item.role, item.textContent);
+        report.recordTranscript(item.role, item.textContent, item.metrics);
       }
 
       // 1b. Advance the conversation state machine on committed turns (opening→discovery→…).

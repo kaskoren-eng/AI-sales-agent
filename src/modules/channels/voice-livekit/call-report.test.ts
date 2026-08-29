@@ -112,3 +112,92 @@ describe('CallReport repeatedPhraseCount — the anti-repetition gate (2026-08-2
     expect(report.toJson().summary.repeatedPhraseCount).toBe(0);
   });
 });
+
+/**
+ * P1-2 — MEASUREMENT ONLY. Nothing here changes when she speaks; it changes what we can say about
+ * when she spoke.
+ *
+ * The 2026-08-30 plan read two "post-tool gaps" of 5.7s and 6.2s off consecutive transcript
+ * timestamps and concluded that more than half of each was unexplained. It is explained: those
+ * timestamps are COMMIT times, the SDK commits an assistant message after its playout finishes, so
+ * the interval between two of them is `silence + the whole of the second reply's speaking time`.
+ * The reproduction below is the exact 2026-08-29 shape and shows both numbers side by side.
+ */
+describe('CallReport agentGap — silence INSIDE a reply', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const sec = (ms: number): number => ms / 1000;
+
+  it('reproduces the 2026-08-29 shape: a 6.2s commit interval that is 2.2s of silence', () => {
+    const report = newReport();
+    const t0 = Date.now();
+    // The receipt: spoken 90.300s → 90.896s into the call, committed when its playout ended.
+    vi.setSystemTime(t0 + 90_896);
+    report.recordTranscript('assistant', 'אוקיי.', {
+      startedSpeakingAt: sec(t0 + 90_300),
+      stoppedSpeakingAt: sec(t0 + 90_896),
+    });
+    // The tool runs inside the silence and finishes at 91.925s. recordToolCall stamps completion.
+    vi.setSystemTime(t0 + 91_925);
+    report.recordToolCall({ atMs: 0, name: 'capture_lead_info', durationMs: 979, ok: true });
+    // The answer starts 2.2s after the receipt stopped, and takes 3.9s to say. Commit-to-commit:
+    // 97_082 - 90_896 = 6.2s, which is the number the plan read and called mostly unexplained.
+    vi.setSystemTime(t0 + 97_082);
+    report.recordTranscript('assistant', 'ואיך אתה מקבל היום את הפניות שנכנסות אליך?', {
+      startedSpeakingAt: sec(t0 + 93_100),
+      stoppedSpeakingAt: sec(t0 + 97_082),
+    });
+
+    const json = report.toJson();
+    const { agentGap } = json.summary;
+    expect(agentGap.samples).toBe(1);
+    expect(agentGap.medianMs).toBe(2204); // the silence…
+    expect(json.transcript[1]!.atMs - json.transcript[0]!.atMs).toBe(6186); // …versus the interval
+    expect(agentGap.gaps[0]?.tools.map((t) => t.name)).toEqual(['capture_lead_info']);
+    expect(agentGap.gaps[0]?.toolMs).toBe(979);
+    // What is left after the tool is the next inference step's TTFT plus TTS first byte — about
+    // 1.2s on this stack, and the whole of what a caller experiences as the post-tool hole.
+    expect(agentGap.gaps[0]!.gapMs - agentGap.gaps[0]!.toolMs).toBe(1225);
+  });
+
+  it('a gap across a CALLER turn is not a gap — that is a conversation, not a hole', () => {
+    const report = newReport();
+    const t0 = Date.now();
+    report.recordTranscript('assistant', 'איזה עסק יש לך?', {
+      startedSpeakingAt: sec(t0 + 1_000),
+      stoppedSpeakingAt: sec(t0 + 2_000),
+    });
+    report.recordTranscript('user', 'יש לי מכון כושר');
+    report.recordTranscript('assistant', 'מעולה, וכמה פניות ביום?', {
+      startedSpeakingAt: sec(t0 + 9_000),
+      stoppedSpeakingAt: sec(t0 + 10_000),
+    });
+    expect(report.toJson().summary.agentGap.samples).toBe(0);
+  });
+
+  it('contributes nothing rather than a wrong number when the SDK gave no timestamps', () => {
+    const report = newReport();
+    report.recordTranscript('assistant', 'אוקיי.');
+    report.recordTranscript('assistant', 'ואיך מגיעים אליך לקוחות?');
+    expect(report.toJson().summary.agentGap).toEqual({
+      medianMs: null,
+      maxMs: null,
+      samples: 0,
+      gaps: [],
+    });
+  });
+
+  it('keeps atMs as the commit clock, so every report written before today still compares', () => {
+    const report = newReport();
+    const t0 = Date.now();
+    report.recordTranscript('assistant', 'אוקיי.', {
+      startedSpeakingAt: sec(t0 + 1_000),
+      stoppedSpeakingAt: sec(t0 + 2_000),
+    });
+    const line = report.toJson().transcript[0]!;
+    expect(line.spokeAtMs).toBe(1_000);
+    expect(line.spokeUntilMs).toBe(2_000);
+    expect(line.atMs).toBeLessThan(1_000); // stamped now, at commit — not when she started
+  });
+});
