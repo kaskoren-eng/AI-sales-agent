@@ -479,6 +479,12 @@ const envSchema = z.object({
   // correction from the lead. Default ON. Set false to restore the 2026-08-29 behaviour, where a
   // garbled turn ("טל, אוזן") could rename a lead who had already introduced himself.
   VOICE_FACT_MEMORY_ENABLED: envBool(true),
+  // Kill-switch for the spoken-register nudge (register-tracker.ts, 2026-08-30). The Spoken
+  // Register section asks for an everyday word every second or third reply; on the 2026-08-29 call
+  // it produced two in eight turns and Koren perceived none. ON appends a turn-boundary reminder
+  // after two consecutive replies with no register word — the same guidance/enforcement split as the
+  // phrase ledger. Inert when VOICE_SPOKEN_REGISTER_ENABLED is off (nothing to be reminded of).
+  VOICE_REGISTER_NUDGE_ENABLED: envBool(true),
   // Kill-switch for the acknowledgement ledger (2026-08-30). ON spends a WIDER bank (5 words) like a
   // shuffled deck — every word used once before any is used twice — instead of picking at random
   // while avoiding only the previous one. Six of eight turns on the 2026-08-29 call opened with one

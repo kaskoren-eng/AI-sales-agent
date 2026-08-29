@@ -37,6 +37,7 @@ import {
 } from './speech-guard.js';
 import { PhraseLedger } from './phrase-ledger.js';
 import { FactMemory } from './fact-memory.js';
+import { SpokenRegisterTracker } from './register-tracker.js';
 import {
   ACKNOWLEDGEMENTS_HE,
   ACKNOWLEDGEMENTS_HE_WIDE,
@@ -199,6 +200,19 @@ class ClickScalesAgent extends voice.Agent {
    * `undefined` when the switch is off, and every reader is written for that.
    */
   readonly factMemory: FactMemory | undefined;
+
+  /**
+   * Whether she is actually using the spoken register (VOICE_REGISTER_NUDGE_ENABLED).
+   *
+   * Two touches in eight turns on 2026-08-29, and the person on the call perceived none. The
+   * tracker notices a dry streak and its note rides the same turn-boundary injection as the phrase
+   * ledger's. `undefined` when the nudge is off, or when the register section itself is off — a
+   * reminder to use a section she was never given would be nonsense.
+   */
+  readonly registerTracker: SpokenRegisterTracker | undefined =
+    env.VOICE_REGISTER_NUDGE_ENABLED && env.VOICE_SPOKEN_REGISTER_ENABLED
+      ? new SpokenRegisterTracker()
+      : undefined;
 
   /** The last coach note injected, so an unchanged note is never re-written into the ctx. */
   lastCoachNote: string | null = null;
@@ -559,6 +573,9 @@ async function injectCoachNote(agent: ClickScalesAgent): Promise<void> {
       `coach_note ${JSON.stringify({
         repeated4grams: agent.phraseLedger.repeatedGramCount,
         facts: agent.factMemory?.snapshot() ?? null,
+        registerTouched: agent.registerTracker
+          ? `${agent.registerTracker.touched}/${agent.registerTracker.replies}`
+          : null,
         note: note.slice(0, 200),
       })}`,
     );
@@ -1072,6 +1089,8 @@ export default defineAgent({
         // rather than from the model's intent, so the count is of asks the caller actually heard —
         // which is what he was reacting to when he said "we already covered this".
         if (item.textContent) agent.factMemory?.observeAgentUtterance(item.textContent);
+        // Spoken register: is she actually reaching for an everyday word, or only being told to?
+        if (item.textContent) agent.registerTracker?.observe(item.textContent);
       }
 
       // 1c. The caller stating their gender outright ("אני אישה", "אפשר בלשון זכר") switches the
@@ -1092,7 +1111,10 @@ export default defineAgent({
       //    The coach note rides the SAME promise chain, never concurrently: both do a
       //    copy→mutate→updateChatCtx, and two racing copies would silently drop one change.
       const trimmed = trimHistory(agent, env.VOICE_MAX_HISTORY_ITEMS);
-      if (item?.role === 'assistant' && (env.VOICE_PHRASE_LEDGER_ENABLED || agent.factMemory)) {
+      if (
+        item?.role === 'assistant' &&
+        (env.VOICE_PHRASE_LEDGER_ENABLED || agent.factMemory || agent.registerTracker)
+      ) {
         void trimmed.then(() => injectCoachNote(agent));
       }
 

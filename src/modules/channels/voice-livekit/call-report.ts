@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ShadowSttTranscript } from '../../../db/schema/call-learnings.js';
 import { countRepeatedFourGrams, countRepeatedOpeners } from './phrase-ledger.js';
+import { hasRegisterTouch } from './register-tracker.js';
 
 /**
  * A durable record of one call: what was heard, what was said, and how slow it was.
@@ -166,6 +167,20 @@ export interface CallReportJson {
      * 4-grams alone). On that call this would have read 3.
      */
     repeatedOpenerCount: number;
+    /**
+     * Share of her replies carrying one of the eight screened everyday words — the Spoken Register
+     * quota, measured instead of assumed.
+     *
+     * The section asks for one every second or third reply, i.e. 33-50%. The 2026-08-29 call ran
+     * at 25% (two touches in eight turns) and the person on the phone perceived none of them, so
+     * treat anything under ~40% as a miss rather than a near-pass. Read it next to
+     * repeatedPhraseCount: high repetition with a high touch rate means she found ONE everyday word
+     * and is leaning on it, which is its own kind of robot.
+     *
+     * Deliberately generous — `מעולה` is also an ordinary adjective and counts either way. The bias
+     * is toward over-reporting, so a low number here is a real miss.
+     */
+    registerTouchPct: number | null;
     /**
      * Share of LLM input tokens served from OpenAI's prompt cache, across the call.
      *
@@ -567,6 +582,12 @@ export class CallReport {
         // compares against.
         repeatedPhraseCount: countRepeatedFourGrams(agentLines) + countRepeatedOpeners(agentLines),
         repeatedOpenerCount: countRepeatedOpeners(agentLines),
+        registerTouchPct:
+          agentLines.length === 0
+            ? null
+            : Math.round(
+                (agentLines.filter((line) => hasRegisterTouch(line)).length / agentLines.length) * 100,
+              ),
         promptCacheHitPct,
         draftsDiscarded,
         endOfTurnMedianMs: eouMed,

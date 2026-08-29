@@ -121,6 +121,35 @@ The craft rules:
 export const SPOKEN_REGISTER_SLANG = ['סבבה', 'אחלה', 'מעולה', 'בקטנה', 'על הדרך'] as const;
 
 /**
+ * The EMOTIONAL_COLOR interjections — the second screened bank, and the one that got miscounted.
+ *
+ * The 2026-08-30 plan recorded `וואלה` (used on the call, "וואלה, מעניין") as an invented word
+ * outside the screened bank. It is not: it passed round 4b — the same listening screen that BANNED
+ * written laughter — and it is quoted in EMOTIONAL_COLOR above as the surprise device. She was
+ * reaching for an approved word from the section next door.
+ *
+ * That is the real finding, and it is why these are exported: with two banks in two sections and no
+ * name covering both, neither the prompt, the ledger nor the metric could say what "the register
+ * vocabulary" was. Now they all read the same union.
+ */
+export const EMOTIONAL_COLOR_DEVICES = ['וואלה', 'אוף', 'איזה כיף'] as const;
+
+/**
+ * Every everyday word she is allowed to reach for — the two screened banks, together.
+ *
+ * BOUNDED, DELIBERATELY. The argument for letting her invent register words is real: variation is
+ * the whole point of the section, and eight words is not many. It loses to one fact — an unscreened
+ * Hebrew interjection fails SILENTLY. "חח" comes out as the spelled letter khet, "אוו" was
+ * swallowed whole, and neither the transcript nor any metric shows it; the first person to find out
+ * is a lead. Every word in these two banks was put through synthesis → 8kHz phone band → Soniox
+ * round-trip precisely because that is the only way to know. The cost of the bound is a narrower
+ * palette in a section that already asks for at most one touch per reply; the cost of the open set
+ * is a word that arrives as noise and nobody hears about it. Widening is cheap and the door is
+ * open — run the screening, then add.
+ */
+export const REGISTER_VOCABULARY = [...SPOKEN_REGISTER_SLANG, ...EMOTIONAL_COLOR_DEVICES] as const;
+
+/**
  * The spoken register — simple everyday Hebrew, lightly seasoned.
  *
  * Koren, 2026-08-27, live calls: her Hebrew is too formal and scripted. He wants simple spoken
@@ -161,7 +190,9 @@ Your Hebrew must sound like everyday SPOKEN Hebrew — the way a friendly, sharp
 
 **Light slang — EXPECTED, not merely permitted:**
 
-The everyday softeners: סבבה, אחלה, מעולה, בקטנה, על הדרך. **Roughly every second or third reply should carry one of them.** A whole call without a single one is not "safe" — it is the formal, letter-like register this section exists to prevent, and it is what a caller hears as a script.
+The everyday softeners: סבבה, אחלה, מעולה, בקטנה, על הדרך. Plus the three reaction words from Emotional Color above: וואלה, אוף, איזה כיף. **These eight are the whole vocabulary — do not invent others.** They are not a style preference: each one was tested through a real phone line and heard back correctly, and an untested Hebrew interjection fails silently (written laughter comes out as spelled letters, and "אוו" vanished entirely). A word nobody screened is a word the caller may hear as noise.
+
+**At least one of them in every second reply, and never fewer than one in three.** Count it as you go: if two replies in a row went by without a single everyday word, the next one must carry one. A whole call without any is not "safe" — it is the formal, letter-like register this section exists to prevent, and it is exactly what a caller hears as a script. On a real call this section produced two touches in eight turns and the person on the phone noticed none of them.
 
 ${slangPlacement(instantAck)}
 

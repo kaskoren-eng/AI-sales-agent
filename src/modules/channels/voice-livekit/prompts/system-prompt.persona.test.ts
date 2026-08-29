@@ -42,6 +42,11 @@ import {
  *     לא does not survive an 8kHz line, so the value proposition sold its own opposite. The five
  *     lines whose meaning hung on one particle (the opt-out promise above all) now state the same
  *     fact positively. Gated by VOICE_NEGATION_SAFETY, section and lines together.
+ *   - The Spoken Register quota tightened, and the vocabulary BOUNDED (P1-3). "Roughly every second
+ *     or third reply" produced two touches in eight turns and Koren perceived none, so the quota now
+ *     names a floor and a countable trigger; and the section now names both screened banks (the
+ *     slang five plus the three Emotional Color devices) as the whole vocabulary. `וואלה`, which the
+ *     plan recorded as an invented word, turns out to be in the second bank and round-4b screened.
  * "Which live call did I just change" — Koren's 2026-08-29 18:30 call, in the direction the plan
  * asked for. The greeting fixture is byte-identical and every persona-owned section (Role, FAQ,
  * gender rules) was verified unchanged before regenerating; the new bytes are independently pinned

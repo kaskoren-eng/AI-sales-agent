@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { TOOL_NAMES } from '../tools/index.js';
 import { ACKNOWLEDGEMENTS_HE } from './acknowledgements.he.js';
-import { GREETING_HE, SPOKEN_REGISTER_SLANG, SYSTEM_PROMPT_HE, buildSystemPrompt } from './system-prompt.he.js';
+import {
+  GREETING_HE,
+  REGISTER_VOCABULARY,
+  SPOKEN_REGISTER_SLANG,
+  SYSTEM_PROMPT_HE,
+  buildSystemPrompt,
+} from './system-prompt.he.js';
 
 const TOOLS_PROMPT = buildSystemPrompt({ toolsEnabled: true });
 
@@ -554,7 +560,20 @@ describe('Keren — spoken register (2026-08-27)', () => {
 
   it('makes the register a QUOTA, not a permission — "welcome" was read as "optional"', () => {
     expect(SYSTEM_PROMPT_HE).toMatch(/EXPECTED, not merely permitted/u);
-    expect(SYSTEM_PROMPT_HE).toMatch(/every second or third reply should carry one/u);
+    // Tightened 2026-08-27 → 2026-08-30. "Roughly every second or third reply" produced two touches
+    // in eight turns, and the person on the call perceived none of them, so the quota now names a
+    // floor and a countable trigger the model can apply to itself between turns. The code-side
+    // enforcement is register-tracker.ts — same guidance/enforcement split as the phrase ledger.
+    expect(SYSTEM_PROMPT_HE).toMatch(/At least one of them in every second reply/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/never fewer than one in three/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/two replies in a row went by/u);
+  });
+
+  it('BOUNDS the vocabulary — a word nobody screened can fail silently on a phone line', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/These eight are the whole vocabulary/u);
+    // Both banks are named in the section, so "the register vocabulary" has ONE meaning. וואלה was
+    // reported as an invented word; it is in EMOTIONAL_COLOR and passed round 4b.
+    for (const word of REGISTER_VOCABULARY) expect(SYSTEM_PROMPT_HE).toContain(word);
   });
 
   it('resolves the conflict with the Speech Rhythm rule that was silently suppressing it', () => {
