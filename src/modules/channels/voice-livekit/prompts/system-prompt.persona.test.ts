@@ -37,6 +37,11 @@ import {
  *     VOICE_FACT_MEMORY_ENABLED, together with the code enforcement in fact-memory.ts.
  *   - The `capture_lead_info` instruction now names `is_correction` as the only way a saved name,
  *     phone or email changes.
+ *   - A "Say It So It Cannot Be Misheard" section, and five reworded fixed lines (P0-2). She said
+ *     "ועוזרים לא לפספס לידים" and the lead's next words were "מה עוזרים לו לפספס?" — the unstressed
+ *     לא does not survive an 8kHz line, so the value proposition sold its own opposite. The five
+ *     lines whose meaning hung on one particle (the opt-out promise above all) now state the same
+ *     fact positively. Gated by VOICE_NEGATION_SAFETY, section and lines together.
  * "Which live call did I just change" — Koren's 2026-08-29 18:30 call, in the direction the plan
  * asked for. The greeting fixture is byte-identical and every persona-owned section (Role, FAQ,
  * gender rules) was verified unchanged before regenerating; the new bytes are independently pinned

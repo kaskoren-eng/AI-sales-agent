@@ -479,6 +479,13 @@ const envSchema = z.object({
   // correction from the lead. Default ON. Set false to restore the 2026-08-29 behaviour, where a
   // garbled turn ("טל, אוזן") could rename a lead who had already introduced himself.
   VOICE_FACT_MEMORY_ENABLED: envBool(true),
+  // Kill-switch for the negation-safety work (2026-08-30). On a real call she said
+  // "ועוזרים לא לפספס לידים" and the lead heard "מה עוזרים לו לפספס?" — the unstressed
+  // "לא" does not survive an 8kHz line, so the value proposition advertised its own opposite. ON adds
+  // the "Say It So It Cannot Be Misheard" prompt section AND rewords the five fixed lines whose
+  // meaning hung on one particle (opt-out, disqualification, bad-time apology, one name-ask
+  // variant, the security decline). Set false to restore the previous wording exactly.
+  VOICE_NEGATION_SAFETY: envBool(true),
   // Kill-switch for the Spoken Register prompt section (simple spoken Hebrew + the light-slang
   // bank — סבבה/אחלה level, no heavy street slang; Koren's explicit register choice 2026-08-27).
   // Default ON. Set false to drop the section and restore the previous register.

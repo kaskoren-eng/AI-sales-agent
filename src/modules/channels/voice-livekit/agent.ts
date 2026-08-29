@@ -1129,6 +1129,7 @@ export default defineAgent({
           // The prompt half of the call memory. Same flag as the code half, so the instructions and
           // the enforcement can never describe different rules.
           factMemory: env.VOICE_FACT_MEMORY_ENABLED,
+          negationSafety: env.VOICE_NEGATION_SAFETY,
         }),
         ...(runtime ? { tools: buildAgentTools(runtime) } : {}),
         // A per-tenant VOICE, and ONLY when the tenant actually configured one.
