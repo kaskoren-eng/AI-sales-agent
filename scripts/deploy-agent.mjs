@@ -127,7 +127,20 @@ if (MODE !== 'create') {
 // fail the tool gate CLOSED, meter nothing, and refuse DID-routed calls as "not in service".
 // That is the 2026-08-16 incident. The file is uploaded on every deploy, so it is checked on
 // every deploy.
-await assertDeployableSecrets('.env.agent');
+// SECRETS ARE OPT-IN ON AN EXISTING AGENT, AND THAT IS NOT A WEAKENING OF THE RULE BELOW.
+//
+// That rule assumes `.env.agent` MIRRORS the cloud. On this machine it does not and never has:
+// `lk agent secrets` lists 45 secrets on CA_azGQ9uaLxpot, while the best local `.env.agent` has 28
+// — with laptop values. The cloud set is the source of truth, maintained by
+// scripts/fix-agent-secrets.mjs, which merges a small correct subset into it. Uploading the local
+// file wholesale would drop or corrupt production's settings: the very outage the secrets rule was
+// written to prevent, arriving from the other direction.
+//
+// So a plain deploy ships CODE and leaves secrets untouched. Pass --with-secrets once you have
+// genuinely made .env.agent a full mirror — it is validated first, on every path that uploads.
+const WITH_SECRETS = MODE === 'create' || process.argv.includes('--with-secrets');
+
+if (WITH_SECRETS) await assertDeployableSecrets('.env.agent');
 
 
 // SECRETS GO UP ON EVERY DEPLOY, NOT ONLY ON CREATE.
@@ -148,12 +161,15 @@ await assertDeployableSecrets('.env.agent');
 const args = [
   'agent',
   MODE,
-  '--secrets-file',
-  '.env.agent',
-  '--ignore-empty-secrets',
+  ...(WITH_SECRETS ? ['--secrets-file', '.env.agent', '--ignore-empty-secrets'] : []),
   ...(MODE === 'create' ? ['--region', REGION] : []),
   STAGE,
 ];
+
+if (!WITH_SECRETS) {
+  console.log('secrets: NOT uploaded (code-only deploy) — the agent keeps its cloud secrets.');
+  console.log('         to upload .env.agent instead, re-run with --with-secrets');
+}
 
 console.log(`lk ${args.join(' ')}\n`);
 const r = spawnSync('lk', args, { stdio: 'inherit', shell: true });
