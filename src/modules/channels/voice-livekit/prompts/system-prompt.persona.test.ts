@@ -28,7 +28,19 @@ import {
  * If one of these fails, the question is never "update the fixture". It is "which live call did I
  * just change".
  *
- * Regenerated once, 2026-08-28, when `feature/voice-human-handoff` merged into main: the
+ * Regenerated a SECOND time, 2026-08-29, on `feature/voice-call-fixes`. Two deliberate changes,
+ * both from Koren's live PSTN call that morning (docs/handoffs/2026-08-29-voice-worklist.md):
+ *   - The Spoken Register section was rewritten. It had been in the prompt for the whole 194-second
+ *     call and produced ZERO slang, because its examples were reply OPENERS while the Speech Rhythm
+ *     rule forbids opening with a reaction word. The register is now a quota with a placement rule
+ *     that follows the instant-ack flag.
+ *   - The handoff section now has her ask ONE question about what the caller wants to discuss, and
+ *     names the `wants` / `context` fields that carry it to the owner's alert.
+ * "Which live call did I just change" — the one Koren made, in the direction he asked for. Every
+ * new byte is independently pinned by system-prompt.test.ts; the greeting fixture and every
+ * persona-owned section (Role, FAQ, gender rules) were verified UNCHANGED before regenerating.
+ *
+ * Regenerated once before that, 2026-08-28, when `feature/voice-human-handoff` merged into main: the
  * humanization content (emotional color beats, spoken register, variation banks, hold-word rework
  * — round-5 verified 17/17 on real TTS, each behind its own env kill-switch) changed the default
  * prompt BY DESIGN. The answer to "which live call did I just change" was: the ones Koren asked
