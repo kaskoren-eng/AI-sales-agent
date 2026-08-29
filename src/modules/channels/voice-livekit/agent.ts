@@ -25,12 +25,8 @@ import { NOT_IN_SERVICE_PATH, playRecordingNotice } from './compliance/recording
 import { SPOKEN_REGISTER_SLANG, buildSystemPrompt, readBusinessProfile } from './prompts/system-prompt.he.js';
 import { buildGreeting, isDefaultPersona, readAgentPersona } from './persona.js';
 import { buildVoicemailMessage } from './call-state-lines.he.js';
-import {
-  FILLER_COOLDOWN_MS,
-  MAX_FILLERS_PER_CALL,
-  pickThinkingFiller,
-} from './prompts/thinking-fillers.he.js';
-import { pickAcknowledgement } from './prompts/acknowledgements.he.js';
+import { MAX_FILLERS_PER_CALL, ThinkingFillerLedger } from './prompts/thinking-fillers.he.js';
+import { chooseTurnOpener, chunkCallsTool } from './turn-opener.js';
 import {
   AddressGenderTracker,
   dropAckEcho,
@@ -112,6 +108,23 @@ class ClickScalesAgent extends voice.Agent {
    * anywhere else.
    */
   pendingFiller: string | null = null;
+
+  /**
+   * The call's hesitation budget, shared by BOTH spenders — the 2.5s think-timer below and the
+   * turn opener in `llmNode`. One ledger, so they cannot double-spend the ceiling or echo each
+   * other's word. Spent only when a filler is actually spoken (see withFiller's `onUsed`).
+   */
+  readonly fillerLedger = new ThinkingFillerLedger();
+
+  /**
+   * Did the PREVIOUS inference step of this reply emit a tool call?
+   *
+   * This is the whole signal behind chooseTurnOpener. A reply that calls a tool is two (or more)
+   * inference steps with a DB round-trip between them, and each step runs `llmNode` — so without
+   * this flag every step injects its own acknowledgement and the caller hears two receipts around
+   * a multi-second hole. See turn-opener.ts for the transcript that proves it.
+   */
+  #lastStepCalledTool = false;
 
   /**
    * Called when a whole reply was guarded down to nothing — she is about to stay silent.
@@ -250,19 +263,61 @@ class ClickScalesAgent extends voice.Agent {
     const startedAt = Date.now();
     const inner = await voice.Agent.default.llmNode(this, chatCtx, toolCtx, modelSettings);
     if (!this.instantAck || inner === null) {
+      // VOICE_INSTANT_ACK off = nothing is injected at all, which also means a tool-calling step
+      // produces no text chunk, no TTS segment and therefore no orphaned word. The whole
+      // turn-opener mechanism below exists to undo a problem the acknowledgement creates, so with
+      // the acknowledgement off it has nothing to do.
       this.#spokenAck = null;
       return inner;
     }
 
-    const ack = pickAcknowledgement(this.#lastAck);
-    this.#lastAck = ack;
-    this.#spokenAck = ack;
+    // WHICH WORD OPENS *THIS STEP* — and a step that follows a tool call gets a different answer.
+    // See turn-opener.ts: one caller turn can be several inference steps, and injecting an
+    // acknowledgement into each of them is what produced "אהה." … 5.4s … "אוקיי. כמה פניות…" on
+    // the 2026-08-29 call. The flag is consumed here and re-set below if THIS step also calls a tool.
+    const afterToolCall = this.#lastStepCalledTool;
+    this.#lastStepCalledTool = false;
+    const opener = chooseTurnOpener({
+      afterToolCall,
+      fillersEnabled: env.VOICE_THINKING_FILLER_MS !== 0,
+      lastAck: this.#lastAck,
+      offerFiller: () => this.fillerLedger.offer(),
+    });
+
+    if (opener.kind === 'ack') {
+      this.#lastAck = opener.word;
+      this.#spokenAck = opener.word;
+    } else {
+      // Nothing for dropAckEcho to remove: a hesitation is not a word the model would echo.
+      this.#spokenAck = null;
+    }
+    if (opener.kind === 'hesitation') {
+      // Spoken here, at the head of the step, so it covers the tool round-trip that just happened
+      // instead of arriving after it. It is therefore spent immediately — unlike the armed filler
+      // in ttsNode, which is only spent if real words follow it.
+      this.fillerLedger.commit(opener.word);
+      // ...and never twice in one breath: the armed filler must not also land on this step.
+      this.pendingFiller = null;
+      console.log(
+        `thinking_filler ${JSON.stringify({
+          filler: opener.word,
+          n: this.fillerLedger.used.length,
+          max: MAX_FILLERS_PER_CALL,
+          reason: 'after_tool_call',
+          spoken: true,
+        })}`,
+      );
+    }
 
     const reader = inner.getReader();
     let sawModelToken = false;
     const withAck = new ReadableStream({
       // Enqueued before the first read, so it reaches the TTS without waiting on the model at all.
-      start: (controller) => controller.enqueue(`${ack} `),
+      // 'silent' enqueues nothing: this call has spent its fillers and the caller has already been
+      // acknowledged, so the honest sound is none at all.
+      start: (controller) => {
+        if (opener.kind !== 'silent') controller.enqueue(`${opener.word} `);
+      },
       pull: async (controller) => {
         const { done, value } = await reader.read();
         if (done) {
@@ -275,6 +330,9 @@ class ClickScalesAgent extends voice.Agent {
           sawModelToken = true;
           this.onModelFirstToken?.(Date.now() - startedAt);
         }
+        // A tool call on THIS step means the next step is not a fresh turn — it is the same reply
+        // resuming after a DB round-trip, and it must not acknowledge the caller a second time.
+        if (chunkCallsTool(value)) this.#lastStepCalledTool = true;
         controller.enqueue(value as string);
       },
       cancel: (reason) => reader.cancel(reason),
@@ -310,15 +368,36 @@ class ClickScalesAgent extends voice.Agent {
       notifyIfSilent(
         timeFirstChunk(
           guardStream(
-            dropAckEcho(
-              ack,
-              timeFirstChunk(
-                withFiller(filler, text as AsyncIterable<string>),
-                startedAt,
-                (ms) => {
+            // withFiller wraps dropAckEcho, not the other way round: the hesitation belongs in
+            // front of the MODEL's first words, and only dropAckEcho knows where those start. On a
+            // step that never produces any (a tool call), withFiller drops the hesitation instead
+            // of orphaning it — the 2026-08-29 "word … 5.4s … sentence" bug. The acknowledgement
+            // still leaves first and unheld.
+            withFiller(
+              filler,
+              dropAckEcho(
+                ack,
+                timeFirstChunk(text as AsyncIterable<string>, startedAt, (ms) => {
                   llmFirstChunk = ms;
-                },
+                }),
               ),
+              {
+                leadIn: ack ? `${ack} ` : null,
+                // Spent only now, when it has actually been spoken — see ThinkingFillerLedger.
+                onUsed: () => {
+                  if (!filler) return;
+                  this.fillerLedger.commit(filler);
+                  console.log(
+                    `thinking_filler ${JSON.stringify({
+                      filler,
+                      n: this.fillerLedger.used.length,
+                      max: MAX_FILLERS_PER_CALL,
+                      reason: 'slow_reply',
+                      spoken: true,
+                    })}`,
+                  );
+                },
+              },
             ),
             // Read PER SENTENCE: book_meeting can succeed mid-reply, and the very next sentence
             // ("קבעתי לך ליום ראשון") must already be allowed through.
@@ -1065,10 +1144,13 @@ export default defineAgent({
     // THE THRESHOLD IS STILL THE DESIGN. Below ~2s she would hesitate on nearly every turn, which is
     // a tic and worse than silence. The ceiling (3 per call) and the cooldown exist because the
     // threshold alone was not enough: it fired 21 times in one call.
+    //
+    // ARMING IS NOT SPENDING (2026-08-29). The budget lives in `agent.fillerLedger` and is charged
+    // by whoever actually SPEAKS the word — ttsNode's `onUsed`, or the turn opener in llmNode. An
+    // armed filler that never reached the caller (the reply turned out to be a tool call and
+    // carried no words) costs nothing, because a call that spent its three fillers on silence
+    // would then have to sit through every later pause with no hesitation left.
     let fillerTimer: ReturnType<typeof setTimeout> | null = null;
-    let lastFiller: string | null = null;
-    let fillerCount = 0;
-    let lastFillerAt = 0;
 
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) => {
       if (fillerTimer) {
@@ -1082,19 +1164,21 @@ export default defineAgent({
         return;
       }
       if (env.VOICE_THINKING_FILLER_MS === 0) return;
-      if (fillerCount >= MAX_FILLERS_PER_CALL) return;
-      if (Date.now() - lastFillerAt < FILLER_COOLDOWN_MS) return;
 
       fillerTimer = setTimeout(() => {
         fillerTimer = null;
-        const filler = pickThinkingFiller(lastFiller);
-        lastFiller = filler;
-        fillerCount++;
-        lastFillerAt = Date.now();
-        // ARMED, not spoken. ttsNode puts it at the front of the reply that is still being written.
+        const filler = agent.fillerLedger.offer();
+        if (!filler) return; // ceiling reached or still inside the cooldown
+        // ARMED, not spoken. ttsNode puts it at the front of the reply that is still being written
+        // — and drops it if that reply turns out to have no words of its own.
         agent.pendingFiller = filler;
         console.log(
-          `thinking_filler ${JSON.stringify({ filler, n: fillerCount, max: MAX_FILLERS_PER_CALL, armed: true })}`,
+          `thinking_filler ${JSON.stringify({
+            filler,
+            n: agent.fillerLedger.used.length,
+            max: MAX_FILLERS_PER_CALL,
+            armed: true,
+          })}`,
         );
       }, env.VOICE_THINKING_FILLER_MS);
     });

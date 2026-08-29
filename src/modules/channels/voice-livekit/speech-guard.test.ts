@@ -456,6 +456,55 @@ describe('withFiller — the hesitation goes FIRST, never last', () => {
   it('adds nothing at all when she did not need to think', async () => {
     expect(await drain(withFiller(null, chunks('כן, בשמחה.')))).toBe('כן, בשמחה.');
   });
+
+  // ── The 2026-08-29 call: a hesitation with no reply behind it ────────────────────────────────
+  //
+  //   "אהה."   @ 29.3s   →  5.4 SECONDS OF NOTHING  →  "אוקיי. כמה פניות נכנסות אליךָ ביום…"
+  //
+  // ttsNode runs on the first text chunk of an inference STEP, and a step whose only real output
+  // is a tool call carries no words at all. Prepending there produced one word, a hole, and then
+  // the real sentence — Koren: "it sounds like she got something like script to say."
+
+  it('DROPS the hesitation when the step carries no words of her own (the tool-call step)', async () => {
+    let used = false;
+    const out = await drain(
+      withFiller('אממ...', chunks('אוקיי. '), { leadIn: 'אוקיי. ', onUsed: () => (used = true) }),
+    );
+    expect(out).toBe('אוקיי. '); // the acknowledgement, and nothing orphaned behind it
+    expect(used).toBe(false); // ...so the call's hesitation budget is not spent either
+  });
+
+  it('drops it just the same when there is no acknowledgement and no reply', async () => {
+    let used = false;
+    expect(await drain(withFiller('אממ...', chunks(), { onUsed: () => (used = true) }))).toBe('');
+    expect(used).toBe(false);
+  });
+
+  it('lets the acknowledgement out FIRST and unheld, then hesitates before her real words', async () => {
+    // Order is the entire feature: holding the acknowledgement to inspect what follows would give
+    // back the ~1s that instant-ack exists to win (dropAckEcho learned this the hard way).
+    const out: string[] = [];
+    for await (const chunk of withFiller('אממ...', chunks('אוקיי. ', 'כמה פניות ', 'נכנסות אליך?'), {
+      leadIn: 'אוקיי. ',
+    })) {
+      out.push(chunk);
+    }
+    expect(out[0]).toBe('אוקיי. ');
+    expect(out.join('')).toBe('אוקיי. אממ... כמה פניות נכנסות אליך?');
+  });
+
+  it('reports through onUsed only when the word actually reached the TTS', async () => {
+    let used = 0;
+    await drain(withFiller('אממ...', chunks('כן, בשמחה.'), { onUsed: () => (used += 1) }));
+    expect(used).toBe(1);
+  });
+
+  it('still declines to double a word the opener repeats — and does not spend the budget', async () => {
+    let used = false;
+    const out = await drain(withFiller('רגע...', chunks('רגע, בודקת.'), { onUsed: () => (used = true) }));
+    expect(out).toBe('רגע, בודקת.');
+    expect(used).toBe(false);
+  });
 });
 
 describe('notifyIfSilent — deliberate silence must be detectable', () => {
