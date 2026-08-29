@@ -15,10 +15,16 @@
   --slate:#5B667E;
   --mist:#D9E0EA;
   --mist-strong:#C3CDDB;
+  /* 3:1 against white — the WCAG minimum for a control border that carries meaning. */
+  --mist-control:#767F8D;
   --indigo:#2F35C7;
   --indigo-hover:#252AB3;
   --indigo-soft:#EAEAFB;
   --amber:#D9861B;
+  /* Text-safe amber. #D9861B is 2.85:1 on white — fails WCAG AA (needs 4.5:1). Orange reads
+     bright to the eye because green carries 71% of perceived luminance, so the decorative amber
+     cannot double as a text colour. --amber is kept for dots and glows; text uses this. */
+  --amber-text:#A65F00;
   --amber-glow:#F2B24E;
   --amber-soft:#FCF0DC;
   --night:#0A0F20;
@@ -64,7 +70,7 @@ p{margin:0}
 .eyebrow::before{content:""; width:26px; height:2px; background:var(--indigo); border-radius:2px}
 
 /* The house rule: anything the agent itself produces is mono + amber. */
-.ai{font-family:var(--mono); color:var(--amber); font-weight:500}
+.ai{font-family:var(--mono); color:var(--amber-text); font-weight:500}
 
 /* Numbers and Latin data stay LTR even inside an RTL sentence. */
 .num{unicode-bidi:isolate; direction:ltr; font-variant-numeric:tabular-nums}
@@ -214,7 +220,7 @@ p{margin:0}
   width:38px; height:38px; border-radius:11px; background:var(--indigo-soft); color:var(--indigo);
   display:grid; place-items:center; font-family:var(--mono); font-size:15px; font-weight:700; margin-block-end:18px;
 }
-.card--ai .card__ico{background:var(--amber-soft); color:var(--amber)}
+.card--ai .card__ico{background:var(--amber-soft); color:var(--amber-text)}
 .card h3{margin-block-end:9px}
 .card p{font-size:15px; color:var(--slate); line-height:1.55}
 
@@ -379,3 +385,10 @@ footer{border-block-start:1px solid var(--mist); padding-block:64px 40px; margin
   .rv,.line,.extract{opacity:1 !important; transform:none !important}
   html{scroll-behavior:auto}
 }
+
+/* Skip link — WCAG 2.4.1 (Bypass Blocks). Off-screen until it takes keyboard focus. */
+.skip{position:absolute; inset-inline-start:-9999px; top:0; z-index:200; background:var(--indigo);
+      color:#fff; padding:12px 18px; border-radius:0 0 10px 10px; font-weight:600; text-decoration:none}
+.skip:focus{inset-inline-start:24px}
+/* Form controls need a 3:1 border to be perceivable, not just pretty. */
+.field input,.field select,.field textarea{border-color:var(--mist-control)}

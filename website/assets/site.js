@@ -72,3 +72,37 @@
       });
   });
 })();
+
+/* TABS: ARROW-KEY NAVIGATION.
+   A role="tablist" that only answers to clicks is a keyboard trap in the eyes of the standard:
+   the ARIA role promises arrow-key behaviour, so announcing the role without implementing it is
+   worse than using plain buttons. Roving tabindex: exactly one tab is in the tab order. */
+(function(){
+  var lists = document.querySelectorAll('[role="tablist"]');
+  Array.prototype.forEach.call(lists, function(list){
+    var tabs = Array.prototype.slice.call(list.querySelectorAll('[role="tab"]'));
+    if (!tabs.length) return;
+    function sync(){
+      tabs.forEach(function(t){ t.tabIndex = t.getAttribute('aria-selected') === 'true' ? 0 : -1; });
+    }
+    sync();
+    tabs.forEach(function(t){ t.addEventListener('click', function(){ setTimeout(sync, 0); }); });
+    list.addEventListener('keydown', function(e){
+      var i = tabs.indexOf(document.activeElement);
+      if (i < 0) return;
+      /* RTL: the standard maps ArrowRight/Left to visual direction, so flip them in Hebrew. */
+      var rtl = document.documentElement.dir === 'rtl';
+      var next = null;
+      if (e.key === 'ArrowRight') next = rtl ? i - 1 : i + 1;
+      else if (e.key === 'ArrowLeft') next = rtl ? i + 1 : i - 1;
+      else if (e.key === 'Home') next = 0;
+      else if (e.key === 'End') next = tabs.length - 1;
+      else return;
+      e.preventDefault();
+      next = (next + tabs.length) % tabs.length;
+      tabs[next].focus();
+      tabs[next].click();
+      sync();
+    });
+  });
+})();

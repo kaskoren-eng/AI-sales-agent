@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accessibility Statement · הצהרת נגישות — ClickScales</title>
+<meta name="description" content="ClickScales accessibility statement — Israeli Standard 5568 Level AA. הצהרת הנגישות של ClickScales — ת&quot;י 5568 רמה AA, פרטי רכז הנגישות ודרכי פנייה.">
+<style>
+  :root{
+    --bg:#EDF0F6; --surface:#FFFFFF; --ink:#171B26; --muted:#5A6275;
+    --accent:#2563EB; --line:#D8DDE8; --mono:"JetBrains Mono",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  /* Skip link — visible only on keyboard focus. WCAG 2.4.1 (Bypass Blocks). */
+  .skip{position:absolute;inset-inline-start:-9999px;top:0;z-index:100;background:var(--accent);color:#fff;
+        padding:12px 18px;border-radius:0 0 10px 10px;font-weight:600;text-decoration:none}
+  .skip:focus{inset-inline-start:16px}
+  :focus-visible{outline:3px solid var(--accent);outline-offset:3px;border-radius:4px}
+  .brand{display:flex;align-items:center;gap:14px;max-width:820px;margin:0 auto 20px;text-decoration:none}
+  .brand svg{width:44px;height:44px;flex:none}
+  .brand .word{font-size:1.45rem;font-weight:700;letter-spacing:-.02em;color:var(--ink)}
+  .brand .word span{color:#3B82F6;font-weight:500}
+  .brand .tag{display:block;font-family:var(--mono);font-size:.62rem;letter-spacing:.22em;color:var(--muted);text-transform:uppercase;margin-top:2px}
+  body{background:var(--bg);color:var(--ink);font:16px/1.65 "Instrument Sans","Segoe UI",Arial,"Rubik","Assistant",sans-serif;padding:48px 20px}
+  main{max-width:820px;margin:0 auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:56px clamp(24px,6vw,64px)}
+  h1{font-size:2rem;line-height:1.2;margin-bottom:4px}
+  .meta{font-family:var(--mono);font-size:.8rem;color:var(--muted);margin-bottom:24px}
+  .langnav{font-size:.9rem;margin-bottom:40px}
+  .langnav a{color:var(--accent);text-decoration:none;margin-inline-end:16px}
+  h2{font-size:1.25rem;margin:40px 0 12px;padding-top:24px;border-top:1px solid var(--line)}
+  h3{font-size:1.05rem;margin:24px 0 8px}
+  p,li{color:#2A3040;margin-bottom:12px}
+  ul{padding-inline-start:22px;margin-bottom:12px}
+  li{margin-bottom:6px}
+  a{color:var(--accent)}
+  .callout{background:#F3F5FB;border:1px solid var(--line);border-inline-start:3px solid var(--accent);border-radius:8px;padding:16px 20px;margin:16px 0}
+  .callout dl{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;margin:0}
+  .callout dt{font-weight:600;color:var(--ink)}
+  .callout dd{margin:0;color:#2A3040}
+  @media (max-width:520px){ .callout dl{grid-template-columns:1fr;gap:2px 0} .callout dd{margin-bottom:10px} }
+  .lang-divider{margin:64px 0 0;border-top:3px solid var(--accent);padding-top:40px}
+  footer{max-width:820px;margin:24px auto 0;text-align:center;color:var(--muted);font-size:.85rem}
+  footer a{color:var(--muted)}
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to main content · דילוג לתוכן</a>
+
+<a class="brand" href="https://clickscales.com" aria-label="ClickScales home">
+  <svg viewBox="0 0 120 120" role="img" aria-hidden="true">
+    <circle cx="60" cy="60" r="47" fill="none" stroke="#2563EB" stroke-width="9"/>
+    <g fill="none" stroke-linecap="round">
+      <path d="M38 54v12" stroke="#2E5BE0" stroke-width="9"/>
+      <path d="M49 45v30" stroke="#2F6FE8" stroke-width="9"/>
+      <path d="M60 36v48" stroke="#3B82F6" stroke-width="9"/>
+      <path d="M71 45v30" stroke="#4B9BEF" stroke-width="9"/>
+      <path d="M82 54v12" stroke="#5BB8F0" stroke-width="9"/>
+    </g>
+  </svg>
+  <span><span class="word">Click<span>Scales</span></span><span class="tag">AI Voice Agents</span></span>
+</a>
+
+<main id="main">
+
+<!-- ============ ENGLISH ============ -->
+<section id="en" lang="en" dir="ltr">
+  <h1>Accessibility Statement</h1>
+  <p class="meta">ClickScales · clickscales.com · Last updated: August 29, 2026</p>
+  <nav class="langnav" aria-label="Language"><a href="#en">English</a><a href="#he">עברית</a></nav>
+
+  <p>ClickScales treats accessibility as part of the service, not as an add-on. We work to ensure that every person — including people with disabilities — can use this website independently, comfortably and on equal terms.</p>
+
+  <h2>1. The standard we follow</h2>
+  <p>This website has been made accessible in accordance with <strong>Israeli Standard 5568</strong> at <strong>Level AA</strong>, which is based on the <strong>WCAG 2.0</strong> guidelines of the World Wide Web Consortium (W3C), and in accordance with the <strong>Equal Rights for Persons with Disabilities Regulations (Service Accessibility Adjustments), 2013</strong>.</p>
+
+  <h2>2. Accessibility features on this site</h2>
+  <ul>
+    <li>Full keyboard navigation, with a clear and visible focus indicator on every interactive element.</li>
+    <li>A "skip to main content" link at the top of each page, so keyboard and screen-reader users can bypass repeated navigation.</li>
+    <li>Semantic HTML structure and ARIA attributes for screen-reader support.</li>
+    <li>Colour contrast that meets the standard for body text, links and functional elements.</li>
+    <li>Full support for Hebrew and right-to-left reading direction.</li>
+    <li>Layout and readability preserved when text is enlarged up to 200%.</li>
+    <li>Responsive layout for mobile and tablet screens.</li>
+    <li>Forms with programmatically associated labels and error messages written in plain words.</li>
+  </ul>
+
+  <h2>3. Known limitations</h2>
+  <p>We review this site regularly, but some pages or components may not yet be fully accessible. Content supplied by third parties, and content on external sites we link to, is not under our control and is not necessarily accessible. If you encounter something that is not accessible, please tell us — we treat these reports as a priority.</p>
+
+  <h2>4. Accessibility of our service</h2>
+  <p>Beyond the website, our AI sales agent communicates by phone, WhatsApp and email. A person who prefers not to speak with an automated agent, or who needs an alternative channel, may contact the accessibility coordinator below and we will arrange a suitable alternative.</p>
+
+  <h2>5. Accessibility coordinator</h2>
+  <p>For any request, question or report regarding accessibility of this website or our service, please contact:</p>
+  <div class="callout">
+    <dl>
+      <dt>Name</dt><dd>Koren — Accessibility Coordinator, ClickScales</dd>
+      <dt>Phone</dt><dd><a href="tel:+972509788845">+972 50-978-8845</a></dd>
+      <dt>Email</dt><dd><a href="mailto:koren@clickscales.com">koren@clickscales.com</a></dd>
+    </dl>
+  </div>
+  <p>To help us resolve an issue faster, please include a short description of the problem, the address of the page where it occurred, and the browser and assistive technology you were using.</p>
+</section>
+
+<!-- ============ עברית ============ -->
+<section id="he" lang="he" dir="rtl" class="lang-divider">
+  <h1>הצהרת נגישות</h1>
+  <p class="meta">ClickScales · clickscales.com · עודכן לאחרונה: 29.08.2026</p>
+  <nav class="langnav" aria-label="שפה"><a href="#en">English</a><a href="#he">עברית</a></nav>
+
+  <p>ClickScales רואה בנגישות חלק מהשירות, ולא תוספת לו. אנו פועלים כדי שכל אדם — לרבות אנשים עם מוגבלות — יוכל להשתמש באתר באופן עצמאי, נוח ושוויוני.</p>
+
+  <h2>1. התקן שאנו פועלים לפיו</h2>
+  <p>האתר הונגש בהתאם ל<strong>תקן הישראלי ת"י 5568</strong> ברמת התאמה <strong>AA</strong>, המבוסס על הנחיות <strong>WCAG 2.0</strong> של ארגון <span lang="en">W3C</span>, ובהתאם ל<strong>תקנות שוויון זכויות לאנשים עם מוגבלות (התאמות נגישות לשירות), התשע"ג-2013</strong>.</p>
+
+  <h2>2. התאמות הנגישות באתר</h2>
+  <ul>
+    <li>ניווט מלא באמצעות מקלדת, עם סימון ברור ובולט של מוקד ההקלדה בכל רכיב פעיל.</li>
+    <li>קישור "דילוג לתוכן העיקרי" בראש כל עמוד, המאפשר לדלג על ניווט חוזר.</li>
+    <li>מבנה <span lang="en">HTML</span> סמנטי ותגיות <span lang="en">ARIA</span> לתמיכה בקוראי מסך.</li>
+    <li>ניגודיות צבעים תקנית בטקסט, בקישורים וברכיבים הפונקציונליים.</li>
+    <li>תמיכה מלאה בעברית ובכיווניות מימין לשמאל.</li>
+    <li>שמירה על מבנה וקריאוּת בהגדלת טקסט עד 200%.</li>
+    <li>התאמה למסכי מכשירים ניידים וטאבלטים.</li>
+    <li>טפסים עם תוויות מקושרות והודעות שגיאה מנוסחות במילים ברורות.</li>
+  </ul>
+
+  <h2>3. מגבלות ידועות</h2>
+  <p>אנו בודקים את האתר באופן שוטף, אך ייתכנו עמודים או רכיבים שטרם הונגשו במלואם. תוכן המסופק על ידי צדדים שלישיים, וכן תוכן באתרים חיצוניים שאליהם אנו מקשרים, אינו בשליטתנו ואינו בהכרח נגיש. אם נתקלתם ברכיב שאינו נגיש — נשמח שתעדכנו אותנו, ואנו מתייחסים לפניות אלה בעדיפות.</p>
+
+  <h2>4. נגישות השירות</h2>
+  <p>מעבר לאתר, סוכן המכירות שלנו מתקשר בטלפון, בוואטסאפ ובדוא"ל. אדם המעדיף שלא לשוחח עם סוכן אוטומטי, או הזקוק לערוץ חלופי, מוזמן לפנות לרכז הנגישות שלהלן ונדאג להסדר חלופי מתאים.</p>
+
+  <h2>5. רכז הנגישות</h2>
+  <p>לכל פנייה, בקשה או דיווח בנושא נגישות האתר או השירות, ניתן לפנות אל:</p>
+  <div class="callout">
+    <dl>
+      <dt>שם</dt><dd>קורן — רכז הנגישות של ClickScales</dd>
+      <dt>טלפון</dt><dd><a href="tel:+972509788845">050-978-8845</a></dd>
+      <dt>דוא"ל</dt><dd><a href="mailto:koren@clickscales.com">koren@clickscales.com</a></dd>
+    </dl>
+  </div>
+  <p>כדי לקצר את זמן הטיפול, נשמח לקבל תיאור קצר של הבעיה, כתובת העמוד שבו הופיעה, סוג הדפדפן והטכנולוגיה המסייעת שבה השתמשתם.</p>
+</section>
+
+</main>
+
+<footer><a href="/">clickscales.com</a> · <a href='/terms'>Terms of Service · תקנון</a> · <a href='/privacy'>Privacy Policy · מדיניות פרטיות</a> · <a href='/accessibility'>Accessibility · נגישות</a></footer>
+</body>
+</html>
