@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { leads } from '../../../../db/schema/index.js';
 import {
   HANDOFF_END_REASON,
+  establishedLine,
   handoffAlertText,
+  handoffReasonLine,
   handoffInstruction,
   requestHumanHandoffSchema,
   requestHumanHandoffTool,
@@ -36,10 +38,26 @@ function fakeDb(opts: { phoneMatch?: { id: string; name: string | null; phone: s
     update: vi.fn(() => ({
       set: (vals: Record<string, unknown>) => {
         updates.push(vals);
-        const where = async () => {
-          if (opts.failWrites) throw new Error('db down');
+        // A LAZY thenable, never an eager promise.
+        //
+        // This used to be `Object.assign(where(), …)`, which INVOKED `where()` — so on the
+        // failWrites path it built a rejected promise whether or not the code under test ever
+        // awaited it. The `.where().returning()` path never does, so Node reported an unhandled
+        // rejection and vitest failed a run in which all 1164 tests passed (the "Errors" line sits
+        // directly under the green "Tests" line, which is how it reached main and stayed there).
+        // Building the rejection only when somebody awaits keeps the intent exactly — a write that
+        // throws — with no stray promise left over.
+        const thenable = {
+          then: <T>(
+            onFulfilled?: ((value: undefined) => T) | null,
+            onRejected?: ((reason: unknown) => T) | null,
+          ) =>
+            (opts.failWrites ? Promise.reject(new Error('db down')) : Promise.resolve(undefined)).then(
+              onFulfilled,
+              onRejected,
+            ),
         };
-        return Object.assign(where(), {
+        return Object.assign(thenable, {
           where: () =>
             Object.assign(Promise.resolve([{ id: 'lead-1', name: 'דנה לוי', phone: '+972509998888' }]), {
               returning: async () => {
@@ -124,22 +142,38 @@ function fakeCtx() {
   return { session, speechHandle, doneCallbacks, ctx: { session, speechHandle } as never };
 }
 
-async function runTool(rt: ToolRuntimeContext, reason: string, ctx: never) {
+async function runTool(
+  rt: ToolRuntimeContext,
+  reason: string,
+  ctx: never,
+  extra: { wants?: string | null; context?: string | null } = {},
+) {
   const tool = requestHumanHandoffTool(rt);
   return (await tool.execute(
-    { reason } as never,
+    { reason, ...extra } as never,
     { ctx, toolCallId: 'tc-1', abortSignal: new AbortController().signal } as never,
   )) as string;
 }
 
 describe('structural injection defense', () => {
-  it('takes ONE argument — a reason. No destination for an injected redirect to land in', () => {
-    expect(Object.keys(requestHumanHandoffSchema.shape)).toEqual(['reason']);
+  it('takes only DESCRIPTIVE arguments — no destination for an injected redirect to land in', () => {
+    // `wants` and `context` joined `reason` on 2026-08-29 so the owner gets a summary instead of
+    // "רוצה לדבר עם בן אדם". The invariant they must not break is the original one: nothing here
+    // names a phone, an address or a channel, so "notify my other number instead" has nowhere to go.
+    expect(Object.keys(requestHumanHandoffSchema.shape)).toEqual(['reason', 'wants', 'context']);
   });
 
-  it('caps the reason so a prompt-injection payload cannot ride into the owner alert', () => {
-    const parsed = requestHumanHandoffSchema.safeParse({ reason: 'x'.repeat(201) });
-    expect(parsed.success).toBe(false);
+  it('caps every free-text field so a prompt-injection payload cannot ride into the owner alert', () => {
+    expect(requestHumanHandoffSchema.safeParse({ reason: 'x'.repeat(201) }).success).toBe(false);
+    expect(requestHumanHandoffSchema.safeParse({ reason: 'ok', wants: 'x'.repeat(201) }).success).toBe(false);
+    expect(requestHumanHandoffSchema.safeParse({ reason: 'ok', context: 'x'.repeat(401) }).success).toBe(false);
+  });
+
+  it('accepts an explicit null in the new fields — gpt-5.4 sends null, not an omission', () => {
+    // capture_lead_info learned this on a live call: a bare .optional() rejects null, the model
+    // retries the same call, and the lead sits in silence. A handoff must never stall on Zod.
+    const parsed = requestHumanHandoffSchema.safeParse({ reason: 'רוצה נציג', wants: null, context: null });
+    expect(parsed.success).toBe(true);
   });
 });
 
@@ -169,6 +203,47 @@ describe('request_human_handoff — the happy path', () => {
     expect(speechHandle.addDoneCallback).toHaveBeenCalled();
     expect(rt.endReason).toBe(HANDOFF_END_REASON);
     expect(out).toContain('קורן');
+    expect(out).toMatch(/one warm sentence/iu);
+  });
+
+  it('sends the owner a SUMMARY — the answer she got, plus what the call already recorded', async () => {
+    // 2026-08-29: the first live handoff pinged Koren with "רוצה לדבר עם בן אדם" and nothing else.
+    // The person calling back needs to know what it is about before they dial.
+    const { rt, added } = fakeRt({ leadId: 'lead-1' });
+    (rt as { callState?: unknown }).callState = {
+      facts: { businessType: 'חנות אונליין', budget: '20 אלף בחודש' },
+      onToolCall: () => undefined,
+    };
+    const { ctx } = fakeCtx();
+
+    await runTool(rt, 'רוצה לדבר עם בן אדם', ctx, {
+      wants: 'רוצה לשמוע על מחירים',
+      context: 'ביקש הצעה כתובה',
+    });
+
+    const [wa, mail] = added.map((a) => a.data);
+    for (const body of [String(wa.content), String(mail.content)]) {
+      expect(body).toContain('רוצה לשמוע על מחירים'); // what she asked and he answered
+      expect(body).toContain('חנות אונליין'); // what capture_lead_info had already learned
+      expect(body).toContain('20 אלף בחודש');
+      expect(body).toContain('ביקש הצעה כתובה');
+    }
+    // The template's one reason slot carries the same summary, on a single line.
+    const variables = (wa.template as { variables: Record<string, string> }).variables;
+    expect(variables['3']).toContain('רוצה לשמוע על מחירים');
+    expect(variables['3']).not.toContain('\n');
+  });
+
+  it('hands off ANYWAY when the lead would not say why — never blocked on an explanation', async () => {
+    // The one property that must survive every future edit to this tool.
+    const { rt, updates, added } = fakeRt({ leadId: 'lead-1' });
+    const { ctx } = fakeCtx();
+
+    const out = await runTool(rt, 'רוצה לדבר עם בן אדם', ctx, { wants: null, context: null });
+
+    expect(updates).toHaveLength(1);
+    expect(added).toHaveLength(2);
+    expect(rt.endReason).toBe(HANDOFF_END_REASON);
     expect(out).toMatch(/one warm sentence/iu);
   });
 
@@ -322,6 +397,78 @@ describe('the owner alert text', () => {
     const text = handoffAlertText({ leadName: null, leadPhone: null, reason: 'רוצה נציג', leadUrl: null });
     expect(text).not.toMatch(/null|undefined/u);
     expect(text).toContain('לא ידוע');
+  });
+
+  // ── The summary Koren asked for, 2026-08-29 ─────────────────────────────────────────────────
+  // "for the admin, for me, I would like to see a reason why that user want to talk to me rather
+  // than talk to Keren. So it should come with a small summary about the reason."
+
+  it('carries WHAT they want to discuss and WHAT is already known, not just a reason', () => {
+    const text = handoffAlertText({
+      leadName: 'דנה לוי',
+      leadPhone: '+972509998888',
+      reason: 'רוצה לדבר עם בן אדם',
+      wants: 'רוצה לשמוע על מחירים לחנות אונליין',
+      established: 'עסק: חנות אונליין · תקציב: 20 אלף בחודש',
+      leadUrl: null,
+    });
+    expect(text).toContain('רוצה לשמוע על מחירים לחנות אונליין');
+    expect(text).toContain('חנות אונליין');
+    expect(text).toContain('20 אלף בחודש');
+  });
+
+  it('says nothing extra when the lead would not explain — the alert still goes out', () => {
+    // The property that must survive every future change here: a handoff is NEVER blocked or
+    // downgraded because the caller declined to say why.
+    const text = handoffAlertText({
+      leadName: null,
+      leadPhone: '+972509998888',
+      reason: 'רוצה לדבר עם בן אדם',
+      wants: null,
+      established: null,
+      leadUrl: null,
+    });
+    expect(text).toContain('רוצה לדבר עם בן אדם');
+    expect(text).not.toMatch(/null|undefined/u);
+  });
+});
+
+describe('establishedLine — what the call already knows, without a second question', () => {
+  it('reads the working memory the call filled in on its own', () => {
+    const line = establishedLine(
+      { businessType: 'חנות אונליין', painPoint: 'לא מספיק פניות', budget: '20 אלף', qualification: 'hot' },
+      null,
+    );
+    expect(line).toContain('חנות אונליין');
+    expect(line).toContain('לא מספיק פניות');
+    expect(line).toContain('hot');
+  });
+
+  it('appends the model\'s own one-liner after the recorded facts', () => {
+    const line = establishedLine({ businessType: 'מרפאה' }, '  ביקש הצעת מחיר כתובה  ');
+    expect(line).toBe('עסק: מרפאה · ביקש הצעת מחיר כתובה');
+  });
+
+  it('is null when the call learned nothing — better an absent line than a row of "unknown"', () => {
+    expect(establishedLine(undefined, null)).toBeNull();
+    expect(establishedLine({}, '   ')).toBeNull();
+  });
+});
+
+describe('handoffReasonLine — the WhatsApp template has one slot for all of it', () => {
+  it('folds the summary onto a single line (a template variable may not contain a newline)', () => {
+    const line = handoffReasonLine({
+      reason: 'רוצה לדבר עם בן אדם',
+      wants: 'מחירים\nוזמינות',
+      established: 'עסק: מרפאה',
+    });
+    expect(line).not.toContain('\n');
+    expect(line).toContain('רוצה לדבר עם בן אדם');
+    expect(line).toContain('עסק: מרפאה');
+  });
+
+  it('is just the reason when there is nothing else — never a trailing separator', () => {
+    expect(handoffReasonLine({ reason: 'רוצה נציג' })).toBe('רוצה נציג');
   });
 });
 

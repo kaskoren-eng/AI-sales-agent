@@ -656,23 +656,71 @@ export function guardSpeech(
 }
 
 /**
- * Puts the hesitation at the very FRONT of the reply, then gets out of the way.
+ * Puts the hesitation immediately in FRONT OF HER FIRST REAL WORDS — and drops it when there are none.
  *
  * This exists because the first version SPOKE the filler with session.say(), and say() QUEUES —
  * so it played after whatever she was already saying, landing at the END of her turn. Koren:
  * "היא עושה קולות של חשיבה אחרי שהיא מסיימת לדבר, זה לא תקין." A person who hesitates after
  * finishing their sentence is not thinking; it is a twitch.
  *
- * Prepending makes correct placement structural rather than a matter of timing luck: the hesitation
- * is the first sound of her next breath, and it cannot be anywhere else.
+ * THE 2026-08-29 CALL ADDED THE SECOND HALF OF THE RULE: a hesitation is only honest if the answer
+ * is right behind it. `ttsNode` runs on the first text chunk of an inference STEP, and a step whose
+ * only real output is a tool call carries no reply at all — so prepending there produced a word
+ * followed by five seconds of silence, which is worse than no filler. Koren heard exactly that and
+ * called it a script.
+ *
+ * So the filler is now held until the model's first real words are IN HAND, and if they never come
+ * it is never spoken (`onUsed` is not called, and the call's budget is not spent). The wait costs
+ * nothing that matters: `leadIn` — the acknowledgement `llmNode` injects — is passed straight
+ * through untouched, so the <1s first-audio path is exactly as it was.
  */
 export async function* withFiller(
   filler: string | null,
   text: AsyncIterable<string>,
+  opts: {
+    /** The acknowledgement already on its way to the TTS ahead of the model's words, if any.
+     * Yielded immediately, never held, and never counted as the model's first word. */
+    leadIn?: string | null;
+    /** Called only when the hesitation actually reaches the TTS. */
+    onUsed?: () => void;
+  } = {},
 ): AsyncIterable<string> {
   if (!filler) {
     yield* text;
     return;
+  }
+
+  const fillerWord = normalizeFillerWord(filler);
+  const iterator = text[Symbol.asyncIterator]();
+  const wordBoundary = /[\s.,!?…׃]/u;
+  let buffer = '';
+  let streamDone = false;
+
+  // THE ACKNOWLEDGEMENT GOES OUT UNTOUCHED, FIRST, ALWAYS. Holding it even briefly would give back
+  // the ~1s that instant-ack exists to win (see dropAckEcho — the same lesson, learned the hard way
+  // on the 2026-08-17 call). Whatever the chunk carries BEYOND the acknowledgement is model text and
+  // seeds the buffer below.
+  const leadIn = opts.leadIn ?? null;
+  if (leadIn) {
+    const compact = (s: string) => s.replace(/\s+/gu, '');
+    const leadInKey = compact(leadIn);
+    const first = await iterator.next();
+    if (first.done) return; // nothing was said at all — nothing to hesitate in front of
+    const chunk = String(first.value);
+    if (leadInKey.length > 0 && compact(chunk).startsWith(leadInKey)) {
+      yield chunk;
+      let consumed = 0;
+      let cut = 0;
+      for (const ch of chunk) {
+        if (consumed >= leadInKey.length) break;
+        if (!/\s/u.test(ch)) consumed += 1;
+        cut += ch.length;
+      }
+      buffer = chunk.slice(cut).replace(/^\s+/u, '');
+    } else {
+      // Not our injection — it is already the model talking, so treat it as the first word.
+      buffer = chunk;
+    }
   }
 
   // COLLISION GUARD. The filler ends in "..." — a sentence terminator — so guardStream flushes it as
@@ -681,26 +729,28 @@ export async function* withFiller(
   // Koren heard exactly this. So peek the reply's first word before committing the filler, and drop
   // the filler when the opener is about to repeat it. We buffer only up to the first word boundary —
   // a few characters — so the fast-filler benefit is essentially unchanged.
-  const fillerWord = normalizeFillerWord(filler);
-  const iterator = text[Symbol.asyncIterator]();
-  const wordBoundary = /[\s.,!?…׃]/u;
-  let buffer = '';
-  let streamDone = false;
-  while (buffer.length <= 40) {
+  while (buffer.length <= 40 && !wordBoundary.test(buffer)) {
     const next = await iterator.next();
     if (next.done) {
       streamDone = true;
       break;
     }
     buffer += next.value;
-    if (wordBoundary.test(buffer)) break;
   }
+
+  // NO REAL WORDS = NO HESITATION. This is the tool-call step: the acknowledgement (if any) has
+  // been spoken, the model wrote nothing else, and the next sentence is one tool round-trip and a
+  // whole new inference away. A hesitation here is the orphaned word from the 2026-08-29 call.
+  if (buffer.length === 0) return;
 
   const firstWord = buffer.split(wordBoundary)[0] ?? '';
   const collides = firstWord.length > 0 && normalizeFillerWord(firstWord) === fillerWord;
-  if (!collides) yield `${filler} `;
+  if (!collides) {
+    yield `${filler} `;
+    opts.onUsed?.();
+  }
 
-  if (buffer) yield buffer;
+  yield buffer;
   if (!streamDone) {
     for (;;) {
       const next = await iterator.next();

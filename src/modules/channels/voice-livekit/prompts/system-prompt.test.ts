@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TOOL_NAMES } from '../tools/index.js';
+import { ACKNOWLEDGEMENTS_HE } from './acknowledgements.he.js';
 import { GREETING_HE, SPOKEN_REGISTER_SLANG, SYSTEM_PROMPT_HE, buildSystemPrompt } from './system-prompt.he.js';
 
 const TOOLS_PROMPT = buildSystemPrompt({ toolsEnabled: true });
@@ -284,6 +285,18 @@ describe('Keren Phase 4 — tools-mode prompt', () => {
     expect(acked).not.toMatch(/2 to 4 words/u); // …and the old instruction must be GONE, not merely contradicted
   });
 
+  it('quotes the acknowledgements we ACTUALLY speak — the list is not decoration', () => {
+    // It tells her which words are already taken. "כן." was dropped from the bank on 2026-08-29
+    // (it answered "מה המצב, קרן?" with "yes"), and a prompt still promising it would be lying
+    // about what the caller just heard.
+    const acked = buildSystemPrompt({ toolsEnabled: true, instantAck: true });
+    const quoted = /A brief acknowledgment \(([^)]*)\)/u.exec(acked)?.[1] ?? '';
+    for (const ack of ACKNOWLEDGEMENTS_HE) {
+      expect(quoted).toContain(ack);
+    }
+    expect(quoted).not.toContain('"כן."');
+  });
+
   // The seventh tool (2026-08-28). Sales objection #1 is "what if the customer wants a human?" —
   // before this the agent had no answer and improvised one. The escalation LADDER is the product
   // decision worth pinning: one honest attempt to help, then hand off without arguing.
@@ -302,6 +315,28 @@ describe('Keren Phase 4 — tools-mode prompt', () => {
       // answered; refusing to ever escalate is how the agent argues with a person. Both are bugs.
       expect(TOOLS_PROMPT).toMatch(/Try this exactly ONCE/u);
       expect(TOOLS_PROMPT).toMatch(/do not argue and do not try to convince again/u);
+    });
+
+    it('asks ONE question about what they want to discuss — then hands off either way', () => {
+      // Koren, 2026-08-29: "she needs to ask the user why and what he needs and what he wants to
+      // say or talk with the human." The trap this pins shut is the obvious over-correction — an
+      // interrogation, or worse, a handoff that waits for an answer. She asks once. The tool runs
+      // regardless.
+      expect(TOOLS_PROMPT).toMatch(/Ask ONE short question/u);
+      expect(TOOLS_PROMPT).toMatch(/על מה תרצה לדבר איתו/u);
+      expect(TOOLS_PROMPT).toMatch(/ONE question, and the handoff happens either way/u);
+      expect(TOOLS_PROMPT).toMatch(/call the tool IMMEDIATELY/u);
+      expect(TOOLS_PROMPT).toMatch(/Never ask twice/u);
+      expect(TOOLS_PROMPT).toMatch(/A person who wants a human gets a human/u);
+    });
+
+    it('tells her to fill the summary from the WHOLE call, not the last sentence', () => {
+      // The owner alert is only worth reading if it says who called, what they want, and what is
+      // already established — see request-human-handoff.tool.ts.
+      for (const field of ['`reason`', '`wants`', '`context`']) {
+        expect(TOOLS_PROMPT).toContain(field);
+      }
+      expect(TOOLS_PROMPT).toMatch(/does not start from zero/u);
     });
 
     it('never promises a live transfer — the human CALLS BACK', () => {
@@ -498,8 +533,43 @@ describe('Keren — spoken register (2026-08-27)', () => {
 
   it('one slang touch per reply MAX, varied — the same word every reply is the new robot', () => {
     expect(SYSTEM_PROMPT_HE).toMatch(/At most ONE slang touch per reply/u);
-    expect(SYSTEM_PROMPT_HE).toMatch(/if you used a word recently, pick another or none/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/if you used a word recently, pick another/u);
     expect(SYSTEM_PROMPT_HE).toMatch(/never copy these verbatim/u);
+  });
+
+  // ── 2026-08-29: the section was PRESENT and she still used none of it ────────────────────────
+  //
+  // VOICE_SPOKEN_REGISTER_ENABLED defaults on and is not overridden in the cloud, so the section
+  // was in the prompt for the whole 194-second call — and her Hebrew came out correct-but-formal,
+  // zero slang. Koren: "I didn't hear the saying any slang words." Round 5 (17/17) scored TTS
+  // samples, not live LLM turns, which is the gap. So this is prompt STRENGTH, not a switch.
+
+  it('makes the register a QUOTA, not a permission — "welcome" was read as "optional"', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/EXPECTED, not merely permitted/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/every second or third reply should carry one/u);
+  });
+
+  it('resolves the conflict with the Speech Rhythm rule that was silently suppressing it', () => {
+    // THE ACTUAL ROOT CAUSE. With VOICE_INSTANT_ACK on, the Speech Rhythm section forbids opening a
+    // reply with a reaction word — and every example the register used to give ("סבבה, אז נתקדם.")
+    // was exactly such an opener. The model was obeying the stronger, more emphatic prohibition and
+    // dropping the slang entirely. The section now says where the word goes instead.
+    const acked = buildSystemPrompt({ toolsEnabled: true, instantAck: true });
+    expect(acked).toMatch(/Never as the first word/u);
+    expect(acked).toMatch(/INSIDE the sentence/u);
+    // ...and with the ack OFF she writes her own short opener, which IS a good home for one. One
+    // static paragraph cannot be right in both configurations, so the placement follows the flag.
+    expect(SYSTEM_PROMPT_HE).not.toMatch(/Never as the first word/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/your short opening sentence is a natural home/u);
+    // No example may itself be an opener, or the conflict comes straight back.
+    const section = SYSTEM_PROMPT_HE.slice(SYSTEM_PROMPT_HE.indexOf('## Spoken Register'));
+    for (const word of SPOKEN_REGISTER_SLANG) {
+      expect(section).not.toContain(`"${word},`); // e.g. "סבבה, אז נתקדם."
+    }
+  });
+
+  it('gives her a concrete way to catch her own formality', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/formal email/u);
   });
 
   it('heavy street slang is banned BY NAME — Koren\'s explicit choice', () => {

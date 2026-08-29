@@ -23,8 +23,14 @@
  * CHOSEN NOT TO COLLIDE WITH HER OWN OPENERS. On real calls she begins replies with "בשמחה.",
  * "מעולה.", "בטח.", "הבנתי.", "נשמע טוב.", "שאלה טובה." — so none of those appear here, or the
  * caller would hear the same word twice in a row. `dropEchoedOpener` catches the rest.
+ *
+ * AND NONE OF THEM MAY READ AS AN ANSWER. "כן." was in this list until 2026-08-29, when Koren
+ * asked her "מה המצב, קרן?" and the call answered "כן." — a machine mishearing a greeting. Every
+ * other member is a receipt in any context: you can say "אוקיי." after a question and it still
+ * only means *I heard you*. "כן." means *yes*, and the caller cannot know we were not answering.
+ * The rule for anything added here: read it back after a QUESTION, not just after a fact.
  */
-export const ACKNOWLEDGEMENTS_HE = ['אוקיי.', 'כן.', 'אהה.', 'בסדר.'] as const;
+export const ACKNOWLEDGEMENTS_HE = ['אוקיי.', 'אהה.', 'בסדר.'] as const;
 
 /**
  * Picks an acknowledgement, never the same one twice running.

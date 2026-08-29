@@ -16,6 +16,20 @@ describe('acknowledgements', () => {
     }
   });
 
+  it('never contains a word that could be heard as an ANSWER', () => {
+    // 2026-08-29, live: Koren asked "מה המצב, קרן?" and the call replied "כן." — the acknowledgement
+    // landing on a QUESTION, where it stops being a receipt and becomes a wrong answer. A receipt
+    // has to survive being read back after a question, not only after a statement.
+    const answers = ['כן', 'לא', 'נכון', 'בטח', 'אולי'];
+    for (const ack of ACKNOWLEDGEMENTS_HE) {
+      expect(answers).not.toContain(ack.replace(/[.,!?…]/gu, ''));
+    }
+  });
+
+  it('keeps enough variety for the no-repeat rule to be reachable', () => {
+    expect(ACKNOWLEDGEMENTS_HE.length).toBeGreaterThanOrEqual(3);
+  });
+
   it('never repeats itself twice running', () => {
     // These fire on EVERY turn, so a repeat is far more audible than it was for thinking fillers.
     for (const previous of ACKNOWLEDGEMENTS_HE) {
