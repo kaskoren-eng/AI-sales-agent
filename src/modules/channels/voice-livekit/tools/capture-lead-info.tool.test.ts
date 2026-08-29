@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CallStateMachine } from '../call-state.js';
+import { FactMemory } from '../fact-memory.js';
 import type { ToolRuntimeContext } from './tool-context.js';
 import {
   captureLeadInfoSchema,
@@ -7,7 +8,7 @@ import {
   type CaptureLeadInfoArgs,
 } from './capture-lead-info.tool.js';
 
-function fakeRt(opts: { leadId?: string | null; phoneMatch?: string | null; insertFails?: boolean; callState?: CallStateMachine } = {}) {
+function fakeRt(opts: { leadId?: string | null; phoneMatch?: string | null; insertFails?: boolean; callState?: CallStateMachine; factMemory?: FactMemory } = {}) {
   const updates: Record<string, unknown>[] = [];
   const inserts: Record<string, unknown>[] = [];
   const db = {
@@ -41,6 +42,7 @@ function fakeRt(opts: { leadId?: string | null; phoneMatch?: string | null; inse
     bookingCompleted: false,
     endReason: null,
     callState: opts.callState,
+    factMemory: opts.factMemory,
   } as unknown as ToolRuntimeContext;
   return { rt, updates, inserts };
 }
@@ -145,5 +147,79 @@ describe('executeCaptureLeadInfo', () => {
     const { rt } = fakeRt({ leadId: 'lead-1' });
     const out = await executeCaptureLeadInfo(rt, args({ budget: '20K' }));
     expect(out).toContain('do not mention');
+  });
+});
+
+/**
+ * THE 2026-08-29 RENAME, at the tool boundary.
+ *
+ * The DB never accepted the rename — `upsertLead` coalesces and cannot blank a name. The MODEL
+ * did, because nothing told it otherwise, and it is the model that speaks. So the assertion that
+ * matters here is not "the row is unchanged" (it always was) but "the tool result CORRECTS the
+ * model", which is what reaches her before she says the wrong name out loud.
+ */
+describe('capture_lead_info — an established identity is harder to overwrite than to set', () => {
+  it('refuses a rename from a noisy turn, keeps the DB clean, and says so in the tool result', async () => {
+    const fm = new FactMemory();
+    const { rt, updates } = fakeRt({ leadId: 'lead-1', factMemory: fm });
+    await executeCaptureLeadInfo(rt, args({ name: 'קורן' }));
+    const result = await executeCaptureLeadInfo(rt, args({ name: 'טל' }));
+
+    expect(result).toContain('did NOT change');
+    expect(result).toContain('קורן');
+    expect(result).toContain('is_correction=true');
+    expect(fm.get('name')).toBe('קורן');
+    // The refused name never reached the write at all — not merely coalesced away by SQL.
+    expect(updates.at(-1)).not.toHaveProperty('name');
+  });
+
+  it('an explicit correction goes through and returns the plain success message', async () => {
+    const fm = new FactMemory();
+    const { rt } = fakeRt({ leadId: 'lead-1', factMemory: fm });
+    await executeCaptureLeadInfo(rt, args({ name: 'קורן' }));
+    const result = await executeCaptureLeadInfo(rt, args({ name: 'טל', is_correction: true }));
+    expect(result).toContain('Saved.');
+    expect(result).not.toContain('did NOT change');
+    expect(fm.get('name')).toBe('טל');
+  });
+
+  it('a refused name never reaches the working memory the handoff alert is built from', async () => {
+    const fm = new FactMemory();
+    const cs = new CallStateMachine();
+    const { rt } = fakeRt({ leadId: 'lead-1', factMemory: fm, callState: cs });
+    await executeCaptureLeadInfo(rt, args({ name: 'קורן' }));
+    await executeCaptureLeadInfo(rt, args({ name: 'טל' }));
+    expect(cs.facts.name).toBe('קורן');
+  });
+
+  it('qualification facts stay freely overwritable — a wrong budget is silent, a wrong name is not', async () => {
+    const fm = new FactMemory();
+    const cs = new CallStateMachine();
+    const { rt } = fakeRt({ leadId: 'lead-1', factMemory: fm, callState: cs });
+    await executeCaptureLeadInfo(rt, args({ budget: 'בערך 5000' }));
+    const result = await executeCaptureLeadInfo(rt, args({ budget: 'בעצם 20 אלף' }));
+    expect(result).not.toContain('did NOT change');
+    expect(cs.facts.budget).toBe('בעצם 20 אלף');
+  });
+
+  it('WITHOUT the fact memory (switch off) the tool behaves exactly as before — the rename lands', async () => {
+    const cs = new CallStateMachine();
+    const { rt } = fakeRt({ leadId: 'lead-1', callState: cs });
+    await executeCaptureLeadInfo(rt, args({ name: 'קורן' }));
+    const result = await executeCaptureLeadInfo(rt, args({ name: 'טל' }));
+    expect(result).toBe('Saved. Continue the conversation naturally — do not mention that you saved anything.');
+    expect(cs.facts.name).toBe('טל');
+  });
+
+  it('is_correction alone is not a fact — an otherwise empty call is still refused', async () => {
+    const { rt } = fakeRt({ leadId: 'lead-1', factMemory: new FactMemory() });
+    await expect(executeCaptureLeadInfo(rt, args({ is_correction: true }))).rejects.toThrow('Nothing to save');
+  });
+
+  it('a captured business_type is established, so the reminder can stop her re-asking for it', async () => {
+    const fm = new FactMemory();
+    const { rt } = fakeRt({ leadId: 'lead-1', factMemory: fm });
+    await executeCaptureLeadInfo(rt, args({ business_type: 'מכון כושר' }));
+    expect(fm.get('business')).toBe('מכון כושר');
   });
 });

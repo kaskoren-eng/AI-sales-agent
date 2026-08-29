@@ -473,6 +473,12 @@ const envSchema = z.object({
   // in-flight preemptive draft). Default ON (Koren, 2026-08-27). Set false to remove the note
   // entirely; the repeatedPhraseCount metric in CallReport keeps reporting either way.
   VOICE_PHRASE_LEDGER_ENABLED: envBool(true),
+  // Kill-switch for the call's identity memory (fact-memory.ts): remembers which facts the lead has
+  // already given and which questions she has already asked, appends a turn-boundary reminder, and
+  // stops capture_lead_info REPLACING an established name/phone/email without an explicit
+  // correction from the lead. Default ON. Set false to restore the 2026-08-29 behaviour, where a
+  // garbled turn ("טל, אוזן") could rename a lead who had already introduced himself.
+  VOICE_FACT_MEMORY_ENABLED: envBool(true),
   // Kill-switch for the Spoken Register prompt section (simple spoken Hebrew + the light-slang
   // bank — סבבה/אחלה level, no heavy street slang; Koren's explicit register choice 2026-08-27).
   // Default ON. Set false to drop the section and restore the previous register.

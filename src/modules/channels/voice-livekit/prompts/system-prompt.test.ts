@@ -590,3 +590,43 @@ describe('Keren — spoken register (2026-08-27)', () => {
     }
   });
 });
+
+/**
+ * P0-1, the prompt half. The enforcement half is fact-memory.ts and its own test file; these two
+ * must be gated by the SAME switch, or the instructions and the guard describe different rules and
+ * the model is told one thing while the tool does another.
+ */
+describe('Call Memory — the 2026-08-29 identity failure, in the prompt', () => {
+  it('forbids asking twice for a fact he already gave', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/## Call Memory/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/Never ask for it a second time/u);
+  });
+
+  it('caps an UNANSWERED question at one repeat — the third ask is what he reacted to', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/ask at most ONE more time/u);
+  });
+
+  it('says a stray noun in a later turn is a mishearing, not a new name', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/mishearing, not a new name/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/ONLY an explicit correction out loud/u);
+  });
+
+  it('the tools variant tells her which tool field carries a correction', () => {
+    const tools = buildSystemPrompt({ toolsEnabled: true });
+    expect(tools).toMatch(/`is_correction`/u);
+    // ...and it is the exception to "call it again whenever a fact changes", stated next to it.
+    expect(tools).toMatch(/His NAME, phone and email are the exception/u);
+  });
+
+  it('the kill-switch removes the section entirely, and nothing else', () => {
+    const on = buildSystemPrompt({ toolsEnabled: true });
+    const off = buildSystemPrompt({ toolsEnabled: true, factMemory: false });
+    expect(off).not.toMatch(/## Call Memory/u);
+    // Additive by construction: deleting the section's own block from the ON prompt reproduces the
+    // OFF prompt byte for byte, so the switch can never quietly reshape anything around it. (The
+    // `is_correction` sentence is deliberately NOT gated — the tool field exists either way.)
+    const start = on.indexOf('---\n\n## Call Memory');
+    const end = on.indexOf('---', on.indexOf('## Call Memory'));
+    expect(on.slice(0, start) + on.slice(end)).toBe(off);
+  });
+});

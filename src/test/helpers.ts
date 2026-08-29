@@ -89,6 +89,7 @@ export async function buildTestApp(
     VOICE_AMD_ENABLED: false,
     VOICE_STATE_MACHINE_ENABLED: true,
     VOICE_SPEECH_NUMBERS_ENABLED: true,
+    VOICE_FACT_MEMORY_ENABLED: true,
     VOICE_PHRASE_LEDGER_ENABLED: true,
     VOICE_SPOKEN_REGISTER_ENABLED: true,
     VOICE_TTS_ROUTE: 'cartesia' as const,

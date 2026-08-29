@@ -19,6 +19,7 @@ import {
 } from '../../../integrations/google-calendar/resolve-calendar-auth.js';
 import type { CallReport, ToolCallLog } from '../call-report.js';
 import type { CallStateMachine } from '../call-state.js';
+import type { FactMemory } from '../fact-memory.js';
 import { resolveFunctionsEnabled } from '../voice-livekit.service.js';
 
 /**
@@ -117,6 +118,14 @@ export interface ToolRuntimeContext {
    * guardrails; the agent advances it on turns and reflex events. `undefined` when the advisory
    * layer is disabled (VOICE_STATE_MACHINE_ENABLED=false) — every tool reads it as `rt.callState?.`. */
   callState: CallStateMachine | undefined;
+  /**
+   * The call's identity memory (VOICE_FACT_MEMORY_ENABLED). The SAME instance lives on the agent,
+   * which feeds it her committed questions and injects its reminder at turn boundaries;
+   * capture_lead_info reads it to decide whether an offered name/phone/email may REPLACE one the
+   * lead already gave. `undefined` when the switch is off — every reader uses `rt.factMemory?.`,
+   * and with it undefined the tool behaves exactly as it did before fact-memory.ts existed.
+   */
+  factMemory: FactMemory | undefined;
 }
 
 /**
@@ -382,6 +391,10 @@ export async function buildToolRuntime(
     /** The per-call state machine, constructed in agent.ts and shared with the agent instance.
      * `undefined` when the advisory layer is disabled (VOICE_STATE_MACHINE_ENABLED=false). */
     callState: CallStateMachine | undefined;
+    /** The call's identity memory, likewise constructed in agent.ts and shared. Absent/`undefined`
+     * when VOICE_FACT_MEMORY_ENABLED is off — OPTIONAL here (unlike `callState`) so that omitting
+     * it is the same thing as switching it off, which is what every test harness wants. */
+    factMemory?: FactMemory | undefined;
   },
   deps: ToolRuntimeDeps = {},
 ): Promise<ToolRuntimeResult> {
@@ -591,6 +604,7 @@ export async function buildToolRuntime(
           }
         : {}),
       callState: opts.callState,
+      factMemory: opts.factMemory,
     },
   };
 }

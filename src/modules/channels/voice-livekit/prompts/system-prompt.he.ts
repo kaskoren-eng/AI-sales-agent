@@ -169,6 +169,26 @@ The craft rules:
 - Slang belongs in reactions and transitions — never inside the important facts (a price, a time, a name stays clean and clear).
 - Before you answer, re-read your reply: if it would look perfectly normal inside a formal email, it is too formal for a phone call. Say one of its sentences the way you would say it out loud, and use that instead.`;
 
+/**
+ * THE RULE SHE BROKE ON 2026-08-29, in the prompt where the model can see it.
+ *
+ * She asked the lead's name three times (@16490, @28895, @42176) until he said "we already covered
+ * this — I'm Koren"; she acknowledged it; and at @103531 a garbled turn transcribed as `טל, אוזן`
+ * and she renamed him "נעים מאוד, טל". The prompt already said "if he already gave it at the start,
+ * just confirm it" — which is why this is only HALF the fix. Prompt instructions degrade under
+ * context load (the lesson that produced the phrase ledger), so the enforcement lives in
+ * fact-memory.ts: a turn-boundary reminder of what is known, and a tool guard that refuses to
+ * replace an established identity without an explicit correction. This is the guidance half, and
+ * the two are gated by the same switch so they can never disagree about what the rules are.
+ */
+const CALL_MEMORY = `## Call Memory — ask once, then remember
+
+**A fact he has given you is settled. Never ask for it a second time.** Not in different words, not later in the call, not "just to confirm". Say his name back ONCE when you get it ("נעים מאוד, קורן") and use it from then on. A lead who has to tell you his name twice has already decided he is talking to a machine — and he will say so.
+
+**If he does NOT answer a question, ask at most ONE more time, then move on without it.** A third ask is never the right move; continue the call and come back to it only if he raises it himself.
+
+**An established name does not change because you heard a word that sounds like one.** Phone lines mishear. If a later turn contains a stray noun, that is a mishearing, not a new name — keep the name he gave you. ONLY an explicit correction out loud ("לא, קוראים לי X", "טעית, זה Y") changes it, and then you repeat the new one back to him before you use it. The same holds for his phone number and email.`
+
 interface PromptSlots {
   /** "Then call \`end_call\`..." lines — with reasons in tools mode, bare in legacy mode. */
   endCallBadTime: string;
@@ -188,6 +208,8 @@ interface PromptSlots {
   speechRhythm: string;
   /** The SPOKEN_REGISTER section (VOICE_SPOKEN_REGISTER_ENABLED), or '' when the flag is off. */
   spokenRegister: string;
+  /** The CALL_MEMORY section (VOICE_FACT_MEMORY_ENABLED), or '' when the flag is off. */
+  callMemory: string;
   /** Per-tenant business facts, injected after the Role section. Empty string when the tenant
    * has no businessProfile — the prompt then reads exactly as it did before this existed. The
    * PROSE inside is Koren's (tenant content); this file only plumbs the fields into labelled
@@ -467,7 +489,7 @@ Continue directly to Step 2.
 Then use his name naturally through the rest of the call ("נעים מאוד, קורן"). Two reasons this comes first: a sales call where you never learned who you were talking to is not a sales call, and his name is usually the only clue you get to his gender — which you need in order to address him correctly (see the Gender note).
 
 If the lead's name is already known from Lead Context, greet him by it instead of asking.
-
+${slots.callMemory}
 ---
 
 Then ask one or two questions from the bank below per call, in priority order, skipping anything already known from Lead Context. Ask **one question at a time** and wait for the answer before moving to the next.
@@ -627,6 +649,7 @@ export function buildSystemPrompt({
   persona = DEFAULT_PERSONA,
   instantAck = false,
   spokenRegister = true,
+  factMemory = true,
 }: {
   toolsEnabled: boolean;
   /** Per-tenant grounding. Absent/null → the prompt is byte-for-byte the pre-existing one. */
@@ -642,6 +665,9 @@ export function buildSystemPrompt({
   /** `VOICE_SPOKEN_REGISTER_ENABLED`. False drops the Spoken Register section — the kill-switch
    * back to the pre-2026-08-27 register. */
   spokenRegister?: boolean;
+  /** `VOICE_FACT_MEMORY_ENABLED`. False drops the Call Memory section, so the prompt and the code
+   * enforcement (fact-memory.ts) are never on different sides of the same switch. */
+  factMemory?: boolean;
 }): string {
   const businessContext = renderBusinessContext(businessProfile);
   const identity = renderIdentity(persona);
@@ -650,10 +676,12 @@ export function buildSystemPrompt({
   const mindsetRebuttal = persona.mindsetRebuttal || GENERIC_MINDSET_REBUTTAL;
   const speechRhythm = instantAck ? SPEECH_RHYTHM_ACK_INJECTED : SPEECH_RHYTHM_OWN_OPENER;
   const spokenRegisterSection = spokenRegister ? `\n\n---\n\n${buildSpokenRegister(instantAck)}` : '';
+  const callMemorySection = factMemory ? `\n---\n\n${CALL_MEMORY}\n` : '';
   if (!toolsEnabled) {
     return assemble({
       speechRhythm,
       spokenRegister: spokenRegisterSection,
+      callMemory: callMemorySection,
       endCallBadTime: 'Then call `end_call`.',
       endCallDisqualified: 'Then call `end_call`.',
       handoffSection: HANDOFF_SECTION_NO_TOOLS,
@@ -671,12 +699,13 @@ export function buildSystemPrompt({
   return assemble({
     speechRhythm,
     spokenRegister: spokenRegisterSection,
+    callMemory: callMemorySection,
     endCallBadTime: 'Then call `end_call` with reason "bad_time".',
     endCallDisqualified: 'Then call `end_call` with reason "not_qualified".',
     handoffSection: HANDOFF_SECTION_TOOLS,
     endCallOptOut: 'Then immediately call `end_call` with reason "opt_out".',
     captureInstruction:
-      '\nAs you learn facts about the lead — business type, pain point, budget, timeline, contact details, or your hot/warm/cold read — call `capture_lead_info` to save them. It is silent and instant: never announce it, never invent values, and call it again whenever a fact changes.',
+      '\nAs you learn facts about the lead — business type, pain point, budget, timeline, contact details, or your hot/warm/cold read — call `capture_lead_info` to save them. It is silent and instant: never announce it, never invent values, and call it again whenever a fact changes. His NAME, phone and email are the exception: save them once, and change a saved one only when he corrects you out loud — then set `is_correction`.',
     step4: buildStep4Tools(persona.handoffPerson),
     objectionPlaybook: objectionHandling
       ? `\n\n---\n\n## Objection Handling\n\n${buildObjectionPlaybook(persona.handoffPerson)}`
