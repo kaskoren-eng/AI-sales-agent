@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PhraseLedger, countRepeatedFourGrams, ledgerTokens } from './phrase-ledger.js';
+import { PhraseLedger, countRepeatedFourGrams, ledgerTokens, countRepeatedOpeners, leadingOpener } from './phrase-ledger.js';
 
 /** Observations spaced far enough apart that the draft-echo dedupe never confuses a test. */
 const SPACED = (ledger: PhraseLedger, texts: string[]): void => {
@@ -102,5 +102,51 @@ describe('countRepeatedFourGrams — the CallReport metric and the backfill shar
   it('a longer repeated phrase counts each of its 4-grams — the §4 currency (up to 62/call)', () => {
     const line = 'אחת שתיים שלוש ארבע חמש שש';
     expect(countRepeatedFourGrams([line, line])).toBe(3);
+  });
+});
+
+/**
+ * THE METRIC THAT STAYED GREEN THROUGH THE DEFECT IT EXISTS TO CATCH.
+ *
+ * 2026-08-29: `repeatedPhraseCount: 0`, six of eight turns opening with `אהה.` / `בסדר.` /
+ * `אוקיי.`, two uses each. Nothing was wrong with the 4-gram count — this is what it could not see.
+ */
+describe('countRepeatedOpeners', () => {
+  const call = [
+    'אהה. קודם כל — איך קוראים לךָ?',
+    'בסדר. ספר לי קצת על העסק שלך.',
+    'אוקיי. וכמה פניות נכנסות ביום?',
+    'אהה. מי עונה להן היום?',
+    'בסדר. ומה היית רוצה לשפר?',
+    'אוקיי. אז בוא נקבע דמו קצר.',
+    'מעולה. מחר בעשר מתאים לך?',
+    'נהדר. שלחתי לך אישור.',
+  ];
+
+  it('reports 3 on the real call the 4-gram counter reported 0 for', () => {
+    expect(countRepeatedFourGrams(call)).toBe(0);
+    expect(countRepeatedOpeners(call)).toBe(3);
+  });
+
+  it('counts DISTINCT openers, not occurrences — same currency as the 4-gram count', () => {
+    expect(countRepeatedOpeners(['אוקיי. א', 'אוקיי. ב', 'אוקיי. ג'])).toBe(1);
+  });
+
+  it('a line with no punctuated opener contributes nothing', () => {
+    expect(countRepeatedOpeners(['אני בודקת את זה עכשיו', 'אני בודקת את זה עכשיו'])).toBe(0);
+  });
+
+  it('reads the opener whether it is followed by a period or a comma', () => {
+    expect(leadingOpener('אוקיי. אז נתקדם.')).toBe('אוקיי');
+    expect(leadingOpener('אוקיי, אז נתקדם.')).toBe('אוקיי');
+    expect(leadingOpener('אז נתקדם אוקיי')).toBeNull();
+  });
+
+  it('ignores niqqud, so a vowelled opener is the same opener', () => {
+    expect(countRepeatedOpeners(['בסדר. שלךָ', 'בסדר. לוודֵא'])).toBe(1);
+  });
+
+  it('does not treat a leading number as an opener', () => {
+    expect(countRepeatedOpeners(['10. ככה', '10. ככה אחרת'])).toBe(0);
   });
 });

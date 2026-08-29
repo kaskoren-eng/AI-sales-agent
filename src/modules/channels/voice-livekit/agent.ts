@@ -37,6 +37,12 @@ import {
 } from './speech-guard.js';
 import { PhraseLedger } from './phrase-ledger.js';
 import { FactMemory } from './fact-memory.js';
+import {
+  ACKNOWLEDGEMENTS_HE,
+  ACKNOWLEDGEMENTS_HE_WIDE,
+  AcknowledgementLedger,
+  pickAcknowledgement,
+} from './prompts/acknowledgements.he.js';
 import { ShadowSTT } from './stt/shadow-stt.js';
 import { DeepdubTTS } from './tts/deepdub.tts.js';
 import { buildAgentTools } from './tools/index.js';
@@ -247,6 +253,17 @@ class ClickScalesAgent extends voice.Agent {
   #lastAck: string | null = null;
 
   /**
+   * The acknowledgement deck (VOICE_ACK_LEDGER_ENABLED), one per call.
+   *
+   * `undefined` restores `pickAcknowledgement` over the original three-word bank — the behaviour
+   * that produced six of eight turns opening with one of three words on 2026-08-29. The deck cannot
+   * do that: it spends every word once before repeating any. See acknowledgements.he.ts.
+   */
+  readonly ackLedger: AcknowledgementLedger | undefined = env.VOICE_ACK_LEDGER_ENABLED
+    ? new AcknowledgementLedger()
+    : undefined;
+
+  /**
    * SAYS "אוקיי" THE INSTANT THE TURN ENDS, BEFORE THE MODEL HAS WRITTEN A WORD.
    *
    * This is the change that puts first audio under a second, and llmNode is the only place it can
@@ -292,7 +309,8 @@ class ClickScalesAgent extends voice.Agent {
     const opener = chooseTurnOpener({
       afterToolCall,
       fillersEnabled: env.VOICE_THINKING_FILLER_MS !== 0,
-      lastAck: this.#lastAck,
+      nextAck: () =>
+        this.ackLedger ? this.ackLedger.next() : pickAcknowledgement(this.#lastAck),
       offerFiller: () => this.fillerLedger.offer(),
     });
 
@@ -1130,6 +1148,11 @@ export default defineAgent({
           // the enforcement can never describe different rules.
           factMemory: env.VOICE_FACT_MEMORY_ENABLED,
           negationSafety: env.VOICE_NEGATION_SAFETY,
+          // The prompt lists the words the caller will actually hear, so the bank and its
+          // description can never disagree about what she has already said.
+          acknowledgements: env.VOICE_ACK_LEDGER_ENABLED
+            ? ACKNOWLEDGEMENTS_HE_WIDE
+            : ACKNOWLEDGEMENTS_HE,
         }),
         ...(runtime ? { tools: buildAgentTools(runtime) } : {}),
         // A per-tenant VOICE, and ONLY when the tenant actually configured one.

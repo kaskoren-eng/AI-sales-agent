@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ShadowSttTranscript } from '../../../db/schema/call-learnings.js';
-import { countRepeatedFourGrams } from './phrase-ledger.js';
+import { countRepeatedFourGrams, countRepeatedOpeners } from './phrase-ledger.js';
 
 /**
  * A durable record of one call: what was heard, what was said, and how slow it was.
@@ -153,6 +153,19 @@ export interface CallReportJson {
      * the baseline backfill (scripts/repeated-phrases-baseline.mjs) uses, so the numbers compare.
      */
     repeatedPhraseCount: number;
+    /**
+     * The half of that number the 4-gram counter is blind to: distinct one-word OPENERS she used
+     * twice or more.
+     *
+     * 2026-08-29 reported `repeatedPhraseCount: 0` on a call where six of eight turns opened with
+     * `אהה.`, `בסדר.` or `אוקיי.`. Nothing was wrong with the 4-gram count — a repeated opener runs
+     * into a different sentence each time, so it never forms a repeated 4-gram. The metric was
+     * green through the exact defect it exists to catch, and a metric that does that is worse than
+     * none. It is broken out here rather than only folded in, so the 4-gram figure stays comparable
+     * with the humanization baseline (scripts/repeated-phrases-baseline.mjs, which measures
+     * 4-grams alone). On that call this would have read 3.
+     */
+    repeatedOpenerCount: number;
     /**
      * Share of LLM input tokens served from OpenAI's prompt cache, across the call.
      *
@@ -534,6 +547,8 @@ export class CallReport {
       }
     }
 
+    const agentLines = this.#transcript.filter((t) => t.role === 'assistant').map((t) => t.text);
+
     return {
       room: this.#room,
       callerPhone: this.#callerPhone,
@@ -546,9 +561,12 @@ export class CallReport {
         cutOffs: this.#cutOffs,
         fragmentedTurns,
         duplicateReplies,
-        repeatedPhraseCount: countRepeatedFourGrams(
-          this.#transcript.filter((t) => t.role === 'assistant').map((t) => t.text),
-        ),
+        // `repeatedPhraseCount` is now 4-grams PLUS repeated openers — the number a person would
+        // give if you asked them how often she repeated herself. `repeatedOpenerCount` keeps the
+        // two halves legible, and countRepeatedFourGrams alone is still what the baseline script
+        // compares against.
+        repeatedPhraseCount: countRepeatedFourGrams(agentLines) + countRepeatedOpeners(agentLines),
+        repeatedOpenerCount: countRepeatedOpeners(agentLines),
         promptCacheHitPct,
         draftsDiscarded,
         endOfTurnMedianMs: eouMed,

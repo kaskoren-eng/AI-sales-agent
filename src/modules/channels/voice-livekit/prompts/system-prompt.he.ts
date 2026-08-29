@@ -34,6 +34,7 @@
 
 import type { BusinessProfile } from '../../../settings/settings.service.js';
 import { buildObjectionPlaybook } from '../call-state-lines.he.js';
+import { ACKNOWLEDGEMENTS_HE } from './acknowledgements.he.js';
 import {
   DEFAULT_PERSONA,
   GENERIC_MINDSET_REBUTTAL,
@@ -63,11 +64,16 @@ Begin EVERY reply with a very short first sentence — 2 to 4 words, ending in a
 
 This is not a style preference: your voice starts speaking only after your first sentence is COMPLETE, so a long first sentence is dead air on the caller's ear. A short opener gets your voice out fast and buys time for the rest. Vary the openers naturally; never use the same one twice in a row.`;
 
-const SPEECH_RHYTHM_ACK_INJECTED = `## Speech Rhythm — a SHORT first sentence, and NEVER an acknowledgment
+/**
+ * The bank is INTERPOLATED, not hard-coded, because it is switchable (VOICE_ACK_LEDGER_ENABLED)
+ * and the prompt must never describe words the caller will not hear — or omit ones she will. The
+ * "do not add a second one" rule only works if the list she is shown is the list we actually speak.
+ */
+const buildSpeechRhythmAckInjected = (bank: readonly string[]): string => `## Speech Rhythm — a SHORT first sentence, and NEVER an acknowledgment
 
-A brief acknowledgment ("אוקיי.", "בסדר.", "אהה.") is ALREADY spoken in your voice the moment the caller stops talking. You do not write it, and you must not add a second one.
+A brief acknowledgment (${bank.map((a) => `"${a}"`).join(', ')}) is ALREADY spoken in your voice the moment the caller stops talking. You do not write it, and you must not add a second one.
 
-**Do NOT begin your reply with an acknowledgment, a reaction, or a filler word.** Not "בסדר", not "מעולה", not "בטח", not "כן", not "הבנתי", not "אהה", not "בשמחה", not "נשמע טוב", not "שאלה טובה". The caller has already heard one; a second in the same breath is what makes you sound like a machine.
+**Do NOT begin your reply with an acknowledgment, a reaction, or a filler word.** Not "בסדר", not "מעולה", not "בטח", not "כן", not "הבנתי", not "אהה", not "טוב", not "בשמחה", not "נשמע טוב", not "שאלה טובה". The caller has already heard one; a second in the same breath is what makes you sound like a machine.
 
 Begin with the SUBSTANCE — the answer itself, or the next question — and keep that first sentence SHORT, under about eight words, ending in a period. This is not a style preference: your voice starts speaking only after your first sentence is COMPLETE, so a long first sentence is dead air on the caller's ear.`;
 
@@ -750,6 +756,7 @@ export function buildSystemPrompt({
   spokenRegister = true,
   factMemory = true,
   negationSafety = true,
+  acknowledgements = ACKNOWLEDGEMENTS_HE,
 }: {
   toolsEnabled: boolean;
   /** Per-tenant grounding. Absent/null → the prompt is byte-for-byte the pre-existing one. */
@@ -771,13 +778,18 @@ export function buildSystemPrompt({
   /** `VOICE_NEGATION_SAFETY`. False drops the "Say It So It Cannot Be Misheard" section AND
    * restores the five fixed lines to their pre-2026-08-30 wording, so the rollback is exact. */
   negationSafety?: boolean;
+  /** The instant-acknowledgement bank actually in use (VOICE_ACK_LEDGER_ENABLED picks the wide
+   * one). Only read when `instantAck` is true, where the prompt lists the words she will hear. */
+  acknowledgements?: readonly string[];
 }): string {
   const businessContext = renderBusinessContext(businessProfile);
   const identity = renderIdentity(persona);
   const faq = renderFaq(persona);
   const companyName = persona.companyName;
   const mindsetRebuttal = persona.mindsetRebuttal || GENERIC_MINDSET_REBUTTAL;
-  const speechRhythm = instantAck ? SPEECH_RHYTHM_ACK_INJECTED : SPEECH_RHYTHM_OWN_OPENER;
+  const speechRhythm = instantAck
+    ? buildSpeechRhythmAckInjected(acknowledgements)
+    : SPEECH_RHYTHM_OWN_OPENER;
   const spokenRegisterSection = spokenRegister ? `\n\n---\n\n${buildSpokenRegister(instantAck)}` : '';
   const callMemorySection = factMemory ? `\n---\n\n${CALL_MEMORY}\n` : '';
   const negationSection = negationSafety ? `\n\n---\n\n${NEGATION_SAFETY}` : '';
