@@ -75,7 +75,7 @@ async function assertDeployableSecrets(file) {
   try {
     raw = await readFile(file, 'utf8');
   } catch {
-    throw new Error(`${file} not found - create mode needs it to upload secrets`);
+    throw new Error(`${file} not found - it is uploaded on every deploy (--secrets-file). Create it from .env.example, then make it cloud-ready with: node scripts/fix-agent-secrets.mjs`);
   }
 
   const LOCAL_HOST = /(^|[@/])(localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal|redis|postgres|db)(:\d+)?([/?]|$)/i;
@@ -119,7 +119,15 @@ if (MODE !== 'create') {
   assertNotDroppingLiveWork({ allowDrop: process.argv.includes('--allow-drop') });
 }
 
-if (MODE === 'create') await assertDeployableSecrets('.env.agent');
+// EVERY DEPLOY, NOT ONLY create. Since the secrets-on-every-deploy change, `--secrets-file
+// .env.agent` is passed unconditionally and `lk` REPLACES the whole secret set. Leaving this
+// assert on the create path meant a normal deploy could upload an unvalidated .env.agent over
+// production's working secrets — and .env.agent is, by design, a LAPTOP config (that is why
+// scripts/fix-agent-secrets.mjs exists). The agent would not crash: it would lose its database,
+// fail the tool gate CLOSED, meter nothing, and refuse DID-routed calls as "not in service".
+// That is the 2026-08-16 incident. The file is uploaded on every deploy, so it is checked on
+// every deploy.
+await assertDeployableSecrets('.env.agent');
 
 
 // SECRETS GO UP ON EVERY DEPLOY, NOT ONLY ON CREATE.
