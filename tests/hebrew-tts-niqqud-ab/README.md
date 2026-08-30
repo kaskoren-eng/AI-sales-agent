@@ -52,3 +52,37 @@ production runs over an 8kHz phone line, while these samples are 44.1kHz full qu
 Diacritization by **Phonikud** and its ONNX model (`phonikud`, `phonikud-onnx`),
 © the Phonikud project — https://github.com/phonikud — licensed CC-BY-4.0.
 Tokenizer: `dicta-il/dictabert-large-char-menaked`.
+
+---
+
+## Round 6 — the 2026-08-30 production calls (open `index-round6.html`)
+
+Seven notes from Koren after listening to two real PSTN calls. Four of them are pronunciation or
+prosody, and none of those can be settled by reading text.
+
+```bash
+python round6.py                 # synth every clip -> round6.json + r6_*.wav
+npx tsx pause-stream-probe.ts    # the same `ps` sentences through the AGENT's own Cartesia stream
+python pause_probe.py            # measure the silences in both, back into round6.json
+npx tsx roundtrip6.ts            # 8kHz phone band -> Soniox -> did the intended word come back?
+python build_round6_page.py      # -> index-round6.html
+```
+
+Two things differ from rounds 3–5 on purpose:
+
+- **Production parity.** `synth.py` now takes a `GENERATION_CONFIG`, and round 6 sends the live
+  `VOICE_TTS_SPEED=0.9` / `VOICE_TTS_VOLUME=1.4`. Earlier rounds synthesized at 1.0/1.0. For a round
+  about PACING that difference is the subject. Rounds 1–5 are unaffected — the default is `None`.
+- **Two controls, not one.** `fl/nd/nx/vd/ps` ask which variant wins. `g/sw` ask a FORCED GENDER
+  question ("which gender did you hear?"), because for רוצה "sounds fine" is not an answer and the
+  round-trip is structurally blind: masculine and feminine are the same letters, so Soniox writes
+  both back as רוצה.
+
+What the machine already established, before any ear:
+
+- `רק לוודא` and the shipped `רק לוודֵא` BOTH come back from the phone band as **"רק לוועדה"** — a
+  different word. `לְוַודֵא` and `לוודה` both come back correct. The shipped round-3 mark does not
+  hold in this carrier, which is exactly the "not always right" Koren reported.
+- The acknowledgement `אהה.` comes back as **"1."** in context and as **"יאללה."** on its own.
+- `<break time="0.35s"/>` is not read aloud and produces the longest pause measured. See
+  known-issues §16 before doing anything with that.

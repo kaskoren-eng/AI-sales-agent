@@ -453,6 +453,51 @@ turned out to be coincidence on short replies.
 
 Run the bench before touching the guard. It costs cents and no phone call.
 
+## 16. Punctuation DOES pause sonic-3.5 — but a comma is the weakest mark you have, and streaming eats it
+
+**Measured 2026-08-30**, after Koren's note on the two production calls that morning: *"השימוש
+בפסיקים ונקודות כדי לעצור באמצע משפט לא עובד כמו שצריך, הזרימה של הדיבור לא מספיק טובה במיוחד
+בתחילת השיחה."*
+
+The tempting conclusion is "sonic-3.5 ignores Hebrew punctuation". It does not. What it does is
+realise a comma so weakly that the streaming path can lose it altogether. `pause_probe.py`
+(10ms RMS frames, silence at 4% of the clip's own peak, gaps ≥90ms) on the real greeting, at the
+production speed/volume:
+
+| greeting variant | one-shot `/tts/bytes` | the agent's own websocket stream |
+|---|---|---|
+| `שלום,` (today) | 180ms | 180ms |
+| `שלום —` | 270ms | **470ms** |
+| `שלום.` (split) | 210ms | **260ms** |
+| `שלום...` | 330ms | **560ms** |
+| `שלום <break time="0.35s"/>` | 650ms | **780ms** |
+
+And on the long comma-chained value proposition, the streaming path **dropped three of its five
+pauses** (the 90ms and 140ms ones vanished entirely), while the same sentence split into real
+sentences kept five of seven. So:
+
+- **A comma buys ~0.18s and is the first thing to disappear.** If a beat matters, end the sentence
+  or use `—` / `...`.
+- **This is a TEXT lever, not a request lever.** `max_buffer_delay_ms: 0` is hardcoded in
+  `@livekit/agents-plugin-cartesia` (`dist/tts.js:567`) and the plugin re-splits our text with
+  LiveKit's `basic.SentenceTokenizer` (min 8 CHARACTERS, `.!?` only — `…` is not a terminator), so
+  short clauses are glued to the next one before Cartesia ever sees them. Neither is configurable
+  from our side without forking the plugin.
+- **`<break time="…"/>` appears to be honoured, and is NOT read aloud.** The Soniox round-trip of
+  that clip comes back as clean Hebrew with no stray token, in both paths, while producing the
+  longest pause of any variant. That is a real, previously-unknown lever for Hebrew — **unverified
+  by ear, and undocumented by Cartesia**, so it is recorded here and not shipped. If it is ever
+  adopted, note that a silently-ignored tag would be READ OUT to a caller, which is the worst
+  possible failure mode; verify on a live call first.
+
+Evidence and reproduction: `tests/hebrew-tts-niqqud-ab/round6.py` (`ps` cards),
+`pause-stream-probe.ts`, `pause_probe.py`, `index-round6.html`.
+
+The prompt now states the comma finding with its numbers, so the model stops leaning on the mark
+that does nothing.
+
+---
+
 ## Realistic latency budget for Hebrew
 
 Re-measured 2026-08-16 on the live stack (Soniox `stt-rt-v5` → gpt-5.4 `priority`/`effort=none`
