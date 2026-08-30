@@ -16,6 +16,13 @@ import { callLearnings } from '../../../db/schema/index.js';
 import { buildSessionComponents, buildTTS, describeTtsModel } from './agent.config.js';
 import { finalizeTranscriptNow } from './stt/soniox.stt.js';
 import { CallReport } from './call-report.js';
+import {
+  PreemptiveObserver,
+  type SessionLike,
+  describePipeline,
+  formatPipelineLog,
+  probeNoiseCancellation,
+} from './pipeline-observer.js';
 import { probeDatabase } from './db-probe.js';
 import { CallStateMachine } from './call-state.js';
 import { decideSilenceAction, decideVoicemailAction } from './call-reflexes.js';
@@ -689,6 +696,18 @@ export default defineAgent({
             : env.CARTESIA_MODEL,
     });
 
+    // DID PREEMPTIVE GENERATION ACTUALLY FIRE? Installed HERE, before anything can draft a reply,
+    // and removed at teardown.
+    //
+    // The report already carried `draftsDiscarded`, and it could not answer the question: zero
+    // reads the same whether every draft survived or none was ever made. LiveKit emits no event for
+    // this — the only signals are three log messages inside AgentActivity, one of them at DEBUG
+    // level, so the observer wraps the logger's methods rather than reading a stream. See
+    // pipeline-observer.ts. Counting only; the log output is unchanged byte for byte.
+    const preemptive = new PreemptiveObserver();
+    preemptive.install();
+    report.attachPreemptive(() => preemptive.snapshot());
+
     // LEGAL PRE-ROLL, started FIRST and awaited just before the greeting: the recorded-call
     // notice (Wiretapping Law 1979 §2) plays from a static asset in a flat broadcast voice —
     // deliberately not Keren's — while everything below (the tenant flag read, provider
@@ -828,6 +847,13 @@ export default defineAgent({
         timings.push(`in=${m.promptTokens}`, `cached=${cached}`, `cacheHit=${pct}%`);
       }
 
+      // `cancelled` is the SDK's own verdict on whether this inference was paid for and thrown
+      // away (`LLMMetrics.cancelled` / `TTSMetrics.cancelled`, both set from the generation's abort
+      // signal). It is the direct measurement of preemptive waste — and for TTS it arrives with
+      // `charactersCount`, i.e. the actual Cartesia bill for audio nobody heard. Fed in before the
+      // `timings.length` gate below, which drops events that happen to carry no timing.
+      preemptive.noteMetrics(m);
+
       if (timings.length > 0) {
         ctx.proc.userData.lastMetricsAt = Date.now();
         report.recordMetric(stage, m);
@@ -945,6 +971,11 @@ export default defineAgent({
     // that column exactly so the move is a one-liner.
     ctx.addShutdownCallback(async () => {
       if (shadow) report.attachShadow(shadow.snapshot());
+
+      // Hand the LiveKit logger back its own methods. AFTER the report is serialized below would
+      // be equally correct (the counters are already tallied), but a wrapper left installed across
+      // a worker's lifetime would stack one layer per call in a process that serves many.
+      preemptive.uninstall();
 
       // Settle the AI-disclosure verdict from what was actually SAID (deterministic transcript
       // scan): 'during_call' | 'at_end' | 'missed'. A 'missed' means the goodbye instruction was
@@ -1359,6 +1390,10 @@ export default defineAgent({
     }
     } // end if (callState) — advisory reflex layer
 
+    // Hoisted out of the inputOptions literal below ONLY so the observer can inspect the exact
+    // descriptor that was handed to the session — same call, same value, same moment.
+    const noiseCancellation = TelephonyBackgroundVoiceCancellation();
+
     await session.start({
       agent,
       room: ctx.room,
@@ -1376,9 +1411,42 @@ export default defineAgent({
         // If this works, the 250/200ms endpointing we already configured finally takes effect and
         // ~700ms comes off every turn. If it doesn't, end-of-turn needs a Hebrew EOT model, which
         // nobody sells.
-        noiseCancellation: TelephonyBackgroundVoiceCancellation(),
+        noiseCancellation,
       },
     });
+
+    // WHAT THE PIPELINE ACTUALLY RESOLVED TO — one line, and the same object in the call report.
+    //
+    // AFTER start(), NOT BEFORE: the SDK merges its defaults into `sessionOptions` at construction
+    // and the activity re-resolves turn detection at start (it DOWNGRADES the mode to undefined
+    // when the preconditions fail, with only a warning). Read any earlier and this records the
+    // request instead of the result — which is the whole failure mode it exists to end. The most
+    // expensive instance: `preemptiveTts` was set as a cloud secret, `lk agent secrets` lists names
+    // only, nothing logged it and no report carried it, so nobody could say whether preemptive TTS
+    // was on in production. Now every call answers that by itself.
+    try {
+      const snapshot = describePipeline({
+        env,
+        // The authoritative resolved turn-detection mode lives on `AgentActivity.turnDetectionMode`,
+        // which the SDK's own d.ts marks `private` — so reading it needs a cast whatever we do.
+        // `SessionLike` is structural and every field optional, so a future SDK rename yields null
+        // rather than a crash or, worse, a confident wrong answer.
+        session: session as unknown as SessionLike,
+        noiseCancellation: probeNoiseCancellation(
+          'TelephonyBackgroundVoiceCancellation',
+          noiseCancellation,
+          true,
+        ),
+      });
+      report.recordPipeline(snapshot);
+      console.log(formatPipelineLog(snapshot));
+    } catch (err) {
+      // An instrument must never be the reason a caller hears nothing.
+      console.error(
+        'pipeline_snapshot_failed',
+        err instanceof Error ? err.message : String(err),
+      );
+    }
 
     // The legal notice must FINISH before Keren opens her mouth — two voices at once is chaos,
     // and a notice she talked over is a notice that wasn't given. Its outcome is recorded either

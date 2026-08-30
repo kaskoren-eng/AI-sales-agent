@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ShadowSttTranscript } from '../../../db/schema/call-learnings.js';
 import { countRepeatedFourGrams, countRepeatedOpeners } from './phrase-ledger.js';
+import type { PipelineSnapshot, PreemptiveCounters } from './pipeline-observer.js';
 import { hasRegisterTouch } from './register-tracker.js';
 
 /**
@@ -121,6 +122,21 @@ export interface CallReportJson {
     llmModel: string;
     ttsModel: string;
   };
+  /**
+   * WHAT THE PIPELINE ACTUALLY RESOLVED TO ON THIS CALL — read back off the live session after
+   * `start()`, not copied from env.
+   *
+   * `config` above is what the agent ASKED for, stamped at the top of the call from env. That is
+   * not the same thing and the difference has cost real time: `turnDetection` there says whatever
+   * `VOICE_TURN_DETECTION` said, while the SDK silently downgrades the mode when its preconditions
+   * fail. And `preemptiveTts` appeared in NEITHER — it was set on the cloud agent, unreadable
+   * afterwards (`lk agent secrets` lists names only), unlogged, unrecorded, which left the single
+   * biggest latency switch in the pipeline in an unknown state in production for weeks.
+   *
+   * Null on a report written before the snapshot was taken (a call that died during startup), and
+   * on reports from before this field existed.
+   */
+  pipeline: PipelineSnapshot | null;
   summary: {
     /** Turns where the agent decided the caller had finished speaking. */
     turnsHeard: number;
@@ -280,8 +296,22 @@ export interface CallReportJson {
      *
      * If this is non-zero and `deadAir` is not falling, drafting is costing money and buying
      * nothing. Both numbers have to be read together.
+     *
+     * AND IT IS AMBIGUOUS ON ITS OWN. Zero reads identically whether every draft survived or no
+     * draft was ever made — a working feature and a dead one produce the same number. Read
+     * `preemptive.generation` below, which counts starts separately from uses; this field is kept
+     * unchanged so figures from earlier calls stay comparable.
      */
     draftsDiscarded: number;
+    /**
+     * Did preemptive generation and preemptive TTS actually fire on this call — starts, uses and
+     * discards, counted separately for each.
+     *
+     * Null when the observer was not installed (an old report, or a call that never started a
+     * session). Zeroes across the board mean the mechanism did nothing, which is a different and
+     * much worse finding than "no drafts were wasted".
+     */
+    preemptive: PreemptiveCounters | null;
     /**
      * Sum of the three medians: the worst case, if no stage overlapped any other.
      *
@@ -356,6 +386,13 @@ export class CallReport {
   #usage: unknown = null;
   #shadow: ShadowSttTranscript | null = null;
   #cutOffs = 0;
+  #pipeline: PipelineSnapshot | null = null;
+  /**
+   * A GETTER, not a stored value. `write()` runs after every turn (see agent.ts), so the counters
+   * have to be re-read on each serialization — a snapshot taken once at install time would pin
+   * every flush at zero and look exactly like a dead feature.
+   */
+  #preemptive: (() => PreemptiveCounters) | null = null;
   #restoreStderr: (() => void) | null = null;
   /** When the caller last stopped speaking, with no agent audio since. Null = already answered. */
   #userStoppedAt: number | null = null;
@@ -386,6 +423,20 @@ export class CallReport {
   }
 
   /**
+   * The resolved pipeline, once the session is up. Taken after `session.start()` — before that,
+   * the SDK has not finished merging defaults or re-resolving turn detection, so an earlier
+   * snapshot would record the request rather than the result.
+   */
+  recordPipeline(snapshot: PipelineSnapshot): void {
+    this.#pipeline = snapshot;
+  }
+
+  /** Where to read the live preemptive counters from at serialization time. See `#preemptive`. */
+  attachPreemptive(read: () => PreemptiveCounters): void {
+    this.#preemptive = read;
+  }
+
+  /**
    * Counts cut-offs by watching what LiveKit logs.
    *
    * Yes, this reads the framework's log output, which is not how one would normally detect
@@ -395,6 +446,18 @@ export class CallReport {
    * to infer it by subtracting event counts, which produced NEGATIVE cut-offs on a healthy call.
    *
    * Wrapped in a try so a change in LiveKit's logging can never do worse than lose the counter.
+   *
+   * ⚠️ 2026-08-30, FOUND WHILE INSTRUMENTING THE PIPELINE — THIS IS WATCHING THE WRONG STREAM AND
+   * HAS NEVER COUNTED ANYTHING. The warning is emitted through LiveKit's pino logger
+   * (`audio_recognition.js` → `this.logger.warn`), and that logger writes to STDOUT:
+   * `log.js` builds it as `pino({...}, multistream([{ stream: pretty ? pinoPretty() : process.stdout }, ...]))`.
+   * Nothing in the agent SDK writes to stderr. So `cutOffs` has read 0 on every call ever recorded
+   * for a second reason, on top of the vad/stt-mode one documented on the field itself.
+   *
+   * Left exactly as it is: this branch is observability-only and changing the stream changes what a
+   * number means mid-flight. The fix belongs with the person who will re-read the calls it affects
+   * — see docs/handoffs/2026-08-30-voice-observability.md. `PreemptiveObserver` in
+   * pipeline-observer.ts shows the durable alternative: hook the logger object, not a byte stream.
    */
   #watchForCutOffs(): void {
     try {
@@ -655,6 +718,7 @@ export class CallReport {
       startedAt: new Date(this.#startedAt).toISOString(),
       durationSec: Math.round((Date.now() - this.#startedAt) / 1000),
       config: this.#config,
+      pipeline: this.#pipeline,
       summary: {
         turnsHeard: eou.length,
         ttsSegments: this.#metrics.filter((m) => m.stage === 'tts_metrics').length,
@@ -675,6 +739,15 @@ export class CallReport {
               ),
         promptCacheHitPct,
         draftsDiscarded,
+        // try/catch, because a counter must never be the reason a call's record is lost — the
+        // report is the only durable trace of a call and it is written on every turn.
+        preemptive: (() => {
+          try {
+            return this.#preemptive?.() ?? null;
+          } catch {
+            return null;
+          }
+        })(),
         endOfTurnMedianMs: eouMed,
         llmTtftMedianMs: ttftMed,
         modelTtftMedianMs: modelTtftMed,

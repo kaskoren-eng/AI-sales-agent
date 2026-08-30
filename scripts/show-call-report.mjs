@@ -58,6 +58,31 @@ console.log(`      STT ${r.config.sttProvider} (${r.config.sttModel})  |  turn d
 console.log(`      LLM ${r.config.llmModel}  |  TTS ${r.config.ttsModel}`);
 line();
 
+// WHAT THE PIPELINE ACTUALLY RESOLVED TO. The header above is what the agent ASKED for, read off
+// env at the top of the call; this is what the running session reported back afterwards. They can
+// differ — the SDK downgrades turn detection when its preconditions fail — and for weeks
+// `preemptiveTts` appeared in NEITHER, which is why nobody could say whether preemptive TTS was on
+// in production. Absent on reports written before 2026-08-30.
+if (r.pipeline) {
+  const p = r.pipeline.resolved;
+  const nc = r.pipeline.noiseCancellation;
+  const onOff = (v) => (v === null ? '?' : v ? 'ON' : 'off');
+  console.log('\nPIPELINE AS RESOLVED (read back off the live session, not from env)\n');
+  const drift = p.turnDetection !== r.config.turnDetection ? '   <-- DIFFERS from the requested mode' : '';
+  console.log(`  turn detection      ${p.turnDetection ?? '?'}${drift}`);
+  console.log(`  endpointing         ${p.endpointingMinDelayMs}-${p.endpointingMaxDelayMs}ms (${p.endpointingMode ?? '?'})`);
+  console.log(`  preemptive gen      ${onOff(p.preemptiveGeneration)}   |   preemptive TTS  ${onOff(p.preemptiveTts)}`);
+  console.log(`  components          stt=${p.sttLabel ?? '?'}  llm=${p.llmLabel ?? '?'}  tts=${p.ttsLabel ?? '?'}`);
+  console.log(`  VAD                 ${p.vadAttached ? 'ours, attached' : 'MISSING'}${p.vadIsSdkDefault ? '  <-- SDK DEFAULT, our VOICE_VAD_* settings did not apply' : ''}`);
+  // Never printed as a boolean: nothing below this layer reports whether the filter is processing
+  // audio. See pipeline-observer.ts and the 2026-08-30 handoff.
+  console.log(`  noise cancellation  attached=${nc.attached}  model=${nc.modelFileExists ? 'present' : 'MISSING'}  plugin=${nc.pluginLibExists ? 'present' : 'MISSING'}  engaged=${nc.engaged}`);
+  if (r.pipeline.runningOnDefaults?.length) {
+    console.log(`\n  running on code defaults (${r.pipeline.runningOnDefaults.length}): ${r.pipeline.runningOnDefaults.join(' ')}`);
+  }
+  line();
+}
+
 // THE HEADLINE NUMBER, and it goes first because for a while the stage medians below were read
 // as the answer. They are not: they sum to a figure that assumes nothing overlaps, which is
 // wrong exactly when preemptive generation is doing its job. Reported 1466ms on a call the
@@ -94,7 +119,30 @@ if (s.modelTtftMedianMs != null) {
 console.log(`  TTS first audio  ${bar(s.ttsTtfbMedianMs)}  ${ms(s.ttsTtfbMedianMs)}   how long until she starts speaking`);
 console.log(`  ${'-'.repeat(60)}`);
 console.log(`  serial total     ${' '.repeat(20)}  ${ms(s.worstCaseMs)}   if no stage overlapped another`);
-if (s.draftsDiscarded > 0) {
+// DID PREEMPTIVE ACTUALLY FIRE? `draftsDiscarded: 0` cannot answer that — it reads the same
+// whether every draft was used or none was ever made. These counters split the two.
+if (s.preemptive) {
+  const g = s.preemptive.generation;
+  console.log(`\n  preemptive drafts   started ${g.draftsStarted}  used ${g.draftsUsed}  invalidated ${g.draftsInvalidated}  unaccounted ${g.draftsUnaccounted}`);
+  if (g.draftsStarted === 0) {
+    console.log('      NONE STARTED — the mechanism did nothing on this call. That is a different');
+    console.log('      finding from "no drafts were wasted", and a much worse one.');
+  } else if (g.draftsUsed > 0) {
+    console.log(`      ${g.draftsUsed} reply(ies) were written DURING the end-of-turn wait, ${g.leadTimeMedianMs}ms ahead of it (median).`);
+  } else {
+    console.log('      Started but never used: every draft was paid for and thrown away.');
+  }
+  const t = s.preemptive.tts;
+  if (t.cancelled > 0) {
+    // Cancelled TTS means a barge-in when preemptive TTS is OFF, and also discarded drafts when it
+    // is ON — check the PIPELINE block above for which regime this call ran in.
+    console.log(`  TTS thrown away     ${t.cancelled} synthesis(es), ${t.charactersDiscarded} of ${t.charactersSynthesized} characters`);
+  }
+  const l = s.preemptive.llm;
+  if (l.cancelled > 0) {
+    console.log(`  LLM thrown away     ${l.cancelled} call(s), ${l.cancelledPromptTokens} input tokens`);
+  }
+} else if (s.draftsDiscarded > 0) {
   console.log(`\n  drafts thrown away  ${s.draftsDiscarded}   <-- LLM calls paid for, never heard`);
   console.log('      A draft survives only if its transcript matches the committed one EXACTLY.');
   console.log('      If this is high and the silence above is not falling, drafting is pure cost.');

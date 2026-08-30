@@ -201,3 +201,116 @@ describe('CallReport agentGap — silence INSIDE a reply', () => {
     expect(line.atMs).toBeLessThan(1_000); // stamped now, at commit — not when she started
   });
 });
+
+/**
+ * The pipeline record. WHY IT IS IN THE REPORT AND NOT ONLY IN A LOG TAIL: `preemptiveTts` was set
+ * as a cloud secret, `lk agent secrets` lists names only, nothing logged it and no report carried
+ * it — so for weeks nobody could say whether preemptive TTS was on in production. A log line alone
+ * would have repeated the mistake in a slower way: logs roll, and a call from last week is exactly
+ * the one you want to attribute.
+ */
+describe('CallReport pipeline record', () => {
+  const SNAPSHOT = {
+    resolved: {
+      turnDetection: 'vad',
+      endpointingMode: 'fixed',
+      endpointingMinDelayMs: 200,
+      endpointingMaxDelayMs: 2_000,
+      preemptiveGeneration: true,
+      preemptiveTts: false,
+      preemptiveMaxSpeechDurationMs: 10_000,
+      preemptiveMaxRetries: 3,
+      interruptionEnabled: true,
+      vadAttached: true,
+      vadIsSdkDefault: false,
+      sttLabel: 'soniox.STT',
+      llmLabel: 'openai.LLM',
+      ttsLabel: 'cartesia.TTS',
+    },
+    configured: { VOICE_PREEMPTIVE_TTS: { value: 'false', source: 'default' as const } },
+    runningOnDefaults: ['VOICE_PREEMPTIVE_TTS'],
+    noiseCancellation: {
+      requested: 'TelephonyBackgroundVoiceCancellation',
+      moduleId: 'livekit.plugins.noise_cancellation',
+      modelPath: '/resources/inb.bvc.kef',
+      modelFileExists: true,
+      pluginLibPath: '/resources/liblivekit_nc_plugin.so',
+      pluginLibExists: true,
+      attached: true,
+      engaged: 'unprovable' as const,
+    },
+  };
+
+  it('is null until the session is up — a report must not invent a pipeline it never saw', () => {
+    expect(newReport().toJson().pipeline).toBeNull();
+  });
+
+  it('persists the resolved pipeline, so a past call can still be attributed', () => {
+    const report = newReport();
+    report.recordPipeline(SNAPSHOT);
+    const { pipeline } = report.toJson();
+    expect(pipeline?.resolved.preemptiveTts).toBe(false);
+    expect(pipeline?.resolved.turnDetection).toBe('vad');
+    expect(pipeline?.runningOnDefaults).toContain('VOICE_PREEMPTIVE_TTS');
+    expect(pipeline?.noiseCancellation.engaged).toBe('unprovable');
+  });
+
+  it('survives the JSON round-trip that is the only channel out of a cloud worker', () => {
+    const report = newReport();
+    report.recordPipeline(SNAPSHOT);
+    const parsed = JSON.parse(JSON.stringify(report.toJson()));
+    expect(parsed.pipeline.resolved.preemptiveTts).toBe(false);
+  });
+});
+
+describe('CallReport preemptive counters', () => {
+  const counters = (draftsStarted: number, draftsUsed: number) => ({
+    generation: {
+      draftsStarted,
+      draftsUsed,
+      draftsInvalidated: 0,
+      draftsUnaccounted: draftsStarted - draftsUsed,
+      leadTimeMedianMs: draftsUsed ? 400 : null,
+      leadTimeMaxMs: draftsUsed ? 400 : null,
+    },
+    llm: { completed: 4, cancelled: 0, cancelledPromptTokens: 0 },
+    tts: { completed: 4, cancelled: 0, charactersSynthesized: 400, charactersDiscarded: 0 },
+  });
+
+  it('is null when nothing was watching, which is not the same as zero drafts', () => {
+    expect(newReport().toJson().summary.preemptive).toBeNull();
+  });
+
+  it('reads the counters LIVE, because the report is rewritten after every turn', () => {
+    // A snapshot captured once at install time would pin every flush at zero and read exactly like
+    // a dead feature. The report flushes per turn precisely so a killed worker loses nothing.
+    const report = newReport();
+    let started = 0;
+    report.attachPreemptive(() => counters(started, started));
+    expect(report.toJson().summary.preemptive?.generation.draftsStarted).toBe(0);
+    started = 3;
+    expect(report.toJson().summary.preemptive?.generation.draftsStarted).toBe(3);
+  });
+
+  it('separates a feature that worked from one that never ran — draftsDiscarded cannot', () => {
+    const worked = newReport();
+    worked.attachPreemptive(() => counters(5, 5));
+    const dead = newReport();
+    dead.attachPreemptive(() => counters(0, 0));
+
+    // Identical on the old field...
+    expect(worked.toJson().summary.draftsDiscarded).toBe(dead.toJson().summary.draftsDiscarded);
+    // ...and finally distinguishable on the new one.
+    expect(worked.toJson().summary.preemptive?.generation.draftsStarted).toBe(5);
+    expect(dead.toJson().summary.preemptive?.generation.draftsStarted).toBe(0);
+  });
+
+  it('never loses a call report to a throwing counter', () => {
+    const report = newReport();
+    report.attachPreemptive(() => {
+      throw new Error('counter exploded');
+    });
+    expect(report.toJson().summary.preemptive).toBeNull();
+    expect(report.toJson().transcript).toEqual([]);
+  });
+});
