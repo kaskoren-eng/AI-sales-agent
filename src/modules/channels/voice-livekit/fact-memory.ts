@@ -106,6 +106,26 @@ const ASK_PATTERNS: Record<FactField, RegExp[]> = {
   business: [/איזה\s+(סוג\s+)?עסק/u, /במה\s+אתה\s+עוסק/u, /מה\s+ה?עסק\s+של(ך|ךָ)/u],
 };
 
+/**
+ * "Pleased to meet you" — and the fact that it is a ONE-TIME move.
+ *
+ * Koren, on the 2026-08-30 call: *"הסוכן גם אומר נעים מאוד באמצע השיחה, זה מיותר ומוזר, זה משהו
+ * שאומרים רק בתחילת השיחה"*. She said it correctly at 35s, right after he introduced himself, and
+ * again at 164s — triggered by nothing but a surname landing in `capture_lead_info`:
+ *
+ *     153.7s  KEREN  "רק לוודֵא — קורן, נכון? ומה שם המשפחה שלךָ?"
+ *     156.5s  lead   "שטרית."
+ *     163.8s  KEREN  "אהה. נעים מאוד. רק לוודֵא — קורן שטרית, נכון?"
+ *
+ * Greeting a man you have been talking to for three minutes is the same class of defect as asking
+ * his name three times: it says she has no idea where she is in the conversation. So it belongs
+ * here, in the state that already knows what has happened on this call, rather than in a new one.
+ *
+ * The latch is set from her COMMITTED utterances, for the same reason the ask counter is: what
+ * matters is whether the caller has already HEARD it, not whether the model meant to say it.
+ */
+const INTRODUCED = /נעים\s+(?:מאוד|מאד|להכיר)/u;
+
 /** English labels for the note — the note is read by the model, whose instructions are English. */
 const FIELD_LABEL: Record<FactField, string> = {
   name: "the lead's name",
@@ -127,6 +147,12 @@ export class FactMemory {
   /** Committed utterances already counted, so the preemptive-draft echo cannot double-count an
    * ask. Same 20s rule and the same reason as PhraseLedger.observe / CallReport.recordTranscript. */
   #seen: Array<{ text: string; at: number }> = [];
+  #introduced = false;
+
+  /** Has she already said "נעים מאוד" out loud on this call? See INTRODUCED. */
+  get introduced(): boolean {
+    return this.#introduced;
+  }
 
   /** What we hold for a field, or null. */
   get(field: FactField): string | null {
@@ -167,6 +193,8 @@ export class FactMemory {
         this.#asks.set(field, this.asks(field) + 1);
       }
     }
+
+    if (INTRODUCED.test(trimmed)) this.#introduced = true;
   }
 
   /**
@@ -214,9 +242,17 @@ export class FactMemory {
     const exhausted = (Object.keys(ASK_PATTERNS) as FactField[]).filter(
       (field) => !this.#known.has(field) && this.asks(field) >= MAX_ASKS_PER_FACT,
     );
-    if (known.length === 0 && exhausted.length === 0) return null;
+    if (known.length === 0 && exhausted.length === 0 && !this.#introduced) return null;
 
     const parts = ['[Call memory — automatic reminder]'];
+    if (this.#introduced) {
+      parts.push(
+        'You have ALREADY greeted this lead ("נעים מאוד") earlier in this call. Greeting him ' +
+          'again — because a surname or a phone number just arrived, or for any other reason — ' +
+          'sounds like you have forgotten where you are. Acknowledge new details without ' +
+          'reintroducing yourself.',
+      );
+    }
     if (known.length > 0) {
       parts.push(
         `Already established on this call: ${known.join('; ')}. Do NOT ask for any of these ` +

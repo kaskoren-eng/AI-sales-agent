@@ -119,6 +119,8 @@ async function buildAuthTestApp(db: ReturnType<typeof createMockDb>, redis = mak
     VOICE_NEGATION_SAFETY: true,
     VOICE_PHRASE_LEDGER_ENABLED: true,
     VOICE_SPOKEN_REGISTER_ENABLED: true,
+    VOICE_DICTATION_NOD_ENABLED: true,
+    VOICE_INTRO_ONCE_ENABLED: true,
     VOICE_TTS_ROUTE: 'cartesia' as const,
     VOICE_TTS_PROVIDER: 'cartesia' as const,
     DEEPDUB_MODEL: 'dd-etts-3.2',

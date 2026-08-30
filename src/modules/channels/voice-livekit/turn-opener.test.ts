@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ACKNOWLEDGEMENTS_HE, pickAcknowledgement } from './prompts/acknowledgements.he.js';
 import { THINKING_FILLERS_HE } from './prompts/thinking-fillers.he.js';
 import { chooseTurnOpener, chunkCallsTool } from './turn-opener.js';
+import { DICTATION_NOD } from './dictation.js';
 
 /**
  * The regression net for the 2026-08-29 call — "אהה." alone, 5.4 seconds of nothing, then
@@ -94,6 +95,59 @@ describe('chooseTurnOpener — a tool call changes what she says next', () => {
         expect((opener as { word: string }).word).not.toBe(previous);
       }
     }
+  });
+});
+
+/**
+ * The 2026-08-30 half: he was still reading out his phone number and she answered the first half
+ * with a complete sentence. See dictation.ts.
+ */
+describe('chooseTurnOpener — the caller is still reading out a number', () => {
+  const anyFiller = () => THINKING_FILLERS_HE[0]!;
+  const nodded = (over: Partial<Parameters<typeof chooseTurnOpener>[0]> = {}) =>
+    chooseTurnOpener({
+      afterToolCall: false,
+      fillersEnabled: true,
+      midDictation: true,
+      nod: DICTATION_NOD,
+      nextAck: () => pickAcknowledgement(null),
+      offerFiller: anyFiller,
+      ...over,
+    });
+
+  it('nods instead of acknowledging — "טוב, הבנתי." mid-number was the bug', () => {
+    const opener = nodded();
+    expect(opener.kind).toBe('nod');
+    expect((opener as { word: string }).word).toBe(DICTATION_NOD);
+  });
+
+  it('does not spend an acknowledgement from the deck — the nod is a different act', () => {
+    let drawn = 0;
+    nodded({ nextAck: () => { drawn++; return 'אוקיי.'; } });
+    expect(drawn).toBe(0);
+  });
+
+  it('does not spend a thinking filler either — it is not a hesitation', () => {
+    let offered = 0;
+    nodded({ offerFiller: () => { offered++; return THINKING_FILLERS_HE[0]!; } });
+    expect(offered).toBe(0);
+  });
+
+  it('a post-tool step still hesitates — that step is not answering a caller turn at all', () => {
+    // The tool branch is checked FIRST on purpose: nothing was said to her between the two steps,
+    // so "was he dictating?" is not the question being asked there.
+    const opener = nodded({ afterToolCall: true });
+    expect(opener.kind).toBe('hesitation');
+  });
+
+  it('VOICE_DICTATION_NOD_ENABLED=false restores the receipt exactly', () => {
+    // The agent passes midDictation:false when the switch is off — the ONLY difference.
+    const opener = nodded({ midDictation: false });
+    expect(opener.kind).toBe('ack');
+  });
+
+  it('falls back to a receipt when no nod word is supplied', () => {
+    expect(nodded({ nod: undefined }).kind).toBe('ack');
   });
 });
 

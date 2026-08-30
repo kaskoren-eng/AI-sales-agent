@@ -153,3 +153,41 @@ describe('FactMemory.guardIdentity — established beats offered', () => {
     expect(m.get('name')).toBe('קורן');
   });
 });
+
+/**
+ * The 2026-08-30 note: "נעים מאוד" belongs to the introduction and nowhere else. This latch is the
+ * state the speech guard reads to decide whether a greeting is still allowed out.
+ */
+describe('FactMemory — she introduces herself once', () => {
+  it('starts having introduced nobody', () => {
+    expect(new FactMemory().introduced).toBe(false);
+  });
+
+  it('latches on the greeting she actually spoke — the 35s line', () => {
+    const m = new FactMemory();
+    m.observeAgentUtterance('אוקיי. נעים מאוד, קורן. אנחנו בונים סוכני AI לקול ולוואטסאפ.');
+    expect(m.introduced).toBe(true);
+  });
+
+  it('latches on נעים להכיר too — she does not always use the same words', () => {
+    const m = new FactMemory();
+    m.observeAgentUtterance('נעים להכיר, קורן.');
+    expect(m.introduced).toBe(true);
+  });
+
+  it('does not latch on an ordinary reply', () => {
+    const m = new FactMemory();
+    m.observeAgentUtterance('אנחנו בונים סוכני AI לקול ולוואטסאפ. במה אתה עוסק?');
+    expect(m.introduced).toBe(false);
+  });
+
+  it('tells the model, once it has happened', () => {
+    const m = new FactMemory();
+    m.observeAgentUtterance('נעים מאוד, קורן.');
+    expect(m.note()).toMatch(/ALREADY greeted/u);
+  });
+
+  it('says nothing while there is nothing to say', () => {
+    expect(new FactMemory().note()).toBeNull();
+  });
+});

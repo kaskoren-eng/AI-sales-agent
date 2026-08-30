@@ -285,6 +285,54 @@ function lastMatchGender(sentence: string, fem: RegExp, masc: RegExp): AddressGe
   return lastFem > lastMasc ? 'f' : 'm';
 }
 
+/**
+ * "נעים מאוד" — the introduction, which happens ONCE.
+ *
+ * Koren, 2026-08-30: *"הסוכן גם אומר נעים מאוד באמצע השיחה, זה מיותר ומוזר, זה משהו שאומרים רק
+ * בתחילת השיחה"*. It fired again at 164s of a 349s call because a surname had just been captured
+ * — a greeting triggered by a FACT rather than by a MEETING.
+ *
+ * The prompt half lives in FactMemory.note(); this is the enforcement half, and it exists for the
+ * same reason every other pair in this pipeline does: a prompt instruction about something that
+ * happened three minutes ago degrades under context load, and this one is audible the moment it
+ * fails.
+ *
+ * NARROW ON PURPOSE. The phrase is only removed when it stands as a greeting — followed by the end
+ * of the sentence, a comma, or a dash. "נעים מאוד לשמוע" is a different sentence with a different
+ * meaning and is left alone, because the lookahead does not match it.
+ */
+const INTRODUCTION = /(^|\s)נעים\s+(?:מאוד|מאד|להכיר)(?=\s*(?:[,.!?…׃—–-]|$))/u;
+
+/** Punctuation and whitespace only — what a sentence looks like after its only clause is removed. */
+const NOTHING_LEFT = /^[\s.,!?…׃—–-]*$/u;
+
+/**
+ * Removes a REPEAT greeting, and the name that rides on it.
+ *
+ * "נעים מאוד, קורן." must not become "קורן." — the name was an address attached to the greeting,
+ * not a sentence. So the lead's established name is passed in and eaten with the phrase; anything
+ * else after the comma is somebody's real words and stays. Returns '' when the sentence was
+ * nothing but the greeting, which `guardStream` renders as silence rather than an empty utterance.
+ */
+export function stripIntroduction(text: string, leadName?: string | null): string {
+  const match = INTRODUCTION.exec(text);
+  if (!match) return text;
+
+  let out = text.slice(0, match.index + (match[1] ?? '').length) + text.slice(match.index + match[0].length);
+  const tokens = (leadName ?? '')
+    .split(/\s+/u)
+    .map((t) => t.replace(/[.,!?…׃]+/gu, ''))
+    .filter(Boolean);
+  if (tokens.length > 0) {
+    const alt = tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('|');
+    // Only the name, only immediately after the greeting, only once — "נעים מאוד, קורן שטרית."
+    // eats both tokens because each is a token of the name we hold.
+    out = out.replace(new RegExp(`^\\s*[,،—–-]?\\s*(?:(?:${alt})(?![֐-׿])\\s*)+`, 'u'), ' ');
+  }
+  out = out.replace(/^\s*[,،—–-]\s*/u, ' ');
+  return NOTHING_LEFT.test(out) ? '' : out.replace(/\s{2,}/gu, ' ').trim();
+}
+
 /** The prompt's silence token. Nothing downstream interprets it, so it must never reach the TTS. */
 const NO_RESPONSE = /NO_RESPONSE_NEEDED/gi;
 
@@ -368,8 +416,24 @@ export async function* guardStream(
    * flag in, same pattern as allowBookingClaims.
    */
   spokenNumbers = false,
+  /**
+   * VOICE_INTRO_ONCE_ENABLED — evaluated PER SENTENCE like `allowBookingClaims`, and for the same
+   * reason: the FactMemory latch is set when her utterance COMMITS, which is after this reply has
+   * been spoken. So the first greeting of the call passes here, and everything after it is refused.
+   *
+   * `greetedInThisReply` closes the gap the commit-time latch leaves: within ONE reply the latch
+   * has not moved yet, so "נעים מאוד, קורן. נעים מאוד." would pass twice. It is handed to the
+   * CALLER rather than applied here so that the kill-switch owns every part of the behaviour —
+   * with VOICE_INTRO_ONCE_ENABLED off the agent's closure ignores it and nothing is ever removed.
+   *
+   * Omitted (tests, legacy callers) → every greeting passes, the pre-2026-08-30 behaviour.
+   */
+  allowIntroduction: (greetedInThisReply: boolean) => boolean = () => true,
+  /** The lead's established name, read per sentence for the same reason. */
+  leadName: () => string | null = () => null,
 ): AsyncIterable<string> {
   let buffer = '';
+  let greetedInThisReply = false;
 
   const flush = function* (chunk: string): Generator<string> {
     const flipped = genderTracker?.observe(chunk);
@@ -382,7 +446,10 @@ export async function* guardStream(
       allowBookingClaims: allowBookingClaims(),
       addressGender: genderTracker?.current,
       spokenNumbers,
+      allowIntroduction: allowIntroduction(greetedInThisReply),
+      leadName: leadName(),
     });
+    if (INTRODUCTION.test(chunk)) greetedInThisReply = true;
     for (const note of guarded.interventions) {
       console.log(`speech_guard ${JSON.stringify({ note, said: guarded.text.slice(0, 80) })}`);
     }
@@ -602,6 +669,14 @@ export function guardSpeech(
     addressGender?: AddressGender;
     /** Digits → colloquial Hebrew words (times, phones, prices). See speech-numbers.he.ts. */
     spokenNumbers?: boolean;
+    /**
+     * False once she has already introduced herself on this call — then a second "נעים מאוד" is
+     * removed. Defaults TRUE (legacy callers and the kill-switch OFF path keep every greeting).
+     * See stripIntroduction and VOICE_INTRO_ONCE_ENABLED.
+     */
+    allowIntroduction?: boolean;
+    /** The lead's established name, so the address riding on a removed greeting goes with it. */
+    leadName?: string | null;
   } = {},
 ): GuardResult {
   const interventions: string[] = [];
@@ -623,6 +698,17 @@ export function guardSpeech(
         interventions.push(`rewrote a false booking claim: "${out.match(pattern)?.[0]?.slice(0, 50)}"`);
         out = out.replace(pattern, TRUTH);
       }
+    }
+  }
+
+  // A SECOND "נעים מאוד" — she has already met him. Runs before the number and niqqud work so the
+  // rest of the pipeline never sees a sentence that is about to disappear.
+  if (opts.allowIntroduction === false) {
+    const introless = stripIntroduction(out, opts.leadName);
+    if (introless !== out) {
+      interventions.push('removed a repeat greeting (she has already introduced herself)');
+      out = introless;
+      if (out === '') return { text: '', silent: true, interventions };
     }
   }
 

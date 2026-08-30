@@ -28,6 +28,12 @@
  * When the call has spent its filler budget the step opens with NOTHING. Silence is always an
  * acceptable answer here — it is the extra word that made her sound like a machine, never the
  * missing one.
+ *
+ * AND THE THIRD CASE, added 2026-08-30: the caller is in the middle of reading out a phone number
+ * or an email. A receipt there is an interruption — it closes a turn he has not finished — so the
+ * step opens with a VOCAL NOD instead ("אה אה"), which says *still listening* and hands the floor
+ * straight back. Koren heard the failure on a production call: he said "050-", she answered
+ * "טוב, הבנתי.", and he then said the other seven digits into her sentence. See dictation.ts.
  */
 
 export type TurnOpener =
@@ -35,6 +41,8 @@ export type TurnOpener =
   | { kind: 'ack'; word: string }
   /** A hesitation covering a tool call that already interrupted her. */
   | { kind: 'hesitation'; word: string }
+  /** A vocal nod while the caller is still reading out a number or an email. */
+  | { kind: 'nod'; word: string }
   /** Say nothing at the start of this step. */
   | { kind: 'silent' };
 
@@ -43,6 +51,18 @@ export function chooseTurnOpener(input: {
   afterToolCall: boolean;
   /** `VOICE_THINKING_FILLER_MS !== 0` — the existing thinking-filler kill-switch. */
   fillersEnabled: boolean;
+  /**
+   * True when the turn she is answering was the caller READING SOMETHING OUT — a phone number
+   * mid-dictation, an email being spelled. See dictation.ts for why this is a classifier over the
+   * caller's utterance rather than a state machine, and for the call it comes from.
+   *
+   * `VOICE_DICTATION_NOD_ENABLED=false` makes the agent pass `false` here always, which restores
+   * the 2026-08-30 behaviour exactly: a full receipt in the middle of a phone number.
+   */
+  midDictation?: boolean;
+  /** The nod to use when `midDictation`. Injectable so the round-6 pick is one constant, not a
+   * literal buried in a branch. */
+  nod?: string;
   /**
    * Where the next receipt comes from. A SUPPLIER rather than a word, because the choice is now a
    * per-call decision the agent owns: an AcknowledgementLedger deck when VOICE_ACK_LEDGER_ENABLED
@@ -60,6 +80,13 @@ export function chooseTurnOpener(input: {
     const filler = input.offerFiller();
     return filler ? { kind: 'hesitation', word: filler } : { kind: 'silent' };
   }
+  // Checked AFTER the tool branch on purpose: a step resuming behind a tool call is not answering
+  // a caller turn at all, so "was he dictating?" is not the question being asked there.
+  //
+  // The nod is NOT drawn from the acknowledgement deck, and it does not spend it. It is a
+  // different act — "still listening" rather than "I have it" — and a deck word here would both
+  // say the wrong thing and thin out the receipts for the turns that need them.
+  if (input.midDictation && input.nod) return { kind: 'nod', word: input.nod };
   return { kind: 'ack', word: input.nextAck() };
 }
 

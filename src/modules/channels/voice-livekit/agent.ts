@@ -34,6 +34,7 @@ import { buildGreeting, isDefaultPersona, readAgentPersona } from './persona.js'
 import { buildVoicemailMessage } from './call-state-lines.he.js';
 import { MAX_FILLERS_PER_CALL, ThinkingFillerLedger } from './prompts/thinking-fillers.he.js';
 import { chooseTurnOpener, chunkCallsTool } from './turn-opener.js';
+import { DICTATION_NOD, isDictationTurn } from './dictation.js';
 import {
   AddressGenderTracker,
   dropAckEcho,
@@ -268,6 +269,17 @@ class ClickScalesAgent extends voice.Agent {
    * "קבעתי לך" is still a lie and is still rewritten. After it, rewriting the truth would itself
    * be the lie. The control-token removal and the pronunciation fix stay unconditional forever.
    */
+  /**
+   * The caller's last COMMITTED utterance — the turn she is about to answer.
+   *
+   * Fed from the ConversationItemAdded hook, the same source and the same timing the gender tracker
+   * uses (`observeUser`), so the classification reads what she actually heard rather than what the
+   * model guessed. Only `isDictationTurn` reads it; if it is stale by one turn — the preemptive
+   * draft case — the draft is discarded anyway (known-issues §14) and the real step sees the
+   * committed text.
+   */
+  lastUserUtterance: string | null = null;
+
   /** The acknowledgement spoken on this reply, so ttsNode can drop the model's echo of it. */
   #spokenAck: string | null = null;
 
@@ -330,6 +342,10 @@ class ClickScalesAgent extends voice.Agent {
     const opener = chooseTurnOpener({
       afterToolCall,
       fillersEnabled: env.VOICE_THINKING_FILLER_MS !== 0,
+      // He is still reading out the number. A receipt here takes the floor from a man who has not
+      // finished his sentence — see dictation.ts and the 050- / "טוב, הבנתי." exchange it quotes.
+      midDictation: env.VOICE_DICTATION_NOD_ENABLED && isDictationTurn(this.lastUserUtterance),
+      nod: DICTATION_NOD,
       nextAck: () =>
         this.ackLedger ? this.ackLedger.next() : pickAcknowledgement(this.#lastAck),
       offerFiller: () => this.fillerLedger.offer(),
@@ -341,6 +357,13 @@ class ClickScalesAgent extends voice.Agent {
     } else {
       // Nothing for dropAckEcho to remove: a hesitation is not a word the model would echo.
       this.#spokenAck = null;
+    }
+    if (opener.kind === 'nod') {
+      // Logged because it is invisible otherwise: the nod and the receipt are both one short word
+      // at the head of a reply, and only this line says which act she performed.
+      console.log(
+        `turn_opener ${JSON.stringify({ kind: 'nod', word: opener.word, reason: 'caller_dictating' })}`,
+      );
     }
     if (opener.kind === 'hesitation') {
       // Spoken here, at the head of the step, so it covers the tool round-trip that just happened
@@ -456,6 +479,13 @@ class ClickScalesAgent extends voice.Agent {
             this.genderTracker,
             // Digits → colloquial Hebrew words in the SPOKEN text only (times, phones, prices).
             env.VOICE_SPEECH_NUMBERS_ENABLED,
+            // "נעים מאוד" is the introduction, and there is only one of those per call. The latch
+            // is set when her greeting COMMITS, so the first one passes and every later one is
+            // removed. Read per sentence, like the booking claim above.
+            (greetedInThisReply) =>
+              !env.VOICE_INTRO_ONCE_ENABLED ||
+              (!(this.factMemory?.introduced ?? false) && !greetedInThisReply),
+            () => this.factMemory?.get('name') ?? null,
           ),
           startedAt,
           (ms) => {
@@ -1118,7 +1148,12 @@ export default defineAgent({
 
       // 1b. Advance the conversation state machine on committed turns (opening→discovery→…).
       //     No-op when the advisory layer is disabled (callState undefined).
-      if (item?.role === 'user') callState?.onUserTurn();
+      if (item?.role === 'user') {
+        callState?.onUserTurn();
+        // The turn her NEXT reply is answering. Read in llmNode to decide whether the opener is a
+        // receipt or a nod — see dictation.ts.
+        agent.lastUserUtterance = item.textContent ?? null;
+      }
       else if (item?.role === 'assistant') {
         callState?.onAgentTurn();
         // Anti-repetition ledger: fold her committed reply in, then (below, after the trim)
