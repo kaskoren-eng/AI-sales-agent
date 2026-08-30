@@ -503,6 +503,17 @@ const envSchema = z.object({
   // bank — סבבה/אחלה level, no heavy street slang; Koren's explicit register choice 2026-08-27).
   // Default ON. Set false to drop the section and restore the previous register.
   VOICE_SPOKEN_REGISTER_ENABLED: envBool(true),
+  // Kill-switch for the mid-dictation vocal nod (2026-08-30). On a real call the lead said "050-",
+  // she answered "טוב, הבנתי." as a complete sentence, and he read the other seven digits into it.
+  // ON: while the caller is reading out a number or an email, the turn opens with a short nod
+  // ("אה אה") that means *got it, keep going* instead of a receipt that claims the floor. OFF
+  // restores the receipt in that position exactly. See dictation.ts.
+  VOICE_DICTATION_NOD_ENABLED: envBool(true),
+  // Kill-switch for "introduce yourself once" (2026-08-30). She said "נעים מאוד" at 35s, correctly,
+  // and again at 164s because a surname had just been captured — Koren: "זה מיותר ומוזר, זה משהו
+  // שאומרים רק בתחילת השיחה". ON drops a second greeting from her speech (and tells the model why in
+  // the Call Memory section); OFF restores the repeat.
+  VOICE_INTRO_ONCE_ENABLED: envBool(true),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),

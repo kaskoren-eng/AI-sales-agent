@@ -719,3 +719,43 @@ describe('negation safety — a sentence must not be able to invert', () => {
     expect(off).toContain('לא תפסתי את השם שלך');
   });
 });
+
+/**
+ * The 2026-08-30 production calls — the prompt half of Koren's seven notes on how she SOUNDS.
+ * Every assertion here is a sentence he reacted to, not a style preference.
+ */
+describe('the 2026-08-30 calls — greeting once, joy in proportion, pauses that work', () => {
+  const tools = buildSystemPrompt({ toolsEnabled: true });
+
+  it('says "נעים מאוד" belongs to the introduction and nowhere else', () => {
+    // 35s: right. 164s, after a surname landed: "אהה. נעים מאוד. רק לוודֵא — קורן שטרית, נכון?"
+    expect(SYSTEM_PROMPT_HE).toContain('"נעים מאוד" belongs to the introduction and nowhere else');
+    expect(SYSTEM_PROMPT_HE).toMatch(/Learning his surname later.*is not a new introduction/su);
+  });
+
+  it('keeps the big joy for a booking that actually landed', () => {
+    // It fired on a flat "אה, סבבה" — agreement in principle — and read as performed.
+    expect(SYSTEM_PROMPT_HE).toMatch(/A booking actually LANDS.*איזה כיף/su);
+    expect(SYSTEM_PROMPT_HE).toMatch(/agrees in principle.*match his size/su);
+  });
+
+  it('tells her which punctuation actually pauses, with the measured numbers', () => {
+    // "השימוש בפסיקים ונקודות כדי לעצור באמצע משפט לא עובד כמו שצריך". Measured on sonic-3.5 at
+    // the production speed: pause_probe.py. A rule without the numbers is a preference.
+    expect(SYSTEM_PROMPT_HE).toContain('a comma is the weakest one you have');
+    expect(SYSTEM_PROMPT_HE).toMatch(/0\.18s/u);
+    expect(SYSTEM_PROMPT_HE).toContain('END THE SENTENCE');
+  });
+
+  it('does not open both read-backs with the same three words', () => {
+    // "רק לוודֵא — קורן, נכון?" at 153.7s and "רק לוודֵא — קורן שטרית, נכון?" at 163.8s.
+    expect(tools).toContain('אז רשמתי אפס חמש אפס');
+    expect(tools).toContain('**Vary the confirmation.**');
+  });
+
+  it('tells her not to answer a half-finished dictation', () => {
+    // The code half is the mid-dictation nod (dictation.ts); this is the guidance half.
+    expect(tools).toContain('While he is READING SOMETHING OUT, do not answer him');
+    expect(tools).toMatch(/never acknowledge a half-finished number/u);
+  });
+});

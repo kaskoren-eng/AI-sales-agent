@@ -674,3 +674,124 @@ describe('guardStream — a time can never straddle a chunk boundary', () => {
     expect(out.join('')).toContain('בארבע וחצי');
   });
 });
+
+/**
+ * "נעים מאוד" is the introduction, and there is exactly one introduction per call.
+ *
+ * The 2026-08-30 call said it at 35s (right) and again at 164s (wrong) — triggered by a surname
+ * landing in capture_lead_info. Koren: "זה מיותר ומוזר, זה משהו שאומרים רק בתחילת השיחה". Every
+ * sentence below is from that transcript.
+ */
+describe('guardSpeech — she introduces herself once', () => {
+  it('drops a repeat greeting that is the whole sentence', () => {
+    const r = guardSpeech('נעים מאוד.', { allowIntroduction: false });
+    expect(r.text).toBe('');
+    expect(r.silent).toBe(true);
+    expect(r.interventions.join(' ')).toMatch(/repeat greeting/u);
+  });
+
+  it('takes the name that was riding on it — "נעים מאוד, קורן." is not "קורן."', () => {
+    const r = guardSpeech('נעים מאוד, קורן.', { allowIntroduction: false, leadName: 'קורן' });
+    expect(r.text).toBe('');
+    expect(r.silent).toBe(true);
+  });
+
+  it('takes a full name, both tokens', () => {
+    const r = guardSpeech('נעים מאוד, קורן שטרית.', {
+      allowIntroduction: false,
+      leadName: 'קורן שטרית',
+    });
+    expect(r.text).toBe('');
+  });
+
+  it('keeps the rest of the sentence when the greeting only opened it', () => {
+    const r = guardSpeech('נעים מאוד, בוא נקבע דמו קצר.', { allowIntroduction: false });
+    expect(r.text).toBe('בוא נקבע דמו קצר.');
+    expect(r.silent).toBe(false);
+  });
+
+  it('leaves "נעים מאוד לשמוע" alone — that is a different sentence', () => {
+    // The lookahead requires the phrase to STAND as a greeting: sentence end, comma or dash.
+    const r = guardSpeech('נעים מאוד לשמוע את זה.', { allowIntroduction: false });
+    expect(r.text).toBe('נעים מאוד לשמוע את זה.');
+  });
+
+  it('never touches a word that merely contains the letters', () => {
+    const r = guardSpeech('זה נעים לשמוע, תודה.', { allowIntroduction: false });
+    expect(r.text).toBe('זה נעים לשמוע, תודה.');
+  });
+
+  it('leaves the FIRST greeting completely alone — allowIntroduction defaults to true', () => {
+    expect(guardSpeech('נעים מאוד, קורן.').text).toBe('נעים מאוד, קורן.');
+    expect(guardSpeech('נעים מאוד, קורן.', { allowIntroduction: true }).text).toBe('נעים מאוד, קורן.');
+  });
+});
+
+describe('guardStream — the first greeting passes, the second does not', () => {
+  const chunks = async function* (...c: string[]) {
+    for (const x of c) yield x;
+  };
+  const drain = async (it: AsyncIterable<string>) => {
+    const out: string[] = [];
+    for await (const x of it) out.push(x);
+    return out;
+  };
+
+  it('lets the introduction through while the call has not had one', async () => {
+    const out = (
+      await drain(guardStream(chunks('אוקיי. נעים מאוד, קורן. במה אתה עוסק?'), undefined, undefined, false, () => true))
+    ).join('');
+    expect(out).toContain('נעים מאוד');
+  });
+
+  it('removes it once the call HAS had one — the FactMemory latch says so', async () => {
+    // Exactly the 163.8s line: "אהה. נעים מאוד. רק לוודא — קורן שטרית, נכון?"
+    const out = (
+      await drain(
+        guardStream(
+          chunks('אהה. נעים מאוד. רק לוודא — קורן שטרית, נכון?'),
+          undefined,
+          undefined,
+          false,
+          () => false,
+          () => 'קורן שטרית',
+        ),
+      )
+    ).join('');
+    expect(out).not.toContain('נעים מאוד');
+    expect(out).toContain('אהה');
+    expect(out).toContain('נכון');
+  });
+
+  it('does not let one reply greet him twice — the latch has not committed yet', async () => {
+    // The FactMemory latch only moves when the utterance commits, i.e. after this whole reply has
+    // been spoken. guardStream hands its own per-reply flag to the caller for exactly this case.
+    let greetedBefore: boolean[] = [];
+    const out = (
+      await drain(
+        guardStream(
+          chunks('נעים מאוד, קורן. נעים מאוד.'),
+          undefined,
+          undefined,
+          false,
+          (greeted) => {
+            greetedBefore.push(greeted);
+            return !greeted;
+          },
+          () => 'קורן',
+        ),
+      )
+    ).join('');
+    expect(greetedBefore).toEqual([false, true]);
+    expect(out.match(/נעים מאוד/gu)?.length).toBe(1);
+  });
+
+  it('the kill-switch path keeps BOTH — the closure ignores the per-reply flag', async () => {
+    // VOICE_INTRO_ONCE_ENABLED=false makes the agent pass `() => true`, which must restore the
+    // pre-2026-08-30 behaviour byte for byte, repeats included.
+    const out = (
+      await drain(guardStream(chunks('נעים מאוד, קורן. נעים מאוד.'), undefined, undefined, false, () => true))
+    ).join('');
+    expect(out.match(/נעים מאוד/gu)?.length).toBe(2);
+  });
+});

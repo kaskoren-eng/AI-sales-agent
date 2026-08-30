@@ -27,6 +27,12 @@ def load_env(name):
 API_KEY = load_env("CARTESIA_API_KEY")
 VOICE_ID = load_env("CARTESIA_VOICE_ID_PRIMARY")
 MODEL = "sonic-3"
+# Production speaks at VOICE_TTS_SPEED / VOICE_TTS_VOLUME, and rounds 1-5 synthesized without
+# them (i.e. at 1.0/1.0). Set this to {"speed": .., "volume": ..} to match the live agent — the
+# same shape the LiveKit plugin sends for sonic-3 models on API 2025-04-16
+# (node_modules/@livekit/agents-plugin-cartesia/dist/tts.js:572). None = the old behaviour, so
+# every earlier round still reproduces byte-for-byte.
+GENERATION_CONFIG = None
 VERSION = "2025-04-16"
 LANG = "he"
 SAMPLE_RATE = 44100
@@ -43,6 +49,8 @@ def synth(text, out_path):
         "language": LANG,
         "output_format": {"container": "wav", "encoding": "pcm_s16le", "sample_rate": SAMPLE_RATE},
     }
+    if GENERATION_CONFIG:
+        payload["generation_config"] = GENERATION_CONFIG
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as tf:
         json.dump(payload, tf, ensure_ascii=False)
         body_path = tf.name
