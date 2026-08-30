@@ -1,0 +1,19 @@
+{
+  "_comment": "Copy this, edit it, run: npm run voice:ab:call -- <your-file.json>. Variant A with an empty env is the baseline — exactly what .env says today. Every key must be a real env key (checked against .env.example) and at least one must differ between variants, or the run refuses to start.",
+  "scenario": "baseline_latency",
+  "variants": [
+    {
+      "key": "A",
+      "label": "היום — בדיוק מה שרץ בפרודקשן",
+      "env": {}
+    },
+    {
+      "key": "B",
+      "label": "דיבור איטי יותר (0.85) וקצת חזק יותר",
+      "env": {
+        "VOICE_TTS_SPEED": "0.85",
+        "VOICE_TTS_VOLUME": "1.4"
+      }
+    }
+  ]
+}

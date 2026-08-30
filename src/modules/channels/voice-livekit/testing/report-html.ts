@@ -1,0 +1,422 @@
+/**
+ * THE PAGE KOREN OPENS AND LISTENS TO.
+ *
+ * Every number this harness produces is a proxy. The thing being optimised — "does she sound like
+ * a human on the phone" — has no metric, and the person who can judge it is not a developer and
+ * does not read a terminal. So a run ends in a browser page with the clips on it, laid out exactly
+ * like `tests/hebrew-tts-niqqud-ab/index-round6.html`, which is the format that has actually
+ * produced decisions in this project: one card per item, one column per variant, a radio to pick
+ * the winner, a note field, and a "צור סיכום" button that emits a pasteable verdict.
+ *
+ * Two clips are written for every reply, and the PHONE one is the one to judge: a call is 8kHz
+ * narrowband end to end, and a voice that is lovely at 24kHz can be unintelligible on a phone.
+ * See wav.ts.
+ */
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import type { PipelineSnapshot } from '../pipeline-observer.js';
+import { encodeWav, toPhoneRate } from './wav.js';
+import { CAPTURE_RATE, type CallResult } from './synthetic-caller.js';
+import { alignTranscript } from './transcript-align.js';
+
+const PHONE_RATE = 8_000;
+
+export interface VariantSummary {
+  /** 'A', 'B', … — the label a human uses when saying which one won. */
+  key: string;
+  /** What this variant IS, in words. Shown above every clip. */
+  label: string;
+  /** The env overrides that define it. */
+  overrides: Record<string, string>;
+  /**
+   * What the agent's own pipeline observer said this call actually resolved to. Null when no call
+   * report could be matched — in which case nothing here has been PROVEN and the page says so.
+   */
+  pipeline: PipelineSnapshot | null;
+}
+
+export interface TurnRow {
+  said: string;
+  agentSaid: string | null;
+  deadAirMs: number | null;
+  agentSpokeMs: number;
+  cutOff: boolean;
+  phoneWav: string | null;
+  studioWav: string | null;
+}
+
+export interface VariantRun {
+  key: string;
+  /** `lk.agent.name` of the worker that actually answered — the anti-"was this even my code" check. */
+  agentName: string | null;
+  callWav: string | null;
+  greetingWav: string | null;
+  greetingSaid: string | null;
+  turns: TurnRow[];
+  error?: string;
+}
+
+export interface PageInput {
+  title: string;
+  scenarioName: string;
+  scenarioDescription: string;
+  variants: VariantSummary[];
+  runs: VariantRun[];
+  /** Loud, red, at the top. Anything the run could not prove goes here. */
+  warnings: string[];
+  generatedAt: string;
+}
+
+// ------------------------------------------------------------------------------------------
+// Artifacts
+// ------------------------------------------------------------------------------------------
+
+/** `01_A_phone.wav` etc. — sortable, and the variant key is readable at a glance in the folder. */
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * Writes every WAV for one variant's call and returns the page rows that point at them.
+ *
+ * Transcript text comes from the AGENT's own call report, not from anything this harness can hear:
+ * the harness has the audio but no idea what is in it. `alignTranscript` does the pairing.
+ */
+export async function writeRunArtifacts(args: {
+  dir: string;
+  key: string;
+  call: CallResult;
+  /** The agent's own words, already aligned to turns by `alignTranscript`. */
+  transcript: { greeting: string | null; replies: Array<string | null> };
+}): Promise<VariantRun> {
+  const { dir, key, call, transcript } = args;
+  await mkdir(dir, { recursive: true });
+
+  const write = async (name: string, pcm: Int16Array): Promise<string | null> => {
+    if (pcm.length === 0) return null;
+    await writeFile(join(dir, name), encodeWav(pcm, CAPTURE_RATE));
+    const phoneName = name.replace(/\.wav$/u, '_phone.wav');
+    await writeFile(join(dir, phoneName), encodeWav(toPhoneRate(pcm, CAPTURE_RATE), PHONE_RATE));
+    return phoneName;
+  };
+
+  const greetingSaid = transcript.greeting;
+  const greetingWav = await write(`call_${key}_greeting.wav`, call.greetingPcm);
+  const callWav = await write(`call_${key}_full.wav`, call.mixedPcm);
+
+  const turns: TurnRow[] = [];
+  for (const [i, turn] of call.turns.entries()) {
+    const base = `${pad(i + 1)}_${key}`;
+    const phone = await write(`${base}.wav`, turn.agentPcm);
+    turns.push({
+      said: turn.said,
+      agentSaid: transcript.replies[i] ?? null,
+      deadAirMs: turn.responseLatencyMs,
+      agentSpokeMs: turn.agentSpokeMs,
+      cutOff: turn.interruptedCaller,
+      phoneWav: phone,
+      studioWav: phone ? `${base}.wav` : null,
+    });
+  }
+
+  return {
+    key,
+    agentName: call.agentName,
+    callWav: callWav ? callWav.replace(/_phone\.wav$/u, '.wav') : null,
+    greetingWav: greetingWav ? greetingWav.replace(/_phone\.wav$/u, '.wav') : null,
+    greetingSaid,
+    turns,
+    ...(call.error ? { error: call.error } : {}),
+  };
+}
+
+// ------------------------------------------------------------------------------------------
+// Call-report lookup
+// ------------------------------------------------------------------------------------------
+
+export interface MatchedReport {
+  path: string;
+  pipeline: PipelineSnapshot | null;
+  /** What she said before the caller's first utterance. */
+  agentGreeting: string | null;
+  /** What she said in reply to caller turn N. `null` = she said nothing for that turn. */
+  agentReplies: Array<string | null>;
+  /** The agent's OWN dead-air measurements, which do not include our transport overhead. */
+  deadAirMs: number[];
+}
+
+
+/**
+ * Finds the call report the agent wrote for a given room.
+ *
+ * Matching is on the room name rather than on "the newest file", because a run spawns and kills a
+ * worker per variant and the reports land in one shared directory. `sinceMs` bounds the scan so an
+ * old report for a re-used room name can never be picked up.
+ */
+export async function findCallReport(
+  dir: string,
+  room: string,
+  sinceMs: number,
+): Promise<MatchedReport | null> {
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return null;
+  }
+  for (const name of names.filter((n) => n.endsWith('.json')).sort().reverse()) {
+    const path = join(dir, name);
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (parsed.room !== room) continue;
+    const startedAt = Date.parse(String(parsed.startedAt ?? ''));
+    if (Number.isFinite(startedAt) && startedAt < sinceMs - 60_000) continue;
+
+    const transcript = (Array.isArray(parsed.transcript) ? parsed.transcript : []).filter(
+      (l): l is { role: string; text: string } => {
+        const line = l as { role?: unknown; text?: unknown };
+        return typeof line.role === 'string' && typeof line.text === 'string';
+      },
+    );
+    const { greeting, replies } = alignTranscript(transcript);
+    const deadAir = (parsed.summary as { deadAirMs?: unknown } | undefined)?.deadAirMs;
+    return {
+      path,
+      pipeline: (parsed.pipeline as PipelineSnapshot | null) ?? null,
+      agentGreeting: greeting,
+      agentReplies: replies,
+      deadAirMs: Array.isArray(deadAir) ? (deadAir as number[]) : [],
+    };
+  }
+  return null;
+}
+
+// ------------------------------------------------------------------------------------------
+// HTML
+// ------------------------------------------------------------------------------------------
+
+const esc = (s: string): string =>
+  s.replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;').replace(/"/gu, '&quot;');
+
+const ms = (v: number | null): string => (v === null ? '—' : `${v}ms`);
+
+/**
+ * The whole page, as one string. No build step, no CDN, no fonts to fetch — it has to open off a
+ * local filesystem on a laptop with no dev server running, because that is how it will be used.
+ */
+export function renderPage(input: PageInput): string {
+  const multi = input.variants.length > 1;
+  const runByKey = new Map(input.runs.map((r) => [r.key, r]));
+  const turnCount = Math.max(0, ...input.runs.map((r) => r.turns.length));
+
+  const warnings = input.warnings.length
+    ? `<div class="warn"><b>לא הוכח / שים לב</b><ul>${input.warnings
+        .map((w) => `<li>${esc(w)}</li>`)
+        .join('')}</ul></div>`
+    : '';
+
+  // Every key ANY variant touches, so the baseline column shows what it ran too. Listing only a
+  // variant's own overrides leaves the baseline's "agent reported" line blank, which is exactly
+  // the value you need in order to know what the change was measured against.
+  const comparedKeys = [...new Set(input.variants.flatMap((v) => Object.keys(v.overrides)))].sort();
+
+  const variantLegend = input.variants
+    .map((v) => {
+      const run = runByKey.get(v.key);
+      const overrides = Object.entries(v.overrides);
+      const resolved = v.pipeline
+        ? comparedKeys
+            .map((k) => {
+              const c = v.pipeline!.configured[k];
+              return c ? `${k}=${c.value} (${c.source})` : `${k}=NOT OBSERVED`;
+            })
+            .join(' · ') || '(no keys compared)'
+        : 'אין דוח שיחה — לא אומת';
+      return `<div class="col">
+        <div class="vhead"><span class="vkey">${esc(v.key)}</span><span class="vlabel">${esc(v.label)}</span></div>
+        <div class="meas">asked for: ${esc(overrides.map(([k, val]) => `${k}=${val}`).join(' · ') || '(baseline — .env as-is)')}</div>
+        <div class="meas">agent reported: ${esc(resolved)}</div>
+        <div class="meas">answered by: ${esc(run?.agentName ?? 'unknown')}</div>
+        ${run?.error ? `<div class="meas none">${esc(run.error)}</div>` : ''}
+        ${run?.callWav ? `<div class="meas">השיחה המלאה (שני הצדדים):</div><audio controls preload="none" src="${esc(run.callWav)}"></audio>` : ''}
+        ${run?.greetingWav ? `<div class="meas">פתיח: ${esc(run.greetingSaid ?? '')}</div><audio controls preload="none" src="${esc(run.greetingWav)}"></audio>` : ''}
+      </div>`;
+    })
+    .join('');
+
+  const cards: string[] = [];
+  for (let i = 0; i < turnCount; i++) {
+    const id = `t${i + 1}`;
+    const said = input.runs.map((r) => r.turns[i]?.said).find((s) => s !== undefined) ?? '';
+    const cols = input.variants
+      .map((v) => {
+        const turn = runByKey.get(v.key)?.turns[i];
+        if (!turn) {
+          return `<div class="col"><div class="vhead"><span class="vkey">${esc(v.key)}</span></div><div class="meas none">אין הקלטה לתור הזה</div></div>`;
+        }
+        const flags = [
+          turn.cutOff ? 'CUT THE CALLER OFF' : null,
+          turn.deadAirMs !== null && turn.deadAirMs > 1200 ? 'DEAD AIR > 1.2s' : null,
+          turn.deadAirMs === null ? 'NO REPLY' : null,
+        ].filter(Boolean);
+        const pick = multi
+          ? `<div class="psrow"><label class="lbl"><input type="radio" name="pick_${id}" value="${esc(v.key)}"> זה הכי טוב</label></div>`
+          : '';
+        return `<div class="col">
+          <div class="vhead"><span class="vkey">${esc(v.key)}</span><span class="vlabel">${esc(v.label)}</span>
+            <span class="tag">${esc(ms(turn.deadAirMs))}</span></div>
+          <div class="he" dir="rtl">${esc(turn.agentSaid ?? '(הטקסט לא נמצא בדוח השיחה)')}</div>
+          ${turn.phoneWav ? `<audio controls preload="none" src="${esc(turn.phoneWav)}"></audio>` : '<div class="meas none">אין אודיו</div>'}
+          <div class="meas">שקט לפני התשובה ${esc(ms(turn.deadAirMs))} · דיברה ${turn.agentSpokeMs}ms${flags.length ? ` · <span class="none">${esc(flags.join(', '))}</span>` : ''}</div>
+          ${turn.studioWav ? `<details><summary class="meas">גרסת אולפן 24kHz (לא לשיפוט)</summary><audio controls preload="none" src="${esc(turn.studioWav)}"></audio></details>` : ''}
+          ${pick}
+        </div>`;
+      })
+      .join('');
+
+    cards.push(`<div class="card" data-id="${id}">
+      <div class="chead"><span class="cid" dir="rtl">${esc(said)}</span><span class="tag">${id} · מה שהלקוח אמר</span></div>
+      <div class="cols">${cols}</div>
+      <div class="psrow">${multi ? `<label class="lbl none"><input type="radio" name="pick_${id}" value="none"> אף אחד לא טוב</label>` : ''}
+        <input type="text" class="note" name="note_${id}" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div>`);
+  }
+
+  const table = renderLatencyTable(input, runByKey, turnCount);
+
+  return `<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(input.title)}</title>
+<style>
+  :root { --bg:#0e1116; --card:#171b22; --line:#252b36; --txt:#e6e9ef; --dim:#9aa4b2; --acc:#3b82f6; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:"Segoe UI",Arial,sans-serif; }
+  header, main { max-width:1200px; margin:0 auto; padding:0 20px; }
+  header { padding-top:26px; }
+  h1 { margin:0 0 6px; font-size:22px; }
+  h2 { font-size:18px; margin:34px 0 2px; }
+  .sub { color:var(--dim); font-size:14px; margin:4px 0 10px; line-height:1.55; }
+  .warn { border:1px solid #7a4a2a; background:#20160f; border-radius:10px; padding:12px 16px; margin:14px 0; font-size:14px; }
+  .warn ul { margin:8px 0 0; padding-inline-start:20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin:14px 0; }
+  .chead { display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  .cid { font-weight:700; font-size:19px; }
+  .tag { font-size:12px; color:var(--dim); font-family:monospace; }
+  .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:10px; }
+  .col { border:1px solid var(--line); border-radius:10px; padding:12px; background:#0f131a; }
+  .col:has(input:checked) { border-color:var(--acc); }
+  .vhead { display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap; }
+  .vkey { font-family:monospace; font-weight:700; color:var(--acc); font-size:16px; }
+  .vlabel { font-size:13px; color:var(--dim); }
+  .lbl { font-size:13px; color:var(--dim); display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
+  .none { color:#e0a0a0; }
+  .he { font-size:18px; margin-bottom:8px; line-height:1.5; }
+  .meas { font-family:monospace; font-size:12px; color:var(--dim); margin:6px 0; word-break:break-word; }
+  audio { width:100%; height:34px; }
+  details { margin-top:6px; }
+  .psrow { display:flex; gap:14px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+  .note { flex:1; min-width:220px; background:#0e1116; border:1px solid var(--line); border-radius:8px;
+           color:var(--txt); padding:8px 10px; font-size:14px; }
+  table { border-collapse:collapse; width:100%; font-family:monospace; font-size:13px; margin:10px 0 0; }
+  th, td { border:1px solid var(--line); padding:6px 10px; text-align:start; }
+  th { color:var(--dim); font-weight:600; }
+  #summary { width:100%; min-height:200px; background:#0f131a; color:var(--txt); border:1px solid var(--line);
+              border-radius:10px; padding:12px; font-family:monospace; font-size:13px; direction:ltr; }
+  button { background:var(--acc); border:0; color:#fff; border-radius:8px; padding:10px 18px;
+            font-size:14px; cursor:pointer; margin:10px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>${esc(input.title)}</h1>
+  <p class="sub">תרחיש <b>${esc(input.scenarioName)}</b> — ${esc(input.scenarioDescription)}<br>
+    נוצר ${esc(input.generatedAt)}</p>
+  <div class="warn"><b>המספרים כאן הם כלי השוואה, לא מדידת מוצר.</b>
+    ה"שקט לפני התשובה" שנמדד כאן גבוה ב־1 עד 1.5 שניות מהאמת, כי הוא כולל גם את הרשת ואת
+    ה־jitter buffer של המאזין. להשוות בעזרתו A מול B — אבל לעולם לא לצטט אותו כזמן התגובה של המוצר.
+    הזמן האמיתי נמדד מהשיחה עצמה (<code>latency eou/llm/tts</code> בדוח השיחה).<br>
+    לשפוט לפי הנגן הראשי בכל עמודה — הוא 8kHz, כמו טלפון. גרסת האולפן היא לעיון בלבד.</div>
+  ${warnings}
+</header>
+<main>
+<h2>הווריאנטים</h2>
+<div class="cols">${variantLegend}</div>
+
+<h2>טבלת זמנים</h2>
+${table}
+
+<h2>תור אחרי תור</h2>
+${cards.join('\n')}
+
+<h2>סיכום</h2>
+<button id="btn">צור סיכום</button>
+<textarea id="summary" readonly placeholder="הסיכום יופיע כאן"></textarea>
+</main>
+<script>
+const KEY = ${JSON.stringify(`voice-ab-${input.scenarioName}-${input.generatedAt}`)};
+const state = JSON.parse(localStorage.getItem(KEY) || '{}');
+document.querySelectorAll('input').forEach(el => {
+  if (el.type === 'radio' && state[el.name] === el.value) el.checked = true;
+  if (el.type === 'text' && state[el.name]) el.value = state[el.name];
+  el.addEventListener(el.type === 'text' ? 'input' : 'change', () => {
+    state[el.name] = el.value;
+    localStorage.setItem(KEY, JSON.stringify(state));
+  });
+});
+document.getElementById('btn').addEventListener('click', () => {
+  const lines = [${JSON.stringify(input.title)}, ${JSON.stringify(
+    input.variants.map((v) => `${v.key} = ${v.label}`).join(' | '),
+  )}, ''];
+  document.querySelectorAll('.card').forEach(card => {
+    const id = card.dataset.id;
+    const said = card.querySelector('.cid').textContent.trim();
+    const pick = state['pick_' + id] || '-';
+    const note = state['note_' + id] ? '  note: ' + state['note_' + id] : '';
+    lines.push(id + ' "' + said + '": ' + pick + note);
+  });
+  const box = document.getElementById('summary');
+  box.value = lines.join('\\n');
+  box.select();
+});
+</script>
+</body>
+</html>
+`;
+}
+
+function renderLatencyTable(
+  input: PageInput,
+  runByKey: Map<string, VariantRun>,
+  turnCount: number,
+): string {
+  const head = ['תור', ...input.variants.map((v) => v.key)];
+  const rows: string[] = [];
+  for (let i = 0; i < turnCount; i++) {
+    const cells = input.variants.map((v) => {
+      const t = runByKey.get(v.key)?.turns[i];
+      return t ? ms(t.deadAirMs) : '—';
+    });
+    rows.push(`<tr><td>${i + 1}</td>${cells.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`);
+  }
+  const stat = (fn: (values: number[]) => number | null, label: string): string => {
+    const cells = input.variants.map((v) => {
+      const values = (runByKey.get(v.key)?.turns ?? [])
+        .map((t) => t.deadAirMs)
+        .filter((n): n is number => n !== null);
+      const out = fn(values);
+      return out === null ? '—' : `${out}ms`;
+    });
+    return `<tr><th>${esc(label)}</th>${cells.map((c) => `<td><b>${esc(c)}</b></td>`).join('')}</tr>`;
+  };
+  const median = (v: number[]): number | null =>
+    v.length === 0 ? null : [...v].sort((a, b) => a - b)[Math.floor(v.length / 2)]!;
+  const worst = (v: number[]): number | null => (v.length === 0 ? null : Math.max(...v));
+
+  return `<table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead>
+<tbody>${rows.join('')}${stat(median, 'חציון')}${stat(worst, 'הגרוע ביותר')}</tbody></table>`;
+}

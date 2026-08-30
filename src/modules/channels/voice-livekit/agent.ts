@@ -1,3 +1,8 @@
+// MUST BE THE FIRST IMPORT IN THIS FILE. It runs dotenv (by importing config/env.js) and then
+// applies the `VOICE_TEST_OVERLAY` A/B variant on top of it, so every module imported below —
+// and every later loadEnv() anywhere — reads the overlaid values. Moving it down silently
+// disables A/B variants; it is a no-op when VOICE_TEST_OVERLAY is unset, i.e. in production.
+import './testing/env-overlay.js';
 import { fileURLToPath } from 'node:url';
 import {
   type JobContext,
@@ -14,6 +19,12 @@ import { type AudioFrame, RoomEvent, type RemoteAudioTrack, TrackKind } from '@l
 import { loadEnv } from '../../../config/env.js';
 import { callLearnings } from '../../../db/schema/index.js';
 import { buildSessionComponents, buildTTS, describeTtsModel } from './agent.config.js';
+import {
+  describeDispatch,
+  isJobChildProcess,
+  isLocalCommand,
+  resolveWorkerAgentName,
+} from './testing/dev-dispatch.js';
 import { finalizeTranscriptNow } from './stt/soniox.stt.js';
 import { CallReport } from './call-report.js';
 import {
@@ -1524,13 +1535,33 @@ function readSipCaller(attributes: Record<string, string>): {
   };
 }
 
+// WHICH DISPATCH POOL THIS PROCESS JOINS. `''` on the cloud (`start`) — byte-identical to the
+// previous code, which passed no agentName at all and hit the SDK's `agentName = ""` default. A
+// laptop (`dev`/`connect`/`console`) gets an explicit name instead, which takes it OUT of the pool
+// that answers real inbound calls. Full reasoning and the empirical proof: ./testing/dev-dispatch.ts
+const workerAgentName = resolveWorkerAgentName();
+const localWorker = isLocalCommand();
+// Not in the per-job child: it re-imports this file with no subcommand in argv, so the banner would
+// read `dispatch=DEFAULT` on a laptop and look like the safety fix had failed. It registers nothing.
+if (!isJobChildProcess()) {
+  console.log(`worker_dispatch ${describeDispatch(workerAgentName)}`);
+}
+
 cli.runApp(
   new WorkerOptions({
     agent: fileURLToPath(import.meta.url),
+    agentName: workerAgentName,
     // Phase 4 made the child runner's import graph heavy (googleapis + drizzle for the calendar
     // tools). Under tsx watch on Windows, cold-compiling that graph blows the default 10s
     // initialization budget and every dispatch dies with "runner initialization timed out"
     // before the agent ever joins the room. The cost is per-worker-boot, not per-call.
     initializeProcessTimeout: 60_000,
+    // KEEP ONE JOB PROCESS WARM ON A LAPTOP. `dev` mode defaults to zero idle processes
+    // (`Default.numIdleProcesses(production)` in the SDK), so the first call forks a cold child and
+    // pays the whole tsx + googleapis + drizzle import cost before the agent can join. Measured:
+    // >15s, long enough that the synthetic caller gave up before the agent arrived and reported
+    // "no agent joined" on a run where the agent was merely late. Production is untouched —
+    // `undefined` falls through to the SDK default, which on `start` is min(cores, 4).
+    ...(localWorker ? { numIdleProcesses: 1 } : {}),
   }),
 );
