@@ -55,6 +55,19 @@ Notes:
   whether she repeats herself or greets twice.
 * Cards, pick-a-winner radios, the note box and **צור סיכום** are unchanged.
 
+A regenerated page is on this machine (gitignored — regenerate rather than expecting it to survive):
+
+```
+voice-test-runs/2026-08-30T11-28-39-764Z-natural_flow/index.html
+```
+
+It is `natural_flow`, A = today's config, B = `VOICE_TTS_SPEED=0.88`. Gate 5 passed (the agent's own
+pipeline observer reported `0.88` on B and `0.9` on A), the run exited 0, and all 56 players on the
+page resolve to files that exist. **Dead air on that page ran 3.6–5.3s** — far above the usual
+2–2.7s — because it is an eight-turn call on a laptop that had other work on it; it is a comparison
+instrument and this run is a bad one to quote absolutes from. B was faster than A on 5 of 8 turns,
+which at this noise level means nothing on its own.
+
 ---
 
 ## What shipped
@@ -145,6 +158,11 @@ the WAVs it wrote. Numbers, not guesses:
 | cold start, warm worker | agent joined 3565ms after connect; greeting started 5113ms | Labelled on the page. |
 | turn 1 vs turn 2 dead air | 2745ms vs 2144ms | ~600ms of turn-1 warm-up. Labelled, not spent on. |
 
+After the fix, on a real 8-turn `natural_flow` call: every per-turn clip has exactly the **120ms**
+pad of leading silence it is supposed to have (was 6.34s), and clipped samples in the whole-call
+mix fell from **0.12%** to **0.02%** — the remainder being genuine caller-over-agent overlap, which
+must survive because it is the cut-off you are listening for.
+
 **Cold start was NOT the main cause**, so I did not add a discarded warm-up turn — that would have
 spent a paid turn per variant to fix the smaller half of the problem. Two further points against it:
 `numIdleProcesses: 1` (added by the previous session) already pays the fork cost at worker boot, and
@@ -177,6 +195,16 @@ said.
   not prove she won't cut off a real caller — tier 5 is the only thing that can.
 * **Harness calls still write to the real database** (`call_learnings`, conversations, usage rows).
   Unchanged from before, but `voice:session` makes it easy to generate a lot more of them.
+
+## Gates, by exit code
+
+`npm run typecheck` 0 · `npm run test:ci` **0** (111 files, 1367 passed, 6 todo — judged by exit
+code, not by the summary text) · `npm run build` 0 · `scripts/ci/territory-check.sh
+feature/voice-local-session` OK, VOICE lane only, **no `dashboard/**` file touched**.
+
+Local processes: I started `voice:dev` and `voice:session` myself and killed both, including the
+orphaned tsx/job children that `TaskStop` leaves behind on Windows. Nothing was running on `:3000`,
+`:3001` or `:3002` at any point, so no other session's dev server was touched.
 
 ## Questions for architect
 
