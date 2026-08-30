@@ -35,3 +35,7 @@ el-ws-probe/
 
 # Local Netlify folder
 .netlify
+
+# Synthetic-caller runs: recorded audio + transcripts of test calls, plus the HTML report.
+# Regenerate with `npm run voice:test` / `npm run voice:ab:call`. Contains conversation text.
+voice-test-runs/

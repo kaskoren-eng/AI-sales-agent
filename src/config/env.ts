@@ -611,6 +611,18 @@ function supportsReasoningEffort(model: string): boolean {
 
 export type Env = z.infer<typeof envSchema>;
 
+/**
+ * Every env var this app reads, by name.
+ *
+ * ADDITIVE, read-only, and derived from the schema so it can never drift from it. `.env.example`
+ * is NOT this list — it documents ~110 of the keys and omits the rest, so anything that validates
+ * "is this a real env key?" against the example file rejects perfectly good keys (measured:
+ * `VOICE_TTS_SPEED` and `VOICE_TTS_VOLUME` are both absent from it). The voice A/B runner needs the
+ * real answer, because a variant naming a key that does not exist applies cleanly to `process.env`
+ * and then changes nothing — a silent no-op that produces two identical clips labelled A and B.
+ */
+export const ENV_KEYS: readonly string[] = Object.keys(envSchema.shape);
+
 export function loadEnv(): Env {
   // Convert empty strings to undefined so optional fields don't fail validation
   const raw = Object.fromEntries(
