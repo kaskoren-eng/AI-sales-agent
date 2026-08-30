@@ -64,6 +64,29 @@ import {
  * new byte is independently pinned by system-prompt.test.ts; the greeting fixture and every
  * persona-owned section (Role, FAQ, gender rules) were verified UNCHANGED before regenerating.
  *
+ * Regenerated AGAIN, 2026-08-30, on `feature/voice-hebrew-speech`, from the two production calls in
+ * `call-reports/calls-2026-08-30.md` and Koren's seven notes on how she SOUNDS. Four deliberate
+ * changes, every one of them a thing he heard:
+ *   - **"נעים מאוד" belongs to the introduction** (Call Memory). She greeted him at 35s, correctly,
+ *     and again at 164s because a surname had just been captured: "אהה. נעים מאוד. רק לוודֵא — קורן
+ *     שטרית, נכון?" His words: "זה מיותר ומוזר, זה משהו שאומרים רק בתחילת השיחה". Gated by
+ *     VOICE_INTRO_ONCE_ENABLED together with the enforcement in speech-guard.ts, so the guidance and
+ *     the code can never describe different rules.
+ *   - **"איזה כיף!" is for a booking that LANDED**, not for agreement in principle. On the call it
+ *     fired on a flat "אה, סבבה" and read as more enthusiasm than the moment carried.
+ *   - **A pausing rule with numbers in it** (Emotional Color). His note was that commas and full
+ *     stops do not actually stop her — measured on sonic-3.5 at the production speed
+ *     (tests/hebrew-tts-niqqud-ab/pause_probe.py) a comma buys ~0.18s and can disappear once the
+ *     text is streamed, while a stop, an em-dash or an ellipsis buy 0.25-0.5s and survive. The rule
+ *     says that, so she stops leaning on the mark that does nothing.
+ *   - **The detail-collection script** (both copies): the two read-backs no longer both open
+ *     "רק לוודא" — he heard that sentence twice inside eleven seconds — and it now says not to answer
+ *     a half-finished dictation. The code half of that is the mid-dictation nod (dictation.ts).
+ * "Which live call did I just change" — the 2026-08-30 04:56 and 05:03 production calls, in the
+ * direction his notes asked for. The greeting fixture is byte-identical (the greeting is persona
+ * data and its pacing is HIS call to make — see the handoff), every persona-owned section was
+ * verified unchanged, and the new bytes are independently pinned by system-prompt.test.ts.
+ *
  * Regenerated once before that, 2026-08-28, when `feature/voice-human-handoff` merged into main: the
  * humanization content (emotional color beats, spoken register, variation banks, hold-word rework
  * — round-5 verified 17/17 on real TTS, each behind its own env kill-switch) changed the default
