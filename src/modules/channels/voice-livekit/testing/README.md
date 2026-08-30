@@ -1,6 +1,6 @@
 # Testing the voice agent without deploying and without phoning anyone
 
-Four tiers, cheapest first. Pick the cheapest one that can answer your question — and read what each
+Five tiers, cheapest first. Pick the cheapest one that can answer your question — and read what each
 one **cannot** prove before you quote it.
 
 | Tier | Command | Costs | Wall clock | Answers |
@@ -9,8 +9,42 @@ one **cannot** prove before you quote it.
 | 2 · text-mode | `npm test` (`tool-flow.test.ts`) | nothing (FakeLLM) | ~1s | did the tools fire, in order, with the right arguments |
 | 3 · one recorded call | `npm run voice:test` | ~1 call of STT+LLM+TTS | ~1 min/scenario | timing, and **an HTML page you listen to** |
 | 4 · A/B, N variants | `npm run voice:ab:call -- <variants.json>` | N calls | ~75s per variant | A vs B, same script, side by side, with proof each variant ran |
+| 5 · **talk to it yourself** | `npm run voice:session` | 1 call, as long as you talk | seconds to start | everything a script cannot: does it *feel* right, does it interrupt you, can you get a word in |
 
 Nothing here needs a deploy and nothing here places a phone call.
+
+---
+
+## Tier 5 first: just talk to it
+
+```bash
+npm run voice:dev        # terminal 1 — the agent, with whatever you just changed
+npm run voice:session    # terminal 2 — opens a page in your browser
+```
+
+Click **התחל שיחה**, allow the microphone, talk. The page is served off your own machine at
+`http://localhost:3010` (`--port=` to move it) and needs neither the API server nor the dashboard.
+
+**The banner at the top is the point.** It reads `lk.agent.name` off whoever picks up:
+
+* **green** — the worker in terminal 1 answered. What you are hearing is your change.
+* **red** — an unnamed agent answered, which on this project means the **deployed cloud agent**.
+  Anything you conclude from that call is a conclusion about production.
+
+That distinction is not paranoia: `voice:test` rooms used to be auto-dispatched to the cloud agent,
+so past "local" measurements were measurements of production. Believe the banner.
+
+Flags: `--cloud` (deliberately talk to the DEPLOYED agent instead — the banner turns red and that is
+correct), `--tenant=<uuid>` (default: `VOICE_WEBHOOK_TENANT_ID`, then `PLATFORM_TENANT_ID`),
+`--port=`, `--no-open`.
+
+### The same thing from the dashboard Simulator
+
+`POST /api/v1/voice/web-call` also accepts `{"agent":"local"}`, which puts the local worker's name in
+the token's `RoomConfiguration.agents`. It needs **both** that field and `VOICE_WEB_CALL_LOCAL_AGENT=1`
+on the API process, so a deployed API refuses it. Every response now carries a `dispatch` block
+(`mode`, `agentName`, `expectAgentName`, `note`) naming who is expected to answer. With no opt-in the
+minted token is byte-for-byte what it always was, so the production Simulator is untouched.
 
 ---
 
@@ -57,10 +91,13 @@ Prints dead air per turn, then writes, per scenario:
 voice-test-runs/<timestamp>/<scenario>/index.html
 ```
 
-Open it. One card per turn: what the caller said, what she said back (from her own call report),
-a player for her reply, and its dead-air figure — plus a player for the whole call with both voices
-on one timeline, and one for the greeting. Every clip is written twice: `*_phone.wav` at 8kHz (what
-a caller hears — **judge this one**) and the 24kHz studio version behind a details toggle.
+Open it. **The whole call comes first** — both voices on one timeline, end to end — because
+naturalness cannot be judged from isolated replies. Below it, one card per turn, and the card's
+main player is the EXCHANGE: the caller's line, the real measured silence, then her reply. Her reply
+on its own is one click away under "רק התשובה שלה". Every clip is written twice: `*_phone.wav` at
+8kHz (what a caller hears — **judge this one**) and the 24kHz studio version behind a details toggle.
+
+Turn 1 of every run is labelled as cold-start and should not be compared against.
 
 ## Tier 4 — A/B, N variants
 
@@ -138,7 +175,10 @@ Gate 5 is the only one that is proof rather than inference.
 * **The caller is too fluent.** One clean burst, no "אה", no restart. Real Hebrew speakers do all
   three and those are what break endpointing. `hesitation` approximates it with commas and
   ellipses, but Cartesia's pauses are shorter than a person's. **A clean cut-off count here does NOT
-  prove it won't cut off a real caller.**
+  prove it won't cut off a real caller.** If you want to judge how she *sounds over a whole call*,
+  use `natural_flow` (8 turns, wanders, self-corrects, pushes back) — `hesitation` is two utterances
+  and cannot show whether she repeats herself or greets twice. And if you want to judge how she
+  handles a real human, use tier 5 and be one.
 * **It cannot judge whether the Hebrew sounds natural.** Only a human can — which is why the page
   exists. Listen to the `_phone` clips, not the studio ones.
 * **The caller uses the same Cartesia voice as the agent**, so the agent hears its own timbre back.
@@ -151,7 +191,8 @@ Gate 5 is the only one that is proof rather than inference.
 
 | File | What it does |
 |---|---|
-| `dev-dispatch.ts` | Which dispatch pool the worker joins. The production-safety fix. |
+| `dev-dispatch.ts` | Which dispatch pool the worker joins, and which agent answers a browser session. The production-safety fix. |
+| `local-session.ts` | Tier 5: a localhost page you talk to the local agent from. Serves `local-session-page.ts`. |
 | `env-overlay.ts` | How an A/B variant reaches the agent past `.env`'s dotenv override. |
 | `speech.ts` | Cartesia Hebrew TTS → audio frames. Websocket `stream()`; REST returns zero frames for Hebrew on sonic-3. |
 | `synthetic-caller.ts` | Joins the room, publishes audio, times the reply, **records both sides**. |
@@ -171,3 +212,10 @@ Gate 5 is the only one that is proof rather than inference.
   identical with and without it.
 * That `voice:test` could be answered by the production cloud agent instead of the local worker
   (2026-08-30) — i.e. some past "local" measurements were measurements of production.
+* That the whole-call recording it produced was **unlistenable** (2026-08-30). It was mixed one
+  received frame at a time, placed at `arrivalTime - frameDuration`; frames arrive from the jitter
+  buffer in bursts, so they landed on top of each other. Measured on a real 31s call: 2734 segments,
+  1790 overlapping, **13.7 seconds of audio summed on top of itself** and 882 clipped samples. The
+  per-turn clips had a different problem — the agent publishes a track for the whole call, so a
+  captured "reply" began with all the silence while the caller was talking: **6.34s and 5.98s of
+  leading silence on two 2.5s replies.** Both are fixed; `recording.test.ts` pins them.

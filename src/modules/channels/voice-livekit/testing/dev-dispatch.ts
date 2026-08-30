@@ -97,6 +97,102 @@ export function resolveWorkerAgentName(
   return override && override.length > 0 ? override : DEV_AGENT_NAME;
 }
 
+/**
+ * The name a LOCAL worker registers under, resolved the same way the worker itself resolves it.
+ *
+ * Anything that wants to DISPATCH to a laptop worker (the browser session, `voice:test`) must ask
+ * for exactly this name, or the room gets no agent at all.
+ */
+export function localAgentName(processEnv: NodeJS.ProcessEnv = process.env): string {
+  const override = processEnv[DEV_AGENT_NAME_VAR]?.trim();
+  return override && override.length > 0 ? override : DEV_AGENT_NAME;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Browser sessions: which agent answers a /web-call room
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * MUST be set on the API process before `/web-call` will dispatch to a laptop.
+ *
+ * Two locks, not one, and deliberately so. The request field alone would mean a stray `{"agent":
+ * "local"}` from any authenticated client could aim a real tenant's browser session at whatever
+ * laptop happens to be registered under `keren-dev`; the env switch alone would silently redirect
+ * EVERY simulator session on that server. Production sets neither, so `agent:"local"` is refused
+ * there with an explanation rather than quietly producing a call nobody answers.
+ *
+ * It is not in `src/config/env.ts` on purpose — the same reason `VOICE_TEST_OVERLAY` is not:
+ * `dotenv.config({override:true})` lets `.env` beat the shell for any key `.env` defines, and a
+ * dev switch you cannot turn on from the shell is a dev switch that will be got wrong.
+ */
+export const WEB_CALL_LOCAL_AGENT_VAR = 'VOICE_WEB_CALL_LOCAL_AGENT';
+
+/** What a `/web-call` caller may ask for. Absent/`cloud` = today's behaviour, byte for byte. */
+export type WebCallAgentTarget = 'cloud' | 'local';
+
+/** What the room token ended up doing, echoed to the caller so the UI can say who will answer. */
+export interface WebCallDispatch {
+  /** `auto` = LiveKit picks from the default pool (production). `explicit` = one named worker. */
+  mode: 'auto' | 'explicit';
+  /** The worker dispatched by name, or null under auto-dispatch. */
+  agentName: string | null;
+  /**
+   * The `lk.agent.name` participant attribute the answering agent should carry. `''` under
+   * auto-dispatch — and on this project an empty name means the PRODUCTION cloud agent.
+   */
+  expectAgentName: string;
+  /** One line, in plain words, for a human staring at a screen. */
+  note: string;
+}
+
+export function webCallLocalAgentEnabled(processEnv: NodeJS.ProcessEnv = process.env): boolean {
+  const v = processEnv[WEB_CALL_LOCAL_AGENT_VAR];
+  return v === '1' || v === 'true';
+}
+
+/**
+ * Decide which agent a browser session should be pointed at.
+ *
+ * Anything other than an explicit `local` — undefined, `cloud`, junk — returns the auto-dispatch
+ * answer, which is what the route already did before this existed. Opting in cannot happen by
+ * accident: it takes the request field AND the env switch.
+ */
+export function resolveWebCallDispatch(
+  target: WebCallAgentTarget | undefined,
+  processEnv: NodeJS.ProcessEnv = process.env,
+): { ok: true; dispatch: WebCallDispatch } | { ok: false; message: string } {
+  if (target !== 'local') {
+    return {
+      ok: true,
+      dispatch: {
+        mode: 'auto',
+        agentName: null,
+        expectAgentName: '',
+        note: 'auto-dispatch: whichever worker is in this LiveKit project\'s default pool answers — in production that is the deployed cloud agent',
+      },
+    };
+  }
+  if (!webCallLocalAgentEnabled(processEnv)) {
+    return {
+      ok: false,
+      message:
+        `agent:"local" was requested but ${WEB_CALL_LOCAL_AGENT_VAR} is not set on this server, ` +
+        `so this API will not dispatch browser calls to a developer's laptop. Set ` +
+        `${WEB_CALL_LOCAL_AGENT_VAR}=1 on a LOCAL api process only.`,
+    };
+  }
+  const name = localAgentName(processEnv);
+  return {
+    ok: true,
+    dispatch: {
+      mode: 'explicit',
+      agentName: name,
+      expectAgentName: name,
+      note: `explicit dispatch to "${name}" — the worker started by npm run voice:dev on this machine. No other worker can be handed this room.`,
+    },
+  };
+}
+
 /** One line at boot saying which pool this process joined. Silence here is how the hazard hid. */
 export function describeDispatch(agentName: string): string {
   return agentName === ''

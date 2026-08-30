@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEV_AGENT_NAME,
   describeDispatch,
+  resolveWebCallDispatch,
   resolveWorkerAgentName,
 } from './dev-dispatch.js';
 
@@ -61,5 +62,54 @@ describe('resolveWorkerAgentName', () => {
   it('says out loud which pool it joined', () => {
     expect(describeDispatch('')).toContain('DEFAULT');
     expect(describeDispatch('keren-dev')).toContain('CANNOT be handed a real inbound call');
+  });
+});
+
+/**
+ * THE OTHER HALF OF THE SAME SAFETY PROPERTY: which agent answers a BROWSER session.
+ *
+ * The failure this guards against is not a laptop taking a customer call — it is the reverse, a
+ * tenant's simulator session being quietly redirected to somebody's laptop, and its mirror image,
+ * Koren tuning a prompt locally while listening to production. Two independent locks, so neither a
+ * stray request field nor a stray env var is enough on its own.
+ */
+describe('resolveWebCallDispatch', () => {
+  const ok = (r: ReturnType<typeof resolveWebCallDispatch>) => {
+    if (!r.ok) throw new Error(`expected ok, got: ${r.message}`);
+    return r.dispatch;
+  };
+
+  it('defaults to auto-dispatch — the token this route has always minted', () => {
+    for (const target of [undefined, 'cloud' as const]) {
+      const d = ok(resolveWebCallDispatch(target, { VOICE_WEB_CALL_LOCAL_AGENT: '1' }));
+      expect(d.mode).toBe('auto');
+      expect(d.agentName).toBeNull();
+      expect(d.expectAgentName).toBe('');
+    }
+  });
+
+  it('refuses agent:"local" unless the server opted in', () => {
+    const r = resolveWebCallDispatch('local', {});
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toContain('VOICE_WEB_CALL_LOCAL_AGENT');
+  });
+
+  it('dispatches the local worker by name when BOTH locks are open', () => {
+    const d = ok(resolveWebCallDispatch('local', { VOICE_WEB_CALL_LOCAL_AGENT: '1' }));
+    expect(d.mode).toBe('explicit');
+    expect(d.agentName).toBe(DEV_AGENT_NAME);
+    // The browser compares this against the answering participant's lk.agent.name.
+    expect(d.expectAgentName).toBe(DEV_AGENT_NAME);
+  });
+
+  it('uses the same worker name the worker itself resolved', () => {
+    const envs = { VOICE_WEB_CALL_LOCAL_AGENT: 'true', VOICE_DEV_AGENT_NAME: 'keren-koren' };
+    expect(ok(resolveWebCallDispatch('local', envs)).agentName).toBe('keren-koren');
+    expect(resolveWorkerAgentName(['node', 'agent.js', 'dev'], envs)).toBe('keren-koren');
+  });
+
+  it('treats a junk switch value as OFF', () => {
+    expect(resolveWebCallDispatch('local', { VOICE_WEB_CALL_LOCAL_AGENT: '0' }).ok).toBe(false);
+    expect(resolveWebCallDispatch('local', { VOICE_WEB_CALL_LOCAL_AGENT: 'yes' }).ok).toBe(false);
   });
 });

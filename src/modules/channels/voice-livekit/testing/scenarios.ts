@@ -42,6 +42,24 @@ export const SCENARIOS: Scenario[] = [
     ],
   },
   {
+    name: 'natural_flow',
+    description:
+      'THE ONE TO JUDGE NATURALNESS ON. A whole call the length of a real one — an interested but ' +
+      'sceptical shop owner who wanders, corrects himself, pushes back on a bad past experience, ' +
+      'asks the price, and closes. Two utterances cannot show whether she repeats herself, ' +
+      'greets twice, or asks the same question again; eight can. Does not touch the calendar.',
+    utterances: [
+      'היי, אה... ראיתי את המודעה שלכם באינסטגרם ולא בדיוק הבנתי מה אתם עושים.',
+      'יש לי עסק קטן, אנחנו מוכרים ריהוט לבית — גם אונליין וגם חנות אחת בתל אביב.',
+      'תראי, הבעיה שלי היא שמגיעות המון פניות בוואטסאפ ואני פשוט לא מספיק לענות לכולן, בטח לא בערב.',
+      'רגע, שנייה... כן, סליחה, תמשיכי.',
+      'זה נשמע מעניין, אבל... אני לא יודע, ניסיתי פעם צ׳אט בוט והלקוחות שנאו אותו.',
+      'כמה זה עולה בערך?',
+      'אוקיי. ומה השלב הבא?',
+      'מעולה, תודה רבה, נדבר.',
+    ],
+  },
+  {
     name: 'booking_details',
     description:
       'Name, phone, email — the details Phase 4 lives or dies on. A real call turned "קורן" into "קורנטיטרי". Check the agent log transcripts, not just the latency.',

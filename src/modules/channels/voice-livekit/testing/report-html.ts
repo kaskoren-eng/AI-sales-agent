@@ -41,7 +41,18 @@ export interface TurnRow {
   deadAirMs: number | null;
   agentSpokeMs: number;
   cutOff: boolean;
+  /**
+   * THE PRIMARY PLAYER: the caller's line, then the real dead air, then her reply — 8kHz.
+   *
+   * A reply on its own cannot be judged. Koren's words after the first A/B page: "the other
+   * variants started in the middle of the script — wasn't good for a test either." An exchange is
+   * the smallest unit of conversation a human can score for naturalness, so it is the unit the
+   * card plays.
+   */
+  exchangeWav: string | null;
+  /** Her reply alone, 8kHz — for hearing the voice itself without the run-up. */
   phoneWav: string | null;
+  /** Her reply alone, 24kHz studio. Not for judging phone quality. */
   studioWav: string | null;
 }
 
@@ -49,8 +60,12 @@ export interface VariantRun {
   key: string;
   /** `lk.agent.name` of the worker that actually answered — the anti-"was this even my code" check. */
   agentName: string | null;
+  /** Whole call, both voices, 8kHz — the one to judge. */
   callWav: string | null;
+  /** Whole call at 24kHz. */
+  callStudioWav: string | null;
   greetingWav: string | null;
+  greetingStudioWav: string | null;
   greetingSaid: string | null;
   turns: TurnRow[];
   error?: string;
@@ -98,6 +113,9 @@ export async function writeRunArtifacts(args: {
     return phoneName;
   };
 
+  const studioOf = (phoneName: string | null): string | null =>
+    phoneName ? phoneName.replace(/_phone\.wav$/u, '.wav') : null;
+
   const greetingSaid = transcript.greeting;
   const greetingWav = await write(`call_${key}_greeting.wav`, call.greetingPcm);
   const callWav = await write(`call_${key}_full.wav`, call.mixedPcm);
@@ -106,26 +124,53 @@ export async function writeRunArtifacts(args: {
   for (const [i, turn] of call.turns.entries()) {
     const base = `${pad(i + 1)}_${key}`;
     const phone = await write(`${base}.wav`, turn.agentPcm);
+    const exchange = await write(
+      `${base}_exchange.wav`,
+      buildExchange(turn.callerPcm, turn.responseLatencyMs, turn.agentPcm),
+    );
     turns.push({
       said: turn.said,
       agentSaid: transcript.replies[i] ?? null,
       deadAirMs: turn.responseLatencyMs,
       agentSpokeMs: turn.agentSpokeMs,
       cutOff: turn.interruptedCaller,
+      exchangeWav: exchange,
       phoneWav: phone,
-      studioWav: phone ? `${base}.wav` : null,
+      studioWav: studioOf(phone),
     });
   }
 
   return {
     key,
     agentName: call.agentName,
-    callWav: callWav ? callWav.replace(/_phone\.wav$/u, '.wav') : null,
-    greetingWav: greetingWav ? greetingWav.replace(/_phone\.wav$/u, '.wav') : null,
+    callWav,
+    callStudioWav: studioOf(callWav),
+    greetingWav,
+    greetingStudioWav: studioOf(greetingWav),
     greetingSaid,
     turns,
     ...(call.error ? { error: call.error } : {}),
   };
+}
+
+/**
+ * One card = one exchange: what the caller said, the silence that actually followed, then the
+ * reply. The gap is reproduced at its MEASURED length rather than trimmed to something tidy —
+ * the pause is half of what is being judged, and a card that deletes it flatters the agent.
+ */
+export function buildExchange(
+  callerPcm: Int16Array,
+  deadAirMs: number | null,
+  agentPcm: Int16Array,
+): Int16Array {
+  if (callerPcm.length === 0 && agentPcm.length === 0) return new Int16Array(0);
+  // No reply: play the question and let the silence stand for itself, bounded so the clip ends.
+  const gapMs = deadAirMs ?? 1_500;
+  const gap = Math.max(0, Math.round((gapMs / 1000) * CAPTURE_RATE));
+  const out = new Int16Array(callerPcm.length + gap + agentPcm.length);
+  out.set(callerPcm, 0);
+  out.set(agentPcm, callerPcm.length + gap);
+  return out;
 }
 
 // ------------------------------------------------------------------------------------------
@@ -222,6 +267,38 @@ export function renderPage(input: PageInput): string {
   // the value you need in order to know what the change was measured against.
   const comparedKeys = [...new Set(input.variants.flatMap((v) => Object.keys(v.overrides)))].sort();
 
+  // THE WHOLE CALL, FIRST. Judging a conversation from isolated replies does not work; this is the
+  // only player on the page that lets you hear the thing end to end, so it goes above everything.
+  const fullCalls = input.variants
+    .map((v) => {
+      const run = runByKey.get(v.key);
+      return `<div class="col">
+        <div class="vhead"><span class="vkey">${esc(v.key)}</span><span class="vlabel">${esc(v.label)}</span></div>
+        ${run?.error ? `<div class="meas none">${esc(run.error)}</div>` : ''}
+        ${
+          run?.callWav
+            ? `<div class="meas">כל השיחה, שני הצדדים, 8kHz כמו בטלפון:</div>
+               <audio controls preload="none" src="${esc(run.callWav)}"></audio>`
+            : '<div class="meas none">אין הקלטה של השיחה המלאה</div>'
+        }
+        ${
+          run?.greetingWav
+            ? `<div class="meas">הפתיח בלבד: ${esc(run.greetingSaid ?? '')}</div>
+               <audio controls preload="none" src="${esc(run.greetingWav)}"></audio>`
+            : ''
+        }
+        ${
+          run?.callStudioWav
+            ? `<details><summary class="meas">גרסאות אולפן 24kHz (לא לשיפוט איכות טלפון)</summary>
+                 <audio controls preload="none" src="${esc(run.callStudioWav)}"></audio>
+                 ${run.greetingStudioWav ? `<audio controls preload="none" src="${esc(run.greetingStudioWav)}"></audio>` : ''}
+               </details>`
+            : ''
+        }
+      </div>`;
+    })
+    .join('');
+
   const variantLegend = input.variants
     .map((v) => {
       const run = runByKey.get(v.key);
@@ -239,9 +316,6 @@ export function renderPage(input: PageInput): string {
         <div class="meas">asked for: ${esc(overrides.map(([k, val]) => `${k}=${val}`).join(' · ') || '(baseline — .env as-is)')}</div>
         <div class="meas">agent reported: ${esc(resolved)}</div>
         <div class="meas">answered by: ${esc(run?.agentName ?? 'unknown')}</div>
-        ${run?.error ? `<div class="meas none">${esc(run.error)}</div>` : ''}
-        ${run?.callWav ? `<div class="meas">השיחה המלאה (שני הצדדים):</div><audio controls preload="none" src="${esc(run.callWav)}"></audio>` : ''}
-        ${run?.greetingWav ? `<div class="meas">פתיח: ${esc(run.greetingSaid ?? '')}</div><audio controls preload="none" src="${esc(run.greetingWav)}"></audio>` : ''}
       </div>`;
     })
     .join('');
@@ -264,20 +338,45 @@ export function renderPage(input: PageInput): string {
         const pick = multi
           ? `<div class="psrow"><label class="lbl"><input type="radio" name="pick_${id}" value="${esc(v.key)}"> זה הכי טוב</label></div>`
           : '';
+        // The exchange is the primary player; the reply on its own is one click away for anyone
+        // who wants to hear the timbre without sitting through the question again.
+        const primary = turn.exchangeWav
+          ? `<div class="meas">הלקוח → השתיקה → התשובה שלה:</div>
+             <audio controls preload="none" src="${esc(turn.exchangeWav)}"></audio>`
+          : turn.phoneWav
+            ? `<audio controls preload="none" src="${esc(turn.phoneWav)}"></audio>`
+            : '<div class="meas none">אין אודיו</div>';
+        const extras = [
+          turn.phoneWav ? `<audio controls preload="none" src="${esc(turn.phoneWav)}"></audio>` : '',
+          turn.studioWav
+            ? `<audio controls preload="none" src="${esc(turn.studioWav)}"></audio>`
+            : '',
+        ]
+          .filter(Boolean)
+          .join('');
         return `<div class="col">
           <div class="vhead"><span class="vkey">${esc(v.key)}</span><span class="vlabel">${esc(v.label)}</span>
             <span class="tag">${esc(ms(turn.deadAirMs))}</span></div>
           <div class="he" dir="rtl">${esc(turn.agentSaid ?? '(הטקסט לא נמצא בדוח השיחה)')}</div>
-          ${turn.phoneWav ? `<audio controls preload="none" src="${esc(turn.phoneWav)}"></audio>` : '<div class="meas none">אין אודיו</div>'}
+          ${primary}
           <div class="meas">שקט לפני התשובה ${esc(ms(turn.deadAirMs))} · דיברה ${turn.agentSpokeMs}ms${flags.length ? ` · <span class="none">${esc(flags.join(', '))}</span>` : ''}</div>
-          ${turn.studioWav ? `<details><summary class="meas">גרסת אולפן 24kHz (לא לשיפוט)</summary><audio controls preload="none" src="${esc(turn.studioWav)}"></audio></details>` : ''}
+          ${extras ? `<details><summary class="meas">רק התשובה שלה (8kHz, ואז 24kHz אולפן)</summary>${extras}</details>` : ''}
           ${pick}
         </div>`;
       })
       .join('');
 
+    // Turn 1 of any run carries the worker's cold start (first job process, first STT stream,
+    // first LLM connection). Measured on a warm local worker: turn 1 ~600ms slower than turn 2,
+    // and on a freshly booted one the agent needs seconds just to join. Saying so on the card is
+    // cheaper and more honest than spending an extra paid turn to warm it up.
+    const coldNote =
+      i === 0
+        ? '<span class="tag warmup">תור ראשון — כולל התחממות של העובד, לא להשוות לפיו</span>'
+        : '';
+
     cards.push(`<div class="card" data-id="${id}">
-      <div class="chead"><span class="cid" dir="rtl">${esc(said)}</span><span class="tag">${id} · מה שהלקוח אמר</span></div>
+      <div class="chead"><span class="cid" dir="rtl">${esc(said)}</span><span class="tag">${id} · מה שהלקוח אמר</span>${coldNote}</div>
       <div class="cols">${cols}</div>
       <div class="psrow">${multi ? `<label class="lbl none"><input type="radio" name="pick_${id}" value="none"> אף אחד לא טוב</label>` : ''}
         <input type="text" class="note" name="note_${id}" dir="rtl" placeholder="מה שמעת?">
@@ -307,6 +406,7 @@ export function renderPage(input: PageInput): string {
   .chead { display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
   .cid { font-weight:700; font-size:19px; }
   .tag { font-size:12px; color:var(--dim); font-family:monospace; }
+  .warmup { border:1px solid #7a4a2a; background:#20160f; border-radius:6px; padding:2px 8px; font-family:inherit; }
   .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:10px; }
   .col { border:1px solid var(--line); border-radius:10px; padding:12px; background:#0f131a; }
   .col:has(input:checked) { border-color:var(--acc); }
@@ -344,6 +444,10 @@ export function renderPage(input: PageInput): string {
   ${warnings}
 </header>
 <main>
+<h2>השיחות המלאות — להתחיל מכאן</h2>
+<p class="sub">שיחה שלמה מקצה לקצה. אי אפשר לשפוט טבעיות מתשובה בודדת — קודם מקשיבים לשיחה, ורק אחר כך יורדים לתור בודד למטה.</p>
+<div class="cols">${fullCalls}</div>
+
 <h2>הווריאנטים</h2>
 <div class="cols">${variantLegend}</div>
 

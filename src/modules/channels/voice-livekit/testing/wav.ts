@@ -156,16 +156,36 @@ export function isCleanTake(pcm: Int16Array, rate: number, maxGapMs = 500): bool
 
 /** Strips leading and trailing silence, keeping a small pad so the STT hears a clean onset. */
 export function trimSilence(pcm: Int16Array, rate: number, padMs = 100): Int16Array {
+  return trimSilenceWithOffset(pcm, rate, padMs).pcm;
+}
+
+/**
+ * `trimSilence`, but it also tells you WHERE the kept audio started.
+ *
+ * Needed because the harness records the agent's track CONTINUOUSLY — a LiveKit agent publishes an
+ * audio track for the whole call, silence included — so a captured "reply" begins with however
+ * many seconds the caller was talking plus the dead air. Measured on a real run (2026-08-30):
+ * 6.34s and 5.98s of leading silence on two 2.5s replies, i.e. the clip on the page was 71%
+ * nothing. Trimming alone would be wrong for the whole-call mix, which needs to know how far into
+ * the recording the speech actually was; hence the offset.
+ */
+export function trimSilenceWithOffset(
+  pcm: Int16Array,
+  rate: number,
+  padMs = 100,
+): { pcm: Int16Array; startSample: number; hasSpeech: boolean } {
   const windows = speechWindows(pcm, rate);
   const first = windows.indexOf(true);
   const last = windows.lastIndexOf(true);
-  if (first === -1) return pcm;
+  // No speech at all: hand the buffer back untouched (that is `trimSilence`'s contract) and say
+  // so, because a caller placing this on a timeline must be able to drop it instead.
+  if (first === -1) return { pcm, startSample: 0, hasSpeech: false };
 
   const win = Math.max(1, Math.floor(rate * 0.02));
   const pad = Math.floor((padMs / 1000) * rate);
   const start = Math.max(0, first * win - pad);
   const end = Math.min(pcm.length, (last + 1) * win + pad);
-  return pcm.slice(start, end);
+  return { pcm: pcm.slice(start, end), startSample: start, hasSpeech: true };
 }
 
 export function encodeWav(pcm: Int16Array, rate: number): Buffer {

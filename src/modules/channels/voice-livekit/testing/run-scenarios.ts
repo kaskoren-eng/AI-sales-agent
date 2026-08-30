@@ -69,6 +69,20 @@ for (const scenario of scenarios) {
       continue;
     }
 
+    // COLD START, stated out loud. The first call a freshly booted worker takes forks a job
+    // process that imports tsx + googleapis + drizzle + Silero; every later call reuses it. If
+    // this number is tens of seconds, turn 1 below is a cold-start measurement, not a config one.
+    process.stdout.write(
+      `  agent joined after ${result.agentJoinedMs ?? '—'}ms, greeting started ${result.greetingStartedMs ?? '—'}ms\n`,
+    );
+    if (result.mixStats) {
+      process.stdout.write(
+        `  whole-call mix: ${result.mixStats.segments} segments, ` +
+          `${result.mixStats.overlappingSegments} overlapping, ` +
+          `${result.mixStats.overlapMs}ms summed on top of each other\n`,
+      );
+    }
+
     for (const t of result.turns) {
       const latency = t.responseLatencyMs === null ? 'NO REPLY' : `${t.responseLatencyMs}ms`;
       const flags = [
@@ -128,6 +142,8 @@ for (const scenario of scenarios) {
         turns: [],
         agentIdentity: null,
         agentName: null,
+        agentJoinedMs: null,
+        greetingStartedMs: null,
         greetingPcm: new Int16Array(0),
         mixedPcm: new Int16Array(0),
         error: (err as Error).message,
