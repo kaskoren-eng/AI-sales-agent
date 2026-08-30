@@ -158,6 +158,12 @@ for (const variant of variants) {
       pipeline: report?.pipeline ?? null,
     });
 
+    console.log(
+      `  agent joined after ${call.agentJoinedMs ?? '—'}ms` +
+        (call.mixStats
+          ? ` · mix ${call.mixStats.segments} segments, ${call.mixStats.overlappingSegments} overlapping (${call.mixStats.overlapMs}ms)`
+          : ''),
+    );
     for (const t of call.turns) {
       const latency = t.responseLatencyMs === null ? 'NO REPLY' : `${t.responseLatencyMs}ms`;
       console.log(`  ${latency.padStart(9)}  "${t.said}"`);

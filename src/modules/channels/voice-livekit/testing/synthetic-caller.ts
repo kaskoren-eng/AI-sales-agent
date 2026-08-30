@@ -13,7 +13,7 @@ import { RoomAgentDispatch, RoomConfiguration } from '@livekit/protocol';
 import { AccessToken } from 'livekit-server-sdk';
 import type { Env } from '../../../../config/env.js';
 import { synthesizeHebrew } from './speech.js';
-import { concatFrames } from './wav.js';
+import { concatFrames, trimSilenceWithOffset } from './wav.js';
 
 /** Everything in this harness lives at one rate so caller and agent audio can be mixed directly. */
 export const CAPTURE_RATE = 24_000;
@@ -62,10 +62,25 @@ export interface CallResult {
    * PRODUCTION CLOUD AGENT, not the laptop under test. See `expectAgentName`.
    */
   agentName: string | null;
+  /**
+   * ms from "the caller was connected" to "the agent's audio track appeared" — i.e. how long the
+   * worker took to fork a job process and join. THIS IS THE COLD-START FIGURE. On a laptop under
+   * `tsx` it is tens of seconds on the first call of a worker's life and ~1s afterwards, which is
+   * why turn 1 of a fresh worker is not comparable with anything.
+   */
+  agentJoinedMs: number | null;
+  /** ms from connect to the agent's first non-silent frame (the greeting starting). */
+  greetingStartedMs: number | null;
   /** Everything the agent said before the first caller utterance (the greeting). */
   greetingPcm: Int16Array;
   /** Both voices on one timeline, 24kHz mono — the whole call, listenable end to end. */
   mixedPcm: Int16Array;
+  /**
+   * How much of `mixedPcm` is two segments summed on top of each other. Real overlap (the caller
+   * talking over the agent) is a handful of segments; anything more means the whole-call track is
+   * mush and should not be trusted by ear. See `Mixer.stats`.
+   */
+  mixStats?: { segments: number; overlappingSegments: number; overlapMs: number };
   /** Agent never joined, wrong agent answered, agent never spoke, etc. */
   error?: string;
 }
@@ -178,14 +193,49 @@ export class SyntheticCaller {
     let agentAudioAt: number | null = null; // first agent frame of the current reply
     let agentLastAudioAt: number | null = null; // most recent agent frame
     let agentJoined = false;
+    let agentJoinedAt: number | null = null;
+    let greetingStartedAt: number | null = null;
     let agentIdentity: string | null = null;
     let agentName: string | null = null;
     let bucket: Int16Array[] = []; // agent audio for the turn in progress
+    // Wall clock of the FIRST sample sitting in `bucket`. The agent publishes a track for the whole
+    // call, so the bucket starts filling with silence the moment it is emptied; this is the anchor
+    // that turns "sample N of the bucket" back into "this many ms into the call".
+    let bucketStartedAt: number | null = null;
     const startedAt = Date.now();
     const mixer = new Mixer(startedAt, CAPTURE_RATE);
 
+    /**
+     * Close off the agent audio collected since the last reset: trim the silence that surrounds it,
+     * place the SPEECH on the call timeline, and hand back the clip.
+     *
+     * One contiguous segment per agent turn — NOT one per received frame. Per-frame placement was
+     * the original design and it produced a whole-call recording that was unlistenable: frames
+     * arrive from the jitter buffer in bursts, so `arrivalTime - frameDuration` put dozens of them
+     * on top of each other. Measured on a real 31s call before this changed: 2734 segments, 1790
+     * of them overlapping another, 13.7 SECONDS of audio summed on top of itself, and 882 clipped
+     * samples. That is the "the voice was not clear at all" bug.
+     */
+    const closeAgentRun = (): Int16Array => {
+      if (!capture) {
+        bucket = [];
+        bucketStartedAt = null;
+        return EMPTY;
+      }
+      const raw = concatPcm(bucket);
+      const anchor = bucketStartedAt;
+      bucket = [];
+      bucketStartedAt = null;
+      if (raw.length === 0 || anchor === null) return EMPTY;
+      const { pcm, startSample, hasSpeech } = trimSilenceWithOffset(raw, CAPTURE_RATE, 120);
+      if (!hasSpeech || pcm.length === 0) return EMPTY;
+      mixer.add(anchor + (startSample / CAPTURE_RATE) * 1000, pcm);
+      return pcm;
+    };
+
     room.on(RoomEvent.TrackSubscribed, (track, _publication, participant: RemoteParticipant) => {
       agentJoined = true;
+      agentJoinedAt ??= Date.now();
       agentIdentity ??= participant.identity;
       agentName ??= participant.attributes?.[AGENT_NAME_ATTRIBUTE] ?? null;
       // Force the agent's audio to the harness rate so it can be mixed with the caller's without
@@ -196,10 +246,11 @@ export class SyntheticCaller {
           const now = Date.now();
           if (capture) {
             const pcm = Int16Array.from(frame.data);
+            // Anchor the bucket to the moment this frame's audio BEGAN, not to when it arrived —
+            // arrival is jittery, the anchor must not be. Everything after it is appended in
+            // order, so the clip is contiguous by construction. See `closeAgentRun`.
+            bucketStartedAt ??= now - (frame.samplesPerChannel / CAPTURE_RATE) * 1000;
             bucket.push(pcm);
-            // Place it where it ARRIVED, minus its own duration, so the mix lines up with what a
-            // listener heard rather than with when the last sample landed.
-            mixer.add(now - (frame.samplesPerChannel / CAPTURE_RATE) * 1000, pcm);
           }
           // Cartesia never emits digital silence mid-utterance, so any non-silent frame is speech.
           // Silence still gets captured above — dropping it would splice the recording.
@@ -225,8 +276,11 @@ export class SyntheticCaller {
       turns,
       agentIdentity,
       agentName,
+      agentJoinedMs: agentJoinedAt === null ? null : agentJoinedAt - startedAt,
+      greetingStartedMs: greetingStartedAt === null ? null : greetingStartedAt - startedAt,
       greetingPcm: EMPTY,
       mixedPcm: capture ? mixer.render() : EMPTY,
+      mixStats: mixer.stats(),
       error,
     });
 
@@ -258,8 +312,8 @@ export class SyntheticCaller {
       if (agentAudioAt === null) {
         return fail('agent joined but never spoke a greeting');
       }
-      const greetingPcm = capture ? concatPcm(bucket) : EMPTY;
-      bucket = [];
+      greetingStartedAt = agentAudioAt;
+      const greetingPcm = closeAgentRun();
 
       for (const { text, frames, pcm: callerPcm } of speech) {
         // Only start the next utterance once the agent has genuinely gone quiet — otherwise
@@ -269,7 +323,9 @@ export class SyntheticCaller {
 
         agentAudioAt = null;
         agentLastAudioAt = null;
-        bucket = [];
+        // Anything still in the bucket belongs to the PREVIOUS turn (or is trailing silence);
+        // closing it here keeps it out of this turn's clip and out of the mix twice.
+        closeAgentRun();
 
         const callerStartedAt = Date.now();
         if (capture) mixer.add(callerStartedAt, callerPcm);
@@ -305,7 +361,7 @@ export class SyntheticCaller {
           callerStartedAtMs: callerStartedAt - startedAt,
           callerFinishedAtMs: callerFinishedAt - startedAt,
           callerPcm,
-          agentPcm: capture ? concatPcm(bucket) : EMPTY,
+          agentPcm: closeAgentRun(),
         });
       }
 
@@ -315,8 +371,11 @@ export class SyntheticCaller {
         turns,
         agentIdentity,
         agentName,
+        agentJoinedMs: agentJoinedAt === null ? null : agentJoinedAt - startedAt,
+        greetingStartedMs: greetingStartedAt === null ? null : greetingStartedAt - startedAt,
         greetingPcm,
         mixedPcm: capture ? mixer.render() : EMPTY,
+        mixStats: mixer.stats(),
       };
     } finally {
       await room.disconnect();
@@ -374,7 +433,7 @@ function concatPcm(chunks: Int16Array[]): Int16Array {
  * concatenated recording deletes exactly that. Summed in 32-bit and clamped once at the end so two
  * voices overlapping (a cut-off) stays audible as an overlap instead of wrapping into noise.
  */
-class Mixer {
+export class Mixer {
   #segments: Array<{ offset: number; pcm: Int16Array }> = [];
 
   constructor(
@@ -386,6 +445,32 @@ class Mixer {
     if (pcm.length === 0) return;
     const offset = Math.max(0, Math.round(((atMs - this.t0) / 1000) * this.rate));
     this.#segments.push({ offset, pcm });
+  }
+
+  /**
+   * How much of this mix is one segment landing ON TOP of another — i.e. how much of the recording
+   * is two copies of the same voice summed together rather than played in sequence.
+   *
+   * A little of this is REAL and wanted: the caller talking over the agent is a cut-off, and the
+   * mix has to keep it. A lot of it means the PLACEMENT is wrong, and the track is mush.
+   */
+  stats(): { segments: number; overlappingSegments: number; overlapMs: number } {
+    const sorted = [...this.#segments].sort((a, b) => a.offset - b.offset);
+    let overlapSamples = 0;
+    let overlapping = 0;
+    let end = 0;
+    for (const s of sorted) {
+      if (s.offset < end) {
+        overlapping++;
+        overlapSamples += Math.min(end - s.offset, s.pcm.length);
+      }
+      end = Math.max(end, s.offset + s.pcm.length);
+    }
+    return {
+      segments: sorted.length,
+      overlappingSegments: overlapping,
+      overlapMs: Math.round((overlapSamples / this.rate) * 1000),
+    };
   }
 
   render(): Int16Array {
