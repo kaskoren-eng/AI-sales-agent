@@ -222,4 +222,31 @@ describe('capture_lead_info — an established identity is harder to overwrite t
     await executeCaptureLeadInfo(rt, args({ business_type: 'מכון כושר' }));
     expect(fm.get('business')).toBe('מכון כושר');
   });
+
+  /**
+   * 2026-08-31: she read `k o r e n at gmail dot com` back to a man whose address begins `kas`, he
+   * said "לא נכון", and she proposed the identical string again. The tool had no reason not to
+   * save it — nothing held the refusal. This is the enforcement half; email-dictation.ts is what
+   * notices the rejection and calls `FactMemory.reject`.
+   */
+  it('never saves a value the lead ruled out, and tells the model why', async () => {
+    const fm = new FactMemory();
+    fm.reject('email', 'koren@gmail.com');
+    const { rt, updates } = fakeRt({ leadId: 'lead-1', factMemory: fm });
+    const result = await executeCaptureLeadInfo(rt, args({ email: 'koren@gmail.com' }));
+
+    expect(result).toContain('NOT SAVED');
+    expect(result).toContain('told you out loud that it is wrong');
+    expect(updates.at(-1) ?? {}).not.toHaveProperty('email');
+  });
+
+  it('saves the address he actually meant, once it differs from the one he ruled out', async () => {
+    const fm = new FactMemory();
+    fm.reject('email', 'koren@gmail.com');
+    const { rt } = fakeRt({ leadId: 'lead-1', factMemory: fm });
+    const result = await executeCaptureLeadInfo(rt, args({ email: 'kaskoren@gmail.com' }));
+    expect(result).toContain('Saved.');
+    expect(result).not.toContain('NOT SAVED');
+    expect(fm.get('email')).toBe('kaskoren@gmail.com');
+  });
 });

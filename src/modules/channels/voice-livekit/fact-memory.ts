@@ -139,11 +139,30 @@ export interface CaptureVerdict {
   accepted: { name?: string; email?: string; phone?: string };
   /** Values refused because they would have REPLACED an established identity. */
   refused: Array<{ field: IdentityField; kept: string; offered: string }>;
+  /**
+   * Values refused because the LEAD HIMSELF said they were wrong — a different refusal, and a
+   * stronger one. `refused` above protects a value we hold; this protects the caller from hearing
+   * back the exact string he has just contradicted. See `reject()`.
+   */
+  rejected: Array<{ field: IdentityField; offered: string }>;
 }
 
 export class FactMemory {
   readonly #known = new Map<FactField, string>();
   readonly #asks = new Map<FactField, number>();
+  /**
+   * WHAT THE LEAD HAS SAID IS WRONG — the other half of "is this fact settled?", and the half that
+   * was missing on 2026-08-31.
+   *
+   * She read `k o r e n at gmail dot com` back to a man whose address starts `kas`, he said
+   * "לא נכון", and eight seconds later she read the SAME value back again. Nothing held the
+   * refusal: `#known` only ever grows, so a value the caller had explicitly killed was, to every
+   * later turn, simply a value nobody had established yet. It cost the booking.
+   *
+   * A rejection is stronger than an establishment. It survives `is_correction` — that flag exists
+   * to let the LEAD change a value, and the lead is precisely who ruled this one out.
+   */
+  readonly #rejected = new Map<IdentityField, string[]>();
   /** Committed utterances already counted, so the preemptive-draft echo cannot double-count an
    * ask. Same 20s rule and the same reason as PhraseLedger.observe / CallReport.recordTranscript. */
   #seen: Array<{ text: string; at: number }> = [];
@@ -167,6 +186,31 @@ export class FactMemory {
   /** Everything established so far — for the note, and for tests. */
   snapshot(): Partial<Record<FactField, string>> {
     return Object.fromEntries(this.#known) as Partial<Record<FactField, string>>;
+  }
+
+  /**
+   * The lead said this value is WRONG. It may never be saved or spoken again on this call.
+   *
+   * Fed by `email-dictation.ts`, which is what notices a read-back being contradicted. Kept here
+   * rather than there because this is where "what may overwrite what" already lives, and because
+   * `capture_lead_info` already reads this object — the enforcement point needs no new plumbing.
+   *
+   * Rejecting the value we currently HOLD also clears it: continuing to speak a value the caller
+   * has just denied is the defect, and holding it would do exactly that.
+   */
+  reject(field: IdentityField, value: string | null | undefined): void {
+    const trimmed = typeof value === 'string' ? value.trim() : '';
+    if (!trimmed) return;
+    const list = this.#rejected.get(field) ?? [];
+    if (!list.some((v) => normalize(v) === normalize(trimmed))) list.push(trimmed);
+    this.#rejected.set(field, list);
+    const held = this.#known.get(field);
+    if (held && normalize(held) === normalize(trimmed)) this.#known.delete(field);
+  }
+
+  /** Everything the lead has ruled out for a field. */
+  rejectedValues(field: IdentityField): readonly string[] {
+    return this.#rejected.get(field) ?? [];
   }
 
   /** Records a fact as established. Blank values never erase what we hold (coalesce, don't blank). */
@@ -210,11 +254,21 @@ export class FactMemory {
   ): CaptureVerdict {
     const accepted: CaptureVerdict['accepted'] = {};
     const refused: CaptureVerdict['refused'] = [];
+    const rejected: CaptureVerdict['rejected'] = [];
 
     for (const field of IDENTITY_FIELDS) {
       const raw = offered[field];
       const value = typeof raw === 'string' ? raw.trim() : '';
       if (!value) continue;
+
+      // CHECKED BEFORE EVERYTHING ELSE, including `isCorrection`. That flag means "the lead
+      // corrected this", and a value the lead has already denied out loud cannot be his correction
+      // of itself. Saving it would put the wrong address in the CRM and — worse — licence her to
+      // say it back to him a third time.
+      if (this.rejectedValues(field).some((v) => normalize(v) === normalize(value))) {
+        rejected.push({ field, offered: value });
+        continue;
+      }
 
       const held = this.#known.get(field);
       if (!held || normalize(held) === normalize(value) || isEnrichment(held, value) || isCorrection) {
@@ -225,7 +279,7 @@ export class FactMemory {
       refused.push({ field, kept: held, offered: value });
     }
 
-    return { accepted, refused };
+    return { accepted, refused, rejected };
   }
 
   /**
@@ -242,7 +296,12 @@ export class FactMemory {
     const exhausted = (Object.keys(ASK_PATTERNS) as FactField[]).filter(
       (field) => !this.#known.has(field) && this.asks(field) >= MAX_ASKS_PER_FACT,
     );
-    if (known.length === 0 && exhausted.length === 0 && !this.#introduced) return null;
+    const ruledOut = [...this.#rejected.entries()]
+      .filter(([, values]) => values.length > 0)
+      .map(([field, values]) => `${FIELD_LABEL[field]}: ${values.map((v) => `«${v}»`).join(', ')}`);
+    if (known.length === 0 && exhausted.length === 0 && ruledOut.length === 0 && !this.#introduced) {
+      return null;
+    }
 
     const parts = ['[Call memory — automatic reminder]'];
     if (this.#introduced) {
@@ -258,6 +317,13 @@ export class FactMemory {
         `Already established on this call: ${known.join('; ')}. Do NOT ask for any of these ` +
           'again — you already have them, use them. Treat an established name as settled: only ' +
           'change it if the lead explicitly corrects you out loud.',
+      );
+    }
+    if (ruledOut.length > 0) {
+      parts.push(
+        `The lead has told you these values are WRONG — ${ruledOut.join('; ')}. Never say one of ` +
+          'them back to him and never save it. He has already corrected you once on each; saying ' +
+          'it again is what makes him repeat himself until the call runs out.',
       );
     }
     if (exhausted.length > 0) {

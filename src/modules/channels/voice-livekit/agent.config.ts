@@ -111,6 +111,17 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
       ...(env.VOICE_LLM_SERVICE_TIER ? { serviceTier: env.VOICE_LLM_SERVICE_TIER } : {}),
     }),
     tts: buildTTS(env),
+    // HOW LONG THE CALLER MAY HEAR NOTHING AT ALL — the bound that did not exist.
+    //
+    // This is the timer behind `user_state_changed -> 'away'`, which is the ONLY thing in the whole
+    // agent that reacts to the caller going quiet (agent.ts, the SILENCE reflex). The SDK default is
+    // 15 seconds and we had never set it, so a caller who paused mid-call sat through fifteen seconds
+    // of dead line before she said anything — twice on the 2026-08-31 production call, with nothing
+    // whatsoever running inside either window. Seconds on LiveKit's side; `null` disables it.
+    //
+    // The nudge itself is stage-aware and never hangs up (call-reflexes.ts). Lowering this only
+    // decides how long the silence is allowed to be before she asks.
+    userAwayTimeout: env.VOICE_SILENCE_AWAY_MS > 0 ? env.VOICE_SILENCE_AWAY_MS / 1000 : null,
     turnHandling: {
       // 'vad' = wait out a silence timer. For Hebrew that costs ~1113ms, because NO off-the-shelf
       // end-of-turn model supports it (docs/phase-4-known-issues.md §4 — LiveKit's has Arabic and

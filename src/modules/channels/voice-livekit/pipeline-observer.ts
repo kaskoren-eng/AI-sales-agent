@@ -86,6 +86,14 @@ export interface PipelineSnapshot {
     preemptiveMaxSpeechDurationMs: number | null;
     preemptiveMaxRetries: number | null;
     interruptionEnabled: boolean | null;
+    /**
+     * SECONDS the caller may be silent before `user_state_changed -> 'away'` fires — i.e. before the
+     * silence reflex is allowed to notice. Read back here because it is a SESSION-level default the
+     * SDK merges in silently: it was 15 in production for the whole life of the agent, nobody had
+     * chosen it, and it was invisible in every call report written before this field existed.
+     * Null means the timer is off (or the SDK moved the field).
+     */
+    userAwayTimeoutSec: number | null;
     /** A VAD instance reached the activity. Proves `prewarm` ran and the ONNX model loaded. */
     vadAttached: boolean;
     /**
@@ -148,6 +156,7 @@ const SWITCH_KEYS = [
   'VOICE_INSTANT_ACK',
   'VOICE_THINKING_FILLER_MS',
   'VOICE_HOLD_CHECKBACK_MS',
+  'VOICE_SILENCE_AWAY_MS',
   'VOICE_RECORDING_NOTICE_ENABLED',
   'VOICE_AMD_ENABLED',
   'VOICE_STATE_MACHINE_ENABLED',
@@ -158,6 +167,7 @@ const SWITCH_KEYS = [
   'VOICE_ACK_LEDGER_ENABLED',
   'VOICE_NEGATION_SAFETY',
   'VOICE_SPOKEN_REGISTER_ENABLED',
+  'VOICE_EMAIL_DICTATION_ENABLED',
   'SHADOW_STT_ENABLED',
 ] as const satisfies readonly (keyof Env)[];
 
@@ -191,6 +201,7 @@ function describeValue(value: unknown): string {
  */
 export interface SessionLike {
   sessionOptions?: {
+    userAwayTimeout?: unknown;
     turnHandling?: {
       turnDetection?: unknown;
       endpointing?: { mode?: unknown; minDelay?: unknown; maxDelay?: unknown };
@@ -314,6 +325,7 @@ export function describePipeline(args: {
       preemptiveMaxSpeechDurationMs: num(preemptive?.maxSpeechDuration),
       preemptiveMaxRetries: num(preemptive?.maxRetries),
       interruptionEnabled: bool(turnHandling?.interruption?.enabled),
+      userAwayTimeoutSec: num(session.sessionOptions?.userAwayTimeout),
       vadAttached: activity?.vad != null,
       vadIsSdkDefault: bool(activity?.usingDefaultVad),
       sttLabel: labelOf(activity?.stt),

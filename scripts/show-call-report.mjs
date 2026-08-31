@@ -105,6 +105,39 @@ if (d && d.samples > 0) {
   console.log('\nWHAT THE CALLER SAT THROUGH\n  not measured (report predates the dead-air metric)');
 }
 
+// THE SILENCE THE NUMBER ABOVE CANNOT SEE, and until 2026-08-31 nobody was shown it.
+//
+// `deadAir` stops its stopwatch at her FIRST audio of a turn, and it never starts at all when the
+// caller says nothing. So the 2026-08-31 call reported a healthy max of 3977ms while carrying two
+// silences of 15.3 SECONDS — both of them the SDK's 15s `userAwayTimeout` finally letting the
+// silence reflex speak. The gaps were in the JSON the whole time; nothing printed them.
+const gapSummary = s.agentGap;
+if (gapSummary && gapSummary.samples > 0 && gapSummary.maxMs !== null) {
+  const REFLEX_LABEL = {
+    silence_reflex: 'she asked whether he was still there (VOICE_SILENCE_AWAY_MS)',
+    mute_checkback: 'she broke her own deliberate silence (VOICE_HOLD_CHECKBACK_MS)',
+  };
+  console.log('\nSILENCE WITH NOBODY TALKING  (she stopped, and nothing was said either way)\n');
+  console.log(`  typical          ${bar(gapSummary.medianMs)}  ${ms(gapSummary.medianMs)}`);
+  console.log(`  worst            ${bar(gapSummary.maxMs)}  ${ms(gapSummary.maxMs)}   over ${gapSummary.samples} of them`);
+  const bad = [...gapSummary.gaps].filter((x) => x.gapMs >= 5000).sort((a, b) => b.gapMs - a.gapMs);
+  if (bad.length > 0) {
+    console.log('');
+    for (const x of bad) {
+      const why = x.endedBy
+        ? REFLEX_LABEL[x.endedBy] ?? x.endedBy
+        : x.tools.length > 0
+          ? `${x.tools.map((t) => `${t.name} ${t.durationMs}ms`).join(', ')}`
+          : 'NOTHING — no tool, no reflex, unattributed';
+      console.log(`  ${String(Math.round(x.fromMs / 1000)).padStart(4)}s   ${ms(x.gapMs)} of dead line   <- ${why}`);
+    }
+    console.log('');
+    console.log('      A caller hears every one of these as the line having gone dead. An');
+    console.log('      UNATTRIBUTED one is the worst case: nobody can tell a hung request from a');
+    console.log('      timer by looking at it. That is what `endedBy` in the JSON is for.');
+  }
+}
+
 console.log('\nPIPELINE STAGES (median each — these do NOT add up to the number above)\n');
 console.log(`  end-of-turn      ${bar(s.endOfTurnMedianMs)}  ${ms(s.endOfTurnMedianMs)}   how long she waits before deciding you finished`);
 // With the instant acknowledgement on, the SDK's ttft measures OUR "אוקיי." rather than GPT, so

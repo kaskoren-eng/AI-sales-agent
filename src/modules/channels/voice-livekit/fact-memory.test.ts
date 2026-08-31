@@ -191,3 +191,59 @@ describe('FactMemory — she introduces herself once', () => {
     expect(new FactMemory().note()).toBeNull();
   });
 });
+
+/**
+ * THE OTHER HALF OF "IS THIS SETTLED?" — what the lead has said is WRONG.
+ *
+ * 2026-08-31, live PSTN: she read `k o r e n at gmail dot com` back to a man whose address begins
+ * `kas`. He said "לא נכון". Eight seconds later she proposed the identical string again, and the
+ * call ended inside the loop with no booking — the second call in a row this defect has cost one.
+ *
+ * `#known` only ever grew, so a value the caller had explicitly killed looked, to every later turn,
+ * exactly like a value nobody had established yet.
+ */
+describe('FactMemory — a value the lead ruled out', () => {
+  it('refuses it at the tool, even on a first capture of an empty field', () => {
+    const m = new FactMemory();
+    m.reject('email', 'koren@gmail.com');
+    const verdict = m.guardIdentity({ email: 'koren@gmail.com' }, false);
+    expect(verdict.accepted.email).toBeUndefined();
+    expect(verdict.rejected).toEqual([{ field: 'email', offered: 'koren@gmail.com' }]);
+  });
+
+  it('refuses it even when the model claims is_correction — the lead is who ruled it out', () => {
+    const m = new FactMemory();
+    m.reject('email', 'koren@gmail.com');
+    expect(m.guardIdentity({ email: 'KOREN@GMAIL.COM' }, true).accepted.email).toBeUndefined();
+  });
+
+  it('still accepts the value he actually meant', () => {
+    const m = new FactMemory();
+    m.reject('email', 'koren@gmail.com');
+    const verdict = m.guardIdentity({ email: 'kaskoren@gmail.com' }, false);
+    expect(verdict.accepted.email).toBe('kaskoren@gmail.com');
+    expect(verdict.rejected).toEqual([]);
+  });
+
+  it('clears a HELD value it contradicts — she must stop saying it, not just stop saving it', () => {
+    const m = new FactMemory();
+    m.establish('email', 'koren@gmail.com');
+    m.reject('email', 'koren@gmail.com');
+    expect(m.get('email')).toBeNull();
+  });
+
+  it('tells the model, in the note, never to say it back', () => {
+    const m = new FactMemory();
+    m.reject('email', 'koren@gmail.com');
+    const note = m.note() ?? '';
+    expect(note).toMatch(/WRONG/u);
+    expect(note).toContain('«koren@gmail.com»');
+  });
+
+  it('ignores a blank rejection and does not invent a ledger entry', () => {
+    const m = new FactMemory();
+    m.reject('email', '   ');
+    expect(m.rejectedValues('email')).toEqual([]);
+    expect(m.note()).toBeNull();
+  });
+});
