@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { ACKNOWLEDGEMENTS_HE, pickAcknowledgement } from './prompts/acknowledgements.he.js';
+import {
+  ACKNOWLEDGEMENTS_HE,
+  ACKNOWLEDGEMENTS_HE_WIDE,
+  pickAcknowledgement,
+} from './prompts/acknowledgements.he.js';
 import { THINKING_FILLERS_HE } from './prompts/thinking-fillers.he.js';
 import {
   ACK_COMPREHENSION_HE,
   AcknowledgementLedger,
 } from './prompts/acknowledgements.he.js';
-import { allowsArmedFiller, chooseTurnOpener, chunkCallsTool } from './turn-opener.js';
+import {
+  allowsArmedFiller,
+  chooseTurnOpener,
+  chunkCallsTool,
+  openingSoundCategory,
+} from './turn-opener.js';
 import { DICTATION_NOD } from './dictation.js';
 
 /**
@@ -192,25 +201,92 @@ describe('chooseTurnOpener — a comprehension claim needs the caller to have sa
 });
 
 /**
- * NOTE 4, 2026-08-31: *"שימוש במילות מילוי יותר מדי ובכפילות… מילת מילוי צריכה להגיע באופן חד פעמי
- * בכל משפט."* The transcript: [21s] "טוב," … [23s] "אהה. רגע..." — the opener and the armed
- * think-timer hesitation in one breath.
+ * ROUND-7 CARD `n4a`, 2026-08-31 — and the reason this block was rewritten rather than extended.
+ *
+ * Note 4 said *"מילת מילוי צריכה להגיע באופן חד פעמי בכל משפט"* and we shipped a hard cap: only a
+ * `silent` opener could carry an armed hesitation. Koren then LISTENED to the three versions of
+ * that moment and chose **A, the doubled filler we had just deleted** — `"אהה. רגע... בוא נבדוק…"` —
+ * and said what the rule really is:
+ *
+ *     "אהה ורגע יכולים להתאים ביחד, אבל רגע ושניה או רגע וחכה זה מילים שלא יכולות ללכת ביחד"
+ *
+ * Compatibility between the two positions, not a count. His ear on the concrete audio supersedes
+ * his own earlier note, which is the whole point of the listening rounds.
  */
-describe('allowsArmedFiller — one opening sound per breath', () => {
-  it('a receipt already occupies the head of the reply', () => {
-    expect(allowsArmedFiller({ kind: 'ack', word: 'אהה.' })).toBe(false);
+describe('allowsArmedFiller — which two sounds may share one breath', () => {
+  it("KOREN'S PICK: a receipt may be followed by a hesitation — card n4a variant A", () => {
+    expect(allowsArmedFiller({ kind: 'ack', word: 'אהה.' }, 'רגע...')).toBe(true);
   });
 
-  it('so does a mid-dictation nod', () => {
-    expect(allowsArmedFiller({ kind: 'nod', word: DICTATION_NOD })).toBe(false);
+  it('every receipt in the bank pairs with every hesitation in the bank', () => {
+    for (const ack of ACKNOWLEDGEMENTS_HE_WIDE) {
+      for (const filler of THINKING_FILLERS_HE) {
+        expect(allowsArmedFiller({ kind: 'ack', word: ack }, filler)).toBe(true);
+      }
+    }
   });
 
-  it('a hesitation IS the filler — a second one would be the stutter', () => {
-    expect(allowsArmedFiller({ kind: 'hesitation', word: 'רגע...' })).toBe(false);
+  it('THE ONE HE RULED OUT: רגע and שנייה can never both be spoken', () => {
+    expect(allowsArmedFiller({ kind: 'hesitation', word: 'רגע...' }, 'שנייה...')).toBe(false);
+    expect(allowsArmedFiller({ kind: 'hesitation', word: 'שנייה...' }, 'רגע...')).toBe(false);
   });
 
-  it('only silence leaves the position free', () => {
-    expect(allowsArmedFiller({ kind: 'silent' })).toBe(true);
+  it('and no other same-bank pair either — two hesitations are the same act twice', () => {
+    for (const first of THINKING_FILLERS_HE) {
+      for (const second of THINKING_FILLERS_HE) {
+        expect(allowsArmedFiller({ kind: 'hesitation', word: first }, second)).toBe(false);
+      }
+    }
+  });
+
+  it('the mid-dictation nod counts as a hesitation, so nothing stacks on it', () => {
+    // "אה אה." leads on `אה`, which IS a member of THINKING_FILLERS_HE — the classification comes
+    // out of the bank, not out of a second list that could drift from it.
+    expect(openingSoundCategory(DICTATION_NOD)).toBe('hesitation');
+    expect(allowsArmedFiller({ kind: 'nod', word: DICTATION_NOD }, 'רגע...')).toBe(false);
+  });
+
+  it('silence leaves the position free', () => {
+    expect(allowsArmedFiller({ kind: 'silent' }, 'רגע...')).toBe(true);
+  });
+
+  it('nothing to pair with is not a pairing', () => {
+    expect(allowsArmedFiller({ kind: 'silent' }, null)).toBe(false);
+    expect(allowsArmedFiller({ kind: 'ack', word: 'אהה.' }, null)).toBe(false);
+  });
+
+  it('an unscreened sound never pairs — silent failure is the module rule', () => {
+    // חכה is one of the two words Koren named as incompatible with רגע and it is in no bank, so it
+    // is refused for being unscreened rather than by an invented parallel list.
+    expect(allowsArmedFiller({ kind: 'ack', word: 'חכה' }, 'רגע...')).toBe(false);
+    expect(allowsArmedFiller({ kind: 'ack', word: 'אהה.' }, 'חכה')).toBe(false);
+  });
+
+  it('VOICE_FILLER_PAIRING_ENABLED=false restores the hard one-sound cap exactly', () => {
+    expect(allowsArmedFiller({ kind: 'ack', word: 'אהה.' }, 'רגע...', { pairing: false })).toBe(
+      false,
+    );
+    expect(allowsArmedFiller({ kind: 'silent' }, 'רגע...', { pairing: false })).toBe(true);
+  });
+});
+
+describe('openingSoundCategory — read out of the banks, not out of a copy of them', () => {
+  it('the two banks are disjoint on their leading token', () => {
+    // If this fails, a word was added to one bank that already leads a member of the other, and
+    // the pairing rule would silently start refusing a pair it used to allow.
+    const acks = new Set(ACKNOWLEDGEMENTS_HE_WIDE.map((w) => openingSoundCategory(w)));
+    const fillers = new Set(THINKING_FILLERS_HE.map((w) => openingSoundCategory(w)));
+    expect([...acks]).toEqual(['acknowledgement']);
+    expect([...fillers]).toEqual(['hesitation']);
+  });
+
+  it('אהה (a receipt) and אה (a hesitation) are not the same sound', () => {
+    expect(openingSoundCategory('אהה.')).toBe('acknowledgement');
+    expect(openingSoundCategory('אה...')).toBe('hesitation');
+  });
+
+  it('a compound receipt is classified by its first word', () => {
+    expect(openingSoundCategory('טוב, הבנתי.')).toBe('acknowledgement');
   });
 });
 

@@ -42,6 +42,10 @@
  * "טוב, הבנתי.", and he then said the other seven digits into her sentence. See dictation.ts.
  */
 
+import { ACKNOWLEDGEMENTS_HE_WIDE } from './prompts/acknowledgements.he.js';
+import { THINKING_FILLERS_HE } from './prompts/thinking-fillers.he.js';
+import { openerKey } from './spoken-openers.js';
+
 export type TurnOpener =
   /** A receipt spoken before the model has written a word — the <1s mechanism. */
   | { kind: 'ack'; word: string }
@@ -75,7 +79,18 @@ export function chooseTurnOpener(input: {
    * is on, `pickAcknowledgement(lastAck)` when it is off. This function only decides WHETHER a
    * receipt is the right sound for this step.
    */
-  nextAck: (opts: { earned: boolean }) => string;
+  nextAck: (opts: { earned: boolean; avoid: string | null }) => string;
+  /**
+   * The head-word of the PREVIOUS reply as the caller heard it, or null to disable the rule
+   * (`VOICE_OPENER_NO_REPEAT_ENABLED=false`, and always on the first step of a call).
+   *
+   * Koren, 2026-08-31: *"צריך לוודא שהסוכן לא חוזר על אותה מילה כל פעם בתחילת המשפט ('אוקיי')."*
+   * The acknowledgement deck was measured innocent of this — see spoken-openers.ts — and the
+   * repeats came from the three producers it cannot see. This is where they are reconciled: every
+   * opening sound the agent CHOOSES is checked against the last one the caller actually heard,
+   * whichever mechanism said it.
+   */
+  avoidOpener?: string | null;
   /**
    * True when the caller's last turn actually TOLD her something — see `callerSharedSubstance`
    * in engagement.ts. It only decides whether the supplier may reach for a comprehension claim
@@ -88,12 +103,18 @@ export function chooseTurnOpener(input: {
   /** The call's filler budget — `ThinkingFillerLedger.offer()`. Returns null when spent. */
   offerFiller: () => string | null;
 }): TurnOpener {
+  const avoid = input.avoidOpener ?? null;
+  const repeats = (word: string): boolean => avoid !== null && openerKey(word) === openerKey(avoid);
+
   if (input.afterToolCall) {
     // She has already been heard on this turn. A second "אוקיי." is the duplicate receipt Koren
     // heard; the honest sound here is hesitation, or nothing.
     if (!input.fillersEnabled) return { kind: 'silent' };
     const filler = input.offerFiller();
-    return filler ? { kind: 'hesitation', word: filler } : { kind: 'silent' };
+    // `pickThinkingFiller` already refuses a word this call has spent, so the only way a filler
+    // repeats is against a head-word some OTHER mechanism said. Silence rather than the repeat —
+    // the filler is not charged unless it is spoken, so the budget survives for a later turn.
+    return filler && !repeats(filler) ? { kind: 'hesitation', word: filler } : { kind: 'silent' };
   }
   // Checked AFTER the tool branch on purpose: a step resuming behind a tool call is not answering
   // a caller turn at all, so "was he dictating?" is not the question being asked there.
@@ -101,15 +122,92 @@ export function chooseTurnOpener(input: {
   // The nod is NOT drawn from the acknowledgement deck, and it does not spend it. It is a
   // different act — "still listening" rather than "I have it" — and a deck word here would both
   // say the wrong thing and thin out the receipts for the turns that need them.
-  if (input.midDictation && input.nod) return { kind: 'nod', word: input.nod };
-  return { kind: 'ack', word: input.nextAck({ earned: input.callerShared === true }) };
+  if (input.midDictation && input.nod) {
+    // DICTATION_NOD is a single constant — the one opening sound with no rotation of its own — so
+    // two dictation turns running (the phone number, then the email) say it twice by construction.
+    // When it would repeat, the step opens with NOTHING rather than with a receipt: a receipt here
+    // is the very interruption the nod exists to prevent (he said "050-", she said "טוב, הבנתי."),
+    // and inventing a second nod is not available — an unscreened Hebrew interjection fails
+    // silently on the line, which is why this constant is one word and marked provisional.
+    return repeats(input.nod) ? { kind: 'silent' } : { kind: 'nod', word: input.nod };
+  }
+  return {
+    kind: 'ack',
+    word: input.nextAck({ earned: input.callerShared === true, avoid }),
+  };
+}
+
+/**
+ * WHAT KIND OF SOUND IS THIS — read out of the banks, never out of a hand-written list.
+ *
+ * The two banks are the only screened vocabulary the agent has. `ACKNOWLEDGEMENTS_HE_WIDE` is what
+ * she says to mean *I heard you*; `THINKING_FILLERS_HE` is what she says to mean *I am still
+ * working on it*. Everything else — a nod, a word the model wrote — is classified by the same
+ * lookup rather than by a parallel table, so a word can never be in a bank and in the wrong
+ * category at the same time.
+ *
+ * Matching is on the FIRST token with punctuation stripped, because that is the unit a listener
+ * hears: `"טוב, הבנתי."` opens with `טוב` and `"אה..."` opens with `אה`. That also keeps the two
+ * banks disjoint where they look close — `אהה` (a receipt) and `אה` (a hesitation) are different
+ * tokens, and `dictation.ts`'s nod `"אה אה."` lands on `אה`, i.e. in the hesitation family, which
+ * is exactly where a listener puts it.
+ */
+export type OpeningSoundCategory = 'acknowledgement' | 'hesitation' | 'unscreened';
+
+function leadToken(sound: string): string {
+  const cleaned = sound
+    .replace(/[.,!?…׃]/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  return cleaned.split(' ')[0] ?? '';
+}
+
+const ACKNOWLEDGEMENT_TOKENS: ReadonlySet<string> = new Set(
+  ACKNOWLEDGEMENTS_HE_WIDE.map(leadToken),
+);
+const HESITATION_TOKENS: ReadonlySet<string> = new Set(THINKING_FILLERS_HE.map(leadToken));
+
+export function openingSoundCategory(sound: string): OpeningSoundCategory {
+  const token = leadToken(sound);
+  if (!token) return 'unscreened';
+  // Hesitations are checked first only so the ordering is explicit; the two token sets are
+  // disjoint, and a test asserts they stay that way when either bank gains a word.
+  if (HESITATION_TOKENS.has(token)) return 'hesitation';
+  if (ACKNOWLEDGEMENT_TOKENS.has(token)) return 'acknowledgement';
+  return 'unscreened';
+}
+
+/**
+ * MAY THESE TWO SOUNDS SHARE ONE BREATH?
+ *
+ * Koren, 2026-08-31, on the doubled filler: *"מילת מילוי צריכה להגיע באופן חד פעמי בכל משפט."* We
+ * read that as a hard cap of one sound per breath and shipped it. **He then listened to the audio
+ * and picked the DOUBLE** (round-7 card `n4a`, variant A — `"אהה. רגע... בוא נבדוק…"`) over the
+ * single we had built, and said why:
+ *
+ *     "אהה ורגע יכולים להתאים ביחד, אבל רגע ושניה או רגע וחכה זה מילים שלא יכולות ללכת ביחד"
+ *
+ * So the rule was never a cap, it is a COMPATIBILITY rule between the two positions. A receipt
+ * followed by a hesitation is a person taking in what you said and then thinking about it — two
+ * different acts, and they read as one natural breath. Two hesitations in a row are the same act
+ * twice, and that is the stutter he heard.
+ *
+ * FAIL-CLOSED ON ANYTHING UNSCREENED. A sound that is in neither bank is refused rather than
+ * paired: the module's standing rule is that an unscreened Hebrew interjection fails silently
+ * (written laughter comes back as spelled letters, "אוו" vanished entirely), and pairing one with
+ * a screened word would put a sound on the line that nobody has ever heard through the phone band.
+ */
+export function mayPairInOneBreath(first: string, second: string): boolean {
+  const a = openingSoundCategory(first);
+  const b = openingSoundCategory(second);
+  if (a === 'unscreened' || b === 'unscreened') return false;
+  return a !== b;
 }
 
 /**
  * MAY THE ARMED HESITATION ALSO LAND ON THIS STEP?
  *
- * Koren, 2026-08-31: *"שימוש במילות מילוי יותר מדי ובכפילות נשמע רובוטי ומוזר. מילת מילוי צריכה
- * להגיע באופן חד פעמי בכל משפט."* The transcript he was describing:
+ * The transcript that started this (Koren, 2026-08-31):
  *
  *     [21s]  KEREN  "טוב,"
  *     [23s]  KEREN  "אהה. רגע..."
@@ -117,17 +215,31 @@ export function chooseTurnOpener(input: {
  * Two separate mechanisms writing to the same position. `llmNode` injects the opener at the head of
  * the reply stream; the 2.5-second think-timer arms a hesitation that `ttsNode` glues to the front
  * of the model's first words, and `withFiller`'s `leadIn` lets the opener through in front of it.
- * Both fire, and the caller hears two noises before a single word of content.
  *
- * The rule is one sound per breath, and only the `silent` opener leaves the position free. The
- * `hesitation` opener IS the filler (and spends the same budget); a receipt and a nod each occupy
- * the head of the reply as completely as a hesitation would.
+ * What was wrong was not that BOTH fired — his ear says `אהה` + `רגע` is fine — it is that nothing
+ * asked whether the two sounds go together. `mayPairInOneBreath` asks:
+ *
+ *   - `silent` opener → the head of the breath is free, any armed filler may take it.
+ *   - `ack` opener → a receipt, so a hesitation behind it is a different act. Allowed.
+ *   - `hesitation` opener → the same act twice (`רגע` then `שנייה`). Refused, always.
+ *   - `nod` opener → `"אה אה."` classifies as a hesitation, so it is refused by the same rule,
+ *     and it should be: mid-dictation the floor belongs to the caller, not to a second noise.
+ *
+ * `pairing: false` (VOICE_FILLER_PAIRING_ENABLED=false) restores the hard one-sound cap shipped in
+ * `2dcb23d` exactly — only a `silent` opener leaves the position free.
  *
  * DROPPING IT COSTS NOTHING: an armed filler is only CHARGED when it is spoken, so the call keeps
  * its three for a turn that genuinely opens with nothing. See ThinkingFillerLedger.
  */
-export function allowsArmedFiller(opener: TurnOpener): boolean {
-  return opener.kind === 'silent';
+export function allowsArmedFiller(
+  opener: TurnOpener,
+  armedFiller: string | null,
+  opts: { pairing?: boolean } = {},
+): boolean {
+  if (armedFiller === null || armedFiller === '') return false;
+  if (opener.kind === 'silent') return true;
+  if (opts.pairing === false) return false;
+  return mayPairInOneBreath(opener.word, armedFiller);
 }
 
 /**

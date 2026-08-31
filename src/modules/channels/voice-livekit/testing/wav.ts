@@ -188,6 +188,63 @@ export function trimSilenceWithOffset(
   return { pcm: pcm.slice(start, end), startSample: start, hasSpeech: true };
 }
 
+/**
+ * Reads a WAV header back off the bytes — the only honest way to know a file is playable.
+ *
+ * WHY THIS IS HERE AT ALL. 297 clips across every A/B listening round were written with
+ * `0xFFFFFFFF` in both the `RIFF` and the `data` size field: the placeholder a writer emits when
+ * its output is a pipe and it cannot seek back to patch the real length. Cartesia's `/tts/bytes`
+ * response IS such a stream — verified 2026-08-31 by synthesizing one clip and reading the bytes
+ * (`52 49 46 46 ff ff ff ff …`) — and the Python round scripts wrote the response straight to disk.
+ * Browsers disagree about such a file: some play it, some play noise, some refuse, and none of them
+ * report anything. Koren could not play round 7 at all, and an earlier "the voice was not clear"
+ * report was chased as a mixing bug while this sat underneath it.
+ *
+ * `encodeWav` below has always written the sizes correctly, so nothing produced by THIS module was
+ * ever broken. The assertion is here anyway, because "we compute it correctly" is what everyone
+ * believed about the Python path too, and the check costs a few microseconds on a file we are
+ * about to hand to a human. The Python half of the same rule is `tests/hebrew-tts-niqqud-ab/
+ * wavcheck.py`.
+ */
+export function readWavHeader(buf: Buffer): {
+  riffSize: number;
+  dataSize: number;
+  dataOffset: number;
+  byteLength: number;
+} {
+  if (buf.length < 12 || buf.toString('latin1', 0, 4) !== 'RIFF' || buf.toString('latin1', 8, 12) !== 'WAVE') {
+    throw new Error('wav: not a RIFF/WAVE buffer');
+  }
+  const riffSize = buf.readUInt32LE(4);
+  let i = 12;
+  while (i + 8 <= buf.length) {
+    const id = buf.toString('latin1', i, i + 4);
+    const size = buf.readUInt32LE(i + 4);
+    if (id === 'data') {
+      return { riffSize, dataSize: size, dataOffset: i + 8, byteLength: buf.length };
+    }
+    if (size === 0xffffffff || i + 8 + size > buf.length) break;
+    i += 8 + size + (size & 1);
+  }
+  throw new Error('wav: no `data` chunk found');
+}
+
+/** Throws unless the buffer is a WAV a browser will decode. Read back, never assumed. */
+export function assertPlayableWav(buf: Buffer): void {
+  const h = readWavHeader(buf);
+  if (h.riffSize === 0xffffffff || h.dataSize === 0xffffffff) {
+    throw new Error('wav: streaming placeholder (0xFFFFFFFF) left in a size field');
+  }
+  if (h.riffSize !== h.byteLength - 8) {
+    throw new Error(`wav: RIFF size ${h.riffSize} != byteLength - 8 (${h.byteLength - 8})`);
+  }
+  if (h.dataSize !== h.byteLength - h.dataOffset) {
+    throw new Error(
+      `wav: data size ${h.dataSize} != bytes after the header (${h.byteLength - h.dataOffset})`,
+    );
+  }
+}
+
 export function encodeWav(pcm: Int16Array, rate: number): Buffer {
   const data = Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength);
   const header = Buffer.alloc(44);
@@ -204,7 +261,11 @@ export function encodeWav(pcm: Int16Array, rate: number): Buffer {
   header.writeUInt16LE(16, 34);
   header.write('data', 36);
   header.writeUInt32LE(data.length, 40);
-  return Buffer.concat([header, data]);
+  const wav = Buffer.concat([header, data]);
+  // The file is not finished until its header has been read back. See readWavHeader above for the
+  // round that was lost to a header nobody checked.
+  assertPlayableWav(wav);
+  return wav;
 }
 
 /** Frames -> an 8kHz WAV: what the caller actually hears. */

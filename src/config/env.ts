@@ -542,6 +542,31 @@ const envSchema = z.object({
   // other three ("אוקיי." / "אהה." / "בסדר.") are pure receipts and still fire every turn. OFF
   // restores the flat five-word deck of 2026-08-30 exactly. See engagement.ts.
   VOICE_ACK_EARNED_ENABLED: envBool(true),
+  // Kill-switch for the filler PAIRING rule (2026-08-31, round-7 card `n4a`). We first read
+  // Koren's "מילת מילוי צריכה להגיע באופן חד פעמי בכל משפט" as a hard cap of one opening sound per
+  // breath and shipped that. He then listened to the three versions and picked the DOUBLE:
+  // "אהה ורגע יכולים להתאים ביחד, אבל רגע ושניה או רגע וחכה זה מילים שלא יכולות ללכת ביחד". ON: a
+  // receipt may be followed by a hesitation (two different acts), two sounds from the SAME bank
+  // never stack, and an unscreened sound never pairs at all. OFF restores the hard cap exactly —
+  // only a step that opens with nothing may carry an armed hesitation. See turn-opener.ts.
+  VOICE_FILLER_PAIRING_ENABLED: envBool(true),
+  // Kill-switch for the consecutive-opener rule (2026-08-31, round-7 card `n6b`). Koren: "צריך
+  // לוודא שהסוכן לא חוזר על אותה מילה כל פעם בתחילת המשפט ('אוקיי')". The acknowledgement deck was
+  // MEASURED innocent — 0 consecutive repeats over 20,000 simulated calls in each of its four
+  // configurations — and the repeats come from the three producers it cannot see: the dictation
+  // nod (a single constant), the thinking fillers, and the model's own word on a silent step. ON
+  // remembers the head-word of the previous reply whichever mechanism said it, and refuses it for
+  // the next one (a nod that would repeat becomes silence). OFF restores the 2026-08-31 behaviour.
+  // See spoken-openers.ts.
+  VOICE_OPENER_NO_REPEAT_ENABLED: envBool(true),
+  // Kill-switch for the email WhatsApp hand-back (2026-08-31, round-8 card `e5`). Koren: "עדיף
+  // שהיא תבקש ממנו לשלוח לה את הכתובת אימייל בוואטצאפ אם זה לא עובד אחרי פעמיים שלוש". ON lets her
+  // offer, ONCE, after two failed read-backs, that he send the address to TWILIO_WHATSAPP_NUMBER —
+  // and only when that var is actually set, because she must never name a channel that will not
+  // reach us. The direction matters: an INBOUND WhatsApp opens the lead's 24h freeform window by
+  // itself, so unlike our outbound confirmation it needs no approved template. OFF (or no number
+  // configured) restores the 2026-08-31 wording, which promises no channel at all.
+  VOICE_EMAIL_WHATSAPP_HANDBACK_ENABLED: envBool(true),
   // Kill-switch for the "No Preamble" prompt section (2026-08-31). Four of Koren's nine notes on
   // that morning's call were one habit: she acknowledged, mirrored his words, told him his topic
   // was important, and announced that she was about to confirm something — before every sentence.
@@ -573,9 +598,15 @@ const envSchema = z.object({
   // killing the call.
   //
   // ON: after two failed read-backs she may pass `email: null`. The calendar event is created with
-  // no attendee (the provider already has that path for the service-account 403), the lead row is
-  // saved without an email, and the confirmation goes to his phone over WhatsApp instead. A booked
-  // meeting missing one field beats a lost meeting with a complete form.
+  // no attendee (the provider already has that path for the service-account 403) and the lead row
+  // is saved without an email. A booked meeting missing one field beats a lost meeting with a
+  // complete form.
+  //
+  // NOTHING IS SENT TO THAT LEAD AUTOMATICALLY, and an earlier version of this comment wrongly
+  // said the confirmation "goes to his phone over WhatsApp instead". It does not — no open 24h
+  // window, no approved template, so the send is blocked and dropped. The prompt therefore promises
+  // the TEAM, not a channel. See VOICE_EMAIL_WHATSAPP_HANDBACK_ENABLED for the one direction that
+  // does work: a message HE sends us.
   //
   // OFF restores the previous behaviour exactly: a null email throws the same ToolError as before.
   // Note this is one of the few voice flags whose default is NOT "what we did yesterday" — the

@@ -141,6 +141,9 @@ async function buildAuthTestApp(db: ReturnType<typeof createMockDb>, redis = mak
     VOICE_SILENCE_AWAY_MS: 7000,
     VOICE_EMAIL_DICTATION_ENABLED: true,
     VOICE_BOOK_WITHOUT_EMAIL: true,
+    VOICE_FILLER_PAIRING_ENABLED: true,
+    VOICE_OPENER_NO_REPEAT_ENABLED: true,
+    VOICE_EMAIL_WHATSAPP_HANDBACK_ENABLED: true,
   };
 
   const app = Fastify({ logger: false });

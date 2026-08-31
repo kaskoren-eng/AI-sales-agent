@@ -1,7 +1,11 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ShadowSttTranscript } from '../../../db/schema/call-learnings.js';
-import { countRepeatedFourGrams, countRepeatedOpeners } from './phrase-ledger.js';
+import {
+  countConsecutiveOpenerRepeats,
+  countRepeatedFourGrams,
+  countRepeatedOpeners,
+} from './phrase-ledger.js';
 import type { PipelineSnapshot, PreemptiveCounters } from './pipeline-observer.js';
 import { hasRegisterTouch } from './register-tracker.js';
 
@@ -237,6 +241,16 @@ export interface CallReportJson {
      * 4-grams alone). On that call this would have read 3.
      */
     repeatedOpenerCount: number;
+    /**
+     * How many replies opened with the same word as the reply before them.
+     *
+     * `repeatedOpenerCount` above cannot fall: over a long call a three-word bank must score 3
+     * whatever the ordering, so it is a constant wearing a metric's clothes. This one is the
+     * complaint Koren actually made on 2026-08-31 — *"not the same word every time at the start of
+     * the sentence"* — and with VOICE_OPENER_NO_REPEAT_ENABLED on it should read 0. A non-zero
+     * reading means either a real escape or a producer nobody wired into SpokenOpenerTracker.
+     */
+    consecutiveOpenerRepeats: number;
     /**
      * Share of her replies carrying one of the eight screened everyday words — the Spoken Register
      * quota, measured instead of assumed.
@@ -752,6 +766,7 @@ export class CallReport {
         // compares against.
         repeatedPhraseCount: countRepeatedFourGrams(agentLines) + countRepeatedOpeners(agentLines),
         repeatedOpenerCount: countRepeatedOpeners(agentLines),
+        consecutiveOpenerRepeats: countConsecutiveOpenerRepeats(agentLines),
         registerTouchPct:
           agentLines.length === 0
             ? null
