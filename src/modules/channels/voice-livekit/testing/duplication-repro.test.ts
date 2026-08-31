@@ -69,24 +69,29 @@ describe('filler ⨯ opener duplication — real pipeline modules', () => {
     // The collision is not contrived — both halves are shipped config, so the guard must hold.
     const prompt = buildSystemPrompt({ toolsEnabled: false, businessProfile: null });
     expect(prompt).toContain('רגע, בודקת.');
-    expect(THINKING_FILLERS_HE).toContain('רגע...');
+    // The bank member is pointed since round 10 (`רֶגַע...`); the collision is with the same WORD,
+    // and `normalizeFillerWord` strips niqqud precisely so the guard still sees one word.
+    expect(THINKING_FILLERS_HE.map((f) => f.replace(/[֑-ׇ]/gu, ''))).toContain('רגע...');
   });
 
   // ---- The fix: filler suppressed when the opener would repeat it -----------------------------
 
   it('FIXED: filler "רגע..." + opener "רגע, בודקת." → "רגע" reaches the TTS sink only ONCE', async () => {
     const sink = await drainToSink(
-      ttsNodeTextPath('רגע...', llmStream('רגע, בודקת. ', 'יש לי כמה אפשרויות בשבילך.')),
+      ttsNodeTextPath('רֶגַע...', llmStream('רגע, בודקת. ', 'יש לי כמה אפשרויות בשבילך.')),
     );
     // No back-to-back duplicate, and no standalone filler chunk — the opener carries the word once.
     expect(firstDuplicatedLeadingWord(sink)).toBeNull();
     expect(sink.filter((c) => c.includes('רגע'))).toHaveLength(1);
-    expect(sink.some((c) => c.trim() === 'רגע...')).toBe(false);
+    expect(sink.some((c) => c.trim().replace(/[֑-ׇ]/gu, '') === 'רגע...')).toBe(false);
   });
 
   it('FIXED breadth: EVERY filler is suppressed when the opener starts with that filler word', async () => {
     for (const filler of THINKING_FILLERS_HE) {
-      const word = filler.replace(/[.…]+$/u, '');
+      // Unpointed, on both sides. guardSpeech strips model niqqud on the way to the TTS and only
+      // re-applies this file's own verified marks to the ELLIPSIS form, so a chunk carrying
+      // "אֶממ, בודקת." reaches the sink as "אממ, בודקת." — the same word, without the mark.
+      const word = filler.replace(/[֑-ׇ]/gu, '').replace(/[.…]+$/u, '');
       const sink = await drainToSink(
         ttsNodeTextPath(filler, llmStream(`${word}, בודקת. `, 'המשך המשפט כאן.')),
       );
@@ -95,19 +100,20 @@ describe('filler ⨯ opener duplication — real pipeline modules', () => {
     }
   });
 
-  it('does NOT over-suppress: a non-colliding filler ("אממ...") is still spoken, no duplication', async () => {
+  it('does NOT over-suppress: a non-colliding filler ("אֶממ...") is still spoken, no duplication', async () => {
     const sink = await drainToSink(
-      ttsNodeTextPath('אממ...', llmStream('רגע, בודקת. ', 'יש לי כמה אפשרויות בשבילך.')),
+      ttsNodeTextPath('אֶממ...', llmStream('רגע, בודקת. ', 'יש לי כמה אפשרויות בשבילך.')),
     );
     expect(firstDuplicatedLeadingWord(sink)).toBeNull();
-    expect(sink.some((c) => c.includes('אממ'))).toBe(true); // filler preserved
-    expect(sink.some((c) => c.includes('רגע'))).toBe(true); // opener preserved
+    const bare = sink.map((c) => c.replace(/[֑-ׇ]/gu, ''));
+    expect(bare.some((c) => c.includes('אממ'))).toBe(true); // filler preserved
+    expect(bare.some((c) => c.includes('רגע'))).toBe(true); // opener preserved
   });
 
   it('collision guard survives a halting speaker: opener word split across chunks', async () => {
     // The opener "רגע" arrives one grapheme cluster at a time — withFiller must still recognize it.
     const sink = await drainToSink(
-      ttsNodeTextPath('רגע...', llmStream('ר', 'ג', 'ע', ', בודקת. ', 'המשך.')),
+      ttsNodeTextPath('רֶגַע...', llmStream('ר', 'ג', 'ע', ', בודקת. ', 'המשך.')),
     );
     expect(firstDuplicatedLeadingWord(sink)).toBeNull();
     expect(sink.filter((c) => c.includes('רגע'))).toHaveLength(1);

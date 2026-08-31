@@ -17,12 +17,35 @@
  * HEBREW, NOT TRANSLATED ENGLISH. "אממ" and "רגע" are what Israelis actually say. "בוא נראה" reads
  * naturally; "ובכן" would sound like a newsreader. This is the difference between an agent that
  * sounds like a person and one that sounds like a person translating.
+ *
+ * ── ROUND 10, 2026-08-31 — ALL FOUR SPELLINGS CHANGED, ALL FOUR BY EAR ────────────────────────
+ *
+ * This bank had never been screened at all, in any round, by any method — not by ear, not by round
+ * trip. It was four spellings somebody wrote down. Koren heard each of them in the carrier the
+ * production pipeline actually speaks them in
+ * (`tests/hebrew-tts-niqqud-ab/index-round10.html`, cards `f2`–`f5`) and moved every one:
+ *
+ *   `אממ...`  → `אֶממ...`   (f3, D — segol on the alef)
+ *   `רגע...`  → `רֶגַע...`  (f4, B — pointed)
+ *   `שנייה...` → `שניה...`  (f5, B — defective spelling, one yod)
+ *   `אה...`   → `אֶה...`    (f2, D — segol)
+ *
+ * ⚠️ THE NIQQUD IN THREE OF THESE DOES NOT SURVIVE THE PIPELINE ON ITS OWN. `guardSpeech` strips
+ * every Hebrew point before the text reaches Cartesia, because MODEL-emitted pointing is unreliable
+ * (known-issues §13) — and the injected filler goes through `guardStream` like any other text, so a
+ * mark written here alone would be silently erased and Koren's verdict silently reverted. What makes
+ * it reach the voice is `PRONUNCIATION_FIXES` in speech-guard.ts, which re-applies these three
+ * marks AFTER the strip, scoped to the ellipsis so ordinary "רגע, בודקת." is untouched. The two
+ * halves must be changed together; `speech-guard.test.ts` pins the round trip through `guardSpeech`.
+ *
+ * ⚠️ AND `אֶממ` NOW SHARES A STEM WITH THE RECEIPT `אמ.` — see ACKNOWLEDGEMENTS_HE and
+ * `mayPairInOneBreath`. Two sounds that differ by one letter must never share one breath.
  */
 export const THINKING_FILLERS_HE = [
-  'אממ...',
-  'רגע...',
-  'שנייה...',
-  'אה...',
+  'אֶממ...',
+  'רֶגַע...',
+  'שניה...',
+  'אֶה...',
 ] as const;
 
 /**

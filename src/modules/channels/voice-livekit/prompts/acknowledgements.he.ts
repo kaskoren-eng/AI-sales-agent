@@ -28,11 +28,34 @@ import { openerKey } from '../spoken-openers.js';
  *
  * AND NONE OF THEM MAY READ AS AN ANSWER. "כן." was in this list until 2026-08-29, when Koren
  * asked her "מה המצב, קרן?" and the call answered "כן." — a machine mishearing a greeting. Every
- * other member is a receipt in any context: you can say "אוקיי." after a question and it still
+ * other member is a receipt in any context: you can say "אוקי." after a question and it still
  * only means *I heard you*. "כן." means *yes*, and the caller cannot know we were not answering.
  * The rule for anything added here: read it back after a QUESTION, not just after a fact.
+ *
+ * ── ROUND 10, 2026-08-31 — THE FIRST TIME ANY OF THESE WAS LISTENED TO ────────────────────────
+ *
+ * Every word here had been spoken on nearly every turn of every production call since the feature
+ * shipped, and NOT ONE of them had ever been heard through a phone band by a native speaker. Round
+ * 10 (`tests/hebrew-tts-niqqud-ab/index-round10.html`) put them in front of Koren in the carrier
+ * production actually speaks them in. Two of the three moved:
+ *
+ *   - `אהה.` → **`אמ.`** (card `f1`, variant E). This is the word he complained about twice —
+ *     *"היא אומרת 'או-ה' במקום 'אהההה' אחיד"*. Eight spellings were offered, including three
+ *     pointed ones and the `אהההה` he proposed himself; he chose none of them and took a DIFFERENT
+ *     SOUND. `אמ` closes the lips instead of opening the throat, so there is no second syllable for
+ *     Cartesia to put a break into — the failure mode was structural, and no spelling of `אהה`
+ *     could have fixed it.
+ *   - `אוקיי.` → **`אוקי.`** (card `a1`, variant B), the single yod.
+ *   - `בסדר.` — **KEPT**, explicitly (card `a2`). Pinned in acknowledgements.test.ts so a later
+ *     tidy-up cannot quietly drop it.
+ *
+ * ⚠️ `אמ` AND `אֶממ...` NOW SHARE A STEM, and nothing in the category rule can see that. One is a
+ * receipt, the other is a hesitation, and `mayPairInOneBreath` would happily put them in one
+ * breath — "אמ. אֶממ..." — which is the stutter Koren ruled out in round 7 wearing a new face.
+ * `turn-opener.ts` refuses a pair whose lead tokens share a stem for exactly this reason. That
+ * guard is OURS, not his: he has never heard the pair, and it has never been on a call.
  */
-export const ACKNOWLEDGEMENTS_HE = ['אוקיי.', 'אהה.', 'בסדר.'] as const;
+export const ACKNOWLEDGEMENTS_HE = ['אוקי.', 'אמ.', 'בסדר.'] as const;
 
 /**
  * THE TWO THAT ARE NOT RECEIPTS — they are claims, and a claim has to be true.
@@ -53,6 +76,12 @@ export const ACKNOWLEDGEMENTS_HE = ['אוקיי.', 'אהה.', 'בסדר.'] as co
  * (`callerSharedSubstance`, engagement.ts) and the previous receipt was not one of these either.
  * They stay listed in ACKNOWLEDGEMENTS_HE_WIDE below because that constant is what
  * VOICE_ACK_EARNED_ENABLED=false restores and what the prompt shows the model.
+ *
+ * ROUND 10 HEARD BOTH AND KEPT BOTH WORDINGS UNCHANGED (cards `a3`, `a4` — variant A, the only
+ * variant, "this is what she says today"). That is a verdict about SOUND and it does not reopen the
+ * frequency question above: they are still earned, still capped, still never two in a row. The two
+ * strings are pinned byte-for-byte in acknowledgements.test.ts so a later tidy-up cannot reword
+ * something he has explicitly approved.
  */
 export const ACK_COMPREHENSION_HE = ['הבנתי אותך.', 'טוב, הבנתי.'] as const;
 

@@ -10,6 +10,8 @@ import {
   notifyIfSilent,
   withFiller,
 } from './speech-guard.js';
+import { THINKING_FILLERS_HE } from './prompts/thinking-fillers.he.js';
+import { DICTATION_NOD } from './dictation.js';
 
 /**
  * These are the ACTUAL sentences the agent said to Koren on a real call. Not hypotheticals.
@@ -319,6 +321,60 @@ describe('the pronunciation dictionary — gender-neutral fixed words', () => {
     expect(guardSpeech('אני רוצה לוודא — אתה רוצה שאשלח לך פרטים?').text).toBe(
       'אני רוצָה לוודֵא — אתה רוצֶה שאשלח לךָ פרטים?',
     );
+  });
+});
+
+/**
+ * ROUND 10, 2026-08-31 — KOREN'S POINTED FILLERS, AND THE STRIP THAT WOULD HAVE ERASED THEM.
+ *
+ * He picked `אֶממ...`, `רֶגַע...` and `אֶה...` by ear over their unpointed forms. Writing those
+ * strings into THINKING_FILLERS_HE is NOT enough on its own and that is the whole point of this
+ * block: the filler is injected by llmNode / withFiller INSIDE guardStream, so it meets the same
+ * niqqud strip as the model's text and arrives at Cartesia unpointed, with nothing failing
+ * anywhere. The verdict would be applied in the bank and reverted in the pipeline.
+ *
+ * These assertions are the end-to-end ones — what the TTS actually receives.
+ */
+describe('the thinking fillers reach the voice with the marks he chose', () => {
+  const chunks = async function* (...c: string[]) { for (const x of c) yield x; };
+  const drain = async (it: AsyncIterable<string>) => {
+    const o: string[] = [];
+    for await (const x of it) o.push(x);
+    return o.join('');
+  };
+
+  it('every filler in the bank survives guardSpeech byte-for-byte', () => {
+    for (const filler of THINKING_FILLERS_HE) {
+      expect(guardSpeech(`${filler} בוא נבדוק.`).text, filler).toBe(`${filler} בוא נבדוק.`);
+    }
+  });
+
+  it('and survives the STREAM, which is the path production actually uses', async () => {
+    const out = await drain(guardStream(chunks('אֶממ... ', 'בוא נבדוק מה מתאים.')));
+    expect(out).toContain('אֶממ...');
+  });
+
+  it('re-points an unpointed filler the model wrote itself', () => {
+    // Same reasoning as every other row of the dictionary: a screened spelling is how the word is
+    // said, whoever typed it.
+    expect(guardSpeech('אממ... בוא נבדוק.').text).toBe('אֶממ... בוא נבדוק.');
+    expect(guardSpeech('רגע... בוא נבדוק.').text).toBe('רֶגַע... בוא נבדוק.');
+  });
+
+  it('SCOPED TO THE ELLIPSIS: "רגע, בודקת." is not the filler and is left alone', () => {
+    // A system-prompt opener the model writes constantly. Koren judged the hesitation, not the
+    // word in every position it appears in.
+    expect(guardSpeech('רגע, בודקת. יש לי כמה אפשרויות.').text).toBe(
+      'רגע, בודקת. יש לי כמה אפשרויות.',
+    );
+    expect(guardSpeech('רגע.').text).toBe('רגע.');
+  });
+
+  it('AND IT MUST NOT REPOINT THE DICTATION NOD — that card has no verdict', () => {
+    // Round-10 card `n1`: he rejected all four spellings of "אה אה.". A bare אה → אֶה rule would
+    // have changed the nod on his behalf, which is exactly the kind of silent drift this round is
+    // about. The nod is spoken alone, so it never carries the ellipsis the rule keys on.
+    expect(guardSpeech(DICTATION_NOD).text).toBe('אה אה.');
   });
 });
 
