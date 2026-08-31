@@ -56,7 +56,8 @@ export interface LastBooking {
   start: string;
   meetLink?: string;
   name: string;
-  email: string;
+  /** Null when the meeting was deliberately booked without one — see book-meeting.tool.ts. */
+  email: string | null;
   phone: string;
   durationMinutes: number;
   inviteSent: boolean;

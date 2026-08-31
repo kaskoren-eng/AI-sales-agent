@@ -564,6 +564,23 @@ const envSchema = z.object({
   // it can never be read back or saved again, and the spoken domain ("ג'ימייל נקודה קום") is
   // resolved to `gmail.com`. OFF restores the previous behaviour exactly. See email-dictation.ts.
   VOICE_EMAIL_DICTATION_ENABLED: envBool(true),
+  // Whether book_meeting may close a booking with NO email address (2026-08-31).
+  //
+  // The 2026-08-31 production call is the whole argument: the lead had agreed to a demo at 450s and
+  // the call spent its last 54 seconds failing to transfer one email field. `book_meeting` was never
+  // called. Its schema required a valid email, so there was no way for her to keep the meeting and
+  // drop the field — the tool's own error text sent her back into the read-back loop that was
+  // killing the call.
+  //
+  // ON: after two failed read-backs she may pass `email: null`. The calendar event is created with
+  // no attendee (the provider already has that path for the service-account 403), the lead row is
+  // saved without an email, and the confirmation goes to his phone over WhatsApp instead. A booked
+  // meeting missing one field beats a lost meeting with a complete form.
+  //
+  // OFF restores the previous behaviour exactly: a null email throws the same ToolError as before.
+  // Note this is one of the few voice flags whose default is NOT "what we did yesterday" — the
+  // previous behaviour is the defect. See book-meeting.tool.ts.
+  VOICE_BOOK_WITHOUT_EMAIL: envBool(true),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),

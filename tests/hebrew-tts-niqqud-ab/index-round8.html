@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>סבב 8 · כתובת המייל · sonic-3.5</title>
+<style>
+  :root { --bg:#0e1116; --card:#171b22; --line:#252b36; --txt:#e6e9ef; --dim:#9aa4b2; --acc:#3b82f6; --warn:#f59e0b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:"Segoe UI",Arial,sans-serif; }
+  header, main { max-width:1100px; margin:0 auto; padding:0 20px; }
+  header { padding-top:26px; }
+  h1 { margin:0 0 6px; font-size:22px; }
+  h2 { font-size:18px; margin:34px 0 2px; }
+  .sub { color:var(--dim); font-size:14px; margin:4px 0 10px; line-height:1.6; }
+  .lede { background:#171b22; border:1px solid var(--line); border-inline-start:3px solid var(--acc);
+           border-radius:10px; padding:14px 16px; margin:14px 0 6px; font-size:14px; line-height:1.65; color:#cbd3de; }
+  .lede.warn { border-inline-start-color:var(--warn); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin:14px 0; }
+  .chead { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .cid { font-weight:700; font-size:19px; }
+  .tag { font-size:12px; color:var(--dim); font-family:monospace; }
+  .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:10px; }
+  .col { border:1px solid var(--line); border-radius:10px; padding:12px; background:#0f131a; }
+  .col:has(input:checked) { border-color:var(--acc); }
+  .vhead { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .vkey { font-family:monospace; font-weight:700; color:var(--acc); }
+  .vlabel { font-size:13px; color:var(--dim); }
+  .lbl { font-size:13px; color:var(--dim); display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
+  .none { color:#e0a0a0; }
+  .he { font-size:19px; margin-bottom:8px; line-height:1.5; }
+  audio { width:100%; height:34px; }
+  .heard { margin-top:8px; font-size:13px; line-height:1.5; border-radius:8px; padding:7px 9px;
+            background:#0b0e13; border:1px solid var(--line); }
+  .heard.same { color:#8fb99a; }
+  .heard.diff { color:#e6b980; border-color:#4a3a22; }
+  .hlbl { color:var(--dim); font-size:12px; display:block; margin-bottom:2px; }
+  .psrow { display:flex; gap:14px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+  .note { flex:1; min-width:220px; background:#0e1116; border:1px solid var(--line); border-radius:8px;
+           color:var(--txt); padding:8px 10px; font-size:14px; }
+  #summary { width:100%; min-height:220px; background:#0f131a; color:var(--txt); border:1px solid var(--line);
+              border-radius:10px; padding:12px; font-family:monospace; font-size:13px; direction:ltr; }
+  button { background:var(--acc); border:0; color:#fff; border-radius:8px; padding:10px 18px;
+            font-size:14px; cursor:pointer; margin:10px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>סבב 8 — כתובת המייל (sonic-3.5, speed 0.9 · volume 1.4)</h1>
+  <div class="lede">
+    השדה הזה עלה לנו <b>שתי פגישות</b>. בשיחה של 31.8 סיכמת דמו בדקה השביעית, ואז 54 השניות
+    האחרונות של השיחה הלכו על כתובת מייל אחת — הכתובת שלךָ היא <code dir="ltr">kaskoren@gmail.com</code>,
+    היא התכנסה ל-<code dir="ltr">koren@gmail.com</code>, והשיחה נגמרה <b>בלי פגישה בכלל</b>.<br>
+    בכל כרטיס: <b>A זה מה שנאמר בשיחה בפועל</b>, ו-B זה מה שהסוכנת אומרת אחרי השינוי.
+    סמן מה עדיף, ובסוף ״צור סיכום״ והדבק לי בחזרה.
+  </div>
+  <div class="lede warn">
+    ⚠️ הדף הזה בודק <b>ניסוח</b>. השאלה אם המודל באמת יעשה את זה בשיחה אמיתית — ובעיקר אם הוא באמת
+    יוותר על השדה בכרטיס 5 במקום להמשיך לשאול — לא נענית פה, ולא נענית באף בדיקה בקוד. רק בשיחה.
+  </div>
+  <p class="sub">כל ההקלטות סונתזו במהירות ובעוצמה של הפרודקשן (0.9 / 1.4), כמו בסבבים 6 ו-7.</p>
+</header>
+<main>
+<h2>1 · איך מבקשים כתובת מייל בטלפון</h2><p class="sub">כתובת מייל היא הפרט היחיד שקו של 8kHz פשוט הורס. השינוי מפצל את הבקשה: קודם רק החלק שלפני השטרודל, כמילה אחת — הדומיין הוא שאלה נפרדת, ורק אם הוא לא נאמר כבר. המילה <b>שטרודל</b> נכנסת כאן לראשונה לאוצר המילים של הסוכנת, ולכן היא עברה את אותו סינון טלפוני שכל מילה חדשה עוברת (roundtrip8.ts).</p>
+    <div class="card" data-id="e1">
+      <div class="chead"><span class="cid">לבקש את המייל — הכל בבת אחת, או רק החלק שלפני השטרודל</span>
+        <span class="tag">e1</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">היום — הכתובת כולה בבת אחת</span>
+          <span class="tag">1.28s</span></div>
+        <div class="he" dir="rtl">ומה כתובת המייל?</div>
+        <audio controls preload="none" src="r8_e1_A.wav"></audio>
+        <div class="heard same" dir="rtl"><span class="hlbl">מה שהמכונה שמעה דרך קו 8kHz:</span> ומה כתובת המייל?</div>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_e1" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">אחרי השינוי — רק החלק שלפני השטרודל, כמילה</span>
+          <span class="tag">3.36s</span></div>
+        <div class="he" dir="rtl">תגיד לי את החלק שלפני השטרודל, כמילה אחת.</div>
+        <audio controls preload="none" src="r8_e1_B.wav"></audio>
+        <div class="heard same" dir="rtl"><span class="hlbl">מה שהמכונה שמעה דרך קו 8kHz:</span> תגיד לי את החלק שלפני השטרודל, כמילה אחת.</div>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_e1" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_e1" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_e1" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div><h2>2 · הקריאה החוזרת — הכרטיס המרכזי</h2><p class="sub">זה מה שהפיל את השיחה. A הוא מה שהיא אמרה ב-549 שניות: <b>״k o r e n at gmail dot com״</b> — אותיות באנגלית בתוך משפט בעברית, בקו טלפון. זה הדבר הכי קשה שיש לאמת, וזו הכתובת הלא נכונה. B אומר את אותו דבר כמילה עברית אחת. אם B לא ברור לךָ יותר מ-A — כל השיטה הזאת שגויה, ועדיף שתגיד את זה עכשיו.<br><br><b>ומדידה שמושכת דווקא לכיוון השני, ואני אומר אותה כי היא נמדדה:</b> כשמעבירים את שתי ההקלטות דרך קו 8kHz ובחזרה, <b>האותיות באנגלית שורדות טוב יותר</b> מהמילה העברית — ״K-O-R-E-N״ חזר שלם, ו״קאסקורן״ חזר שבור או נעלם (ראה סעיף 6 למטה). אבל המכונה שומעת עברית ולא יודעת מה השם שלךָ; אתה שומע את השם של עצמךָ ומצפה לו. ומעל הכל — האותיות מעולם לא נכשלו בהגייה, הן נכשלו <b>באימות</b>: הן הפילו שתי פגישות. לכן ההכרעה כאן היא האוזן שלךָ, לא המספר.</p>
+    <div class="card" data-id="e2">
+      <div class="chead"><span class="cid">הקריאה החוזרת — אותיות באנגלית מול מילה בעברית</span>
+        <span class="tag">e2</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">היום (549s בשיחה) — אותיות באנגלית</span>
+          <span class="tag">5.44s</span></div>
+        <div class="he" dir="rtl">הבנתי אותךָ. רק לוודֵא. k o r e n at gmail dot com, נכון?</div>
+        <audio controls preload="none" src="r8_e2_A.wav"></audio>
+        <div class="heard diff" dir="rtl"><span class="hlbl">מה שהמכונה שמעה דרך קו 8kHz:</span> הבנתי אותך. רק לבד: K-O-R-E-N at gmail dot com, נכון?</div>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_e2" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">אחרי השינוי — מילה בעברית</span>
+          <span class="tag">5.76s</span></div>
+        <div class="he" dir="rtl">לפני השטרודל — קאסקורן. ואחריו ג&#x27;ימייל נקודה קום. נכון?</div>
+        <audio controls preload="none" src="r8_e2_B.wav"></audio>
+        <div class="heard diff" dir="rtl"><span class="hlbl">מה שהמכונה שמעה דרך קו 8kHz:</span> לפני השטרודל. קאס קורן. ואחריו gmail.com. נכון?</div>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_e2" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_e2" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_e2" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div>
+    <div class="card" data-id="e2b">
+      <div class="chead"><span class="cid">הדומיין לבד — האם ״ג&#x27;ימייל נקודה קום״ שורד את הקו</span>
+        <span class="tag">e2b</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">בעברית</span>
+          <span class="tag">2.72s</span></div>
+        <div class="he" dir="rtl">הדומיין הוא ג&#x27;ימייל נקודה קום, נכון?</div>
+        <audio controls preload="none" src="r8_e2b_A.wav"></audio>
+        <div class="heard diff" dir="rtl"><span class="hlbl">מה שהמכונה שמעה דרך קו 8kHz:</span> הדומיין הוא gmail.com, נכון?</div>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_e2b" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">באנגלית, כמו היום</span>
+          <span class="tag">2.4s</span></div>
+        <div class="he" dir="rtl">הדומיין הוא gmail dot com, נכון?</div>
+        <audio controls preload="none" src="r8_e2b_B.wav"></audio>
+        <div class="heard diff" dir="rtl"><span class="hlbl">מה שהמכונה שמעה דרך קו 8kHz:</span> הדומיין הוא gmail.com, נכון?</div>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_e2b" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_e2b" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_e2b" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div><h2>3 · אותיות שהגיעו בכמה תורות</h2><p class="sub">הקו חותך איות לכמה תורות: ״K-A״, אחר כך ״S״, אחר כך ״K-O-R-E-N״ — זו כתובת אחת, לא שלוש גרסאות. A הוא ציטוט מדויק מהשיחה, והוא מעביר אליו את העבודה שלה. החצי הקודי כבר עלה ל-main (email-dictation.ts מחבר את האותיות לפי הסדר); מה שמתווסף כאן הוא ההוראה בפרומפט, כי הקוד יכול לזכור אותיות אבל לא יכול לקבוע מה היא תגיד.</p>
+    <div class="card" data-id="e3">
+      <div class="chead"><span class="cid">אותיות שהגיעו בכמה תורות — שתי גרסאות או כתובת אחת</span>
+        <span class="tag">e3</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">היום (581s בשיחה) — מגלגלת אליו את העבודה</span>
+          <span class="tag">5.6s</span></div>
+        <div class="he" dir="rtl">כרגע שמעתי גם k a f וגם k o r e n, ואני רוצָה לרשום את זה נכון.</div>
+        <audio controls preload="none" src="r8_e3_A.wav"></audio>
+        <div class="heard diff" dir="rtl"><span class="hlbl">מה שהמכונה שמעה דרך קו 8kHz:</span> כרגע שמעתי גם KAF וגם KOREN, ואני רוצה לרשום את זה נכון.</div>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_e3" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">אחרי השינוי — חיברה אותן לפי הסדר</span>
+          <span class="tag">3.52s</span></div>
+        <div class="he" dir="rtl">לפני השטרודל — קאסקורן. נכון?</div>
+        <audio controls preload="none" src="r8_e3_B.wav"></audio>
+        <div class="heard diff" dir="rtl"><span class="hlbl">מה שהמכונה שמעה דרך קו 8kHz:</span> לפני השטרודל. קאס קורן. נכון?</div>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_e3" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_e3" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_e3" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div><h2>4 · אם המילה לא נכונה — איך מאייתים</h2><p class="sub">רק אם הוא אומר שהמילה שגויה. השאלה: שמות אותיות באנגלית או בעברית. <b>אף אחת מהאפשרויות לא נבדקה מעולם בקו טלפון עד עכשיו</b> — והמדידה כאן לא מחמיאה לעברית: ״קיי״ חזר כ״הכי״, והאות הראשונה נבלעה. באנגלית חזרו כל האותיות, עם T אחת מומצאת באמצע. <b>זו הנקודה הכי סבירה שבה טעיתי בשינוי הזה</b>, והיא שורה אחת לשנות אם האוזן שלךָ מסכימה עם המדידה.</p>
+    <div class="card" data-id="e4">
+      <div class="chead"><span class="cid">אם המילה לא נכונה — שמות אותיות בעברית מול אנגלית</span>
+        <span class="tag">e4</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">אותיות באנגלית, כמו היום</span>
+          <span class="tag">5.2s</span></div>
+        <div class="he" dir="rtl">אז זה k. a. s. k. o. r. e. n?</div>
+        <audio controls preload="none" src="r8_e4_A.wav"></audio>
+        <div class="heard diff" dir="rtl"><span class="hlbl">מה שהמכונה שמעה דרך קו 8kHz:</span> אז זה K-A-S-T. K-O-R-E-N,</div>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_e4" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">שמות האותיות בעברית</span>
+          <span class="tag">5.44s</span></div>
+        <div class="he" dir="rtl">אז זה קיי. איי. אס. קיי. או. אר. אי. אן?</div>
+        <audio controls preload="none" src="r8_e4_B.wav"></audio>
+        <div class="heard diff" dir="rtl"><span class="hlbl">מה שהמכונה שמעה דרך קו 8kHz:</span> אז הכי: A-S-K-O-R-E-N.</div>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_e4" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_e4" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_e4" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div><h2>5 · הנקודה שעולה כסף — מתי מפסיקים לשאול</h2><p class="sub">זה לא כרטיס ניסוח. <b>הדמו כבר סוכם ב-450 שניות של השיחה</b>, והשיחה נגמרה ב-602 בלי פגישה, אחרי 54 שניות על השדה הזה — <code>book_meeting</code> לא נקרא אפילו פעם אחת. אחרי השינוי מותר לה לוותר על המייל ולקבוע את הפגישה בלעדיו (הכלי עצמו שונה, לא רק הטקסט). <b>שים לב למה ש-B לא מבטיח:</b> היא לא אומרת שתשלח וואטסאפ. בדקנו — ללקוח שרק התקשר אלינו אין חלון וואטסאפ פתוח, ובלי תבנית מאושרת ההודעה נחסמת בשקט. אז היא מבטיחה את הצוות, וזה נכון.</p>
+    <div class="card" data-id="e5">
+      <div class="chead"><span class="cid">אחרי שתי קריאות שנכשלו — להמשיך לנסות, או לסגור את הפגישה</span>
+        <span class="tag">e5</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">היום — עוד סיבוב על אותו שדה, והשיחה נגמרה בלי פגישה</span>
+          <span class="tag">5.36s</span></div>
+        <div class="he" dir="rtl">אני רוצָה לוודא שרשמתי נכון. תוכל בבקשה לאיית לי את זה שוב, אות אות?</div>
+        <audio controls preload="none" src="r8_e5_A.wav"></audio>
+        <div class="heard diff" dir="rtl"><span class="hlbl">מה שהמכונה שמעה דרך קו 8kHz:</span> אני רוצה לוודא שרשמתי נכון: תוכל בבקשה לאיית לי את זה שוב, אות-אות?</div>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_e5" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">אחרי השינוי — משחררת את השדה ושומרת על הפגישה</span>
+          <span class="tag">4.48s</span></div>
+        <div class="he" dir="rtl">יש לי את הנייד שלךָ וזה מספיק — הצוות יחזור אליך עם הפרטים.</div>
+        <audio controls preload="none" src="r8_e5_B.wav"></audio>
+        <div class="heard diff" dir="rtl"><span class="hlbl">מה שהמכונה שמעה דרך קו 8kHz:</span> יש לי את הנייד שלך, וזה מספיק. הצוות יחזור אליך עם הפרטים.</div>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_e5" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_e5" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_e5" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div><h2>6 · המילה הממוציאה עצמה — קאסקורן</h2><p class="sub">השיטה כולה מבקשת ממנה להגיד מילה עברית שלא קיימת: התעתיק של החלק שלפני השטרודל. בדקנו אותה בשלושה נשאים, בדיוק כמו שבדקנו את ״סגור״ בסבב 7. <b>התוצאה: אף אחד מהשלושה לא חזר שלם.</b> לבד — נבלע לגמרי (״אז קורן״). בסוף משפט — חזר כשתי מילים (״קס קורן״). אחרי השם האמיתי — <b>נעלם בלי זכר</b>. זו בדיוק צורת הכישלון השקטה שסבב 4b תיעד (״אוו״ נבלע). חשוב מה זה כן אומר ומה לא: המכונה מתמללת <b>אותה</b>, ובשיחה אמיתית אף אחד לא מתמלל אותה — מתמללים את הלקוח. אז זו עדות לכך שהמילה חלשה אקוסטית בקו, לא הוכחה שאדם לא יבין אותה. האוזן שלךָ היא מה שיכריע.</p>
+    <div class="card" data-id="e6">
+      <div class="chead"><span class="cid">קאסקורן — המילה הממוציאה שהשיטה כולה נשענת עליה</span>
+        <span class="tag">e6</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">לבד</span>
+          <span class="tag">0.8s</span></div>
+        <div class="he" dir="rtl">קאסקורן.</div>
+        <audio controls preload="none" src="r8_e6_A.wav"></audio>
+        <div class="heard diff" dir="rtl"><span class="hlbl">מה שהמכונה שמעה דרך קו 8kHz:</span> אז קורן.</div>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_e6" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">סוף משפט</span>
+          <span class="tag">2.8s</span></div>
+        <div class="he" dir="rtl">אז החלק שלפני השטרודל הוא קאסקורן.</div>
+        <audio controls preload="none" src="r8_e6_B.wav"></audio>
+        <div class="heard diff" dir="rtl"><span class="hlbl">מה שהמכונה שמעה דרך קו 8kHz:</span> אז החלק של לפני השטרודל הוא קס קורן.</div>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_e6" value="B"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">C</span>
+          <span class="vlabel">עם השם האמיתי שהוא נתן</span>
+          <span class="tag">2.72s</span></div>
+        <div class="he" dir="rtl">קורן שטרית — קאסקורן, נכון?</div>
+        <audio controls preload="none" src="r8_e6_C.wav"></audio>
+        <div class="heard diff" dir="rtl"><span class="hlbl">מה שהמכונה שמעה דרך קו 8kHz:</span> קורן שטרית. נכון?</div>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_e6" value="C"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_e6" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_e6" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div>
+<h2>סיכום</h2>
+<button id="btn">צור סיכום</button>
+<textarea id="summary" readonly placeholder="הסיכום יופיע כאן"></textarea>
+</main>
+<script>
+const KEY = 'r8-verdicts';
+const state = JSON.parse(localStorage.getItem(KEY) || '{}');
+document.querySelectorAll('input').forEach(el => {
+  if (el.type === 'radio' && state[el.name] === el.value) el.checked = true;
+  if (el.type === 'text' && state[el.name]) el.value = state[el.name];
+  el.addEventListener(el.type === 'text' ? 'input' : 'change', () => {
+    state[el.name] = el.value;
+    localStorage.setItem(KEY, JSON.stringify(state));
+  });
+});
+document.getElementById('btn').addEventListener('click', () => {
+  const lines = ['round8 verdicts (sonic-3.5)'];
+  document.querySelectorAll('.card').forEach(card => {
+    const id = card.dataset.id;
+    const pick = state['pick_' + id] || '-';
+    const note = state['note_' + id] ? '  note: ' + state['note_' + id] : '';
+    lines.push(id + ': ' + pick + note);
+  });
+  const box = document.getElementById('summary');
+  box.value = lines.join('\n');
+  box.select();
+});
+</script>
+</body>
+</html>

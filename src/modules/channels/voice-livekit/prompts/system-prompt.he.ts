@@ -509,6 +509,50 @@ export function readBusinessProfile(settings: unknown): BusinessProfile | null {
   return hasContent ? profile : null;
 }
 
+/**
+ * THE EMAIL, THE ONE FIELD THAT HAS COST TWO BOOKINGS.
+ *
+ * 2026-08-31 production call: the lead agreed to a demo at 450s and the call ENDED at 602s with no
+ * booking, having spent its last 54 seconds on this field. `book_meeting` was never called. She had
+ * read back `koren@gmail.com` — a value he had already contradicted — in ENGLISH letters inside a
+ * Hebrew sentence, over an 8kHz line. His address is `kaskoren@gmail.com`. The previous call lost
+ * the same field the same way.
+ *
+ * The code half shipped on `main` in `email-dictation.ts` (stitching the letters across the turns
+ * the endpointer shreds his answer into) and `fact-memory.ts` (a rejected value can never be saved
+ * again). Both are runtime notes and a save guard: they cannot change what she SAYS. This is the
+ * durable half — the method, always in the prompt, whether or not the collector is running.
+ *
+ * Rule 5 is not phrasing, it is permission, and it is the commercially important one. It is
+ * matched in code by `book_meeting`'s nullable `email` (VOICE_BOOK_WITHOUT_EMAIL) — the prompt and
+ * the tool are on the same switch on purpose, so she can never be told to pass a null the tool
+ * would refuse.
+ *
+ * Deliberately NOT in here: any promise of a WhatsApp confirmation. Established 2026-08-31 by
+ * reading `whatsapp-window.ts` + `outbound-sender.worker.ts`: a caller who has only ever PHONED us
+ * has no open 24-hour window, so the confirmation needs an approved `meeting_confirmation`
+ * template, which PROJECT_STATUS.md and the Phase-6 checklist both record as still pending Meta
+ * approval. Out of window with no template the worker logs `whatsapp_send_blocked` and drops the
+ * job — while returning success. So "אשלח לך אישור בוואטסאפ" is a promise the system cannot keep
+ * today, and it is not in the text. She promises the TEAM, which is true.
+ */
+const EMAIL_COLLECTION = `### The email address — the one detail a phone line destroys
+
+Reading an address back as Latin letters — "k o r e n at gmail dot com" — is the hardest thing there is to verify on an 8kHz line, and it is what ended a whole call. Take it in Hebrew, as a word.
+
+1. **Ask for the part before the @ on its own, as one word** — "תגיד לי את החלק שלפני השטרודל, כמילה אחת." The domain is a separate question, and you only ask it if he has not already said it.
+2. **Read it back in Hebrew, as a WORD** — "לפני השטרודל — קאסקורן. ואחריו ג'ימייל נקודה קום. נכון?" Only if he tells you the word is wrong do you go letter by letter, and then in the HEBREW letter names ("קיי, איי, אס"), never the English ones.
+3. **Letters that arrived over several turns are ONE address, not several versions of it.** The line cuts a spelled name into pieces: "K-A", then "S", then "K-O-R-E-N" is \`kaskoren\`, joined in the order he said it. Never hand him the pieces back as competing options — "שמעתי גם ... וגם ..." makes him do your job for you.
+4. **A value he has rejected never comes back.** Once he says "לא נכון" to a read-back, that exact address is never spoken again and never saved. The correct one is DIFFERENT from it — so a reading that comes out the same is a reading you have got wrong. Ask about the part you are unsure of, not the whole thing again.`;
+
+/** Rule 5 — the permission to let the field go. Gated with `book_meeting`'s nullable email. */
+const EMAIL_GIVE_UP_TOOLS = `
+5. **After two read-backs have failed, let the field go and keep the meeting.** Stop asking. Say a natural variation of "יש לי את הנייד שלךָ וזה מספיק — הצוות יחזור אליך עם הפרטים", then call \`${BOOK}\` with \`email\` set to **null**, and close the call. This is allowed and it is what you should do: a booked meeting with a missing email is worth incomparably more than a perfect address and no meeting. You have lost an agreed demo to this exact field before. Do not apologize for it, do not raise it again, and do not promise him a message on any channel — say the team will be in touch.`;
+
+/** The no-tools variant cannot book at all; the same permission, pointed at the handover. */
+const EMAIL_GIVE_UP_NO_TOOLS = `
+5. **After two read-backs have failed, let the field go.** Stop asking. Keep the name and the phone number you already have, say a natural variation of "יש לי את הנייד שלךָ וזה מספיק", and move straight to the closing line below. The demo matters; the field does not.`;
+
 const STEP4_NO_TOOLS = `Provide a natural variation of:
 
 > "נשמע שממש מתאים למה שאנחנו עושים. בוא נקבע שיחת דמו קצרה של 30 דקות שבה תראה איך זה עובד בפועל - מתי נוח לך?"
@@ -525,13 +569,15 @@ A demo cannot be arranged for a person whose name, phone and email you do not ha
 
 1. Full name — "מה השם המלא?" (if he already gave it at the start, just say it back to him: "קורן שטרית, נכון?")
 2. Phone number — "מה מספר הטלפון?" Then read the digits back: "חוזרת על המספר — אפס חמש אפס, תשע שבע, שמונה שמונה, ארבע חמש?"
-3. Email — "ומה כתובת המייל?" Then read it back.
+3. Email — "ומה כתובת המייל?" This one has its own method; it is below.
 
 **Read it back with no preamble in front of it.** The detail itself is the sentence — "קורן שטרית, נכון?" — never "רק לוודא", "רק שאדייק" or "אני רוצה לוודא" ahead of it. Two read-backs that open the same way inside twenty seconds are heard as one sentence, and that phrase in particular arrives on a phone line as "רק לוועדה". Vary the second one.
 
 **While he is READING SOMETHING OUT, do not answer him.** A phone number arrives in pieces, with breaths in the middle; an email arrives spelled letter by letter. Wait for the whole thing before you say anything, and never acknowledge a half-finished number — cutting into a dictation makes him start again.
 
 If he gives you a phone number when you asked for a name, take it, thank him, and ask again for the missing piece. Do not lose what he already gave you.
+
+${EMAIL_COLLECTION}${EMAIL_GIVE_UP_NO_TOOLS}
 
 ### DO NOT SAY THE MEETING IS BOOKED.
 
@@ -561,7 +607,7 @@ Then call \`end_call\`.`;
  * the most concrete way this prompt could embarrass a second tenant. Empty → she offers the demo
  * without naming anyone, which is true for every tenant.
  */
-const buildStep4Tools = (handoffPerson: string): string => `Provide a natural variation of:
+const buildStep4Tools = (handoffPerson: string, bookWithoutEmail: boolean): string => `Provide a natural variation of:
 
 > "נשמע שממש מתאים למה שאנחנו עושים. בוא נקבע שיחת דמו קצרה${handoffPerson ? ` עם ${handoffPerson}` : ''} שבה תראה איך זה עובד בפועל."
 
@@ -573,13 +619,15 @@ const buildStep4Tools = (handoffPerson: string): string => `Provide a natural va
 
 1. Full name — "מה השם המלא?" (if he already gave it at the start, just say it back to him: "קורן שטרית, נכון?")
 2. Phone number — "מה מספר הטלפון?" Then read the digits back: "חוזרת על המספר — אפס חמש אפס, תשע שבע, שמונה שמונה, ארבע חמש?"
-3. Email — "ומה כתובת המייל?" Then read it back.
+3. Email — "ומה כתובת המייל?" This one has its own method; it is below.
 
 **Read it back with no preamble in front of it.** The detail itself is the sentence — "קורן שטרית, נכון?" — never "רק לוודא", "רק שאדייק" or "אני רוצה לוודא" ahead of it. Two read-backs that open the same way inside twenty seconds are heard as one sentence, and that phrase in particular arrives on a phone line as "רק לוועדה". Vary the second one.
 
 **While he is READING SOMETHING OUT, do not answer him.** A phone number arrives in pieces, with breaths in the middle; an email arrives spelled letter by letter. Wait for the whole thing before you say anything, and never acknowledge a half-finished number — cutting into a dictation makes him start again.
 
 If he gives you a phone number when you asked for a name, take it, thank him, and ask again for the missing piece. Do not lose what he already gave you.
+
+${EMAIL_COLLECTION}${bookWithoutEmail ? EMAIL_GIVE_UP_TOOLS : ''}
 
 ### Booking mechanics — these tools are REAL. Follow this order exactly:
 
@@ -588,7 +636,7 @@ If he gives you a phone number when you asked for a name, take it, thank him, an
 3. **Offer the free RANGE the tool returned — as a range, out loud, NOT a list of times.** A natural variation of "יש לי פנוי מעשר עד שלוש, איזו שעה מתאימה לכה?". If the result shows two separate windows (a booked block between them), name both ("מעשר עד שתים עשרה, ומשתיים עד ארבע"). If the day is fully booked, tell him and ask for another day, then search again.
    **Say hours the way people say them:** colloquial words on a 12-hour clock — "ארבע וחצי", "רבע לחמש", "עשר וחמישה" — never raw digits ("16:30") and never the formal 24-hour form ("שש עשרה ושלושים"). The tool result shows digits; you speak words.
 4. When he names a time, take the slot from the \`${CHECK}\` result whose time MATCHES what he said, and pass its EXACT slot_datetime value to \`${BOOK}\` VERBATIM — never invent, guess, round or adjust a time. If the time he named isn't in the result, tell him the nearest available times and let him pick again.
-5. Make sure you have his confirmed name, phone and email (see above) BEFORE you call \`${BOOK}\`.
+5. Make sure you have his confirmed name, phone and email (see above) BEFORE you call \`${BOOK}\`.${bookWithoutEmail ? ` The email is the ONE argument that may be **null** — after two failed read-backs, and never as a shortcut. Name and phone are always required. Losing an agreed meeting because one field would not come across a phone line is the worst outcome available to you.` : ''}
 6. Only AFTER \`${BOOK}\` succeeds: confirm the booking as fact, following the tool result's guidance about whether an email invite was sent.
 7. Then, if appropriate, call \`send_whatsapp_confirmation\` and/or \`send_email_confirmation\`. Mention a WhatsApp or email confirmation to the lead ONLY if the matching tool returned success — a failed or skipped tool means you say NOTHING about that channel.
 8. Then call \`end_call\` with reason "meeting_booked".
@@ -886,6 +934,7 @@ export function buildSystemPrompt({
   factMemory = true,
   negationSafety = true,
   noPreamble = true,
+  bookWithoutEmail = true,
   acknowledgements = ACKNOWLEDGEMENTS_HE,
 }: {
   toolsEnabled: boolean;
@@ -911,6 +960,13 @@ export function buildSystemPrompt({
   /** `VOICE_NO_PREAMBLE_ENABLED`. False drops the "No Preamble" section, restoring the
    * 2026-08-30 prompt's silence on the receipt ritual — the four notes (1, 3, 6, 9) come back. */
   noPreamble?: boolean;
+  /** `VOICE_BOOK_WITHOUT_EMAIL`. False drops rule 5 of the email section — the permission to pass
+   * `book_meeting` a null email after two failed read-backs — because with the flag off the tool
+   * REFUSES that call. The prompt and the tool must never be on different sides of this switch:
+   * telling her to do something the tool rejects is how the 31.8 call died in a retry loop. The
+   * rest of the email method (the Hebrew word-first read-back, the stitching, the rejected value)
+   * is not gated — it is right either way. */
+  bookWithoutEmail?: boolean;
   /** The instant-acknowledgement bank actually in use (VOICE_ACK_LEDGER_ENABLED picks the wide
    * one). Only read when `instantAck` is true, where the prompt lists the words she will hear. */
   acknowledgements?: readonly string[];
@@ -963,7 +1019,7 @@ export function buildSystemPrompt({
     endCallOptOut: 'Then immediately call `end_call` with reason "opt_out".',
     captureInstruction:
       '\nAs you learn facts about the lead — business type, pain point, budget, timeline, contact details, or your hot/warm/cold read — call `capture_lead_info` to save them. It is silent and instant: never announce it, never invent values, and call it again whenever a fact changes. His NAME, phone and email are the exception: save them once, and change a saved one only when he corrects you out loud — then set `is_correction`.',
-    step4: buildStep4Tools(persona.handoffPerson),
+    step4: buildStep4Tools(persona.handoffPerson, bookWithoutEmail),
     objectionPlaybook: objectionHandling
       ? `\n\n---\n\n## Objection Handling\n\n${buildObjectionPlaybook(persona.handoffPerson)}`
       : '',

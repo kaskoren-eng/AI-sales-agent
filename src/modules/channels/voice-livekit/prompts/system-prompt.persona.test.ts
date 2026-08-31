@@ -64,7 +64,48 @@ import {
  * new byte is independently pinned by system-prompt.test.ts; the greeting fixture and every
  * persona-owned section (Role, FAQ, gender rules) were verified UNCHANGED before regenerating.
  *
- * Regenerated AGAIN, 2026-08-31, on `feature/voice-persona-notes`, from the ten-minute production
+ * Regenerated AGAIN, 2026-08-31, on `feature/voice-email-prompt`, from the SAME ten-minute
+ * production call — but from its ENDING rather than its phrasing. WHICH LIVE CALL DID I JUST
+ * CHANGE: the 2026-08-31 11:37 call, which had an agreed demo at 450s and spent its last 54
+ * seconds failing to transfer one email address. `book_meeting` was never called. His address is
+ * `kaskoren@gmail.com`; she converged on `koren@gmail.com`, a value he had already contradicted,
+ * and read it back as Latin letters inside a Hebrew sentence. The previous call lost the same
+ * field the same way.
+ *
+ * The wording is §5 of `docs/handoffs/2026-08-31-voice-stall-and-email.md`, written by the session
+ * that fixed the CODE half (`email-dictation.ts` stitches the spelled letters across the turns the
+ * endpointer shreds his answer into; `fact-memory.ts` refuses to save a value he rejected) and was
+ * fenced out of this file while the persona branch held it. Neither of those can change what she
+ * SAYS, which is why the method belongs here.
+ *
+ * FOUR deliberate deltas, all inside Step 4's detail collection:
+ *   - Detail 3 stops saying "Then read it back." and points at the new section — the email needs a
+ *     different method from a name or a phone number, and saying "read it back" was what produced
+ *     the Latin-letter read-back.
+ *   - A `### The email address` section, rules 1–4: ask for the local part alone as one word;
+ *     read it back in Hebrew AS A WORD and spell only on a miss, in Hebrew letter names; letters
+ *     arriving over several turns are ONE address and are never offered back as competing options
+ *     ("שמעתי גם ... וגם ..." is verbatim from the call); a rejected value is never spoken or saved
+ *     again, and a reading that comes out the same is therefore wrong.
+ *   - Rule 5, the one that is permission rather than phrasing: after two failed read-backs, drop
+ *     the field, book the meeting with a null email, and close. Paired with `book_meeting`'s now
+ *     nullable `email` behind the SAME flag (`VOICE_BOOK_WITHOUT_EMAIL`) — a prompt that told her
+ *     to pass a null the tool refused would rebuild the retry loop that killed the call.
+ *   - Booking mechanics step 5 names the same exception where the tool order is decided.
+ *
+ * Rule 5 promises NO channel, deliberately, against §5's proposed "אמרי שתשלחי אישור בוואטסאפ":
+ * a caller who has only ever phoned us has no open 24-hour WhatsApp window, so the confirmation
+ * needs an approved `meeting_confirmation` template, which PROJECT_STATUS.md and the Phase-6
+ * checklist both record as still pending. Out of window with no template the worker logs
+ * `whatsapp_send_blocked`, drops the job, and returns success. She promises the team instead.
+ *
+ * `greeting-default.txt` is byte-identical and was not regenerated. Every persona-owned section
+ * (Role, FAQ, gender rules) is untouched — the diff is four hunks, all in Step 4. Every new byte
+ * is independently pinned by system-prompt.test.ts (13 new tests), including that the section
+ * smuggles no banned verification preamble back in and that its one spoken line breaks none of the
+ * rules the persona merge had just landed.
+ *
+ * Regenerated BEFORE that, 2026-08-31, on `feature/voice-persona-notes`, from the ten-minute production
  * call in `call-reports/calls-2026-08-31.md` (11:37 Israel time, 602s, NO booking despite the lead
  * agreeing to a time; repeatedPhraseCount 34, repeatedOpenerCount 4, fragmentedTurns 8). Koren's
  * nine notes. WHICH LIVE CALL DID I JUST CHANGE — that one, in the direction his notes asked for.

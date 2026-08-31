@@ -910,3 +910,126 @@ describe('the 2026-08-31 call — the receipt ritual, and what must survive it',
     expect(off).toMatch(/MANDATORY — all three/u);
   });
 });
+
+/**
+ * THE EMAIL — the field that has now cost two bookings.
+ *
+ * 2026-08-31 production call: the demo was agreed at 450s; the call ended at 602s with no booking,
+ * having spent its last 54 seconds on this one field, and `book_meeting` was never called. His
+ * address is `kaskoren@gmail.com`; she converged on `koren@gmail.com` and read it back in Latin
+ * letters inside a Hebrew sentence.
+ *
+ * `email-dictation.ts` and `fact-memory.ts` carry the runtime half (stitch the letters, never save
+ * a rejected value). Neither can change what she SAYS. This is the durable half.
+ */
+describe('the email collection method', () => {
+  const BOTH = [SYSTEM_PROMPT_HE, TOOLS_PROMPT];
+
+  it('is present on both the tools and the no-tools prompt', () => {
+    for (const p of BOTH) expect(p).toContain('### The email address');
+  });
+
+  it('names the Latin-letter read-back as the thing that ended a call', () => {
+    for (const p of BOTH) {
+      expect(p).toMatch(/k o r e n at gmail dot com/u);
+      expect(p).toMatch(/hardest thing there is to verify/u);
+    }
+  });
+
+  it('asks for the local part alone, as one word, and the domain separately', () => {
+    for (const p of BOTH) {
+      expect(p).toMatch(/תגיד לי את החלק שלפני השטרודל, כמילה אחת/u);
+      expect(p).toMatch(/The domain is a separate question/u);
+    }
+  });
+
+  it('reads it back in Hebrew as a WORD, and spells in HEBREW letter names only on a miss', () => {
+    for (const p of BOTH) {
+      expect(p).toMatch(/לפני השטרודל — קאסקורן\. ואחריו ג'ימייל נקודה קום\. נכון\?/u);
+      expect(p).toMatch(/HEBREW letter names/u);
+      expect(p).toMatch(/never the English ones/u);
+    }
+  });
+
+  it('treats letters spread over several turns as ONE address, and bans the competing-options line', () => {
+    // Verbatim from the call: "שמעתי גם k a f וגם k o r e n" — she handed him her own job.
+    for (const p of BOTH) {
+      expect(p).toMatch(/ONE address, not several versions of it/u);
+      expect(p).toMatch(/שמעתי גם \.\.\. וגם \.\.\./u);
+    }
+  });
+
+  it('forbids a rejected value from ever coming back — the model half of fact-memory reject()', () => {
+    for (const p of BOTH) {
+      expect(p).toMatch(/never spoken again and never saved/u);
+      expect(p).toMatch(/a reading that comes out the same is a reading you have got wrong/u);
+    }
+  });
+
+  it('does not smuggle a banned verification preamble back in with the new wording', () => {
+    for (const banned of ['רק לוודא', 'רק שאדע', 'רק שאדייק', 'אני רוצה לוודא']) {
+      const section = TOOLS_PROMPT.slice(
+        TOOLS_PROMPT.indexOf('### The email address'),
+        TOOLS_PROMPT.indexOf('### Booking mechanics'),
+      );
+      expect(section).not.toContain(banned);
+    }
+  });
+});
+
+/**
+ * RULE 5 — not phrasing, permission. The commercially important half, and the one that is paired
+ * with a tool change: `book_meeting`'s `email` is nullable behind the SAME flag, so she can never
+ * be told to make a call the tool would refuse.
+ */
+describe('rule 5 — abandon the field, keep the meeting', () => {
+  it('gives explicit permission to book with a null email after two failed read-backs', () => {
+    expect(TOOLS_PROMPT).toMatch(/After two read-backs have failed, let the field go and keep the meeting/u);
+    expect(TOOLS_PROMPT).toMatch(/`email` set to \*\*null\*\*/u);
+    expect(TOOLS_PROMPT).toMatch(/This is allowed and it is what you should do/u);
+  });
+
+  it('names the loss in the booking mechanics too, where the tool order is decided', () => {
+    expect(TOOLS_PROMPT).toMatch(/The email is the ONE argument that may be \*\*null\*\*/u);
+    // Name and phone stay mandatory — book_meeting still requires both.
+    expect(TOOLS_PROMPT).toMatch(/Name and phone are always required/u);
+  });
+
+  it('promises NO channel — the WhatsApp confirmation is blocked for a cold caller today', () => {
+    // Established 2026-08-31 from whatsapp-window.ts + outbound-sender.worker.ts: no open 24h
+    // window and no approved `meeting_confirmation` template → whatsapp_send_blocked, job dropped,
+    // job returns success. So "אשלח לך אישור בוואטסאפ" is a promise the system cannot keep.
+    const rule5 = TOOLS_PROMPT.slice(
+      TOOLS_PROMPT.indexOf('5. **After two read-backs have failed'),
+      TOOLS_PROMPT.indexOf('### Booking mechanics'),
+    );
+    expect(rule5).toMatch(/do not promise him a message on any channel/u);
+    expect(rule5).not.toMatch(/וואטסאפ/u);
+    expect(rule5).toMatch(/הצוות יחזור אליך עם הפרטים/u);
+  });
+
+  it('its spoken line breaks none of the rules the persona merge just landed', () => {
+    const line = 'יש לי את הנייד שלךָ וזה מספיק — הצוות יחזור אליך עם הפרטים';
+    expect(TOOLS_PROMPT).toContain(line);
+    // No slang opener (Spoken Register forbids a first-word reaction under VOICE_INSTANT_ACK)...
+    for (const slang of SPOKEN_REGISTER_SLANG) expect(line.startsWith(slang)).toBe(false);
+    // ...no verification preamble, and no bare unstressed לא, which an 8kHz line drops.
+    expect(line).not.toMatch(/רק לוודא|רק שאדע|רק שאדייק/u);
+    expect(line).not.toMatch(/(^|\s)לא(\s|$)/u);
+    // ...and it does not claim a booking before book_meeting returned.
+    expect(line).not.toMatch(/קבעתי|סגרתי/u);
+  });
+
+  it('KILL-SWITCH: bookWithoutEmail=false removes rule 5 and NOTHING else', () => {
+    const off = buildSystemPrompt({ toolsEnabled: true, bookWithoutEmail: false });
+    expect(off).not.toMatch(/let the field go and keep the meeting/u);
+    expect(off).not.toMatch(/The email is the ONE argument that may be/u);
+    // Rules 1–4 are right either way and must survive.
+    expect(off).toContain('### The email address');
+    expect(off).toMatch(/לפני השטרודל — קאסקורן/u);
+    expect(off).toMatch(/ONE address, not several versions of it/u);
+    expect(off).toMatch(/never spoken again and never saved/u);
+    // And the hard requirement is back, unqualified.
+    expect(off).toMatch(/name, phone and email \(see above\) BEFORE you call `book_meeting`/u);
+  });
+});

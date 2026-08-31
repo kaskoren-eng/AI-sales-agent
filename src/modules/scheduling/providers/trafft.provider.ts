@@ -125,7 +125,7 @@ export class TrafftProvider implements SchedulingProvider {
   async createBooking(params: {
     start: string;
     serviceId: string;
-    attendee: { name: string; email: string; phone?: string; timezone: string };
+    attendee: { name: string; email?: string; phone?: string; timezone: string };
     employeeId?: string;
     notes?: string;
   }): Promise<BookingResult> {
@@ -138,7 +138,7 @@ export class TrafftProvider implements SchedulingProvider {
       customer: {
         firstName,
         lastName,
-        email: params.attendee.email,
+        email: params.attendee.email ?? '',
         phone: params.attendee.phone ?? '',
         timeZone: params.attendee.timezone,
       },

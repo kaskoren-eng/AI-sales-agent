@@ -254,7 +254,7 @@ export class GoogleCalendarProvider implements SchedulingProvider {
   async createBooking(params: {
     start: string;
     serviceId: string;
-    attendee: { name: string; email: string; phone?: string; timezone: string };
+    attendee: { name: string; email?: string; phone?: string; timezone: string };
     employeeId?: string;
     notes?: string;
   }): Promise<BookingResult> {
@@ -274,7 +274,7 @@ export class GoogleCalendarProvider implements SchedulingProvider {
             // the description so the meeting owner can forward the invite by hand.
             description: withAttendees
               ? params.notes
-              : [params.notes, '', `Attendee (invite NOT auto-sent): ${params.attendee.name} <${params.attendee.email}>${params.attendee.phone ? ` ${params.attendee.phone}` : ''}`]
+              : [params.notes, '', `Attendee (invite NOT auto-sent): ${params.attendee.name}${params.attendee.email ? ` <${params.attendee.email}>` : ' (NO EMAIL — confirmed by WhatsApp)'}${params.attendee.phone ? ` ${params.attendee.phone}` : ''}`]
                   .filter((s) => s !== undefined)
                   .join('\n'),
             start: { dateTime: startDt.toISOString(), timeZone: params.attendee.timezone },

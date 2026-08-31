@@ -1369,6 +1369,9 @@ export default defineAgent({
           factMemory: env.VOICE_FACT_MEMORY_ENABLED,
           negationSafety: env.VOICE_NEGATION_SAFETY,
           noPreamble: env.VOICE_NO_PREAMBLE_ENABLED,
+          // Permission to let the email go and keep the meeting. Same flag as book_meeting's
+          // nullable email argument, so she is never told to make a call the tool would refuse.
+          bookWithoutEmail: env.VOICE_BOOK_WITHOUT_EMAIL,
           // The prompt lists the words the caller will actually hear, so the bank and its
           // description can never disagree about what she has already said.
           acknowledgements: env.VOICE_ACK_LEDGER_ENABLED
