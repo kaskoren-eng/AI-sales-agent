@@ -287,11 +287,19 @@ export class EmailDictation {
       );
     }
     if (parts.length === 0) return null;
+    // ⚠️ THIS PARAGRAPH MUST AGREE WITH `EMAIL_COLLECTION` IN system-prompt.he.ts. It sits at the
+    // TAIL of the context, several thousand tokens after the prompt, so where the two disagree
+    // THIS one wins — and between the round-8 verdicts landing and 2026-08-31 they DID disagree.
+    // The prompt was changed to Koren's round-8 answer (read the address back in ENGLISH letters,
+    // domain included, and say how many there are) and this note still carried the previous one
+    // (say the local part as a Hebrew WORD first). So the shipped instruction was quietly the
+    // verdict he had already ruled against, on every call where the collector was running, with
+    // every test in this repo green. Change the two together or not at all.
     parts.push(
-      `Confirm it in HEBREW: say the part before the @ as a WORD first, then the domain — and only ` +
-        `spell it out letter by letter if he says the word is wrong. Reading Latin letters aloud ` +
-        `("k o r e n at gmail dot com") is the hardest thing to verify on a phone line and is how ` +
-        `this went wrong.`,
+      `Read the joined address back in ENGLISH letters, domain included, and say how many letters ` +
+        `there are — "זה שמונה אותיות: k. a. s. k. o. r. e. n. נכון?" — so a piece the line ate is ` +
+        `something he can HEAR is missing. Spell corrections in ENGLISH letter names, never Hebrew ` +
+        `ones.`,
     );
     return ['[Email capture — automatic reminder]', ...parts].join(' ');
   }

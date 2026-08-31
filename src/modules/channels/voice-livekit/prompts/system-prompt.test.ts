@@ -1049,11 +1049,143 @@ describe('the email collection method', () => {
  * with a tool change: `book_meeting`'s `email` is nullable behind the SAME flag, so she can never
  * be told to make a call the tool would refuse.
  */
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE 79-SECOND DISQUALIFICATION — 2026-08-31 16:51, build 7943a26, live PSTN.
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ *     [ 62s] lead   "אממ, אין לי ממש.  עסק."
+ *     [ 67s] lead   "אני.  רוצה לפתוח עסק בתחום של בניית אתרים."
+ *     [ 76s] lead   "אמרתי לך, היום אני עדיין לא מקבל פניות."
+ *     [ 79s] KEREN  "בסדר. אם אתה עדיין לפני ההקמה, זה פחות מתאים כרגע... שיהיה יום נעים!"
+ *     [ 79s] lead   "איך זה יכול לעזור לעסק העתידי שלי?"     <- he talked over the goodbye
+ *
+ * Two of three mandatory discovery questions asked, one answer, and she signed him off. Five
+ * minutes later he had agreed to a demo. The disqualification is entirely a reading of Step 3 —
+ * there is no code path (`call-state.ts` has no such transition, and `end_call` was not called at
+ * 79s) — and she broke two of the section's existing rules doing it: the line is not the fixed
+ * `disqualified` line, and she disqualified on inquiry volume, which the paragraph directly above
+ * the disqualifiers says never disqualifies anybody.
+ *
+ * A prompt change is invisible to every test. These pin that the gate is in the text and that the
+ * kill-switch removes it cleanly — never that gpt-5.4 obeys it 79 seconds into a real call.
+ */
+describe('Step 3 — disqualification is late and conditional', () => {
+  const gateOf = (prompt: string): string => {
+    const start = prompt.indexOf('### Before you disqualify anybody');
+    const end = prompt.indexOf('**Disqualifiers**');
+    return start === -1 ? '' : prompt.slice(start, end === -1 ? undefined : end);
+  };
+
+  it('is on BOTH variants — a no-tools call disqualifies the same way', () => {
+    for (const p of [SYSTEM_PROMPT_HE, TOOLS_PROMPT]) {
+      expect(gateOf(p)).not.toBe('');
+    }
+  });
+
+  it('all three conditions must hold before she may disqualify', () => {
+    const gate = gateOf(TOOLS_PROMPT);
+    expect(gate).toMatch(/All three of these must be true/u);
+    expect(gate).toMatch(/asked all three MANDATORY discovery questions/u);
+    expect(gate).toMatch(/addressed the objection once and he held his position/u);
+    expect(gate).toMatch(/maps onto one of the three disqualifiers/u);
+  });
+
+  it('names the two answers she treated as rejections, in his own words', () => {
+    const gate = gateOf(TOOLS_PROMPT);
+    expect(gate).toMatch(/"Not yet" is not "no"/u);
+    expect(gate).toContain('עדיין אין לי עסק');
+    expect(gate).toContain('עדיין לא מקבל פניות');
+    // …and the specific wrong reason she used out loud.
+    expect(gate).toMatch(/not onto a low number of inquiries/u);
+  });
+
+  it('forbids the sign-off at the time she actually made it', () => {
+    expect(gateOf(TOOLS_PROMPT)).toMatch(/Never sign off inside the first two minutes/u);
+  });
+
+  it('DELETES NOTHING: all three disqualifiers and the volume rule survive intact', () => {
+    for (const p of [SYSTEM_PROMPT_HE, TOOLS_PROMPT]) {
+      expect(p).toMatch(/\*\*Mindset objection\*\*/u);
+      expect(p).toMatch(/\*\*Non-cooperative\*\*/u);
+      expect(p).toMatch(/\*\*No real pain point\*\*/u);
+      expect(p).toMatch(/it does \*\*not\*\* by itself disqualify a lead/u);
+      expect(p).toMatch(/General uncertainty is not a disqualifier/u);
+    }
+  });
+
+  it('KILL-SWITCH: lateDisqualify=false removes the gate and NOTHING else', () => {
+    const off = buildSystemPrompt({ toolsEnabled: true, lateDisqualify: false });
+    expect(gateOf(off)).toBe('');
+    expect(off).toMatch(/\*\*Disqualifiers\*\* \(any one of these is enough to disqualify\)/u);
+    // The rest of the prompt is byte-identical to the shipped one with the gate spliced out.
+    expect(TOOLS_PROMPT.replace(gateOf(TOOLS_PROMPT), '')).toBe(off);
+  });
+});
+
+/**
+ * The booking-claim section, widened to match `FALSE_BOOKING_WIDE` in speech-guard.ts. The prompt
+ * and the guard must always name the same words: the guard is what stops the sentence, and this is
+ * what stops her wanting to say it.
+ */
+describe('Step 4 — "קבענו" is the same claim as "קבעתי"', () => {
+  it('names the plural she actually used, and the availability check that is not a booking', () => {
+    expect(TOOLS_PROMPT).toMatch(/`check_calendar_availability` is not booking/u);
+    expect(TOOLS_PROMPT).toContain('"קבענו" is the same claim as "קבעתי"');
+    expect(TOOLS_PROMPT).toContain('קבענו לאחת עשרה');
+  });
+
+  it('lists every form the speech guard rewrites, so the two can never drift apart', () => {
+    for (const w of ['קבענו', 'סגרנו', 'שריינתי', 'הפגישה נקבעה']) {
+      expect(TOOLS_PROMPT, w).toContain(w);
+    }
+  });
+
+  it('offers her the sentence the guard would substitute, so she can say it herself', () => {
+    expect(TOOLS_PROMPT).toContain('אני צריכה עוד כמה פרטים לפני שאני קובעת');
+  });
+});
+
 describe('rule 5 — abandon the field, keep the meeting', () => {
   it('gives explicit permission to book with a null email after two failed read-backs', () => {
-    expect(TOOLS_PROMPT).toMatch(/After two read-backs have failed, let the field go and keep the meeting/u);
+    expect(TOOLS_PROMPT).toMatch(/let THE EMAIL go — and book the meeting anyway/u);
     expect(TOOLS_PROMPT).toMatch(/`email` set to \*\*null\*\*/u);
-    expect(TOOLS_PROMPT).toMatch(/This is allowed and it is what you should do/u);
+  });
+
+  /**
+   * THE SCOPE OF RULE 5, WHICH IS THE WHOLE OF RULE 5.
+   *
+   * 2026-08-31 16:51: the model applied it to the SURNAME — also read back twice, also wrong twice
+   * — and used it to end a call in which `book_meeting` had never run, on a lead who had already
+   * agreed to 11:00 the next morning. Its own suggested closing line came back almost verbatim:
+   *
+   *     [347s] KEREN  "אוקי. יש לי מספיק כדי להעביר לצוות. הם יחזרו אליךָ עם הפרטים להמשך. יום טוב."
+   *
+   * These four assertions are the four clauses that stop that reading. A prompt change is invisible
+   * to every test — this pins that the INSTRUCTION is present, never that gpt-5.4 obeys it on turn
+   * thirty. Only a live call can say that.
+   */
+  it('is scoped to the email, conditional on the other fields, and never a reason to end the call', () => {
+    const rule5 = rule5Of(TOOLS_PROMPT);
+    // 1. The trigger names the field rather than "the field".
+    expect(rule5).toMatch(/read the EMAIL back to him twice/u);
+    // 2. It is about that field and nothing else.
+    expect(rule5).toMatch(/This rule is about the email address and nothing else/u);
+    expect(rule5).toMatch(/never a reason to give up his name, his phone number, or the booking/u);
+    // 3. The action is a tool call in the same turn, not a goodbye.
+    expect(rule5).toMatch(/\*\*in the same turn\*\*/u);
+    expect(rule5).toMatch(/never a reason to end the call/u);
+    // 4. And the specific lie it produced is named.
+    expect(rule5).toMatch(/Never say you have a detail you do not have/u);
+    expect(rule5).toContain('יש לי את הנייד שלךָ');
+    expect(rule5).toContain('חסר לי רק המייל');
+  });
+
+  it('the no-tools variant is scoped the same way', () => {
+    const rule5 = rule5Of(SYSTEM_PROMPT_HE);
+    expect(rule5).toMatch(/read the EMAIL back to him twice/u);
+    expect(rule5).toMatch(/This rule is about the email address and nothing else/u);
+    expect(rule5).toMatch(/Never say you have a detail you do not have/u);
   });
 
   it('names the loss in the booking mechanics too, where the tool order is decided', () => {
@@ -1062,11 +1194,11 @@ describe('rule 5 — abandon the field, keep the meeting', () => {
     expect(TOOLS_PROMPT).toMatch(/Name and phone are always required/u);
   });
 
-  const rule5Of = (prompt: string): string =>
-    prompt.slice(
-      prompt.indexOf('5. **After two read-backs have failed'),
-      prompt.indexOf('### Booking mechanics'),
-    );
+  const rule5Of = (prompt: string): string => {
+    const start = prompt.indexOf('5. **After you have read the EMAIL back');
+    const end = prompt.indexOf('### Booking mechanics');
+    return prompt.slice(start, end === -1 ? undefined : end);
+  };
 
   it('promises NO OUTBOUND channel — that direction is still blocked for a cold caller', () => {
     // Established 2026-08-31 from whatsapp-window.ts + outbound-sender.worker.ts: no open 24h
@@ -1116,7 +1248,12 @@ describe('rule 5 — abandon the field, keep the meeting', () => {
   });
 
   it('its spoken line breaks none of the rules the persona merge just landed', () => {
-    const line = 'יש לי את הנייד שלךָ וזה מספיק — הצוות יחזור אליך עם הפרטים';
+    // CHANGED 2026-08-31. The line used to be "יש לי את הנייד שלךָ וזה מספיק — הצוות יחזור אליך עם
+    // הפרטים", and its first clause asserted a phone number the rule never checked she had. On the
+    // 16:51 call she had none, said a version of it anyway, and hung up. The replacement asserts
+    // only what she is about to do in the same turn — and "אני קובעת" is present tense, which the
+    // speech guard's false-booking rewrite deliberately does not touch (FALSE_BOOKING_WIDE).
+    const line = 'אני קובעת את זה עכשיו — הצוות יחזור אליך עם הפרטים';
     expect(TOOLS_PROMPT).toContain(line);
     // No slang opener (Spoken Register forbids a first-word reaction under VOICE_INSTANT_ACK)...
     for (const slang of SPOKEN_REGISTER_SLANG) expect(line.startsWith(slang)).toBe(false);
@@ -1129,7 +1266,7 @@ describe('rule 5 — abandon the field, keep the meeting', () => {
 
   it('KILL-SWITCH: bookWithoutEmail=false removes rule 5 and NOTHING else', () => {
     const off = buildSystemPrompt({ toolsEnabled: true, bookWithoutEmail: false });
-    expect(off).not.toMatch(/let the field go and keep the meeting/u);
+    expect(off).not.toMatch(/let THE EMAIL go/u);
     expect(off).not.toMatch(/The email is the ONE argument that may be/u);
     // Rules 1–4 are right either way and must survive.
     expect(off).toContain('### The email address');

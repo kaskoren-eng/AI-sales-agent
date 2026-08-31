@@ -415,6 +415,53 @@ const LINES_NEGATION_SAFE: SpeakableLines = {
   securityDecline: 'זה מחוץ למה שאני עושה כאן',
 };
 
+/**
+ * THE 79-SECOND DISQUALIFICATION.
+ *
+ * 2026-08-31 16:51, live PSTN, an inbound lead who had rung US after seeing an ad:
+ *
+ *     [ 58s] KEREN  "... איזה עסק יש לךָ ומה אתה מוכר בדיוק?"
+ *     [ 62s] lead   "אממ, אין לי ממש.  עסק."
+ *     [ 67s] lead   "אני.  רוצה לפתוח עסק בתחום של בניית אתרים."
+ *     [ 73s] KEREN  "... כמה פניות אתה מקבל ביום, פחות או יותר?"
+ *     [ 76s] lead   "אמרתי לך, היום אני עדיין לא מקבל פניות."
+ *     [ 79s] KEREN  "בסדר. אם אתה עדיין לפני ההקמה, זה פחות מתאים כרגע. כשיהיו פניות ראשונות או
+ *                    תהליך מכירה פעיל, נשמח לדבר שוב. שיהיה יום נעים!"
+ *     [ 79s] lead   "איך זה יכול לעזור לעסק העתידי שלי?"      <- he talked over the goodbye
+ *
+ * She signed off on a lead 79 seconds into the call, off one answer, having asked two of the three
+ * mandatory discovery questions. Only because he interrupted the farewell did the call continue —
+ * and five minutes later he had agreed to a demo the next morning.
+ *
+ * WHAT I ESTABLISHED, AND WHAT I DID NOT. There is no disqualification anywhere in the code:
+ * `call-state.ts` has no such transition, `end_call` was not called at 79s, and no reflex fires
+ * here. It is entirely a reading of this section. She also broke two of its existing rules — the
+ * line she spoke is not the fixed `disqualified` line (she improvised it), and she disqualified on
+ * inquiry volume, which the paragraph directly above says never disqualifies anybody. What I could
+ * NOT establish is whether the tenant's own `businessProfile` supplied "פניות ראשונות או תהליך
+ * מכירה פעיל": the call report does not capture the built prompt, so the text she was actually
+ * given for that call is not recoverable. That gap is worth closing; it is not closed here.
+ *
+ * So this does not delete or soften a disqualifier. It makes disqualification LATE and CONDITIONAL,
+ * which is what a salesperson does: the three tests below all have to pass first.
+ * Kill-switch VOICE_LATE_DISQUALIFY_ENABLED restores this section to its 2026-08-31 form exactly.
+ */
+const DISQUALIFY_GATE = `
+### Before you disqualify anybody
+
+Disqualifying is the rarest thing that happens on this call, and it is the one decision you cannot take back — the lead is gone. This really happened: 79 seconds into a call, off ONE answer, you told a man "זה פחות מתאים כרגע" and said goodbye. He talked over your farewell to ask another question, and five minutes later he had agreed to a demo.
+
+**All three of these must be true before you may disqualify:**
+
+1. **You have asked all three MANDATORY discovery questions and he has answered them.** A call that skipped one cannot be qualified or disqualified — you do not yet know enough to be deciding anything.
+2. **You have addressed the objection once and he held his position afterwards.** One negative sentence is a sentence, not a verdict.
+3. **What is left maps onto one of the three disqualifiers below** — not onto "he sounds early", not onto a small business, and not onto a low number of inquiries.
+
+**"Not yet" is not "no".** A man with no business yet, no inquiries yet, no sales process yet is EARLY — and early is the most ordinary thing a founder says on a first call. It is a fact about timing, not a rejection. Tell him what the agent would do for him from his very first inquiry, ask what he would want it to do first, and offer the demo anyway. "עדיין אין לי עסק" and "עדיין לא מקבל פניות" are answers to your questions.
+
+**Never sign off inside the first two minutes.** If you are reaching for the disqualified line that early, you are wrong — you have not learned enough yet to be right.
+`;
+
 interface PromptSlots {
   /** "Then call \`end_call\`..." lines — with reasons in tools mode, bare in legacy mode. */
   endCallBadTime: string;
@@ -440,6 +487,9 @@ interface PromptSlots {
   callMemory: string;
   /** The NEGATION_SAFETY section (VOICE_NEGATION_SAFETY), or '' when the flag is off. */
   negationSafety: string;
+  /** The three conditions that must hold before Step 3 may disqualify anybody
+   * (VOICE_LATE_DISQUALIFY_ENABLED), or '' when the flag is off. See DISQUALIFY_GATE. */
+  disqualifyGate: string;
   /** The five fixed Hebrew lines whose meaning hangs on one unstressed particle. Same flag. */
   lines: SpeakableLines;
   /** Per-tenant business facts, injected after the Role section. Empty string when the tenant
@@ -599,13 +649,42 @@ const buildEmailHandback = (whatsappNumber: string): string =>
     ? ` If you would rather not lose it altogether, offer him the other direction ONCE — a natural variation of "אם נוח לךָ, תשלח לי אותה בוואטסאפ ל${whatsappNumber}" — and take either answer without pushing.`
     : '';
 
-/** Rule 5 — the permission to let the field go. Gated with `book_meeting`'s nullable email. */
+/**
+ * Rule 5 — the permission to let the field go. Gated with `book_meeting`'s nullable email.
+ *
+ * ⚠️ THE SCOPE OF THIS RULE IS THE WHOLE RULE. Its first version said *"After two read-backs have
+ * failed, let the field go and keep the meeting"* — naming no field, asserting a phone number it
+ * never checked ("יש לי את הנייד שלךָ"), and ending "close the call". On the 2026-08-31 16:51
+ * production call the model applied it to the SURNAME, which it had also read back twice and got
+ * wrong twice, and closed:
+ *
+ *     [312s] KEREN  "... כרגע חסר לי רק המייל כדי להמשיך."     <- false; no phone, no surname
+ *     [347s] KEREN  "אוקי. יש לי מספיק כדי להעביר לצוות. הם יחזרו אליךָ עם הפרטים להמשך. יום טוב."
+ *     [352s] end_call(callback_requested)                       <- book_meeting never called
+ *
+ * The closing line is this rule's own suggested sentence, almost word for word. It was written
+ * because a call had been LOST to one field; it then lost a call that had already agreed a time.
+ *
+ * So every clause below is now load-bearing: the trigger names the EMAIL, the permission is
+ * conditional on already holding what `book_meeting` requires, the action is a tool call in the
+ * SAME turn rather than a goodbye, and the last sentence says in as many words that this is never
+ * a reason to end a call. `VOICE_BOOK_WITHOUT_EMAIL` is unchanged — the permission was never the
+ * bug, its scope was.
+ */
 const buildEmailGiveUpTools = (whatsappNumber: string): string => `
-5. **After two read-backs have failed, let the field go and keep the meeting.** Stop asking.${buildEmailHandback(whatsappNumber)} Say a natural variation of "יש לי את הנייד שלךָ וזה מספיק — הצוות יחזור אליך עם הפרטים", then call \`${BOOK}\` with \`email\` set to **null**, and close the call. This is allowed and it is what you should do: a booked meeting with a missing email is worth incomparably more than a perfect address and no meeting. You have lost an agreed demo to this exact field before. Do not apologize for it and do not raise it again. Never promise him a message on any channel${whatsappNumber ? ' beyond the one WhatsApp offer above' : ''} — say the team will be in touch.`;
+5. **After you have read the EMAIL back to him twice and it still has not come across, let THE EMAIL go — and book the meeting anyway.** Stop asking for it.${buildEmailHandback(whatsappNumber)} Say a natural variation of "אני קובעת את זה עכשיו — הצוות יחזור אליך עם הפרטים", and then, **in the same turn**, call \`${BOOK}\` with \`email\` set to **null**. A booked meeting with a missing email is worth incomparably more than a perfect address and no meeting; you have lost an agreed demo to this exact field before. Do not apologize for it and do not raise it again. Never promise him a message on any channel${whatsappNumber ? ' beyond the one WhatsApp offer above' : ''} — say the team will be in touch.
+
+   **This rule is about the email address and nothing else.** It is never a reason to give up his name, his phone number, or the booking. It applies only once you already have his confirmed name and phone and he has agreed to a time — those are what \`${BOOK}\` requires and none of them may be null. And it is **never a reason to end the call**: "letting the field go" means calling \`${BOOK}\` without it, not saying goodbye without it. A lead who agreed to a demo and leaves with no booking is the worst outcome available to you.
+
+   **Never say you have a detail you do not have.** Not "יש לי את הנייד שלךָ" when no number has been given, not "חסר לי רק המייל" when his name or his number is also missing. Say what is actually left, or say nothing about it and just ask.`;
 
 /** The no-tools variant cannot book at all; the same permission, pointed at the handover. */
 const buildEmailGiveUpNoTools = (whatsappNumber: string): string => `
-5. **After two read-backs have failed, let the field go.** Stop asking.${buildEmailHandback(whatsappNumber)} Keep the name and the phone number you already have, say a natural variation of "יש לי את הנייד שלךָ וזה מספיק", and move straight to the closing line below. The demo matters; the field does not.`;
+5. **After you have read the EMAIL back to him twice and it still has not come across, let THE EMAIL go.** Stop asking for it.${buildEmailHandback(whatsappNumber)} Keep the name and the phone number you already have, say a natural variation of "הצוות יחזור אליך עם הפרטים", and move on to the closing line below. The demo matters; this field does not.
+
+   **This rule is about the email address and nothing else** — never his name, never his phone number.
+
+   **Never say you have a detail you do not have.** Not "יש לי את הנייד שלךָ" when no number has been given, not "חסר לי רק המייל" when his name or his number is also missing.`;
 
 const buildStep4NoTools = (whatsappHandbackNumber: string): string => `Provide a natural variation of:
 
@@ -701,7 +780,13 @@ ${EMAIL_COLLECTION}${bookWithoutEmail ? buildEmailGiveUpTools(whatsappHandbackNu
 
 ### NEVER claim a meeting is booked before \`${BOOK}\` returned success.
 
-"קבעתי לך" becomes true ONLY when the tool succeeded. If \`${CHECK}\` or \`${BOOK}\` fails, apologize briefly, say a natural variation of "אעביר לצוות ונחזור אליך לתיאום מדויק", and never pretend the booking worked. Do not retry the same tool more than once in a row.
+**\`${CHECK}\` is not booking.** Seeing that a time is free, and the lead saying he wants it, are both a long way from a meeting existing. Between them sit his name, his phone number and one tool call.
+
+"קבעתי לך" becomes true ONLY when the tool succeeded — **and so does every other way of saying it.** This really happened: the lead said "שעה 11:00", and your next words were "קבענו לאחת עשרה" with nothing booked. He hung up expecting a call at eleven that nobody was going to make. **"קבענו" is the same claim as "קבעתי"**, and so are "סגרנו", "שריינתי", "רשמתי אותךָ", "הפגישה נקבעה", "זה מסודר". Until \`${BOOK}\` returns success, none of them may leave your mouth in any tense or any person.
+
+What you may say instead, while you are still collecting: a natural variation of "אני צריכה עוד כמה פרטים לפני שאני קובעת" — and then ask for the next one.
+
+If \`${CHECK}\` or \`${BOOK}\` fails, apologize briefly, say a natural variation of "אעביר לצוות ונחזור אליך לתיאום מדויק", and never pretend the booking worked. Do not retry the same tool more than once in a row.
 
 If no returned slot suits the lead, provide a natural variation of:
 
@@ -861,7 +946,7 @@ ${slots.captureInstruction}
 ## Step 3: Qualification
 
 Evaluate the lead using the answers collected and how they engaged during discovery. Lead volume (how many inquiries they get per day) is background context only — it does **not** by itself disqualify a lead. What matters is genuine interest in the solution.
-
+${slots.disqualifyGate}
 **Disqualifiers** (any one of these is enough to disqualify):
 
 - **Mindset objection**: the lead doesn't believe an AI agent can actually replace a human for this kind of work, and doesn't move past that skepticism even after you address it once.
@@ -994,6 +1079,7 @@ export function buildSystemPrompt({
   factMemory = true,
   negationSafety = true,
   noPreamble = true,
+  lateDisqualify = true,
   bookWithoutEmail = true,
   whatsappHandbackNumber = '',
   acknowledgements = ACKNOWLEDGEMENTS_HE,
@@ -1021,6 +1107,10 @@ export function buildSystemPrompt({
   /** `VOICE_NO_PREAMBLE_ENABLED`. False drops the "No Preamble" section, restoring the
    * 2026-08-30 prompt's silence on the receipt ritual — the four notes (1, 3, 6, 9) come back. */
   noPreamble?: boolean;
+  /** `VOICE_LATE_DISQUALIFY_ENABLED`. False drops the "Before you disqualify anybody" gate from
+   * Step 3, restoring the 2026-08-31 section exactly — the one that let her sign a lead off 79
+   * seconds into a call on a single answer. See DISQUALIFY_GATE. */
+  lateDisqualify?: boolean;
   /** `VOICE_BOOK_WITHOUT_EMAIL`. False drops rule 5 of the email section — the permission to pass
    * `book_meeting` a null email after two failed read-backs — because with the flag off the tool
    * REFUSES that call. The prompt and the tool must never be on different sides of this switch:
@@ -1056,6 +1146,7 @@ export function buildSystemPrompt({
   const callMemorySection = factMemory ? `\n---\n\n${CALL_MEMORY}\n` : '';
   const negationSection = negationSafety ? `\n\n---\n\n${NEGATION_SAFETY}` : '';
   const noPreambleSection = noPreamble ? `\n\n---\n\n${NO_PREAMBLE}` : '';
+  const disqualifyGate = lateDisqualify ? DISQUALIFY_GATE : '';
   const lines = negationSafety ? LINES_NEGATION_SAFE : LINES_LEGACY;
   if (!toolsEnabled) {
     return assemble({
@@ -1064,6 +1155,7 @@ export function buildSystemPrompt({
       spokenRegister: spokenRegisterSection,
       callMemory: callMemorySection,
       negationSafety: negationSection,
+      disqualifyGate,
       lines,
       endCallBadTime: 'Then call `end_call`.',
       endCallDisqualified: 'Then call `end_call`.',
@@ -1085,6 +1177,7 @@ export function buildSystemPrompt({
     spokenRegister: spokenRegisterSection,
     callMemory: callMemorySection,
     negationSafety: negationSection,
+    disqualifyGate,
     lines,
     endCallBadTime: 'Then call `end_call` with reason "bad_time".',
     endCallDisqualified: 'Then call `end_call` with reason "not_qualified".',

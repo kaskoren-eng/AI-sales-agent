@@ -139,16 +139,30 @@ describe('round 7 — the eleven cards he confirmed', () => {
  * system-prompt.test.ts.
  */
 describe('round 8 — the permission to let the email go', () => {
+  /**
+   * ⚠️ RESCOPED 2026-08-31 EVENING, AND HIS VERDICT IS UNCHANGED BY IT.
+   *
+   * What he approved on card `e5` is the PERMISSION — she may keep the meeting and drop the field.
+   * That is still here and `VOICE_BOOK_WITHOUT_EMAIL` still governs it. What changed is what the
+   * permission attaches to: the wording that shipped named no field ("let the field go"), asserted
+   * a phone number it never checked ("יש לי את הנייד שלךָ"), and ended "close the call". On the
+   * 16:51 production call the model applied all three to the SURNAME and hung up on a lead who had
+   * agreed to a time, with `book_meeting` never called.
+   *
+   * So the suggested Hebrew tail he heard is kept — "הצוות יחזור אליך עם הפרטים" — and the clause
+   * in front of it that made a claim about a field we did not hold is gone.
+   */
   it('e5 — she may keep the meeting and drop the field, and the tool agrees', () => {
-    expect(TOOLS_PROMPT).toMatch(
-      /After two read-backs have failed, let the field go and keep the meeting/u,
-    );
+    expect(TOOLS_PROMPT).toMatch(/let THE EMAIL go — and book the meeting anyway/u);
     expect(TOOLS_PROMPT).toMatch(/`email` set to \*\*null\*\*/u);
-    expect(TOOLS_PROMPT).toContain('יש לי את הנייד שלךָ וזה מספיק — הצוות יחזור אליך עם הפרטים');
+    expect(TOOLS_PROMPT).toContain('אני קובעת את זה עכשיו — הצוות יחזור אליך עם הפרטים');
+    // The clause that lost the 16:51 call is not offered to her as a line to say.
+    expect(TOOLS_PROMPT).not.toContain('יש לי את הנייד שלךָ וזה מספיק');
   });
 
   it('e5 — the no-tools prompt lets it go too, pointed at the handover', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/After two read-backs have failed, let the field go/u);
-    expect(SYSTEM_PROMPT_HE).toContain('יש לי את הנייד שלךָ וזה מספיק');
+    expect(SYSTEM_PROMPT_HE).toMatch(/let THE EMAIL go/u);
+    expect(SYSTEM_PROMPT_HE).toContain('הצוות יחזור אליך עם הפרטים');
+    expect(SYSTEM_PROMPT_HE).not.toContain('יש לי את הנייד שלךָ וזה מספיק');
   });
 });

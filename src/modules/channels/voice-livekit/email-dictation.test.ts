@@ -122,12 +122,32 @@ describe('EmailDictation — replaying the call that lost the booking', () => {
     expect(snap.collecting).toBe(true);
   });
 
-  it('the note names the rejected value and the stitched letters, and asks for a Hebrew read-back', () => {
+  it('the note names the rejected value and the stitched letters', () => {
     const note = play().note() ?? '';
     expect(note).toContain('K A F K O R E N');
     expect(note).toContain('«koren@gmail.com»');
     expect(note).toContain('gmail.com');
-    expect(note).toMatch(/HEBREW/u);
+  });
+
+  /**
+   * THE NOTE AND THE PROMPT WERE TELLING HER OPPOSITE THINGS, AND THE NOTE WAS WINNING.
+   *
+   * This assertion used to be `toMatch(/HEBREW/u)` — the note asked for the local part to be read
+   * back as a Hebrew WORD, which was the method before Koren's round-8 verdicts. The prompt was
+   * then changed to his answer (`EMAIL_COLLECTION`: read it back in ENGLISH letters, domain
+   * included, and say how many there are) and this note was not. The note is APPENDED at the tail
+   * of the context, thousands of tokens after the prompt, so on every call where the collector was
+   * running she was being told to use the method he had already ruled against — with this test
+   * green, because it was pinning the contradiction rather than catching it.
+   *
+   * So the assertion is now the other way round: the note must agree with the prompt, and must NOT
+   * ask for a Hebrew read-back. If a future round reverses the verdict again, both change together.
+   */
+  it('the note asks for the ENGLISH-letter read-back the prompt asks for, not the old Hebrew one', () => {
+    const note = play().note() ?? '';
+    expect(note).toContain('ENGLISH letters');
+    expect(note).not.toMatch(/as a WORD/u);
+    expect(note).not.toMatch(/Confirm it in HEBREW/u);
   });
 
   it('a rejection RESETS the letter buffer — the wrong reading must not concatenate onto the right one', () => {

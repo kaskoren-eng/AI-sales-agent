@@ -477,8 +477,66 @@ const FALSE_BOOKING = [
   /שלחתי\s+לך\s+אישור[^.!?]*/gu,
 ];
 
+/**
+ * THE HOLE THE 2026-08-31 16:51 PRODUCTION CALL WENT THROUGH — first person PLURAL.
+ *
+ *     [243s] check_calendar_availability   <- the only booking-ish tool that had run
+ *     [273s] KEREN  "בסדר. קבענו לאחת עשרה. קורן, מה השם המלא שלךָ?"
+ *     ...
+ *     [352s] end_call(callback_requested)  <- `book_meeting` was NEVER called
+ *
+ * `קבענו` — "*we* booked" — is the completed act exactly as much as `קבעתי לך` is, and the guard
+ * above was armed, running, and blind to it. A man now expects a call at 11:00 tomorrow that
+ * nothing in any calendar knows about. Everything else on that call was a lost lead; this was a
+ * broken promise, and it is the only defect on it that reaches a person after the call ends.
+ *
+ * WHY THESE FORMS AND NOT MORE. Each one below is a Hebrew way of saying the thing is SETTLED, in
+ * a tense that cannot be read as an offer. What is deliberately absent is the whole present/future
+ * family — `בוא נקבע` ("let's book"), `אני קובעת` ("I'm booking"), `נקבע` (which is BOTH "was set"
+ * and the cohortative inside "בוא נקבע", so no regex can tell them apart) — because those are how
+ * she legitimately offers and narrates the booking, and `book_meeting`'s own filler line is
+ * literally "רגע, אני קובעת לך את הפגישה...". A guard that rewrote our own filler would be a worse
+ * bug than the one it fixes.
+ *
+ * Kill-switch: VOICE_BOOKING_CLAIM_GUARD_WIDE. Default ON — same argument as the tool-call leak
+ * guard, and for the same reason: telling a lead his meeting is booked when it is not has no
+ * acceptable version, so a caller that forgets to pass the flag must still be protected.
+ */
+const FALSE_BOOKING_WIDE = [
+  /קבענו[^.!?]*/gu, // "we booked / we're set for..." — the 2026-08-31 16:51 line
+  /סגרנו[^.!?]*/gu, // "we've closed it"
+  /שריינתי[^.!?]*/gu, // "I've reserved..."
+  /שריינו[^.!?]*/gu,
+  /נקבעה[^.!?]*/gu, // "הפגישה נקבעה" — passive, feminine, unambiguously past
+  /רשמתי\s+אות[^.!?]*/gu, // "I've put you down for..." (niqqud may still be on אותךָ here)
+  /הפגישה\s+(?:קבועה|מסודרת|סגורה)[^.!?]*/gu,
+];
+
 /** What she says instead — the truth about what actually happens right now. */
 const TRUTH = 'אעביר את הבקשה לצוות ונחזור אליך לאישור מדויק';
+
+/**
+ * The OTHER truth, and the reason there are two.
+ *
+ * `TRUTH` above is right when there is no way to book at all — the no-tools variant, or a call
+ * whose `book_meeting` has already failed. It says the request is being handed to the team, and
+ * ends the transaction.
+ *
+ * On a tools-enabled call that simply has not booked YET, that sentence is a different lie: at
+ * 273s on the 2026-08-31 call her very next words were "קורן, מה השם המלא שלךָ?" — she was
+ * mid-collection, three steps from a real booking. Rewriting her into "I'll pass this to the team"
+ * there would hand the caller a farewell and then ask him for his name.
+ *
+ * So this one says the true thing that is also the NEXT thing: she has not booked, she needs the
+ * details first. It is positive by construction (Negation Safety — no meaning resting on a
+ * dropped `לא`) and it leads straight into the question she was about to ask anyway.
+ *
+ * ⚠️ NEITHER SENTENCE HAS BEEN HEARD THROUGH THE PHONE BAND. Both are ordinary sentence Hebrew
+ * built from words the prompt already speaks (`קובעת` is in book_meeting's own filler line), so
+ * there is no unscreened interjection in either — but a guard that only fires on a defect is a
+ * guard nobody has listened to, and that is worth knowing before assuming it sounds right.
+ */
+const TRUTH_PRE_BOOKING = 'אני צריכה עוד כמה פרטים לפני שאני קובעת';
 
 /**
  * Guards a STREAM, sentence by sentence, so she starts speaking without waiting for the whole reply.
@@ -544,6 +602,18 @@ export async function* guardStream(
     /** Called once per sentence a payload was cut out of, so the call report can count it. */
     onLeak?: (reasons: string[], spoken: string) => void;
   } = {},
+  /**
+   * The booking-claim guard's two knobs (2026-08-31). An options object for the same reason `leak`
+   * is one: this parameter list is already eight long.
+   */
+  booking: {
+    /** Is `book_meeting` available on this call? Picks WHICH truth replaces a false claim. */
+    possible?: boolean;
+    /** VOICE_BOOKING_CLAIM_GUARD_WIDE. Default ON even for legacy callers: see guardSpeech. */
+    wide?: boolean;
+    /** Called once per sentence a booking claim was rewritten out of, so the report can count it. */
+    onFalseClaim?: (spoken: string) => void;
+  } = {},
 ): AsyncIterable<string> {
   let buffer = '';
   let greetedInThisReply = false;
@@ -562,7 +632,10 @@ export async function* guardStream(
       allowIntroduction: allowIntroduction(greetedInThisReply),
       leadName: leadName(),
       toolCallLeakGuard: leak.enabled !== false,
+      bookingPossible: booking.possible === true,
+      wideBookingClaimGuard: booking.wide !== false,
     });
+    if (guarded.bookingClaimRewritten) booking.onFalseClaim?.(guarded.text);
     if (guarded.leakReasons && guarded.leakReasons.length > 0) {
       // Its own log line, not folded into the interventions loop: this is the one intervention
       // that means the MODEL malfunctioned rather than misspoke, and it has to be findable in a
@@ -807,6 +880,14 @@ export interface GuardResult {
    * `guardStream` carries this across the sentence split. See `LeakScrub.open`.
    */
   leakOpen?: boolean;
+  /**
+   * A claim that the meeting was already booked was rewritten out of this sentence.
+   *
+   * Reported rather than only logged because, like `toolCallLeaks`, its ABSENCE over a call is the
+   * news: it is the metric that says whether the 2026-08-31 16:51 broken promise can still happen.
+   * Counted into the call report as `falseBookingClaims`.
+   */
+  bookingClaimRewritten?: boolean;
 }
 
 /**
@@ -839,12 +920,26 @@ export function guardSpeech(
      * agent threads the env var in so the kill-switch can turn it off deliberately.
      */
     toolCallLeakGuard?: boolean;
+    /**
+     * Is `book_meeting` actually available on this call (tools-enabled)? Picks the replacement
+     * text for a rewritten booking claim — the handover line, or the "I need a few more details
+     * first" line. Defaults FALSE, which is the pre-2026-08-31 behaviour for every legacy caller.
+     */
+    bookingPossible?: boolean;
+    /**
+     * VOICE_BOOKING_CLAIM_GUARD_WIDE. Default TRUE here — like `toolCallLeakGuard`, and for the
+     * same reason: a caller that forgets to pass the flag must still be protected from the agent
+     * telling a lead his meeting is booked when it is not. False restores the five original
+     * patterns exactly. See FALSE_BOOKING_WIDE.
+     */
+    wideBookingClaimGuard?: boolean;
   } = {},
 ): GuardResult {
   const interventions: string[] = [];
   let out = text;
   let leakReasons: string[] | undefined;
   let leakOpen = false;
+  let bookingClaimRewritten = false;
 
   // FIRST, BEFORE EVERYTHING. A payload must not reach the booking rewrite (which would scan it),
   // the number speller (which would read its digits as Hebrew words) or the niqqud strip. It is
@@ -874,11 +969,18 @@ export function guardSpeech(
 
   // Skipped ONLY when a real booking succeeded on this call (ToolRuntimeContext.bookingCompleted)
   // — at that point "קבעתי לך" is the truth and rewriting it would be the lie.
+  //
+  // `bookingPossible` picks WHICH truth replaces it: mid-flow on a tools call she still intends to
+  // book, so she is rewritten into the next step rather than into a handover. See TRUTH_PRE_BOOKING.
   if (!opts.allowBookingClaims) {
-    for (const pattern of FALSE_BOOKING) {
+    const replacement = opts.bookingPossible ? TRUTH_PRE_BOOKING : TRUTH;
+    const patterns =
+      opts.wideBookingClaimGuard === false ? FALSE_BOOKING : [...FALSE_BOOKING, ...FALSE_BOOKING_WIDE];
+    for (const pattern of patterns) {
       if (pattern.test(out)) {
         interventions.push(`rewrote a false booking claim: "${out.match(pattern)?.[0]?.slice(0, 50)}"`);
-        out = out.replace(pattern, TRUTH);
+        out = out.replace(pattern, replacement);
+        bookingClaimRewritten = true;
       }
     }
   }
@@ -924,7 +1026,30 @@ export function guardSpeech(
   out = forceAddressGender(out, opts.addressGender ?? 'm');
   out = applyPronunciationFixes(out);
 
-  return { text: out.replace(/\s{2,}/gu, ' ').trim(), silent: false, interventions, leakReasons, leakOpen };
+  // A SENTENCE THAT IS NOTHING BUT PUNCTUATION IS NOT A SENTENCE.
+  //
+  // 2026-08-31 16:51, in the transcript of the call this file's booking guard also failed on:
+  //
+  //     [300s] KEREN  "בסדר. . מה מספר הטלפון שלךָ?"
+  //                          ^ an empty sentence between two full stops
+  //
+  // I could NOT attribute the lone "." to a producer. The call report records the SPOKEN text, so
+  // the model's raw output for that turn is gone and the input that produced it is unrecoverable;
+  // the two candidate rules (`stripIntroduction`, `dropAckEcho`) both return '' or a clean slice on
+  // every trace I could reconstruct. Rather than guess at a cause, this closes the CLASS: whatever
+  // upstream produces it, punctuation with no word in it never reaches Cartesia. Cheap, total, and
+  // it cannot mask the producer — `interventions` names it every time it fires.
+  //
+  // (What it is NOT: the `אמ.`-in-isolation near-silence left open on rounds 10/11. Checked against
+  // the metric stream rather than assumed — the `אמ.` at 288.65s on that call carries its own
+  // `tts_metrics` entry, ttfb 208ms, duration 346ms. It made a sound.)
+  const spoken = out.replace(/\s{2,}/gu, ' ').trim();
+  if (NOTHING_LEFT.test(spoken)) {
+    interventions.push(`dropped a sentence with no word in it: ${JSON.stringify(text.slice(0, 20))}`);
+    return { text: '', silent: true, interventions, leakReasons, leakOpen, bookingClaimRewritten };
+  }
+
+  return { text: spoken, silent: false, interventions, leakReasons, leakOpen, bookingClaimRewritten };
 }
 
 /**

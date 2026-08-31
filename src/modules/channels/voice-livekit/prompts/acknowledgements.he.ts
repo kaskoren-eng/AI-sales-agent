@@ -175,7 +175,36 @@ export class AcknowledgementLedger {
       // receipt rather than say it again — a receipt is always true, so nothing is lost.
     }
     if (this.#deck.length === 0) this.#refill();
-    const word = this.#take(this.#deck, avoid) ?? this.#deck.pop()!;
+    // ── THE ESCAPE `consecutiveOpenerRepeats` WAS REPORTING ──────────────────────────────────
+    //
+    // This line used to be `this.#take(this.#deck, avoid) ?? this.#deck.pop()!`, and the fallback
+    // handed back the very word `#take` had just refused. It fires whenever every word LEFT in a
+    // part-used deck is the one the caller just heard — with a three-word bank and a window of one,
+    // that is a deck down to its last card and that card being the blocked one.
+    //
+    // MEASURED, not reasoned about: 56 failures in 400 runs of `spoken-openers.test.ts`'s forty-turn
+    // end-to-end case, i.e. a 14% flake on `npm run test:ci` that predates this branch — and every
+    // single failure was the same pair, `אֶמ.` (the round-11 dictation nod) followed by `אמ.` (the
+    // round-10 receipt). They are one sound: `openerKey` strips niqqud, so the tracker correctly
+    // asked for `אמ` to be avoided and the deck handed it over anyway. That is almost certainly
+    // what the 2026-08-31 16:51 production call's `consecutiveOpenerRepeats: 2` was — the metric's
+    // own comment says a non-zero reading means "either a real escape or a producer nobody wired
+    // in", and this is the escape.
+    //
+    // REFILL AND TRY AGAIN rather than pop the blocked word. The cost is that a one-card remainder
+    // is occasionally discarded early, which bends the deck's flat distribution by a fraction of a
+    // word per call; the alternative is the caller hearing the same sound twice running, which is
+    // the exact complaint the whole mechanism exists for. Only the LAST resort — a bank in which
+    // nothing legal exists at all, i.e. one word — still repeats, and it has no other option.
+    //
+    // With `avoid` null (VOICE_OPENER_NO_REPEAT_ENABLED off) `#take` never returns null on a
+    // non-empty deck, so this is a no-op and the kill-switch still restores the old path exactly.
+    let word = this.#take(this.#deck, avoid);
+    if (word === null) {
+      this.#refill();
+      word = this.#take(this.#deck, avoid);
+    }
+    if (word === null) word = this.#deck.pop() ?? this.#bank[this.#bank.length - 1]!;
     this.#last = word;
     this.#lastWasEarned = false;
     this.#counts.set(word, (this.#counts.get(word) ?? 0) + 1);

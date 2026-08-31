@@ -330,10 +330,32 @@ export class FactMemory {
       );
     }
     if (exhausted.length > 0) {
+      // ⚠️ "Continue without it" USED TO END HERE, AND IT ENDED A CALL.
+      //
+      // 2026-08-31 16:51, replayed through this class from the real transcript: her phone asks at
+      // 294s and 300s and her email asks at 320s and 331s each match ASK_PATTERNS twice, neither
+      // field was in `#known`, so by 331s this note read *"You have already asked 2+ times for: his
+      // phone number, his email address. Do not ask again … Continue without it."* Sixteen seconds
+      // later she said "יש לי מספיק כדי להעביר לצוות" and called `end_call`, on a lead who had
+      // agreed to 11:00 the next morning and for whom `book_meeting` had never run.
+      //
+      // The counter was not wrong — she really had asked twice, and a third ask is really the
+      // moment he decides he is talking to a machine. What was wrong is that "continue without it"
+      // has two readings and this note only meant one of them. It now says which.
+      //
+      // NOT CHANGED, deliberately: MAX_ASKS_PER_FACT, and the counting rule. Two asks six seconds
+      // apart with only "טריט." between them is arguably one ask repeated — but every discriminator
+      // I could write for that (a time cooldown, "did the caller speak in between") also collapses
+      // the 2026-08-29 asks at 16.5s / 28.9s / 42.2s into one, which is the exact defect this class
+      // was built for. So the counter stands and the WORDING carries the fix.
       parts.push(
         `You have already asked ${MAX_ASKS_PER_FACT}+ times for: ` +
           `${exhausted.map((f) => FIELD_LABEL[f]).join(', ')}. Do not ask again — asking a third ` +
-          'time is the moment a caller decides he is talking to a machine. Continue without it.',
+          'time is the moment a caller decides he is talking to a machine. Continue the CALL ' +
+          'without it: keep selling, keep booking, and use what he has already given you. This is ' +
+          'not a reason to end the call, to stop trying to book the demo, or to tell him you have ' +
+          'enough — whether you have enough to book is decided by the booking-state reminder and ' +
+          'by the tool, never by this one.',
       );
     }
     return parts.join(' ');

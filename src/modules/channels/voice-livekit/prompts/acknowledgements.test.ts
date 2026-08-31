@@ -226,3 +226,76 @@ describe('the comprehension claim has to be earned', () => {
     );
   });
 });
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE `avoid` ESCAPE — very probably what `consecutiveOpenerRepeats: 2` was on 2026-08-31 16:51.
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * `avoid` is the head-word of the previous reply as the caller HEARD it, and it may have come from
+ * a mechanism this deck cannot see — the dictation nod, a thinking filler, the model itself. The
+ * deck honoured it by skipping past a blocked word … and then, when every word LEFT in a part-used
+ * deck was the blocked one, fell back to `deck.pop()` and handed that very word over.
+ *
+ * MEASURED, on `main`, with this branch's changes stashed: 56 failures in 400 runs of the forty-turn
+ * end-to-end case in `spoken-openers.test.ts` — a 14% flake on `npm run test:ci` that predates this
+ * work — and every single failure was the same pair, `אֶמ.` (the round-11 dictation nod) followed by
+ * `אמ.` (the round-10 receipt). `openerKey` strips niqqud, so those are ONE sound; the tracker asked
+ * for it to be avoided and got it anyway.
+ *
+ * `consecutiveOpenerRepeats`' own comment says a non-zero reading means "either a real escape or a
+ * producer nobody wired into SpokenOpenerTracker". This is a real escape. Whether it accounts for
+ * BOTH of that call's two repeats is NOT established — only a call report carrying the fix can say.
+ */
+describe('AcknowledgementLedger — the avoided word is never handed back', () => {
+  const seeded = (seed: number): (() => number) => {
+    let n = seed;
+    return () => {
+      n = (n * 1103515245 + 12345) % 2147483648;
+      return n / 2147483648;
+    };
+  };
+
+  it('a deck down to its last card never returns that card when it is the avoided one', () => {
+    // Deterministic and exhaustive: every seed, and the avoid re-asserted on every draw, so the
+    // "one card left and it is blocked" state is reached whatever the shuffle produced.
+    for (let seed = 1; seed <= 200; seed++) {
+      const ledger = new AcknowledgementLedger(ACKNOWLEDGEMENTS_HE, seeded(seed));
+      let previous: string | null = null;
+      for (let i = 0; i < 60; i++) {
+        const word = ledger.next({ avoid: previous });
+        expect(word, `seed ${seed}, turn ${i}`).not.toBe(previous);
+        previous = word;
+      }
+    }
+  });
+
+  it('the nod and the receipt are ONE sound, and the deck now knows it', () => {
+    // `אֶמ.` (nod) and `אמ.` (receipt) differ by one vowel mark. `guardSpeech` strips model-emitted
+    // niqqud and `openerKey` has always ignored it, so a listener hears the same syllable twice.
+    for (let seed = 1; seed <= 100; seed++) {
+      const ledger = new AcknowledgementLedger(ACKNOWLEDGEMENTS_HE, seeded(seed));
+      ledger.next(); // part-use the deck, which is the state the escape needed
+      for (let i = 0; i < 20; i++) {
+        expect(ledger.next({ avoid: 'אֶמ.' }), `seed ${seed}`).not.toBe('אמ.');
+      }
+    }
+  });
+
+  it('a one-word bank has no legal answer and still returns something rather than crashing', () => {
+    // The last-resort branch. Unreachable with any real bank; pinned so a future bank cut to one
+    // word degrades to a repeat instead of to an exception on a live call.
+    const ledger = new AcknowledgementLedger(['אוקי.']);
+    expect(ledger.next({ avoid: 'אוקי.' })).toBe('אוקי.');
+    expect(ledger.next({ avoid: 'אוקי.' })).toBe('אוקי.');
+  });
+
+  it('KILL-SWITCH SHAPE: with avoid null the deck behaves exactly as it did before', () => {
+    // VOICE_OPENER_NO_REPEAT_ENABLED=false passes avoid: null (agent.ts). `#take` can then never
+    // return null on a non-empty deck, so the new refill branch is unreachable and the old path
+    // stands — every word once per deck.
+    const ledger = new AcknowledgementLedger(ACKNOWLEDGEMENTS_HE_WIDE);
+    const round = ACKNOWLEDGEMENTS_HE_WIDE.map(() => ledger.next({ avoid: null }));
+    expect(new Set(round).size).toBe(ACKNOWLEDGEMENTS_HE_WIDE.length);
+  });
+});

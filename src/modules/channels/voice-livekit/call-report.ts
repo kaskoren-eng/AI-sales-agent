@@ -268,6 +268,21 @@ export interface CallReportJson {
     /** The distinct leak markers seen on this call, in first-seen order. Empty on a clean call. */
     toolCallLeakReasons: string[];
     /**
+     * Times she claimed the meeting was already booked when it was not, and the speech guard
+     * rewrote the claim before it reached the caller.
+     *
+     * SHOULD ALWAYS BE ZERO, and a non-zero reading is not cosmetic: on the 2026-08-31 16:51
+     * production call the unguarded version of this ("קבענו לאחת עשרה", with only
+     * check_calendar_availability behind it) left a real person expecting a call at 11:00 the next
+     * morning that nothing in any calendar knew about. Every other defect on that call cost a lead;
+     * this one cost a promise, and it is the only one that reaches somebody after the call ends.
+     *
+     * Counted rather than only logged because the rewrite is SILENT to everyone — the caller hears
+     * a fluent sentence, and the transcript records what was spoken. Without a number nobody would
+     * ever know it had happened. See FALSE_BOOKING_WIDE in speech-guard.ts.
+     */
+    falseBookingClaims: number;
+    /**
      * Share of her replies carrying one of the eight screened everyday words — the Spoken Register
      * quota, measured instead of assumed.
      *
@@ -544,6 +559,19 @@ export class CallReport {
     for (const r of reasons) if (!this.#toolCallLeakReasons.includes(r)) this.#toolCallLeakReasons.push(r);
   }
 
+  #falseBookingClaims = 0;
+
+  /**
+   * One sentence had a "the meeting is booked" claim rewritten out of it before it was spoken.
+   *
+   * Called from `guardStream`'s booking hook. Takes the SPOKEN result rather than the original for
+   * the same reason `recordToolCallLeak` takes only reasons — and uses neither, because the count
+   * is the whole signal and the sentence carries the lead's chosen time. See speech-guard.ts.
+   */
+  recordFalseBookingClaim(_spoken: string): void {
+    this.#falseBookingClaims++;
+  }
+
   recordMetric(stage: string, m: Record<string, unknown>): void {
     const pick = (k: string): number | undefined =>
       typeof m[k] === 'number' ? Math.round(m[k] as number) : undefined;
@@ -800,6 +828,7 @@ export class CallReport {
         consecutiveOpenerRepeats: countConsecutiveOpenerRepeats(agentLines),
         toolCallLeaks: this.#toolCallLeaks,
         toolCallLeakReasons: [...this.#toolCallLeakReasons],
+        falseBookingClaims: this.#falseBookingClaims,
         registerTouchPct:
           agentLines.length === 0
             ? null
