@@ -1,5 +1,6 @@
 import { dropEchoedOpener } from './prompts/acknowledgements.he.js';
 import { normalizeSpokenNumbers } from './speech-numbers.he.js';
+import { hasLeakMarker, scrubToolCallLeak } from './toolcall-leak.js';
 
 /**
  * The last thing between the LLM and the caller's ear.
@@ -463,6 +464,16 @@ export async function* guardStream(
   allowIntroduction: (greetedInThisReply: boolean) => boolean = () => true,
   /** The lead's established name, read per sentence for the same reason. */
   leadName: () => string | null = () => null,
+  /**
+   * The tool-call leak guard (2026-08-31). An OPTIONS object rather than two more positional
+   * parameters — this list is already six long and the next reader deserves names.
+   */
+  leak: {
+    /** VOICE_TOOLCALL_LEAK_GUARD_ENABLED. Default ON even for legacy callers: see guardSpeech. */
+    enabled?: boolean;
+    /** Called once per sentence a payload was cut out of, so the call report can count it. */
+    onLeak?: (reasons: string[], spoken: string) => void;
+  } = {},
 ): AsyncIterable<string> {
   let buffer = '';
   let greetedInThisReply = false;
@@ -480,7 +491,23 @@ export async function* guardStream(
       spokenNumbers,
       allowIntroduction: allowIntroduction(greetedInThisReply),
       leadName: leadName(),
+      toolCallLeakGuard: leak.enabled !== false,
     });
+    if (guarded.leakReasons && guarded.leakReasons.length > 0) {
+      // Its own log line, not folded into the interventions loop: this is the one intervention
+      // that means the MODEL malfunctioned rather than misspoke, and it has to be findable in a
+      // log by grepping one word. `raw` is truncated hard — the payload carries the lead's own
+      // details and PII never goes into a log line (see redactArgs in tools/tool-context.ts).
+      console.log(
+        `toolcall_leak ${JSON.stringify({
+          reasons: guarded.leakReasons,
+          rawChars: chunk.length,
+          spokenChars: guarded.text.length,
+          salvaged: guarded.text.slice(0, 60),
+        })}`,
+      );
+      leak.onLeak?.(guarded.leakReasons, guarded.text);
+    }
     // Name-aware, like the removal itself: "נעים מאוד קורן." is a greeting even with no comma in
     // it, and a latch that could not see it would let the NEXT sentence greet him again.
     if (introductionPattern(nameAlternation(leadName())).test(chunk)) greetedInThisReply = true;
@@ -495,7 +522,12 @@ export async function* guardStream(
     buffer += chunk;
 
     let end = sentenceEnd(buffer);
-    while (end !== -1) {
+    // …unless the cut would fall inside a tool-call payload. `sentenceEnd` treats the end of the
+    // buffer as a terminator, and OpenAI puts a token boundary right after the dot in
+    // `to=functions.capture_lead_info` — so a naive split flushes the header on its own and then
+    // speaks the whole payload behind it with no marker left to catch it. Hold from the first sign
+    // of a payload to the end of the reply and scrub it in one piece. See hasLeakMarker.
+    while (end !== -1 && !holdForLeak(buffer.slice(0, end + 1), leak.enabled !== false)) {
       yield* flush(buffer.slice(0, end + 1));
       buffer = buffer.slice(end + 1);
       end = sentenceEnd(buffer);
@@ -680,12 +712,31 @@ function sentenceEnd(text: string): number {
   return m ? m.index : -1;
 }
 
+/** Whether this candidate sentence must be held back rather than flushed. See hasLeakMarker. */
+function holdForLeak(candidate: string, enabled: boolean): boolean {
+  return enabled && hasLeakMarker(candidate);
+}
+
 export interface GuardResult {
   text: string;
   /** True when the entire utterance was a control token and she should say NOTHING. */
   silent: boolean;
   /** What was rewritten, for the call report. */
   interventions: string[];
+  /**
+   * A tool-call / JSON payload was cut out of this sentence — the 2026-08-31 leak.
+   *
+   * Separate from `interventions` because this one is not a style correction: it is the guard
+   * catching the model emitting on the wrong channel, it must be COUNTED (`toolCallLeaks` in the
+   * call report), and it is the only intervention whose absence over a call is itself the news.
+   * See toolcall-leak.ts.
+   */
+  leakReasons?: string[];
+  /**
+   * The payload opened in this sentence and has not closed — the next one starts inside it.
+   * `guardStream` carries this across the sentence split. See `LeakScrub.open`.
+   */
+  leakOpen?: boolean;
 }
 
 /**
@@ -711,17 +762,44 @@ export function guardSpeech(
     allowIntroduction?: boolean;
     /** The lead's established name, so the address riding on a removed greeting goes with it. */
     leadName?: string | null;
+    /**
+     * VOICE_TOOLCALL_LEAK_GUARD_ENABLED. Default TRUE here — unlike every other option on this
+     * object, whose default is the pre-feature behaviour. Speaking a tool call at a caller has no
+     * acceptable version, so a caller that forgets to pass the flag must still be protected; the
+     * agent threads the env var in so the kill-switch can turn it off deliberately.
+     */
+    toolCallLeakGuard?: boolean;
   } = {},
 ): GuardResult {
   const interventions: string[] = [];
   let out = text;
+  let leakReasons: string[] | undefined;
+  let leakOpen = false;
+
+  // FIRST, BEFORE EVERYTHING. A payload must not reach the booking rewrite (which would scan it),
+  // the number speller (which would read its digits as Hebrew words) or the niqqud strip. It is
+  // also the only rule here that is about the model's DECODER rather than about its wording, so
+  // there is nothing for the other rules to say about it. See toolcall-leak.ts.
+  if (opts.toolCallLeakGuard !== false) {
+    const scrub = scrubToolCallLeak(out);
+    if (scrub.leaked) {
+      leakReasons = scrub.reasons;
+      leakOpen = scrub.open;
+      interventions.push(`removed a tool-call payload before it was spoken (${scrub.reasons.join(', ')})`);
+      out = scrub.text;
+      // Nothing human survived. Reported as silence rather than as an empty utterance — the
+      // reply-level `notifyIfSilent` → `onSilentReply` path then speaks HOLD_CHECKBACK_HE, so a
+      // scrubbed reply never becomes dead air.
+      if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen };
+    }
+  }
 
   if (NO_RESPONSE.test(out)) {
     interventions.push('removed NO_RESPONSE_NEEDED (silence control token)');
     out = out.replace(NO_RESPONSE, '').trim();
     // If that was the WHOLE reply, she is meant to stay silent — which is the correct behaviour when
     // a caller says "רגע" or "שנייה". Saying nothing is the point.
-    if (out === '') return { text: '', silent: true, interventions };
+    if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen };
   }
 
   // Skipped ONLY when a real booking succeeded on this call (ToolRuntimeContext.bookingCompleted)
@@ -742,7 +820,7 @@ export function guardSpeech(
     if (introless !== out) {
       interventions.push('removed a repeat greeting (she has already introduced herself)');
       out = introless;
-      if (out === '') return { text: '', silent: true, interventions };
+      if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen };
     }
   }
 
@@ -772,7 +850,7 @@ export function guardSpeech(
   out = forceAddressGender(out, opts.addressGender ?? 'm');
   out = applyPronunciationFixes(out);
 
-  return { text: out.replace(/\s{2,}/gu, ' ').trim(), silent: false, interventions };
+  return { text: out.replace(/\s{2,}/gu, ' ').trim(), silent: false, interventions, leakReasons, leakOpen };
 }
 
 /**

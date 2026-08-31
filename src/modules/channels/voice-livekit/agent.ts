@@ -36,7 +36,7 @@ import {
 } from './pipeline-observer.js';
 import { probeDatabase } from './db-probe.js';
 import { CallStateMachine } from './call-state.js';
-import { decideSilenceAction, decideVoicemailAction } from './call-reflexes.js';
+import { decideSilenceAction, decideVoicemailAction, silenceNudgeWaitMs } from './call-reflexes.js';
 import { HOLD_CHECKBACK_HE } from './call-state-lines.he.js';
 import { hasAiDisclosure } from './compliance/ai-disclosure.js';
 import { NOT_IN_SERVICE_PATH, playRecordingNotice } from './compliance/recording-notice.js';
@@ -169,6 +169,16 @@ class ClickScalesAgent extends voice.Agent {
    * cost twenty seconds of a live call. Whoever sets this arms the way back out.
    */
   onSilentReply: (() => void) | null = null;
+
+  /**
+   * Called when a tool-call / JSON payload was cut out of her speech before it reached the TTS.
+   *
+   * Wired to the call report's counter, so a leak is a NUMBER on the call rather than something
+   * you have to notice while reading a transcript. It should read zero on every call; the one
+   * occurrence we know of (2026-08-31 13:52, 19 seconds of spoken JSON) is what built the guard.
+   * See toolcall-leak.ts.
+   */
+  onSpeechLeak: ((reasons: readonly string[]) => void) | null = null;
 
   /**
    * The MODEL's real time-to-first-token, which the SDK's own metric can no longer see.
@@ -605,6 +615,15 @@ class ClickScalesAgent extends voice.Agent {
               !env.VOICE_INTRO_ONCE_ENABLED ||
               (!(this.factMemory?.introduced ?? false) && !greetedInThisReply),
             () => this.factMemory?.get('name') ?? null,
+            // THE TOOL-CALL LEAK GUARD (2026-08-31). Wired HERE, in ttsNode, and nowhere else —
+            // because everything that makes sound passes through this node. `session.say()` does
+            // too (agent_activity.js `ttsTask` → `performTTSInference((...args) =>
+            // this.agent.ttsNode(...args))`), so the reflex lines are covered by the same code as
+            // the model's replies without a second call site to keep in step. See toolcall-leak.ts.
+            {
+              enabled: env.VOICE_TOOLCALL_LEAK_GUARD_ENABLED,
+              onLeak: (reasons) => this.onSpeechLeak?.(reasons),
+            },
           ),
           startedAt,
           (ms) => {
@@ -1466,6 +1485,10 @@ export default defineAgent({
     // …and the spelling memory for the email. See email-dictation.ts.
     agent.emailDictation = emailDictation;
 
+    // A tool call that came out on the wrong channel and was stopped before it was spoken. Counted
+    // on the call so it is a number rather than something you have to spot in a transcript.
+    agent.onSpeechLeak = (reasons) => report.recordToolCallLeak(reasons);
+
     // The model's REAL first-token time. The SDK's own ttft now measures our acknowledgement, so
     // without this the ~840ms GPT actually takes would simply disappear from the report and every
     // future reading would flatter the change that hid it.
@@ -1568,6 +1591,35 @@ export default defineAgent({
     // unreachable inside a single silence. `armSilenceRecheck` below closes that: the same decision
     // function, the same cap (`decideSilenceAction` returns null past MAX_SILENCE_NUDGES, so a call
     // can never be nudged more than twice), just re-armed after her line finishes.
+    //
+    // ── AND IT FIRED INTO A MAN WHO WAS THINKING (2026-08-31 13:52) ──────────────────────────
+    //
+    // Twice inside the first minute of a 3.5-minute call, 7287ms at 27s and 7345ms at 46s, both
+    // immediately after she had asked an open discovery question. `quietSince` is the second half
+    // of the fix: the SDK's `away` event still fires on VOICE_SILENCE_AWAY_MS, but she does not
+    // SPEAK until the line has actually been quiet for VOICE_SILENCE_NUDGE_MS. See
+    // silenceNudgeWaitMs() for the measurement behind the number, including the reason the more
+    // obvious "suppress while a turn is in flight" rule would not have caught either of these.
+    //
+    // Measured from the last moment EITHER party was making a sound, not from the away event — the
+    // away timer starts when her audio stops, so the two agree on a clean turn and differ exactly
+    // where it matters: a re-arm part-way through a silence must not restart the clock.
+    let quietSince: number | null = null;
+    const markTalking = (): void => {
+      quietSince = null;
+    };
+    const markQuiet = (): void => {
+      if (quietSince === null) quietSince = Date.now();
+    };
+    session.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
+      if (ev.newState === 'speaking') markTalking();
+      else markQuiet();
+    });
+    session.on(voice.AgentSessionEventTypes.AgentStateChanged, (ev) => {
+      if (ev.newState === 'speaking') markTalking();
+      else markQuiet();
+    });
+
     const nudgeOnSilence = (waitedMs: number): void => {
       if (callState.isTerminal()) return;
       if (session.agentState === 'speaking' || session.agentState === 'thinking') return;
@@ -1576,6 +1628,16 @@ export default defineAgent({
       // he was still there while he was in the middle of answering her. A nudge is for silence;
       // if there is speech on the line there is nothing to nudge.
       if (session.userState === 'speaking') return;
+      // AND NOT BEFORE HE HAS HAD TIME TO THINK. The strike is deliberately NOT consumed here —
+      // this is a re-arm, not a nudge, so a caller who eventually speaks costs the call nothing.
+      const stillToWait = silenceNudgeWaitMs(
+        quietSince === null ? 0 : Date.now() - quietSince,
+        env.VOICE_SILENCE_NUDGE_MS,
+      );
+      if (stillToWait > 0) {
+        armSilenceRecheck(stillToWait);
+        return;
+      }
       const action = decideSilenceAction(callState.onSilenceStrike(), callState.stage);
       // Past the nudge cap: hold the line quietly and keep waiting — never hang up on silence.
       if (!action) return;
@@ -1613,7 +1675,11 @@ export default defineAgent({
         silenceRecheckTimer = null;
       }
     };
-    function armSilenceRecheck(): void {
+    // `afterMs` defaults to the away timeout (the original behaviour: re-check on the same clock),
+    // and is passed explicitly when `nudgeOnSilence` decided the caller has not yet had his think
+    // time — then it is exactly the remainder, so the nudge lands at VOICE_SILENCE_NUDGE_MS and not
+    // one interval later.
+    function armSilenceRecheck(afterMs: number = env.VOICE_SILENCE_AWAY_MS): void {
       if (env.VOICE_SILENCE_AWAY_MS === 0) return;
       cancelSilenceRecheck();
       silenceRecheckTimer = setTimeout(() => {
@@ -1625,7 +1691,7 @@ export default defineAgent({
           return;
         }
         nudgeOnSilence(env.VOICE_SILENCE_AWAY_MS);
-      }, env.VOICE_SILENCE_AWAY_MS);
+      }, afterMs);
       silenceRecheckTimer.unref?.();
     }
 

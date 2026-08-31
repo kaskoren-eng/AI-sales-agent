@@ -612,6 +612,36 @@ const envSchema = z.object({
   // Note this is one of the few voice flags whose default is NOT "what we did yesterday" — the
   // previous behaviour is the defect. See book-meeting.tool.ts.
   VOICE_BOOK_WITHOUT_EMAIL: envBool(true),
+  // Kill-switch for the tool-call leak guard (2026-08-31). On the 13:52 production call the model
+  // emitted a tool call as plain assistant TEXT in the final channel and Cartesia read all of it
+  // aloud for NINETEEN SECONDS — "to=functions.capture_lead_info", a run of Chinese glitch tokens,
+  // and the caller's own business type, pain point and qualification as raw JSON. The capture never
+  // executed. ON: nothing shaped like a tool call, a harmony control token, a JSON object or an
+  // unspeakable CJK run may reach the TTS on ANY path (replies, preemptive drafts, reflex lines),
+  // the human sentence behind the payload is salvaged and spoken, and each occurrence is counted in
+  // the call report. OFF restores the 2026-08-31 behaviour, in which the payload is spoken — there
+  // is no good reason to set it and it exists only so the mechanism has an off switch like every
+  // other one here. See toolcall-leak.ts.
+  VOICE_TOOLCALL_LEAK_GUARD_ENABLED: envBool(true),
+  // How long the caller may think, in silence, before she asks whether he is still there.
+  //
+  // SEPARATE FROM VOICE_SILENCE_AWAY_MS ON PURPOSE. That one is the SDK's `userAwayTimeout` — when
+  // LiveKit decides the caller is "away" — and it also drives `endedBy` attribution in the call
+  // report. This one is when she is allowed to SAY something about it, and the 2026-08-31 13:52
+  // call is why they had to come apart: with both at 7000 the reflex fired twice inside the first
+  // minute of a 3.5-minute call (7287ms at 27s, 7345ms at 46s), both times into a pause the caller
+  // was still thinking in, both times right after she had asked him an open discovery question.
+  //
+  // MEASURED, not guessed. Across the only two production calls carrying this instrumentation
+  // (08:37 and 13:52 the same day) EVERY away event was a caller thinking — no STT final, no
+  // end-of-turn, no VAD, nothing on the line — and in every case he answered on his own 2-5s after
+  // the nudge and 11-20s after she stopped speaking. Not one was a dead line. 20000 sits above the
+  // longest genuine pause we have measured (~18s on the 08:37 call). The failure a caller actually
+  // experiences as a dropped line is HER going quiet, and that is VOICE_HOLD_CHECKBACK_MS's job,
+  // still at 7s.
+  //
+  // 0 restores the 2026-08-31 behaviour exactly: the nudge fires the moment the SDK says 'away'.
+  VOICE_SILENCE_NUDGE_MS: z.coerce.number().int().nonnegative().default(20000),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),

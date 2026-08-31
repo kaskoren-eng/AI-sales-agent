@@ -217,6 +217,24 @@ if (cut > 0) {
 } else {
   console.log(`  CUT YOU OFF         0   clean — she waited for you every time`);
 }
+// Tool-call leaks (2026-08-31). `undefined` on any report written before the guard shipped, and
+// that is deliberately NOT rendered as 0 — an old report cannot say anything about a metric that
+// did not exist when it was written.
+const leaks = s.toolCallLeaks;
+if (leaks === undefined) {
+  console.log('  SPOKE A TOOL CALL   -   (this build predates the guard — nothing was measured)');
+} else if (leaks > 0) {
+  console.log(`  SPOKE A TOOL CALL   ${leaks}   <-- THE MODEL EMITTED A TOOL CALL AS SPEECH; IT WAS STOPPED`);
+  console.log('');
+  console.log(`      markers: ${(s.toolCallLeakReasons ?? []).join(', ') || 'none recorded'}`);
+  console.log('      NOTHING WAS SPOKEN — the payload was cut out and the human sentence behind it');
+  console.log('      kept. But this is the model routing a tool call onto the channel we speak, and');
+  console.log('      the tool it was trying to call DID NOT RUN. Whatever it was capturing is lost.');
+  console.log('      This happened once, un-guarded, on 2026-08-31 13:52: 19 seconds of JSON read');
+  console.log('      aloud to a real caller. See toolcall-leak.ts.');
+} else {
+  console.log('  SPOKE A TOOL CALL   0   nothing shaped like a tool call reached the voice');
+}
 
 if (r.usage?.modelUsage) {
   console.log('\nCOST\n');
