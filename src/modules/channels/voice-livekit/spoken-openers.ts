@@ -17,8 +17,12 @@
  * none of them could see the others:
  *
  *   - the receipt from the deck (`ack`)
- *   - `DICTATION_NOD` — a single CONSTANT with no rotation at all, so two dictation turns running
- *     (a phone number, then an email) produce the same sound twice by construction
+ *   - the mid-dictation nod. This was the WORST of the four when the class was written: a single
+ *     constant with no rotation at all, so two dictation turns running (a phone number, then an
+ *     email) produced the same sound twice by construction, and the only repair available here was
+ *     to make the second one SILENT. Koren's round-11 verdict on card `n1` replaced the constant
+ *     with a bank of three (`DICTATION_NODS`), so the nod now rotates through this same window like
+ *     everything else and the silence branch is a fail-safe rather than the normal path
  *   - a thinking filler (`hesitation`)
  *   - on a `silent` step, whatever word the MODEL wrote — nothing rotates or compares those
  *

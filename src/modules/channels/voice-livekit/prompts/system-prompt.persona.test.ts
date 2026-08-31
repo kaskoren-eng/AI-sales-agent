@@ -28,7 +28,26 @@ import {
  * If one of these fails, the question is never "update the fixture". It is "which live call did I
  * just change".
  *
- * Regenerated 2026-08-31 (LATEST), on `feature/voice-round7-verdicts`, and this one is different
+ * Regenerated 2026-08-31 (LATEST), on `feature/voice-round11-verdicts`. **ONE LINE, and it is not
+ * an instruction — it is a claim about ourselves that had stopped being true.** The Spoken Register
+ * section told the model that each of the nine everyday words *"was tested through a real phone
+ * line and heard back correctly"*. No word in that bank has ever been screened on a live PSTN
+ * call: they were put through the 8kHz phone BAND, and by two different instruments — the three
+ * reaction words won a LISTENING verdict from Koren (rounds 4/4b), the five slang words passed the
+ * Soniox round-trip (round 5), and `סגור` had both. The sentence now says that, and it keeps every
+ * bit of the force it had, because the force was never in the words "phone line" — it is in the
+ * clause that follows, which is unchanged: an untested Hebrew interjection fails SILENTLY.
+ *
+ * WHICH LIVE CALL DID I JUST CHANGE — none, and that is the honest answer here. This is the one
+ * class of prompt edit where "no behaviour change intended" is a defensible claim: no rule, no
+ * example, no vocabulary and no permission moved. What moved is the provenance we assert. The risk
+ * that remains is the risk every prompt edit carries — it is invisible to every test in this repo
+ * and only a call can show it — so if she starts inventing register words, this line is the first
+ * suspect and reverting it is one string.
+ *
+ * `diff` on the three golden files: line 109 in each, and nothing else.
+ *
+ * Regenerated before that on 2026-08-31, on `feature/voice-round7-verdicts`, and this one is different
  * from every regeneration above it: **it is not driven by a call, it is driven by Koren LISTENING
  * to the previous two changes and reversing five of them.**
  *

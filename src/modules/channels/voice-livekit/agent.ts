@@ -51,7 +51,7 @@ import {
   chunkCallsTool,
   type TurnOpener,
 } from './turn-opener.js';
-import { DICTATION_NOD, isDictationTurn } from './dictation.js';
+import { DICTATION_NODS, isDictationTurn } from './dictation.js';
 import { EngagementTracker, callerSharedSubstance } from './engagement.js';
 import { EmailDictation } from './email-dictation.js';
 import {
@@ -421,7 +421,10 @@ class ClickScalesAgent extends voice.Agent {
       // He is still reading out the number. A receipt here takes the floor from a man who has not
       // finished his sentence — see dictation.ts and the 050- / "טוב, הבנתי." exchange it quotes.
       midDictation: env.VOICE_DICTATION_NOD_ENABLED && isDictationTurn(this.lastUserUtterance),
-      nod: DICTATION_NOD,
+      // The bank, not one word: Koren's round-11 verdict is three sounds used at random, and the
+      // no-repeat filter inside chooseTurnOpener is the same `avoidOpener` every opening sound
+      // goes through. See dictation.ts.
+      nods: DICTATION_NODS,
       // The head-word of the previous reply, whatever produced it — see SpokenOpenerTracker. Null
       // switches the whole no-repeat rule off (VOICE_OPENER_NO_REPEAT_ENABLED), restoring the
       // 2026-08-31 behaviour exactly.

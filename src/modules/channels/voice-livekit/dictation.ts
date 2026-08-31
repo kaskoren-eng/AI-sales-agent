@@ -43,28 +43,55 @@
  */
 
 /**
- * The nod itself.
+ * THE NOD BANK — three sounds, chosen by ear, spoken one at a time.
  *
- * ⚠️ STILL PROVISIONAL, AND NOW PROVISIONAL ON THE RECORD. This is Koren's own spelling ("אה אה"),
- * never screened. Round 6 offered five spellings and he could not play a single clip (every WAV in
- * rounds 1–8 carried a broken header). Round 10, 2026-08-31, card `n1`, finally played: four
- * spellings — `אה אה.` · `אהה.` · `אה-אה.` · `אַה אַה.` — and **he chose NONE of them.** So this
- * constant is unchanged not because it passed but because nothing beat it.
+ * Koren, 2026-08-31, round-11 card `n1`, verbatim: *"אופציות מעולות שאני רוצה שנשתמש בכל אחת מהם
+ * באופן רנדומלי: C, F, L"* — C = `אֶמ.`, F = `אהם.`, L = `אָה.`. All three are good and he wants
+ * all three, picked at random.
  *
- * That is the hardest card in the set and the reason is structural: the nod is the one sound in the
- * agent's vocabulary spoken ALONE, with no carrier sentence to lend it context, while the caller is
- * mid-way through reading out a phone number. Round 11
- * (`tests/hebrew-tts-niqqud-ab/round11.py`) is built for exactly this position, with candidates
- * that are not spellings of `אה` at all — the Israeli back-channels `אהם` / `אהא` / `הממ`, and the
- * two sounds he DID pick in round 10 (`אמ`, `אֶה`), which he has never heard alone. When he picks,
- * change this one constant.
+ * ── WHY A BANK AND NOT A CONSTANT ─────────────────────────────────────────────────────────────
  *
- * If he rejects the whole set again, the honest conclusion is that there is no good nod and the
- * right move is silence mid-dictation, not a fifth guess. That would be a change to
- * `chooseTurnOpener` (which today falls back to a RECEIPT when the nod is absent — the very
- * interruption the nod exists to prevent), not to this string.
+ * This used to be one string, and that was named as a defect before it was fixed: `spoken-openers.ts`
+ * lists it as one of the four things that can occupy the head of a reply, and the only one "with no
+ * rotation at all, so two dictation turns running (a phone number, then an email) produce the same
+ * sound twice by construction". `SpokenOpenerTracker` papered over it by turning the second nod into
+ * SILENCE. His verdict removes the cause: with three sounds and a window of one, a second dictation
+ * turn has two legal answers left and does not have to fall silent.
+ *
+ * ── WHY THE NIQQUD IS NOT DECORATION, AND WHY TWO OF THESE WOULD DIE WITHOUT speech-guard.ts ──
+ *
+ * `guardSpeech` strips every Hebrew point before the text reaches Cartesia, because MODEL-emitted
+ * pointing is unreliable (known-issues §13). The nod is injected by `llmNode` into the reply stream,
+ * so it meets that strip like any other text — and two of these three carry marks:
+ *
+ *   `אֶמ.`  stripped → `אמ.`   and **`אמ.` synthesized ALONE is silence.** Measured on round 11:
+ *                              0.16s, peak 49 of 32767. Koren heard clip `n1_A` and rejected it.
+ *                              The segol is the difference between 0.16s of nothing and 1.04s of a
+ *                              nod. Without the exemption in speech-guard.ts this bank member is
+ *                              INAUDIBLE and no test anywhere would notice.
+ *   `אָה.`  stripped → `אה.`   a different vowel, and one that collides with nothing.
+ *   `אהם.`  carries no mark and needs no protection.
+ *
+ * So `speech-guard.ts` exempts these exact strings from the strip. It CANNOT be done the way the
+ * round-10 fillers were done — a `PRONUNCIATION_FIXES` row keyed on the unpointed text — because
+ * `אֶמ.` strips to `אמ.`, which is byte-identical to the RECEIPT `אמ.` he chose on round-10 card
+ * `f1`, and guardStream hands both to the guard as their own standalone sentence. There is no
+ * context to scope on: a rule that repointed the nod would repoint the receipt too, reverting a
+ * verdict he never gave. The exemption keys on the mark itself, which only our own constants carry.
+ *
+ * ── WHAT IS AND IS NOT SETTLED ────────────────────────────────────────────────────────────────
+ *
+ * All three were chosen BY EAR through the 8kHz phone band, spoken alone, in the position they are
+ * used in. None has been heard on a live call. The Soniox round trip heard `אה.` from C, `אהה.`
+ * from F and `אה.` from L — which is weak evidence about a filler and was labelled as such on the
+ * page; nobody needs to transcribe a hesitation, and his ear decided.
+ *
+ * ⚠️ ADDING A FOURTH IS NOT A CODE CHANGE. An unscreened Hebrew interjection fails SILENTLY
+ * (written laughter comes back as spelled letters, `אוו` vanished entirely). A candidate goes
+ * through a listening round first, and if it carries niqqud it must be added here AND covered by
+ * the speech-guard exemption in the same commit, or it goes out unpointed with every test green.
  */
-export const DICTATION_NOD = 'אה אה.';
+export const DICTATION_NODS = ['אֶמ.', 'אהם.', 'אָה.'] as const;
 
 /**
  * A number being READ OUT, as opposed to a number being mentioned.

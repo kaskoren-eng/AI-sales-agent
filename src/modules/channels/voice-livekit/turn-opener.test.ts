@@ -16,7 +16,7 @@ import {
   mayPairInOneBreath,
   openingSoundCategory,
 } from './turn-opener.js';
-import { DICTATION_NOD } from './dictation.js';
+import { DICTATION_NODS } from './dictation.js';
 
 /**
  * The regression net for the 2026-08-29 call — "אהה." alone, 5.4 seconds of nothing, then
@@ -123,7 +123,7 @@ describe('chooseTurnOpener — the caller is still reading out a number', () => 
       afterToolCall: false,
       fillersEnabled: true,
       midDictation: true,
-      nod: DICTATION_NOD,
+      nods: DICTATION_NODS,
       nextAck: () => pickAcknowledgement(null),
       offerFiller: anyFiller,
       ...over,
@@ -132,7 +132,24 @@ describe('chooseTurnOpener — the caller is still reading out a number', () => 
   it('nods instead of acknowledging — "טוב, הבנתי." mid-number was the bug', () => {
     const opener = nodded();
     expect(opener.kind).toBe('nod');
-    expect((opener as { word: string }).word).toBe(DICTATION_NOD);
+    expect([...DICTATION_NODS]).toContain((opener as { word: string }).word);
+  });
+
+  it('DRAWS FROM ALL THREE — his round-11 verdict was "use each of them, randomly"', () => {
+    // *"אופציות מעולות שאני רוצה שנשתמש בכל אחת מהם באופן רנדומלי: C, F, L"*. A bank
+    // that could only ever reach one of them would satisfy every other assertion in this file.
+    const seen = new Set<string>();
+    for (let i = 0; i < 400; i++) seen.add((nodded() as { word: string }).word);
+    expect([...seen].sort()).toEqual([...DICTATION_NODS].sort());
+  });
+
+  it('the draw is uniform — with an injected random, every member is reachable at its index', () => {
+    // Deterministic, so this says something the loop above cannot: index i is reachable, i.e.
+    // nothing is being clamped to the front or the back of the bank.
+    DICTATION_NODS.forEach((nod, i) => {
+      const opener = nodded({ random: () => (i + 0.5) / DICTATION_NODS.length });
+      expect((opener as { word: string }).word, `index ${i}`).toBe(nod);
+    });
   });
 
   it('does not spend an acknowledgement from the deck — the nod is a different act', () => {
@@ -160,8 +177,9 @@ describe('chooseTurnOpener — the caller is still reading out a number', () => 
     expect(opener.kind).toBe('ack');
   });
 
-  it('falls back to a receipt when no nod word is supplied', () => {
-    expect(nodded({ nod: undefined }).kind).toBe('ack');
+  it('falls back to a receipt when no nod is supplied at all', () => {
+    expect(nodded({ nods: undefined }).kind).toBe('ack');
+    expect(nodded({ nods: [] }).kind).toBe('ack');
   });
 });
 
@@ -240,7 +258,15 @@ describe('allowsArmedFiller — which two sounds may share one breath', () => {
     }
   });
 
-  it('THE ROUND-10 COLLISION: אמ. and אֶממ... are one sound twice, whatever their categories say', () => {
+  it('ROUND-11 CARD `p1`, HIS VERDICT: אמ. + אֶממ... is refused, אמ. + רֶגַע... is allowed', () => {
+    // The rule shipped in fa2cb68 as a PREDICTION, with a comment inviting its own deletion if a
+    // listening round said the pair was fine. Round 11 played both pairs. He first picked A (the
+    // blocked one) and then reversed himself unprompted: *"My bad, it's better if the agent will
+    // reply 'אמ. רגע..' better than that option I've picked, because that option can cause
+    // potential problems."* So the verdict is B — the pair the rule already permits — and the
+    // invitation to delete the check is spent. The round trip agrees: A came back as a single
+    // collapsed "אממ." (the two sounds MERGED), B came back as "אממ, רגע," with both intact.
+    expect(allowsArmedFiller({ kind: 'ack', word: 'אמ.' }, 'רֶגַע...')).toBe(true);
     expect(allowsArmedFiller({ kind: 'ack', word: 'אמ.' }, 'אֶממ...')).toBe(false);
     // ...and it is symmetric, so nothing depends on which position each lands in.
     expect(mayPairInOneBreath('אֶממ...', 'אמ.')).toBe(false);
@@ -264,20 +290,28 @@ describe('allowsArmedFiller — which two sounds may share one breath', () => {
     }
   });
 
-  it('the mid-dictation nod counts as a hesitation, so nothing stacks on it', () => {
-    // "אה אה." leads on `אה`, which IS a member of THINKING_FILLERS_HE — the classification comes
-    // out of the bank, not out of a second list that could drift from it.
-    //
-    // ⚠️ ROUND 10 NEARLY BROKE THIS SILENTLY. The bank member is now `אֶה...`, and a classifier that
-    // did not strip niqqud would stop matching `אה`, drop the nod to `unscreened`, and change
-    // NOTHING observable — `mayPairInOneBreath` refuses `unscreened` and `hesitation` alike, so the
-    // pairing tests would all still pass while the nod quietly left the screened vocabulary. This
-    // assertion is the one that fails.
-    expect(openingSoundCategory(DICTATION_NOD)).toBe('hesitation');
-    expect(allowsArmedFiller({ kind: 'nod', word: DICTATION_NOD }, 'רֶגַע...')).toBe(false);
-    // The nod has NO verdict of its own (round-10 card n1: all four spellings rejected), so it must
-    // still be the pre-round-10 constant. Round 11 is where it changes.
-    expect(DICTATION_NOD).toBe('אה אה.');
+  it('NOTHING EVER STACKS ON A NOD — and it is now the KIND that says so, not the sound', () => {
+    // Until round 11 this held by ACCIDENT: the nod was "אה אה.", its lead token `אה` was a
+    // member of THINKING_FILLERS_HE, so it classified as a hesitation and the same-act rule
+    // refused the pair. Koren's three-nod bank lands in THREE different categories (asserted
+    // below), so exactly one of them would have started allowing a filler behind it — with every
+    // pairing test in this file still green, and a second noise landing on a caller who is halfway
+    // through reading out his phone number.
+    for (const nod of DICTATION_NODS) {
+      for (const filler of THINKING_FILLERS_HE) {
+        expect(allowsArmedFiller({ kind: 'nod', word: nod }, filler), `${nod} + ${filler}`).toBe(
+          false,
+        );
+      }
+    }
+  });
+
+  it('...which matters because the three nods are NOT one category — this is the trap, named', () => {
+    // If these three ever agree, the assertion above stops being load-bearing and someone will
+    // "simplify" it back into a category check. They do not agree, and here is the proof:
+    expect(openingSoundCategory('אֶמ.')).toBe('acknowledgement'); // == the receipt אמ.
+    expect(openingSoundCategory('אָה.')).toBe('hesitation');      // leads on אה, a filler token
+    expect(openingSoundCategory('אהם.')).toBe('unscreened');      // in neither bank
   });
 
   it('silence leaves the position free', () => {
