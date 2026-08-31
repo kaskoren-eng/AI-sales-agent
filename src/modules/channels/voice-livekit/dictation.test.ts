@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DICTATION_NOD, isDictationTurn } from './dictation.js';
+import { ACKNOWLEDGEMENTS_HE_WIDE } from './prompts/acknowledgements.he.js';
 
 /**
  * The regression net for the 2026-08-30 production call: he said "050-", she answered
@@ -59,6 +60,17 @@ describe('isDictationTurn — is the caller reading something out?', () => {
     // The whole point is that it does not close the caller's turn. If this ever grows a verb,
     // it has become a receipt again.
     expect(DICTATION_NOD.length).toBeLessThanOrEqual(8);
-    expect(DICTATION_NOD).not.toMatch(/הבנתי|אוקיי|בסדר/u);
+    // Read out of the banks rather than from a hand-written list, so a receipt that changes
+    // spelling (round 10 moved two of the three) cannot slip past a stale literal here.
+    for (const receipt of [...ACKNOWLEDGEMENTS_HE_WIDE]) {
+      expect(DICTATION_NOD.startsWith(receipt.replace(/[.,!?…׃]/gu, ''))).toBe(false);
+    }
+  });
+
+  it('is STILL the unscreened 2026-08-30 constant — round 10 rejected every alternative', () => {
+    // Card `n1` offered four spellings and Koren picked none of them, so this is unchanged not
+    // because it passed but because nothing beat it. Round 11 is where it is settled. If this
+    // assertion is edited, a listening verdict must be quoted in the same commit.
+    expect(DICTATION_NOD).toBe('אה אה.');
   });
 });

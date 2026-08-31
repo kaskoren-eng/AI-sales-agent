@@ -13,6 +13,7 @@ import {
   allowsArmedFiller,
   chooseTurnOpener,
   chunkCallsTool,
+  mayPairInOneBreath,
   openingSoundCategory,
 } from './turn-opener.js';
 import { DICTATION_NOD } from './dictation.js';
@@ -215,20 +216,44 @@ describe('chooseTurnOpener — a comprehension claim needs the caller to have sa
  */
 describe('allowsArmedFiller — which two sounds may share one breath', () => {
   it("KOREN'S PICK: a receipt may be followed by a hesitation — card n4a variant A", () => {
-    expect(allowsArmedFiller({ kind: 'ack', word: 'אהה.' }, 'רגע...')).toBe(true);
+    // His words, on the round-7 audio, are about the two ACTS: a receipt, then a hesitation. Both
+    // halves changed spelling in round 10 (`אהה.` → `אמ.`, `רגע...` → `רֶגַע...`) and the RULE did
+    // not — which is the point of reading categories out of the banks. The literal round-7 pair is
+    // deliberately not asserted here: `אהה.` is in no bank now, so it is `unscreened` and fails
+    // closed, exactly as any other retired string should.
+    expect(allowsArmedFiller({ kind: 'ack', word: 'בסדר.' }, 'רֶגַע...')).toBe(true);
+    expect(allowsArmedFiller({ kind: 'ack', word: 'אוקי.' }, 'שניה...')).toBe(true);
   });
 
-  it('every receipt in the bank pairs with every hesitation in the bank', () => {
+  it('every receipt in the bank pairs with every hesitation in the bank — EXCEPT אמ / אֶממ', () => {
     for (const ack of ACKNOWLEDGEMENTS_HE_WIDE) {
       for (const filler of THINKING_FILLERS_HE) {
-        expect(allowsArmedFiller({ kind: 'ack', word: ack }, filler)).toBe(true);
+        // The one exception is the round-10 collision: `אמ.` (a receipt) and `אֶממ...` (a
+        // hesitation) are the same closed-lip hum, and the categories cannot see it. See
+        // mayPairInOneBreath. Every other pair still passes, so the rule stayed a rule.
+        const collide = ack.startsWith('אמ') && filler.replace(/[֑-ׇ]/gu, '').startsWith('אממ');
+        expect(
+          allowsArmedFiller({ kind: 'ack', word: ack }, filler),
+          `${ack} + ${filler}`,
+        ).toBe(!collide);
       }
     }
   });
 
+  it('THE ROUND-10 COLLISION: אמ. and אֶממ... are one sound twice, whatever their categories say', () => {
+    expect(allowsArmedFiller({ kind: 'ack', word: 'אמ.' }, 'אֶממ...')).toBe(false);
+    // ...and it is symmetric, so nothing depends on which position each lands in.
+    expect(mayPairInOneBreath('אֶממ...', 'אמ.')).toBe(false);
+    // The guard is about the STEM, not about the mark: it must hold with the niqqud stripped too,
+    // which is the form the TTS eventually receives.
+    expect(mayPairInOneBreath('אמ.', 'אממ...')).toBe(false);
+  });
+
   it('THE ONE HE RULED OUT: רגע and שנייה can never both be spoken', () => {
+    expect(allowsArmedFiller({ kind: 'hesitation', word: 'רֶגַע...' }, 'שניה...')).toBe(false);
+    expect(allowsArmedFiller({ kind: 'hesitation', word: 'שניה...' }, 'רֶגַע...')).toBe(false);
+    // The pre-round-10 spellings are still refused — the rule is about the act, not the string.
     expect(allowsArmedFiller({ kind: 'hesitation', word: 'רגע...' }, 'שנייה...')).toBe(false);
-    expect(allowsArmedFiller({ kind: 'hesitation', word: 'שנייה...' }, 'רגע...')).toBe(false);
   });
 
   it('and no other same-bank pair either — two hesitations are the same act twice', () => {
@@ -242,8 +267,17 @@ describe('allowsArmedFiller — which two sounds may share one breath', () => {
   it('the mid-dictation nod counts as a hesitation, so nothing stacks on it', () => {
     // "אה אה." leads on `אה`, which IS a member of THINKING_FILLERS_HE — the classification comes
     // out of the bank, not out of a second list that could drift from it.
+    //
+    // ⚠️ ROUND 10 NEARLY BROKE THIS SILENTLY. The bank member is now `אֶה...`, and a classifier that
+    // did not strip niqqud would stop matching `אה`, drop the nod to `unscreened`, and change
+    // NOTHING observable — `mayPairInOneBreath` refuses `unscreened` and `hesitation` alike, so the
+    // pairing tests would all still pass while the nod quietly left the screened vocabulary. This
+    // assertion is the one that fails.
     expect(openingSoundCategory(DICTATION_NOD)).toBe('hesitation');
-    expect(allowsArmedFiller({ kind: 'nod', word: DICTATION_NOD }, 'רגע...')).toBe(false);
+    expect(allowsArmedFiller({ kind: 'nod', word: DICTATION_NOD }, 'רֶגַע...')).toBe(false);
+    // The nod has NO verdict of its own (round-10 card n1: all four spellings rejected), so it must
+    // still be the pre-round-10 constant. Round 11 is where it changes.
+    expect(DICTATION_NOD).toBe('אה אה.');
   });
 
   it('silence leaves the position free', () => {
@@ -263,10 +297,22 @@ describe('allowsArmedFiller — which two sounds may share one breath', () => {
   });
 
   it('VOICE_FILLER_PAIRING_ENABLED=false restores the hard one-sound cap exactly', () => {
-    expect(allowsArmedFiller({ kind: 'ack', word: 'אהה.' }, 'רגע...', { pairing: false })).toBe(
+    expect(allowsArmedFiller({ kind: 'ack', word: 'בסדר.' }, 'רֶגַע...', { pairing: false })).toBe(
       false,
     );
-    expect(allowsArmedFiller({ kind: 'silent' }, 'רגע...', { pairing: false })).toBe(true);
+    expect(allowsArmedFiller({ kind: 'silent' }, 'רֶגַע...', { pairing: false })).toBe(true);
+  });
+
+  it('the stem rule never blocks a pair the coarse kill-switch would have allowed', () => {
+    // The one thing that must stay true of an added restriction: it is strictly narrower than the
+    // switch that turns pairing off entirely, so `pairing:false` is still an exact rollback.
+    for (const ack of ACKNOWLEDGEMENTS_HE_WIDE) {
+      for (const filler of THINKING_FILLERS_HE) {
+        if (allowsArmedFiller({ kind: 'ack', word: ack }, filler, { pairing: false })) {
+          expect(allowsArmedFiller({ kind: 'ack', word: ack }, filler)).toBe(true);
+        }
+      }
+    }
   });
 });
 
@@ -280,9 +326,24 @@ describe('openingSoundCategory — read out of the banks, not out of a copy of t
     expect([...fillers]).toEqual(['hesitation']);
   });
 
-  it('אהה (a receipt) and אה (a hesitation) are not the same sound', () => {
-    expect(openingSoundCategory('אהה.')).toBe('acknowledgement');
+  it('the round-10 banks classify, and the words they replaced no longer do', () => {
+    // `אהה.` was a receipt until 2026-08-31 and is now in no bank at all, so it is `unscreened` —
+    // which is correct and is what fail-closed means: an old string surviving in some caller's
+    // constant must not silently keep its old privileges.
+    expect(openingSoundCategory('אמ.')).toBe('acknowledgement');
+    expect(openingSoundCategory('אוקי.')).toBe('acknowledgement');
+    expect(openingSoundCategory('אֶה...')).toBe('hesitation');
+    expect(openingSoundCategory('אֶממ...')).toBe('hesitation');
+    expect(openingSoundCategory('אהה.')).toBe('unscreened');
+  });
+
+  it('a niqqud mark is a pronunciation instruction, not a different sound', () => {
+    // guardSpeech strips every mark before Cartesia sees the text, and openerKey has always ignored
+    // them. If this classifier did not, `אֶה...` and `אה...` would be two words to the pairing rule
+    // and one word to everything else.
     expect(openingSoundCategory('אה...')).toBe('hesitation');
+    expect(openingSoundCategory('רגע...')).toBe('hesitation');
+    expect(openingSoundCategory('רֶגַע...')).toBe('hesitation');
   });
 
   it('a compound receipt is classified by its first word', () => {

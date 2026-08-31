@@ -55,10 +55,31 @@ describe('thinking fillers', () => {
 
   it('is Hebrew that Israelis actually say, not translated English', () => {
     // "ובכן" would be correct Hebrew and would sound like a newsreader. These are speech.
-    expect(THINKING_FILLERS_HE).toContain('אממ...');
-    expect(THINKING_FILLERS_HE).toContain('רגע...');
+    expect(THINKING_FILLERS_HE.map((f) => f.replace(/[֑-ׇ]/gu, ''))).toContain('אממ...');
+    expect(THINKING_FILLERS_HE.map((f) => f.replace(/[֑-ׇ]/gu, ''))).toContain('רגע...');
     for (const f of THINKING_FILLERS_HE) {
       expect(f).toMatch(/[֐-׿]/u);
+    }
+  });
+
+  /**
+   * ROUND 10, 2026-08-31 — the first listening screen this bank ever had, and it moved all four.
+   *
+   * Pinned as literals on purpose. Everything else in this file is a property ("short", "not a
+   * sentence", "more than the cap"), and a property test cannot tell the difference between the
+   * spelling Koren chose and a plausible one a later session prefers. These four strings are
+   * verdicts: `אֶממ...` (f3 D), `רֶגַע...` (f4 B), `שניה...` (f5 B, the defective spelling), and
+   * `אֶה...` (f2 D). Changing one is changing what a caller hears, and it needs another round.
+   */
+  it("holds exactly the four spellings Koren's ear picked in round 10", () => {
+    expect([...THINKING_FILLERS_HE]).toEqual(['אֶממ...', 'רֶגַע...', 'שניה...', 'אֶה...']);
+  });
+
+  it('none of them is the pre-round-10 spelling it replaced', () => {
+    // The failure mode this catches is a merge or a "tidy the niqqud" pass quietly restoring the
+    // unscreened forms — which would look completely ordinary in a diff.
+    for (const dead of ['אממ...', 'רגע...', 'שנייה...', 'אה...']) {
+      expect(THINKING_FILLERS_HE as readonly string[]).not.toContain(dead);
     }
   });
 });

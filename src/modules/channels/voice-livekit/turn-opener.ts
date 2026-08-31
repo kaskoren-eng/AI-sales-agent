@@ -146,16 +146,25 @@ export function chooseTurnOpener(input: {
  * lookup rather than by a parallel table, so a word can never be in a bank and in the wrong
  * category at the same time.
  *
- * Matching is on the FIRST token with punctuation stripped, because that is the unit a listener
- * hears: `"טוב, הבנתי."` opens with `טוב` and `"אה..."` opens with `אה`. That also keeps the two
- * banks disjoint where they look close — `אהה` (a receipt) and `אה` (a hesitation) are different
- * tokens, and `dictation.ts`'s nod `"אה אה."` lands on `אה`, i.e. in the hesitation family, which
- * is exactly where a listener puts it.
+ * Matching is on the FIRST token with punctuation AND NIQQUD stripped, because that is the unit a
+ * listener hears: `"טוב, הבנתי."` opens with `טוב` and `"אֶה..."` opens with `אה`. A mark is a
+ * pronunciation instruction to Cartesia, not a different sound — `guardSpeech` strips every one of
+ * them before the voice sees the text and this file's own `openerKey` has always ignored them, so a
+ * classifier that did not would be the only thing in the module treating `אֶה` and `אה` as two
+ * words.
+ *
+ * ⚠️ THAT STRIP IS NOT COSMETIC, IT IS WHY ROUND 10 DID NOT SILENTLY BREAK THE NOD. Three of the
+ * four thinking fillers gained a niqqud mark on 2026-08-31 (`אה...` → `אֶה...`). `dictation.ts`'s
+ * nod `"אה אה."` was classified as a hesitation only because its lead token `אה` was a member of
+ * `THINKING_FILLERS_HE`; with the marks left in, that membership disappears and the nod silently
+ * becomes `unscreened`. Nothing would have failed — `mayPairInOneBreath` refuses both categories —
+ * and the nod would have quietly stopped being screened vocabulary. `turn-opener.test.ts` pins it.
  */
 export type OpeningSoundCategory = 'acknowledgement' | 'hesitation' | 'unscreened';
 
 function leadToken(sound: string): string {
   const cleaned = sound
+    .replace(/[֑-ׇ]/gu, '')
     .replace(/[.,!?…׃]/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim();
@@ -196,12 +205,37 @@ export function openingSoundCategory(sound: string): OpeningSoundCategory {
  * paired: the module's standing rule is that an unscreened Hebrew interjection fails silently
  * (written laughter comes back as spelled letters, "אוו" vanished entirely), and pairing one with
  * a screened word would put a sound on the line that nobody has ever heard through the phone band.
+ *
+ * ── AND ONE THING THE CATEGORIES CANNOT SEE (round 10, 2026-08-31) ────────────────────────────
+ *
+ * Koren's rule is *two of the same SOUND may not share a breath*, and until round 10 "same sound"
+ * and "same category" happened to coincide. They no longer do. He replaced the receipt `אהה.` with
+ * `אמ.` and the hesitation `אממ...` with `אֶממ...` — a receipt and a hesitation, so the category
+ * test says the pair is fine, and the caller would hear **"אמ. אֶממ..."**: the same closed-lip
+ * hum twice, which is the exact stutter he ruled out in round 7.
+ *
+ * So a pair is also refused when one lead token is a prefix of the other. It is not a new
+ * preference of ours — it is his stated rule applied to a case a category lookup is blind to — and
+ * it only ever REMOVES a sound, which this module treats as always acceptable ("silence is always
+ * an acceptable answer here"; an unspoken filler is not charged and survives for a later turn).
+ * `VOICE_FILLER_PAIRING_ENABLED=false` is still the coarse switch and is strictly more restrictive
+ * than this, so it remains an exact rollback of the pairing behaviour as a whole.
+ *
+ * ⚠️ HE HAS NEVER HEARD "אמ. אֶממ..." — this guard is a prediction, not a verdict. If a listening
+ * round says the pair is fine, delete the check; it is deliberately one line.
  */
 export function mayPairInOneBreath(first: string, second: string): boolean {
   const a = openingSoundCategory(first);
   const b = openingSoundCategory(second);
   if (a === 'unscreened' || b === 'unscreened') return false;
-  return a !== b;
+  if (a === b) return false;
+  return !sharesStem(leadToken(first), leadToken(second));
+}
+
+/** Two opening sounds one of which is the other with a letter added — "אמ" and "אממ". */
+function sharesStem(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  return a.startsWith(b) || b.startsWith(a);
 }
 
 /**

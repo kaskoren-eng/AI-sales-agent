@@ -37,6 +37,38 @@ describe('acknowledgements', () => {
     expect(ACKNOWLEDGEMENTS_HE.length).toBeGreaterThanOrEqual(3);
   });
 
+  /**
+   * ROUND 10, 2026-08-31 — the first time anything in this bank was ever LISTENED to.
+   *
+   * These three words had been spoken at the head of nearly every turn of every production call for
+   * weeks with nobody having heard one through a phone band. Cards `f1` and `a1` moved two of them
+   * and card `a2` explicitly kept the third. Literals, not properties: a property test cannot tell
+   * `אמ.` from `אהה.`, and `אהה.` is what he complained about twice.
+   */
+  it("holds exactly the three receipts Koren's ear picked in round 10", () => {
+    expect([...ACKNOWLEDGEMENTS_HE]).toEqual(['אוקי.', 'אמ.', 'בסדר.']);
+  });
+
+  it('and none of the spellings it replaced', () => {
+    // `אהה.` is the one he named: "היא אומרת 'או-ה' במקום 'אהההה' אחיד". He was offered eight
+    // spellings of it, including his own, and took a different sound instead. It must not come back
+    // through a merge or a "restore the familiar word" tidy-up.
+    for (const dead of ['אהה.', 'אוקיי.']) {
+      expect(ACKNOWLEDGEMENTS_HE as readonly string[]).not.toContain(dead);
+    }
+  });
+
+  it('KEEP, explicitly: the two comprehension claims he heard and left alone (cards a3, a4)', () => {
+    // Round 10 asked one question about each — "does this sound OK?" — and the answer was yes, so
+    // the WORDING is settled. Their FREQUENCY is a separate, already-decided matter: see
+    // ACK_COMPREHENSION_HE. Pinned so a rewording cannot happen without a new listening round.
+    expect([...ACK_COMPREHENSION_HE]).toEqual(['הבנתי אותך.', 'טוב, הבנתי.']);
+  });
+
+  it('KEEP, explicitly: בסדר. survived round 10 unchanged (card a2)', () => {
+    expect(ACKNOWLEDGEMENTS_HE as readonly string[]).toContain('בסדר.');
+  });
+
   it('never repeats itself twice running', () => {
     // These fire on EVERY turn, so a repeat is far more audible than it was for thinking fillers.
     for (const previous of ACKNOWLEDGEMENTS_HE) {

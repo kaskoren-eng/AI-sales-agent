@@ -45,11 +45,24 @@
 /**
  * The nod itself.
  *
- * ⚠️ PROVISIONAL — this is Koren's own spelling ("אה אה"), not a screened one, and the SPELLING of
- * a non-lexical sound is exactly what round 6 is for: `tests/hebrew-tts-niqqud-ab/index-round6.html`
- * card `nd1` puts five spellings of it through sonic-3.5 side by side. The round-trip already says
- * the choice matters — "אהה." alone came back from Soniox as "יאללה." — so do not assume any
- * spelling is safe because it looks obvious. When he picks, change this one constant.
+ * ⚠️ STILL PROVISIONAL, AND NOW PROVISIONAL ON THE RECORD. This is Koren's own spelling ("אה אה"),
+ * never screened. Round 6 offered five spellings and he could not play a single clip (every WAV in
+ * rounds 1–8 carried a broken header). Round 10, 2026-08-31, card `n1`, finally played: four
+ * spellings — `אה אה.` · `אהה.` · `אה-אה.` · `אַה אַה.` — and **he chose NONE of them.** So this
+ * constant is unchanged not because it passed but because nothing beat it.
+ *
+ * That is the hardest card in the set and the reason is structural: the nod is the one sound in the
+ * agent's vocabulary spoken ALONE, with no carrier sentence to lend it context, while the caller is
+ * mid-way through reading out a phone number. Round 11
+ * (`tests/hebrew-tts-niqqud-ab/round11.py`) is built for exactly this position, with candidates
+ * that are not spellings of `אה` at all — the Israeli back-channels `אהם` / `אהא` / `הממ`, and the
+ * two sounds he DID pick in round 10 (`אמ`, `אֶה`), which he has never heard alone. When he picks,
+ * change this one constant.
+ *
+ * If he rejects the whole set again, the honest conclusion is that there is no good nod and the
+ * right move is silence mid-dictation, not a fifth guess. That would be a change to
+ * `chooseTurnOpener` (which today falls back to a RECEIPT when the nod is absent — the very
+ * interruption the nod exists to prevent), not to this string.
  */
 export const DICTATION_NOD = 'אה אה.';
 

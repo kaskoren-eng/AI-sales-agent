@@ -150,6 +150,23 @@ const PRONUNCIATION_FIXES: Array<[RegExp, string]> = [
   [/(?<![֐-׿])((?:ו|ש|וש|כש|וכש)?אני(?:\s+לא)?)\s+רוצה(?![֐-׿])/gu, '$1 רוצָה'],
   [/(?<![֐-׿])((?:ו|ש|וש|כש|וכש)?היא(?:\s+לא)?)\s+רוצה(?![֐-׿])/gu, '$1 רוצָה'],
   [/(?<![֐-׿])((?:ו|ש|וש|כש|וכש)?הוא(?:\s+לא)?)\s+רוצה(?![֐-׿])/gu, '$1 רוצֶה'],
+  // ── THE THINKING FILLERS (round 10, 2026-08-31) ───────────────────────────────────────────
+  //
+  // These three entries exist for a reason that is not true of any other row in this table: the
+  // pointed form is not something we deduced, it is the literal in THINKING_FILLERS_HE, and it
+  // arrives here ALREADY POINTED and ALREADY STRIPPED. The filler is injected by llmNode /
+  // withFiller INSIDE guardStream, so the strip above erases Koren's mark on its way past — the
+  // verdict would be applied in the bank and reverted in the pipeline, with nothing failing.
+  //
+  // SCOPED TO THE ELLIPSIS, and that is load-bearing in two directions:
+  //   - "רגע, בודקת." is a system-prompt opener the model writes constantly, and it is NOT this
+  //     filler. Koren judged the hesitation, not the word everywhere it appears.
+  //   - DICTATION_NOD is "אה אה." and has NO verdict yet (round-10 card n1: he rejected all four
+  //     spellings). A bare `אה` → `אֶה` rule would repoint the nod on his behalf. It must not.
+  // `…` is matched as well as "..." because the model writes both and either one is a hesitation.
+  [/(?<![֐-׿])אממ(?=\.{3}|…)/gu, 'אֶממ'],
+  [/(?<![֐-׿])רגע(?=\.{3}|…)/gu, 'רֶגַע'],
+  [/(?<![֐-׿])אה(?=\.{3}|…)/gu, 'אֶה'],
 ];
 
 /** Applies the gender-neutral pronunciation dictionary. Speech-only, like the gender fix. */
