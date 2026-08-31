@@ -16,13 +16,34 @@ import json, os, re, subprocess, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 
+def find_env():
+    """The nearest `.env` at or above the repo root.
+
+    A git WORKTREE has no `.env` — it is gitignored, so it lives only in the main checkout, three
+    directories above `.claude/worktrees/<name>/`. Without this walk every round of this experiment
+    is unrunnable from a worktree, which is where the voice sessions actually work. Never copy the
+    file into the worktree instead: `.gitignore` covers `.env*`, but a copied secret is one bad
+    `git add -f` away from the history.
+    """
+    d = ROOT
+    while True:
+        candidate = os.path.join(d, ".env")
+        if os.path.exists(candidate):
+            return candidate
+        parent = os.path.dirname(d)
+        if parent == d:
+            raise SystemExit(f"no .env found at or above {ROOT}")
+        d = parent
+
+
 def load_env(name):
-    with open(os.path.join(ROOT, ".env"), encoding="utf-8") as f:
+    path = find_env()
+    with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line.startswith(name + "="):
                 return line.split("=", 1)[1].strip()
-    raise SystemExit(f"{name} not found in .env")
+    raise SystemExit(f"{name} not found in {path}")
 
 API_KEY = load_env("CARTESIA_API_KEY")
 VOICE_ID = load_env("CARTESIA_VOICE_ID_PRIMARY")

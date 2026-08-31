@@ -77,6 +77,8 @@ function fakeRt(opts: {
   lastCheckedDurationMinutes?: number | null;
   inviteSent?: boolean;
   callState?: CallStateMachine;
+  /** VOICE_BOOK_WITHOUT_EMAIL. Production default is true. */
+  bookWithoutEmail?: boolean;
 } = {}) {
   const getAvailableSlots = vi.fn(async () => opts.available ?? [mk(SLOT)]);
   const createBooking = vi.fn(async (params: { start: string }) => ({
@@ -96,7 +98,10 @@ function fakeRt(opts: {
     conversationId: null,
     callId: 'call-1',
     callerPhone: null,
-    env: { GOOGLE_CALENDAR_ID: 'cal@group.calendar.google.com' },
+    env: {
+      GOOGLE_CALENDAR_ID: 'cal@group.calendar.google.com',
+      VOICE_BOOK_WITHOUT_EMAIL: opts.bookWithoutEmail ?? true,
+    },
     db,
     makeProvider,
     report: { recordToolCall: vi.fn() },
@@ -361,5 +366,80 @@ describe('helpers', () => {
   it('phoneSuffix matches Israeli numbers across formats', () => {
     expect(phoneSuffix('+972-50-123-4567')).toBe('501234567');
     expect(phoneSuffix('0501234567')).toBe('501234567');
+  });
+});
+
+/**
+ * THE MEETING IS WORTH MORE THAN THE FIELD.
+ *
+ * 2026-08-31 production call: the demo was agreed at 450s and the call ended at 602s with NO
+ * booking, having spent its last 54 seconds failing to transfer one email address over an 8kHz
+ * line. `book_meeting` was never called — the schema required a valid email, so "keep the meeting,
+ * drop the field" was not a move the agent could make. These tests pin the exit.
+ */
+describe('executeBookMeeting — booking WITHOUT an email (VOICE_BOOK_WITHOUT_EMAIL)', () => {
+  it('books on an explicit null, with no attendee email and no invite claimed', async () => {
+    const { rt, createBooking, captured } = fakeRt();
+    const out = await executeBookMeeting(rt, args({ email: null }), NOW);
+
+    expect(createBooking).toHaveBeenCalledWith(
+      expect.objectContaining({ attendee: expect.objectContaining({ email: undefined }) }),
+    );
+    expect(rt.bookingCompleted).toBe(true);
+    expect(rt.lastBooking?.email).toBeNull();
+    // inviteSent must be false even though the fake provider reports true: there is no address.
+    expect(rt.lastBooking?.inviteSent).toBe(false);
+
+    // The lead is still saved, against the phone number.
+    expect(captured.leadInserts[0]).toMatchObject({ phone: '050-1234567' });
+    expect(captured.leadInserts[0]!.email).toBeUndefined();
+    expect(captured.callInserts[0]).toMatchObject({ providerRef: 'evt-123' });
+
+    // And she is told to close, not to go back for the address.
+    expect(out).toContain('WITHOUT an email address');
+    expect(out).toMatch(/do NOT ask for his email again/u);
+    expect(out).toContain('end_call');
+  });
+
+  it('omits an email address from the result — there is none to read out', async () => {
+    const { rt } = fakeRt();
+    const out = await executeBookMeeting(rt, args({ email: null }), NOW);
+    expect(out).not.toMatch(/emailed to/u);
+    expect(out).not.toMatch(/send_email_confirmation/u);
+  });
+
+  it('an email that is PRESENT but unparseable still fails — a guess is the original defect', async () => {
+    const { rt } = fakeRt();
+    await expect(executeBookMeeting(rt, args({ email: 'nope' }), NOW)).rejects.toThrow(llm.ToolError);
+    expect(rt.bookingCompleted).toBe(false);
+  });
+
+  it('and that failure names the exit, because the old error text WAS the doomed retry loop', async () => {
+    const { rt } = fakeRt();
+    const err = await executeBookMeeting(rt, args({ email: 'nope' }), NOW).catch((e: unknown) => e as Error) as Error;
+    expect(err.message).toMatch(/email set to null/u);
+    expect(err.message).toMatch(/twice/u);
+  });
+
+  it('KILL-SWITCH off: a null email throws, so the prompt and the tool can never disagree', async () => {
+    const { rt } = fakeRt({ bookWithoutEmail: false });
+    const err = await executeBookMeeting(rt, args({ email: null }), NOW).catch((e: unknown) => e as Error) as Error;
+    expect(err).toBeInstanceOf(llm.ToolError);
+    // The old wording, with no mention of an exit that no longer exists.
+    expect(err.message).not.toMatch(/set to null/u);
+    expect(rt.bookingCompleted).toBe(false);
+  });
+
+  it('an omitted email is the same as an explicit null', async () => {
+    const { rt } = fakeRt();
+    const { email: _dropped, ...rest } = args();
+    await executeBookMeeting(rt, rest as BookMeetingArgs, NOW);
+    expect(rt.lastBooking?.email).toBeNull();
+  });
+
+  it('still refuses a SECOND meeting on the same call', async () => {
+    const { rt } = fakeRt();
+    await executeBookMeeting(rt, args({ email: null }), NOW);
+    await expect(executeBookMeeting(rt, args({ email: null }), NOW)).rejects.toThrow(llm.ToolError);
   });
 });

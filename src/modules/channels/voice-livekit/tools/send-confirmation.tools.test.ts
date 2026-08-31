@@ -21,7 +21,15 @@ const BOOKING: LastBooking = {
   inviteSent: true,
 };
 
-function fakeRt(opts: { booking?: LastBooking | null; queue?: boolean } = {}) {
+function fakeRt(
+  opts: {
+    booking?: LastBooking | null;
+    queue?: boolean;
+    /** Tenant has an approved `meeting_confirmation` template AND a Twilio-capable provider. */
+    templateReady?: boolean;
+  } = {},
+) {
+  const templateReady = opts.templateReady ?? true;
   const added: Array<{ name: string; data: Record<string, unknown> }> = [];
   const queue =
     opts.queue === false
@@ -33,6 +41,10 @@ function fakeRt(opts: { booking?: LastBooking | null; queue?: boolean } = {}) {
     callId: 'call-1',
     callerPhone: '+972501234567',
     report: { recordToolCall: vi.fn() },
+    env: { TWILIO_ACCOUNT_SID: templateReady ? 'AC_test' : undefined },
+    settings: templateReady
+      ? { whatsapp_templates: { meeting_confirmation: { contentSid: 'HX_MC' } } }
+      : {},
     outboundQueue: queue,
     lastBooking: opts.booking === undefined ? BOOKING : opts.booking,
     lastCheckedDurationMinutes: null,
@@ -112,5 +124,61 @@ describe('message content', () => {
     expect(text).not.toContain('לינק');
     const mail = emailConfirmation({ ...BOOKING, meetLink: undefined });
     expect(mail.body).not.toContain('קישור לפגישה');
+  });
+});
+
+/**
+ * A MEETING BOOKED WITH NO EMAIL (2026-08-31) — and the promise that goes with it.
+ *
+ * `book_meeting` may now be called with `email: null` rather than lose an agreed demo to a field
+ * that will not cross a phone line. Two consequences are pinned here: there is nothing for
+ * `send_email_confirmation` to send to, and the WhatsApp result must stop encouraging a promise
+ * the outbound worker cannot keep.
+ */
+describe('the no-email booking', () => {
+  const NO_EMAIL: LastBooking = { ...BOOKING, email: null, inviteSent: false };
+
+  it('send_email_confirmation refuses, and tells her not to claim one or re-ask for the address', async () => {
+    const { rt, added } = fakeRt({ booking: NO_EMAIL });
+    const err = (await runTool(sendEmailConfirmationTool(rt)).catch((e: unknown) => e)) as Error;
+    expect(err).toBeInstanceOf(llm.ToolError);
+    expect(err.message).toMatch(/do not ask him for the address again/iu);
+    expect(added).toHaveLength(0);
+  });
+
+  it('send_whatsapp_confirmation still works — it is the whole point of the fallback', async () => {
+    const { rt, added } = fakeRt({ booking: NO_EMAIL });
+    const out = (await runTool(sendWhatsappConfirmationTool(rt))) as string;
+    expect(added).toHaveLength(1);
+    expect(added[0]!.data).toMatchObject({ channel: 'whatsapp', to: '+972501234567' });
+    expect(out).toContain('queued');
+  });
+});
+
+/**
+ * "QUEUED" WAS NEVER "WILL ARRIVE".
+ *
+ * A lead who has only ever PHONED us has no open 24-hour WhatsApp window, so the outbound worker
+ * takes the business-initiated path: without a Twilio-capable provider AND an approved
+ * `meeting_confirmation` template it logs `whatsapp_send_blocked` and drops the job — returning
+ * success. Nothing failed loudly enough for the agent to know, so she promised a message nobody
+ * sent. Both preconditions are readable in the tool, so it now tells the model the truth.
+ */
+describe('send_whatsapp_confirmation — deliverability pre-flight', () => {
+  it('with a configured template, she may say the message is on its way', async () => {
+    const { rt } = fakeRt();
+    const out = (await runTool(sendWhatsappConfirmationTool(rt))) as string;
+    expect(out).toMatch(/on its way/u);
+    expect(out).not.toMatch(/Do NOT tell him/u);
+  });
+
+  it('with NO template, the job is still queued but she is told not to promise it', async () => {
+    const { rt, added } = fakeRt({ templateReady: false });
+    const out = (await runTool(sendWhatsappConfirmationTool(rt))) as string;
+    // Still queued: a lead whose 24h window IS open gets the freeform message.
+    expect(added).toHaveLength(1);
+    expect(out).toContain('queued');
+    expect(out).toMatch(/Do NOT tell him a WhatsApp is coming/u);
+    expect(out).not.toMatch(/You may tell the lead a WhatsApp message is on its way/u);
   });
 });

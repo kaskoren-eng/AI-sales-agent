@@ -36,7 +36,16 @@ export const bookMeetingSchema = z.object({
     .string()
     .min(7)
     .describe('Phone number as the lead read it back and confirmed, digits only is fine'),
-  email: z.string().min(5).describe('Email address as the lead read it back and confirmed'),
+  email: z
+    .string()
+    .min(5)
+    .nullable()
+    .optional()
+    .describe(
+      'Email address as the lead read it back and confirmed. Pass null ONLY after two read-backs ' +
+        'have failed to get it across — the meeting is then booked without it rather than lost. ' +
+        'Never invent, guess or approximate an address to fill this in.',
+    ),
   slot_datetime: z
     .string()
     .describe(
@@ -85,10 +94,35 @@ export async function executeBookMeeting(
     );
   }
 
-  const email = normalizeEmail(args.email);
+  // ---- The email is the ONE field allowed to be missing (2026-08-31) ----
+  //
+  // On the production call of 2026-08-31 the lead had agreed to a demo at 450s. The call then spent
+  // its last 54 seconds failing to transfer his address over an 8kHz line and ended with no booking
+  // at all — book_meeting was never called, because there was no way to call it. This block is the
+  // exit: a deliberate `null` books the meeting without an attendee, and the confirmation goes to
+  // the phone he has already confirmed. A meeting missing one field beats a lost meeting.
+  //
+  // What is NOT allowed is a guess. A string that is present but unparseable still fails — that is
+  // the `koren@gmail.com` case, an address she was confident about and which was wrong — but the
+  // error now names the exit, because the error text is the only instruction the model reads mid-
+  // call, and the old one ("spell it again, read it back, then retry") *was* the doomed loop.
+  const allowMissingEmail = rt.env.VOICE_BOOK_WITHOUT_EMAIL;
+  const rawEmail = typeof args.email === 'string' ? args.email.trim() : '';
+  const email = rawEmail ? normalizeEmail(rawEmail) : null;
   if (!email) {
-    throw new llm.ToolError(
-      'That email does not look valid. Ask the lead to spell it again, read it back, then retry.',
+    if (rawEmail || !allowMissingEmail) {
+      throw new llm.ToolError(
+        'That email does not look valid. Ask the lead to spell it again and read it back' +
+          (allowMissingEmail
+            ? ' — and if you have ALREADY read an address back to him twice without getting it ' +
+              'right, stop asking: call book_meeting again with email set to null. The meeting ' +
+              'will be booked without it. Do not lose the meeting over this field.'
+            : ', then retry.'),
+      );
+    }
+    console.warn(
+      'book_meeting_without_email',
+      JSON.stringify({ tenantId: rt.tenantId, callId: rt.callId }),
     );
   }
 
@@ -128,7 +162,14 @@ export async function executeBookMeeting(
   const booking = await rt.makeProvider(duration).createBooking({
     start: slotStart.toISOString(),
     serviceId: rt.env.GOOGLE_CALENDAR_ID!,
-    attendee: { name: args.name.trim(), email, phone: args.phone, timezone: BOOKING_TIMEZONE },
+    attendee: {
+      name: args.name.trim(),
+      // Absent → the provider takes its attendee-less path (the one built for the service-account
+      // 403) and puts his name and phone in the event description instead.
+      email: email ?? undefined,
+      phone: args.phone,
+      timezone: BOOKING_TIMEZONE,
+    },
     notes: args.notes ?? undefined,
   });
 
@@ -140,7 +181,7 @@ export async function executeBookMeeting(
       rt.db,
       rt.tenantId,
       { leadId: rt.leadId, callerPhone: rt.callerPhone },
-      { name: args.name.trim(), phone: args.phone, email },
+      { name: args.name.trim(), phone: args.phone, email: email ?? undefined },
       { status: 'qualified' },
     );
     if (leadId) {
@@ -164,7 +205,7 @@ export async function executeBookMeeting(
         scheduledAt: new Date(booking.start),
         duration,
         status: 'scheduled',
-        attendees: [{ name: args.name.trim(), email, phone: args.phone }],
+        attendees: [{ name: args.name.trim(), email: email ?? undefined, phone: args.phone }],
         notes: args.notes ?? undefined,
       })
       .returning({ id: scheduledCalls.id });
@@ -220,7 +261,7 @@ export async function executeBookMeeting(
   // She may only claim an email exists if Google actually sent one. Without Domain-Wide
   // Delegation the event is real but the invite is NOT emailed (BookingResult.inviteSent=false)
   // — in that case the truthful line is "the team will send you the details".
-  const inviteSent = booking.inviteSent !== false;
+  const inviteSent = email !== null && booking.inviteSent !== false;
   rt.lastBooking = {
     uid: booking.uid,
     start: booking.start,
@@ -234,17 +275,25 @@ export async function executeBookMeeting(
   const spoken = formatSlotHe(booking.start, now);
   return (
     `Meeting booked: ${spoken} (${duration} minutes).` +
-    (inviteSent
-      ? ` A calendar invite with a video link was emailed to ${email}.`
-      : ` NOTE: the calendar event exists but NO email invite was sent (service-account limitation).`) +
+    (email === null
+      ? ' NOTE: booked WITHOUT an email address, as you chose. The event exists and the lead is' +
+        ' saved against his phone number; no invite was or can be emailed.'
+      : inviteSent
+        ? ` A calendar invite with a video link was emailed to ${email}.`
+        : ` NOTE: the calendar event exists but NO email invite was sent (service-account limitation).`) +
     (dbOk ? '' : ' (Internal record write failed — the meeting itself is confirmed; the team will reconcile.)') +
     ` Confirm to the lead in Hebrew that the meeting is set for ${spoken}` +
-    (inviteSent
-      ? ' and that an invite was sent to their email,'
-      : ' and that the team will email them the meeting details shortly — do NOT claim an invite was already sent,') +
-    ' then, if appropriate, call send_whatsapp_confirmation and/or send_email_confirmation — and' +
-    ' mention a WhatsApp or email message ONLY if the matching tool returned success. Finally say a' +
-    ' warm goodbye and call end_call with reason "meeting_booked".'
+    (email === null
+      ? ' and that the team will be in touch with the details — do NOT ask for his email again, do' +
+        ' NOT apologize for not having it, and do NOT name a channel (email or WhatsApp) unless a' +
+        ' confirmation tool has actually returned success. The meeting is the win; let him go.'
+      : inviteSent
+        ? ' and that an invite was sent to their email,'
+        : ' and that the team will email them the meeting details shortly — do NOT claim an invite was already sent,') +
+    ' then, if appropriate, call send_whatsapp_confirmation' +
+    (email === null ? '' : ' and/or send_email_confirmation') +
+    ' — and mention a WhatsApp or email message ONLY if the matching tool returned success. Finally' +
+    ' say a warm goodbye and call end_call with reason "meeting_booked".'
   );
 }
 

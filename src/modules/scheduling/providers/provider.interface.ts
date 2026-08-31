@@ -30,7 +30,13 @@ export interface SchedulingProvider {
   createBooking(params: {
     start: string;
     serviceId: string;
-    attendee: { name: string; email: string; phone?: string; timezone: string };
+    /**
+     * `email` is OPTIONAL (2026-08-31). A voice lead who cannot get his address across an 8kHz
+     * line still deserves the meeting: `book_meeting` may pass it absent, in which case the event
+     * is created with no attendee (`BookingResult.inviteSent` false) and the confirmation goes out
+     * over WhatsApp instead. Every other caller passes one, and always has.
+     */
+    attendee: { name: string; email?: string; phone?: string; timezone: string };
     employeeId?: string;
     notes?: string;
   }): Promise<BookingResult>;

@@ -1,6 +1,7 @@
 import { llm } from '@livekit/agents';
 import { z } from 'zod';
 import { enqueueOutbound } from '../../../../queues/outbound-sender.queue.js';
+import { resolveWhatsappTemplates } from '../../whatsapp/whatsapp-window.js';
 import { formatSlotHe } from './israel-time.js';
 import { timeboxedEnqueue, timedTool, type ToolRuntimeContext } from './tool-context.js';
 
@@ -106,9 +107,28 @@ export function sendWhatsappConfirmationTool(rt: ToolRuntimeContext) {
             metadata: { source: 'voice-livekit', callId: rt.callId, bookingUid: booking.uid },
           }),
         );
+        // TRUTHFULNESS PRE-FLIGHT (2026-08-31). "Queued" was never the same thing as "will
+        // arrive", and for the lead this tool exists to serve it is usually neither. A caller who
+        // has only ever phoned us has NO open 24h WhatsApp window, so the outbound worker takes the
+        // business-initiated path and needs BOTH a Twilio-capable provider and an approved
+        // `meeting_confirmation` template — otherwise it drops the job with a warn log and returns
+        // success (`resolveWhatsappSendMode` → blocked / no_template / provider_no_templates).
+        // Nothing failed loudly enough for the agent to know, so she promised a message that was
+        // never sent. Both preconditions are readable here for free — the templates come from the
+        // settings already loaded at call start, the provider from env — so we read them and tell
+        // the model the truth instead. This changes only what the MODEL is told; the job is queued
+        // either way, because a lead whose window IS open still gets the freeform message.
+        const canTemplate =
+          Boolean(rt.env.TWILIO_ACCOUNT_SID) &&
+          Boolean(resolveWhatsappTemplates(rt.settings).meeting_confirmation?.contentSid);
         return (
           `WhatsApp confirmation queued for …${booking.phone.slice(-4)}. ` +
-          'You may tell the lead a WhatsApp message is on its way.'
+          (canTemplate
+            ? 'You may tell the lead a WhatsApp message is on its way.'
+            : 'BUT this tenant has no approved WhatsApp template for meeting confirmations, so it ' +
+              'will only be delivered if the lead has messaged us on WhatsApp in the last 24 ' +
+              'hours — which a caller who only ever phoned us has not. Do NOT tell him a WhatsApp ' +
+              'is coming. Say the team will be in touch with the details.')
         );
       }),
   });
@@ -125,12 +145,21 @@ export function sendEmailConfirmationTool(rt: ToolRuntimeContext) {
     execute: (_args, _opts) =>
       timedTool(rt, 'send_email_confirmation', {}, async () => {
         const { booking, queue } = requireBooking(rt);
+        // The meeting can now be booked with no email at all (2026-08-31). There is nowhere to send
+        // this, and the model must not tell him an email is coming.
+        if (!booking.email) {
+          throw new llm.ToolError(
+            'This meeting was booked without an email address, so there is nothing to send to. Do ' +
+              'NOT tell the lead an email is on its way, and do not ask him for the address again.',
+          );
+        }
+        const to = booking.email;
         const mail = emailConfirmation(booking);
         await timeboxedEnqueue(() =>
           enqueueOutbound(queue, {
             tenantId: rt.tenantId,
             channel: 'email',
-            to: booking.email,
+            to,
             content: mail.body,
             subject: mail.subject,
             leadId: rt.leadId ?? undefined,
