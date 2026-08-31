@@ -13,6 +13,11 @@ The Cartesia key is read from .env at runtime and never written to disk.
 """
 import json, os, re, subprocess, sys, tempfile
 
+# Importable both as `python synth.py` and as `import synth` from a round script run from the
+# repo root, where this directory is not otherwise on the path.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from wavcheck import finalize  # noqa: E402
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 
@@ -92,6 +97,14 @@ def synth(text, out_path):
             if os.path.exists(out_path):
                 head = open(out_path, "rb").read(300)
             raise SystemExit(f"synth failed for {out_path}: rc={r.returncode} err={r.stderr[:200]} body={head[:200]!r}")
+        # THE CLIP IS NOT FINISHED UNTIL ITS HEADER IS VALID. Cartesia's /tts/bytes response is a
+        # STREAM, so it carries 0xFFFFFFFF in the RIFF and `data` size fields — the placeholder a
+        # writer emits when it cannot seek back to patch the real length. We used to write those
+        # bytes straight to disk and hand the file to Koren. Browsers disagree about such a file:
+        # some play it, some play noise, some refuse, and none of them say why. Round 7 was 33
+        # clips he could not play at all, and an earlier "the voice was not clear" report was
+        # chased as a mixing bug while this was broken underneath it. See wavcheck.py.
+        finalize(out_path)
         return os.path.getsize(out_path)
     finally:
         os.unlink(body_path)

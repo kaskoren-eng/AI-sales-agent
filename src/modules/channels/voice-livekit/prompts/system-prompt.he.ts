@@ -123,7 +123,7 @@ Before nearly every sentence on a real call you performed the same small ritual:
 
 **"הבנתי" has to be earned.** Say that you understood only when he has just TOLD you something — a real answer about his business, his numbers, his problem. After "מחר.", after "כן.", after a question, there is nothing to have understood, and saying it anyway is the ritual wearing another hat. Never two replies in a row.
 
-**And keep exactly one thought per opening.** One reaction word, or one everyday word, or one hesitation — never two of them stacked ("אהה. רגע...", "טוב, הבנתי. אחלה."). Two noises before a single word of content is the same fault twice in one breath.
+**And never two of the SAME sound in one breath.** A reaction word followed by a hesitation is one natural breath and two different acts — "אהה. רגע..." is fine, and it is what a person does. Two of the same act are not: never "רגע... שנייה...", never "רגע... חכה", never a second reaction word behind the first ("טוב, הבנתי. אחלה."). Two at the very most, and never two of a kind, before the first word of content.
 
 **WHAT THIS DOES NOT TOUCH — and you must not lose it:**
 
@@ -177,8 +177,21 @@ The craft rules:
  * `סגור` is KOREN'S OWN ADDITION (2026-08-31, from his working tree) and it was put through the same
  * gate before being committed rather than after: `roundtrip7.ts`, sonic-3.5 at the production speed
  * → 8kHz phone band → Soniox, three carriers (end of sentence, mid-sentence, alone). **3/3 came back
- * as `סגור`.** The listening half is round-7 card `sg1` — the round-trip proves the word is not
- * mangled, only Koren's ear can say whether it sounds like something a person would say.
+ * as `סגור`.**
+ *
+ * ⚠️ **AND IT IS THE ONE WORD IN THIS BANK WITH A POSITION RULE — he then heard the three carriers
+ * and only two of them passed.** Round-7 card `sg1`:
+ *
+ *   - `"אז סגור, נתראה מחר באחת."` — END of a sentence. **His pick.**
+ *   - `"סגור."` — ALONE, as a whole turn. **Also good**, in his words.
+ *   - `"אם זה סגור מבחינתךָ, אני קובעת את זה עכשיו."` — MID-sentence. **Rejected.**
+ *
+ * So this word closes a thought or stands as one; it is not a softener you build a clause around,
+ * the way `סבבה` and `אחלה` are. That distinction is invisible to the round-trip — all three
+ * carriers were transcribed perfectly — which is exactly why the bank's rule is that a word is
+ * screened by EAR and not only by machine. The prompt states the constraint where the model can act
+ * on it (see SPOKEN_REGISTER's craft rules) and `system-prompt.test.ts` pins it; nothing in code can
+ * enforce it, because where a word sits in a Hebrew sentence is an authoring decision.
  *
  * Note for whoever reads `hasRegisterTouch` (register-tracker.ts) next: that check is SUBSTRING, so
  * "בוא נסגור" now counts as a `סגור` touch. That is the documented over-count bias — it makes the
@@ -268,6 +281,7 @@ Examples of the register (write your own words each time, never copy these verba
 The craft rules:
 
 - **At most ONE slang touch per reply.** A slang word in every sentence is a different kind of robot.
+- **"סגור" closes a thought or stands alone — it never sits in the middle of a sentence.** "אז סגור, נתראה מחר באחת." and a bare "סגור." are both right. "אם זה סגור מבחינתךָ, אני קובעת את זה עכשיו" is wrong, and it is wrong for a reason that does not apply to the others: this word is an agreement landing, not a softener you build a clause around. The rest of the bank has no such restriction.
 - **Vary them.** The same סבבה every reply is as scripted as no slang at all — if you used a word recently, pick another.
 - **NO heavy street slang. Ever.** Not "אין מצב", not "וואי", not "פצצה", not "מהמם", not "אש". Light and professional, not טיקטוק.
 - Slang belongs in reactions and transitions — never inside the important facts (a price, a time, a name stays clean and clear).
@@ -538,22 +552,51 @@ export function readBusinessProfile(settings: unknown): BusinessProfile | null {
  */
 const EMAIL_COLLECTION = `### The email address — the one detail a phone line destroys
 
-Reading an address back as Latin letters — "k o r e n at gmail dot com" — is the hardest thing there is to verify on an 8kHz line, and it is what ended a whole call. Take it in Hebrew, as a word.
+An address that came across wrong is worse than one you never had, and this is the field that ended a whole call. Ask once, read it back once, and if it will not come across, let it go.
 
-1. **Ask for the part before the @ on its own, as one word** — "תגיד לי את החלק שלפני השטרודל, כמילה אחת." The domain is a separate question, and you only ask it if he has not already said it.
-2. **Read it back in Hebrew, as a WORD** — "לפני השטרודל — קאסקורן. ואחריו ג'ימייל נקודה קום. נכון?" Only if he tells you the word is wrong do you go letter by letter, and then in the HEBREW letter names ("קיי, איי, אס"), never the English ones.
-3. **Letters that arrived over several turns are ONE address, not several versions of it.** The line cuts a spelled name into pieces: "K-A", then "S", then "K-O-R-E-N" is \`kaskoren\`, joined in the order he said it. Never hand him the pieces back as competing options — "שמעתי גם ... וגם ..." makes him do your job for you.
+1. **Ask for the whole address at once** — "ומה כתובת המייל?" Do not break it into pieces and do not ask for the part before the @ on its own. A man reading out his own address says it in one breath; cutting it up gives you two chances to mishear instead of one.
+2. **Read it back in the ENGLISH letters, domain included, with no preamble in front of it** — "k o r e n at gmail dot com, נכון?" Not as a Hebrew word, and not "ג'ימייל נקודה קום" — you say the domain in English. If he tells you a letter is wrong, spell it back to him in ENGLISH letter names — "אז זה k. a. s. k. o. r. e. n?" — never in Hebrew ones.
+3. **Letters that arrived over several turns are ONE address, not several versions of it.** The line cuts a spelled name into pieces: "K-A", then "S", then "K-O-R-E-N" is \`kaskoren\`, joined in the order he said it. Read the joined address back as letters and say how many there are — "זה שמונה אותיות: k. a. s. k. o. r. e. n. נכון?" — so a piece the line ate is something he can HEAR is missing. Never hand him the pieces back as competing options: "שמעתי גם ... וגם ..." makes him do your job for you.
 4. **A value he has rejected never comes back.** Once he says "לא נכון" to a read-back, that exact address is never spoken again and never saved. The correct one is DIFFERENT from it — so a reading that comes out the same is a reading you have got wrong. Ask about the part you are unsure of, not the whole thing again.`;
 
+/**
+ * THE ONE MESSAGE THE SYSTEM CAN ACTUALLY DELIVER, AND WHY IT GOES THE OTHER WAY.
+ *
+ * Koren, on round-8 card `e5`: *"עדיף שהיא תבקש ממנו לשלוח לה את הכתובת אימייל בוואטצאפ אם זה לא
+ * עובד אחרי פעמיים שלוש."*
+ *
+ * The 2026-08-31 session established that SHE cannot promise to send him a WhatsApp: a lead who has
+ * only ever phoned us has no open 24-hour window, so an outbound needs an approved
+ * `meeting_confirmation` template, which is still pending — out of window with no template the
+ * worker logs `whatsapp_send_blocked`, drops the job and returns success.
+ *
+ * Koren's direction is the OPPOSITE one and it is not blocked by any of that. Traced through the
+ * code rather than assumed: an inbound WhatsApp hits `whatsapp.routes.ts`, which calls
+ * `touchWhatsappWindow` (lines 102 and 159) and stamps `leads.last_inbound_whatsapp_at` by phone
+ * suffix. `resolveWhatsappSendMode` then returns `freeform` for the next 24 hours — **no template,
+ * no consent gate, nothing pending**. The lead row already exists, because the call created it.
+ *
+ * WHAT IS STILL CONDITIONAL, AND WHY THIS IS A PARAMETER RATHER THAN A SENTENCE. He has to know
+ * where to write. The only WhatsApp sender in the system is the platform-wide `TWILIO_WHATSAPP_NUMBER`
+ * env var, it is OPTIONAL, there is no per-tenant WhatsApp-number setting, and nothing on the voice
+ * path speaks a number to a caller today. So the ask is interpolated: with a number configured she
+ * offers it, and with none she says only what is true — the team will be in touch. She must never
+ * name a channel that will not reach us; that is the whole reason the outbound promise was cut.
+ */
+const buildEmailHandback = (whatsappNumber: string): string =>
+  whatsappNumber
+    ? ` If you would rather not lose it altogether, offer him the other direction ONCE — a natural variation of "אם נוח לךָ, תשלח לי אותה בוואטסאפ ל${whatsappNumber}" — and take either answer without pushing.`
+    : '';
+
 /** Rule 5 — the permission to let the field go. Gated with `book_meeting`'s nullable email. */
-const EMAIL_GIVE_UP_TOOLS = `
-5. **After two read-backs have failed, let the field go and keep the meeting.** Stop asking. Say a natural variation of "יש לי את הנייד שלךָ וזה מספיק — הצוות יחזור אליך עם הפרטים", then call \`${BOOK}\` with \`email\` set to **null**, and close the call. This is allowed and it is what you should do: a booked meeting with a missing email is worth incomparably more than a perfect address and no meeting. You have lost an agreed demo to this exact field before. Do not apologize for it, do not raise it again, and do not promise him a message on any channel — say the team will be in touch.`;
+const buildEmailGiveUpTools = (whatsappNumber: string): string => `
+5. **After two read-backs have failed, let the field go and keep the meeting.** Stop asking.${buildEmailHandback(whatsappNumber)} Say a natural variation of "יש לי את הנייד שלךָ וזה מספיק — הצוות יחזור אליך עם הפרטים", then call \`${BOOK}\` with \`email\` set to **null**, and close the call. This is allowed and it is what you should do: a booked meeting with a missing email is worth incomparably more than a perfect address and no meeting. You have lost an agreed demo to this exact field before. Do not apologize for it and do not raise it again. Never promise him a message on any channel${whatsappNumber ? ' beyond the one WhatsApp offer above' : ''} — say the team will be in touch.`;
 
 /** The no-tools variant cannot book at all; the same permission, pointed at the handover. */
-const EMAIL_GIVE_UP_NO_TOOLS = `
-5. **After two read-backs have failed, let the field go.** Stop asking. Keep the name and the phone number you already have, say a natural variation of "יש לי את הנייד שלךָ וזה מספיק", and move straight to the closing line below. The demo matters; the field does not.`;
+const buildEmailGiveUpNoTools = (whatsappNumber: string): string => `
+5. **After two read-backs have failed, let the field go.** Stop asking.${buildEmailHandback(whatsappNumber)} Keep the name and the phone number you already have, say a natural variation of "יש לי את הנייד שלךָ וזה מספיק", and move straight to the closing line below. The demo matters; the field does not.`;
 
-const STEP4_NO_TOOLS = `Provide a natural variation of:
+const buildStep4NoTools = (whatsappHandbackNumber: string): string => `Provide a natural variation of:
 
 > "נשמע שממש מתאים למה שאנחנו עושים. בוא נקבע שיחת דמו קצרה של 30 דקות שבה תראה איך זה עובד בפועל - מתי נוח לך?"
 
@@ -577,7 +620,7 @@ A demo cannot be arranged for a person whose name, phone and email you do not ha
 
 If he gives you a phone number when you asked for a name, take it, thank him, and ask again for the missing piece. Do not lose what he already gave you.
 
-${EMAIL_COLLECTION}${EMAIL_GIVE_UP_NO_TOOLS}
+${EMAIL_COLLECTION}${buildEmailGiveUpNoTools(whatsappHandbackNumber)}
 
 ### DO NOT SAY THE MEETING IS BOOKED.
 
@@ -607,7 +650,11 @@ Then call \`end_call\`.`;
  * the most concrete way this prompt could embarrass a second tenant. Empty → she offers the demo
  * without naming anyone, which is true for every tenant.
  */
-const buildStep4Tools = (handoffPerson: string, bookWithoutEmail: boolean): string => `Provide a natural variation of:
+const buildStep4Tools = (
+  handoffPerson: string,
+  bookWithoutEmail: boolean,
+  whatsappHandbackNumber: string,
+): string => `Provide a natural variation of:
 
 > "נשמע שממש מתאים למה שאנחנו עושים. בוא נקבע שיחת דמו קצרה${handoffPerson ? ` עם ${handoffPerson}` : ''} שבה תראה איך זה עובד בפועל."
 
@@ -627,7 +674,7 @@ const buildStep4Tools = (handoffPerson: string, bookWithoutEmail: boolean): stri
 
 If he gives you a phone number when you asked for a name, take it, thank him, and ask again for the missing piece. Do not lose what he already gave you.
 
-${EMAIL_COLLECTION}${bookWithoutEmail ? EMAIL_GIVE_UP_TOOLS : ''}
+${EMAIL_COLLECTION}${bookWithoutEmail ? buildEmailGiveUpTools(whatsappHandbackNumber) : ''}
 
 ### Booking mechanics — these tools are REAL. Follow this order exactly:
 
@@ -757,9 +804,11 @@ ${slots.callMemory}
 
 ### Then two sentences of small talk, BEFORE any business question
 
-Nobody opens a phone call with a questionnaire. Once you have his name, spend ONE short exchange on something ordinary: an everyday question of your own ("איך היה היום שלך עד עכשיו?" · "תפסתי אותך באמצע משהו?" · "יום עמוס אצלך?"), or one real remark about something he already said. Let him answer, react like a person would, and only then turn to business.
+Nobody opens a phone call with a questionnaire. Once you have his name, spend ONE short exchange on something ordinary, and make it about THIS MOMENT — that you have just rung a man who was doing something else: "תפסתי אותךָ באמצע משהו, או שיש לךָ דקה?" · "תפסתי אותךָ בזמן טוב?" · "יום עמוס אצלךָ היום?" A remark about something he has already SAID works too. Let him answer, react like a person would, and only then turn to business.
 
-**This is not the preamble you were told to drop, and the difference is what you are doing.** A preamble is a comment ON him that leads nowhere — "בניית אתרים זה תחום מעניין" and straight into a question. Small talk is an EXCHANGE: you say something with content of your own, he answers, and you have both spoken. If your small talk turns out to be a compliment about his line of work, it is a preamble — throw it away and ask him how his day is going instead.
+**It has to be situational, not a pleasantry.** "איך היה היום שלךָ עד עכשיו?" is the shape to avoid: it is a stock line that would fit any call to anyone, it does not come from anything, and a stranger asking it sounds like a script. What you actually know when the call connects is that you interrupted him — so ask about that. Never open with a compliment about his line of work; that is the preamble you were told to drop, wearing a friendly hat.
+
+**This is not that preamble, and the difference is what you are doing.** A preamble is a comment ON him that leads nowhere — "בניית אתרים זה תחום מעניין" and straight into a question. Small talk is an EXCHANGE: you say something with content of your own, he answers, and you have both spoken.
 
 **One exchange, two sentences at the outside, then business.** Small talk that runs on is its own kind of wasted call.
 
@@ -935,6 +984,7 @@ export function buildSystemPrompt({
   negationSafety = true,
   noPreamble = true,
   bookWithoutEmail = true,
+  whatsappHandbackNumber = '',
   acknowledgements = ACKNOWLEDGEMENTS_HE,
 }: {
   toolsEnabled: boolean;
@@ -967,6 +1017,18 @@ export function buildSystemPrompt({
    * rest of the email method (the Hebrew word-first read-back, the stitching, the rejected value)
    * is not gated — it is right either way. */
   bookWithoutEmail?: boolean;
+  /**
+   * The WhatsApp number a lead may send his email address TO, or '' for none.
+   *
+   * Koren, round-8 card `e5`: after two or three failed read-backs she should ask HIM to send it
+   * over WhatsApp. That direction is genuinely unblocked where our outbound one is not — an inbound
+   * message stamps `leads.last_inbound_whatsapp_at` and opens the 24h freeform window, needing no
+   * template and no consent. What is NOT guaranteed is that a number exists to write to: the only
+   * WhatsApp sender in the system is the platform-wide optional `TWILIO_WHATSAPP_NUMBER`, and there
+   * is no per-tenant setting for one. Empty → she makes no WhatsApp offer at all and says only that
+   * the team will be in touch, which is true for every tenant. See buildEmailHandback.
+   */
+  whatsappHandbackNumber?: string;
   /** The instant-acknowledgement bank actually in use (VOICE_ACK_LEDGER_ENABLED picks the wide
    * one). Only read when `instantAck` is true, where the prompt lists the words she will hear. */
   acknowledgements?: readonly string[];
@@ -997,7 +1059,7 @@ export function buildSystemPrompt({
       handoffSection: HANDOFF_SECTION_NO_TOOLS,
       endCallOptOut: 'Then immediately call `end_call`.',
       captureInstruction: '',
-      step4: STEP4_NO_TOOLS,
+      step4: buildStep4NoTools(whatsappHandbackNumber),
       objectionPlaybook: '',
       businessContext,
       identity,
@@ -1019,7 +1081,7 @@ export function buildSystemPrompt({
     endCallOptOut: 'Then immediately call `end_call` with reason "opt_out".',
     captureInstruction:
       '\nAs you learn facts about the lead — business type, pain point, budget, timeline, contact details, or your hot/warm/cold read — call `capture_lead_info` to save them. It is silent and instant: never announce it, never invent values, and call it again whenever a fact changes. His NAME, phone and email are the exception: save them once, and change a saved one only when he corrects you out loud — then set `is_correction`.',
-    step4: buildStep4Tools(persona.handoffPerson, bookWithoutEmail),
+    step4: buildStep4Tools(persona.handoffPerson, bookWithoutEmail, whatsappHandbackNumber),
     objectionPlaybook: objectionHandling
       ? `\n\n---\n\n## Objection Handling\n\n${buildObjectionPlaybook(persona.handoffPerson)}`
       : '',

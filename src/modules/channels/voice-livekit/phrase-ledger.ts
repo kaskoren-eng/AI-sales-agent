@@ -85,6 +85,36 @@ export function countRepeatedOpeners(agentLines: string[]): number {
   return repeated;
 }
 
+/**
+ * THE NUMBER THAT CAN ACTUALLY MOVE — how many times she opened a reply with the same word she
+ * opened the previous one with.
+ *
+ * Koren, 2026-08-31: *"צריך לוודא שהסוכן לא חוזר על אותה מילה כל פעם בתחילת המשפט ('אוקיי')."*
+ * `countRepeatedOpeners` above cannot see that complaint, and it is worth being exact about why:
+ * it counts DISTINCT openers used twice or more across a whole call, so a three-word bank over
+ * thirty-seven turns must score 3 and a five-word bank must score 5 — whatever the ORDER. Flawless
+ * rotation and the same word every single turn are the same number to it. It read 4 on the call he
+ * is describing and it would have read 4 if the rotation had been perfect.
+ *
+ * This counts ADJACENT PAIRS, which is the shape of the complaint: with the no-repeat rule on
+ * (VOICE_OPENER_NO_REPEAT_ENABLED, see spoken-openers.ts) it should be 0, and any non-zero reading
+ * is either a genuine escape or a mechanism nobody wired into SpokenOpenerTracker. Both are worth
+ * knowing, which is what makes it a useful metric and the other one a constant.
+ *
+ * Measured on the transcript rather than on the ledger on purpose: the ledger is one of four
+ * things that can put a word at the head of a reply, and the transcript is all of them.
+ */
+export function countConsecutiveOpenerRepeats(agentLines: string[]): number {
+  let repeats = 0;
+  let previous: string | null = null;
+  for (const line of agentLines) {
+    const opener = leadingOpener(line);
+    if (opener !== null && opener === previous) repeats++;
+    previous = opener;
+  }
+  return repeats;
+}
+
 /** The first token of a line, when a punctuation mark separates it from what follows. */
 export function leadingOpener(line: string): string | null {
   const match = /^\s*([^\s.,!?…׃]+)\s*[.,!?…׃]/u.exec(line.replace(NIQQUD, ''));

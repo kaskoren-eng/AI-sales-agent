@@ -622,6 +622,25 @@ describe('Keren — spoken register (2026-08-27)', () => {
     // `סגור` is Koren's own 2026-08-31 addition. Screened before it was committed, not after:
     // roundtrip7.ts, 3/3 carriers came back as `סגור` through the 8kHz phone band.
     expect(SPOKEN_REGISTER_SLANG).toEqual(['סבבה', 'אחלה', 'מעולה', 'בקטנה', 'על הדרך', 'סגור']);
+  });
+
+  it("סגור has a POSITION rule the rest of the bank does not — round-7 card sg1", () => {
+    // Three carriers, and only two survived his ear:
+    //   A "אז סגור, נתראה מחר באחת."                     end of sentence  <- his pick
+    //   C "סגור."                                        alone            <- "also good"
+    //   B "אם זה סגור מבחינתךָ, אני קובעת את זה עכשיו."  mid-sentence     <- REJECTED
+    // The round-trip transcribed all three perfectly, so this is invisible to the machine screen
+    // and could only ever come from a person listening. Recorded in the prompt because nothing in
+    // code can enforce where a word sits in a Hebrew sentence.
+    expect(SYSTEM_PROMPT_HE).toContain(
+      '"סגור" closes a thought or stands alone — it never sits in the middle of a sentence.',
+    );
+    expect(SYSTEM_PROMPT_HE).toContain('"אז סגור, נתראה מחר באחת."');
+    expect(SYSTEM_PROMPT_HE).toContain('"אם זה סגור מבחינתךָ, אני קובעת את זה עכשיו" is wrong');
+    // …and the restriction is scoped to this ONE word. סבבה and אחלה are softeners and the
+    // section's own example builds a clause around one of them.
+    expect(SYSTEM_PROMPT_HE).toContain('The rest of the bank has no such restriction.');
+    expect(SYSTEM_PROMPT_HE).toContain('אם זה סבבה מבחינתך, נתקדם משם.');
     for (const word of SPOKEN_REGISTER_SLANG) {
       expect(SYSTEM_PROMPT_HE).toContain(word);
     }
@@ -847,18 +866,32 @@ describe('the 2026-08-31 call — the receipt ritual, and what must survive it',
     expect(SYSTEM_PROMPT_HE).toMatch(/\("נעים מאוד קורן"/u);
   });
 
-  it('note 4 — one opening sound per reply, never two stacked', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/keep exactly one thought per opening/u);
-    expect(SYSTEM_PROMPT_HE).toContain('אהה. רגע...');
+  it('note 4 — KOREN OVERRULED HIS OWN NOTE: the pair he picked is allowed, the stutter is not', () => {
+    // Round-7 card `n4a`: he heard "אהה. רגע... בוא נבדוק…" against the single-sound version we
+    // had shipped and chose the DOUBLE. "אהה ורגע יכולים להתאים ביחד, אבל רגע ושניה או רגע וחכה
+    // זה מילים שלא יכולות ללכת ביחד". The code half is turn-opener.ts `mayPairInOneBreath`.
+    expect(SYSTEM_PROMPT_HE).toMatch(/never two of the SAME sound in one breath/u);
+    expect(SYSTEM_PROMPT_HE).toContain('"אהה. רגע..." is fine');
+    expect(SYSTEM_PROMPT_HE).toContain('never "רגע... שנייה..."');
+    expect(SYSTEM_PROMPT_HE).toContain('never "רגע... חכה"');
   });
 
-  it('note 7 — small talk before business, and why it is NOT the preamble', () => {
+  it('note 7 — small talk must be SITUATIONAL; the generic pleasantry is out (card n7a)', () => {
+    // He was given three openers and chose C, the one about the moment of the call:
+    //   A "ספר לי קצת על העסק"                       — straight to business
+    //   B "איך היה היום שלךָ עד עכשיו?"              — a generic pleasantry, REJECTED
+    //   C "תפסתי אותךָ באמצע משהו, או שיש לךָ דקה?"  <- his pick
+    // Note 7 itself had offered the generic form as an acceptable fallback. His ear says no, and
+    // on a question of how she sounds the ear is the acceptance test.
     expect(SYSTEM_PROMPT_HE).toMatch(/two sentences of small talk, BEFORE any business question/u);
     expect(SYSTEM_PROMPT_HE).toMatch(/Small talk is an EXCHANGE/u);
-    // The distinction is the hard part, so his own bad example is quoted inside the rule.
-    expect(SYSTEM_PROMPT_HE).toMatch(
-      /If your small talk turns out to be a compliment about his line of work, it is a preamble/u,
-    );
+    expect(SYSTEM_PROMPT_HE).toContain('תפסתי אותךָ באמצע משהו, או שיש לךָ דקה?');
+    expect(SYSTEM_PROMPT_HE).toMatch(/It has to be situational, not a pleasantry/u);
+    // The rejected line is NAMED as the shape to avoid rather than merely deleted — a deleted
+    // example teaches the model nothing, and this is the obvious thing it would reach for.
+    expect(SYSTEM_PROMPT_HE).toContain('"איך היה היום שלךָ עד עכשיו?" is the shape to avoid');
+    // And note 3 stays enforced inside note 7, which is where the two collide.
+    expect(SYSTEM_PROMPT_HE).toMatch(/Never open with a compliment about his line of work/u);
     expect(SYSTEM_PROMPT_HE).toMatch(/One exchange, two sentences at the outside/u);
   });
 
@@ -929,32 +962,66 @@ describe('the email collection method', () => {
     for (const p of BOTH) expect(p).toContain('### The email address');
   });
 
-  it('names the Latin-letter read-back as the thing that ended a call', () => {
+  /**
+   * ROUND 8 — A CHANGE THAT WAS LARGELY REVERTED BY EAR, pinned so it is not re-derived.
+   *
+   * The 2026-08-31 email branch replaced the Latin-letter method with a Hebrew one: ask for the
+   * local part alone as one word, read it back as the Hebrew word `קאסקורן`, spell in Hebrew
+   * letter names, say `ג'ימייל נקודה קום`. The round-8 measurement already argued against it
+   * (`קאסקורן` came back 0/3 through the 8kHz band; Hebrew letter names lost a letter where the
+   * English ones did not) and Koren's ear then agreed on every card: e1 A, e2 A, e2b B, e4 A, and
+   * `קאסקורן` rejected in all three carriers on e6.
+   *
+   * The reasoning that produced the Hebrew method was sound and the method was wrong. These tests
+   * exist so the next session does not reason its way back into it.
+   */
+  it('e1 — asks for the WHOLE address at once, not the part before the @', () => {
     for (const p of BOTH) {
-      expect(p).toMatch(/k o r e n at gmail dot com/u);
-      expect(p).toMatch(/hardest thing there is to verify/u);
+      expect(p).toMatch(/Ask for the whole address at once/u);
+      expect(p).toContain('ומה כתובת המייל?');
+      expect(p).toMatch(/Do not break it into pieces/u);
+      expect(p).not.toContain('תגיד לי את החלק שלפני השטרודל, כמילה אחת');
     }
   });
 
-  it('asks for the local part alone, as one word, and the domain separately', () => {
+  it('e2 + e2b — reads back in ENGLISH letters, domain in English, no preamble', () => {
     for (const p of BOTH) {
-      expect(p).toMatch(/תגיד לי את החלק שלפני השטרודל, כמילה אחת/u);
-      expect(p).toMatch(/The domain is a separate question/u);
+      expect(p).toMatch(/Read it back in the ENGLISH letters, domain included/u);
+      expect(p).toContain('k o r e n at gmail dot com, נכון?');
+      expect(p).toMatch(/with no preamble in front of it/u);
     }
   });
 
-  it('reads it back in Hebrew as a WORD, and spells in HEBREW letter names only on a miss', () => {
+  it('e4 + e6 — English letter names on a miss, and קאסקורן nowhere at all', () => {
     for (const p of BOTH) {
-      expect(p).toMatch(/לפני השטרודל — קאסקורן\. ואחריו ג'ימייל נקודה קום\. נכון\?/u);
-      expect(p).toMatch(/HEBREW letter names/u);
-      expect(p).toMatch(/never the English ones/u);
+      expect(p).toContain('אז זה k. a. s. k. o. r. e. n?');
+      expect(p).toMatch(/ENGLISH letter names/u);
+      expect(p).toMatch(/never in Hebrew ones/u);
+      // The invented transliteration the whole Hebrew method rested on.
+      expect(p).not.toContain('קאסקורן');
+      // The Hebrew spoken domain, rejected on e2b. It appears ONCE, inside its own prohibition —
+      // the same shape as the banned `רק לוודא` variants, because a rule that never names the
+      // wrong form is a rule the model cannot recognise it is breaking.
+      expect(p.split("ג'ימייל נקודה קום").length - 1).toBe(1);
+      expect(p).toContain("and not \"ג'ימייל נקודה קום\" — you say the domain in English");
+      // Hebrew letter names as the fallback alphabet, rejected on e4.
+      expect(p).not.toContain('קיי, איי, אס');
     }
   });
 
-  it('treats letters spread over several turns as ONE address, and bans the competing-options line', () => {
-    // Verbatim from the call: "שמעתי גם k a f וגם k o r e n" — she handed him her own job.
+  it('e3 — one address, a letter COUNT to check it by, and no competing options', () => {
+    // Card e3 got NO verdict: he endorsed neither variant. A ("שמעתי גם k a f וגם k o r e n") was
+    // already banned; B was the Hebrew word, rejected with the rest of that method. So a third
+    // form was needed. This one keeps the English letters he did endorse and adds the handle
+    // neither variant gave him — how many letters she believes there are — so a fragment the line
+    // ate is something he can HEAR is missing, without being asked to arbitrate between readings.
+    //
+    // ⚠️ UNHEARD. This wording is a proposal, not a verdict. Round 9 card `e3c` is where his ear
+    // settles it, and this test pins only that the proposal is present and self-consistent.
     for (const p of BOTH) {
       expect(p).toMatch(/ONE address, not several versions of it/u);
+      expect(p).toContain('זה שמונה אותיות: k. a. s. k. o. r. e. n. נכון?');
+      expect(p).toMatch(/so a piece the line ate is something he can HEAR is missing/u);
       expect(p).toMatch(/שמעתי גם \.\.\. וגם \.\.\./u);
     }
   });
@@ -995,17 +1062,57 @@ describe('rule 5 — abandon the field, keep the meeting', () => {
     expect(TOOLS_PROMPT).toMatch(/Name and phone are always required/u);
   });
 
-  it('promises NO channel — the WhatsApp confirmation is blocked for a cold caller today', () => {
+  const rule5Of = (prompt: string): string =>
+    prompt.slice(
+      prompt.indexOf('5. **After two read-backs have failed'),
+      prompt.indexOf('### Booking mechanics'),
+    );
+
+  it('promises NO OUTBOUND channel — that direction is still blocked for a cold caller', () => {
     // Established 2026-08-31 from whatsapp-window.ts + outbound-sender.worker.ts: no open 24h
     // window and no approved `meeting_confirmation` template → whatsapp_send_blocked, job dropped,
-    // job returns success. So "אשלח לך אישור בוואטסאפ" is a promise the system cannot keep.
-    const rule5 = TOOLS_PROMPT.slice(
-      TOOLS_PROMPT.indexOf('5. **After two read-backs have failed'),
-      TOOLS_PROMPT.indexOf('### Booking mechanics'),
-    );
-    expect(rule5).toMatch(/do not promise him a message on any channel/u);
+    // job returns success. So "אשלח לך אישור בוואטסאפ" is a promise the system cannot keep, and
+    // the default build (no number configured) names no channel at all.
+    const rule5 = rule5Of(TOOLS_PROMPT);
+    expect(rule5).toMatch(/Never promise him a message on any channel — say the team/u);
     expect(rule5).not.toMatch(/וואטסאפ/u);
     expect(rule5).toMatch(/הצוות יחזור אליך עם הפרטים/u);
+  });
+
+  it('e5 — with a number configured she asks HIM to send it, which needs no template', () => {
+    // Koren: "עדיף שהיא תבקש ממנו לשלוח לה את הכתובת אימייל בוואטצאפ אם זה לא עובד אחרי פעמיים
+    // שלוש". The DIRECTION is what makes it possible: an inbound message stamps
+    // leads.last_inbound_whatsapp_at (whatsapp.routes.ts -> touchWhatsappWindow) and opens the 24h
+    // freeform window by itself — no template, no consent gate, nothing pending Meta approval.
+    const withNumber = buildSystemPrompt({
+      toolsEnabled: true,
+      whatsappHandbackNumber: '+972500000000',
+    });
+    const rule5 = rule5Of(withNumber);
+    expect(rule5).toContain('אם נוח לךָ, תשלח לי אותה בוואטסאפ ל+972500000000');
+    expect(rule5).toMatch(/offer him the other direction ONCE/u);
+    expect(rule5).toMatch(/take either answer without pushing/u);
+    // Still no outbound promise, and the honest fallback still closes the rule.
+    expect(rule5).toMatch(/Never promise him a message on any channel beyond the one WhatsApp offer above/u);
+    expect(rule5).toMatch(/הצוות יחזור אליך עם הפרטים/u);
+  });
+
+  it('e5 — the offer is on the no-tools prompt too, where there is no booking to keep', () => {
+    const withNumber = buildSystemPrompt({
+      toolsEnabled: false,
+      whatsappHandbackNumber: '+972500000000',
+    });
+    expect(withNumber).toContain('תשלח לי אותה בוואטסאפ ל+972500000000');
+  });
+
+  it('e5 — NO NUMBER, NO OFFER: she never names a channel that will not reach us', () => {
+    // TWILIO_WHATSAPP_NUMBER is optional and platform-wide, and there is no per-tenant WhatsApp
+    // number setting. The empty default has to be the safe one, because it is what most tenants
+    // will build with.
+    for (const p of [SYSTEM_PROMPT_HE, TOOLS_PROMPT]) {
+      expect(p).not.toMatch(/תשלח לי אותה בוואטסאפ/u);
+    }
+    expect(rule5Of(buildSystemPrompt({ toolsEnabled: true }))).not.toMatch(/וואטסאפ/u);
   });
 
   it('its spoken line breaks none of the rules the persona merge just landed', () => {
@@ -1026,7 +1133,7 @@ describe('rule 5 — abandon the field, keep the meeting', () => {
     expect(off).not.toMatch(/The email is the ONE argument that may be/u);
     // Rules 1–4 are right either way and must survive.
     expect(off).toContain('### The email address');
-    expect(off).toMatch(/לפני השטרודל — קאסקורן/u);
+    expect(off).toContain('k o r e n at gmail dot com, נכון?');
     expect(off).toMatch(/ONE address, not several versions of it/u);
     expect(off).toMatch(/never spoken again and never saved/u);
     // And the hard requirement is back, unqualified.

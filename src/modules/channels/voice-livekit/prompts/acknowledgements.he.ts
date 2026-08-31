@@ -1,3 +1,5 @@
+import { openerKey } from '../spoken-openers.js';
+
 /**
  * The word she says the instant she has heard you — before she knows what to answer.
  *
@@ -129,21 +131,48 @@ export class AcknowledgementLedger {
    * used when it is earned AND the previous one was not also a claim, so even a caller who tells
    * her his life story hears "הבנתי אותך" at most every other turn.
    */
-  next(opts: { earned?: boolean } = {}): string {
+  next(opts: { earned?: boolean; avoid?: string | null } = {}): string {
+    const avoid = opts.avoid ?? null;
     if (opts.earned === true && this.#earned.length > 0 && !this.#lastWasEarned) {
       if (this.#earnedDeck.length === 0) this.#earnedDeck = this.#shuffled(this.#earned);
-      const claim = this.#earnedDeck.pop()!;
-      this.#last = claim;
-      this.#lastWasEarned = true;
-      this.#counts.set(claim, (this.#counts.get(claim) ?? 0) + 1);
-      return claim;
+      const claim = this.#take(this.#earnedDeck, avoid);
+      if (claim !== null) {
+        this.#last = claim;
+        this.#lastWasEarned = true;
+        this.#counts.set(claim, (this.#counts.get(claim) ?? 0) + 1);
+        return claim;
+      }
+      // Every claim in the deck would repeat the last thing he heard. Fall through to a plain
+      // receipt rather than say it again — a receipt is always true, so nothing is lost.
     }
     if (this.#deck.length === 0) this.#refill();
-    const word = this.#deck.pop()!;
+    const word = this.#take(this.#deck, avoid) ?? this.#deck.pop()!;
     this.#last = word;
     this.#lastWasEarned = false;
     this.#counts.set(word, (this.#counts.get(word) ?? 0) + 1);
     return word;
+  }
+
+  /**
+   * Takes the next word off the end of a deck, skipping past one that would repeat `avoid`.
+   *
+   * `avoid` is the head-word of the PREVIOUS reply as the caller heard it — which may have come
+   * from the nod, from a thinking filler or from the model itself, none of which touch this deck.
+   * See SpokenOpenerTracker: the deck's own rotation was already measured clean, and the repeats
+   * Koren heard came from mechanisms it could not see.
+   *
+   * With `avoid` null this is exactly `deck.pop()`, so the 2026-08-30 behaviour is unchanged when
+   * nothing is being avoided. Returns null when every remaining word is blocked.
+   */
+  #take(deck: string[], avoid: string | null): string | null {
+    if (deck.length === 0) return null;
+    for (let i = deck.length - 1; i >= 0; i--) {
+      const word = deck[i]!;
+      if (avoid !== null && openerKey(word) === openerKey(avoid)) continue;
+      deck.splice(i, 1);
+      return word;
+    }
+    return null;
   }
 
   /** Distinct acknowledgements spoken 2+ times so far — what repeatedPhraseCount was missing. */

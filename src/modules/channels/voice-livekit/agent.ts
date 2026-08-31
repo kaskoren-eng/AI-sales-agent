@@ -44,7 +44,13 @@ import { SPOKEN_REGISTER_SLANG, buildSystemPrompt, readBusinessProfile } from '.
 import { buildGreeting, isDefaultPersona, readAgentPersona } from './persona.js';
 import { buildVoicemailMessage } from './call-state-lines.he.js';
 import { MAX_FILLERS_PER_CALL, ThinkingFillerLedger } from './prompts/thinking-fillers.he.js';
-import { allowsArmedFiller, chooseTurnOpener, chunkCallsTool } from './turn-opener.js';
+import { SpokenOpenerTracker, observeFirstOpener } from './spoken-openers.js';
+import {
+  allowsArmedFiller,
+  chooseTurnOpener,
+  chunkCallsTool,
+  type TurnOpener,
+} from './turn-opener.js';
 import { DICTATION_NOD, isDictationTurn } from './dictation.js';
 import { EngagementTracker, callerSharedSubstance } from './engagement.js';
 import { EmailDictation } from './email-dictation.js';
@@ -307,13 +313,24 @@ class ClickScalesAgent extends voice.Agent {
   #spokenAck: string | null = null;
 
   /**
-   * Did THIS step already put a sound at the head of the reply — a receipt or a nod?
+   * The opener THIS step put at the head of the reply, or `{ kind: 'silent' }`.
    *
    * Separate from `#spokenAck` because a NOD sets no ack (there is no echo to drop) and still
    * occupies the same position in the breath. ttsNode reads it to decide whether an armed
-   * hesitation may also land there. See the "ONE OPENING SOUND PER BREATH" note in ttsNode.
+   * hesitation may share that breath. See the "TWO SOUNDS, ONE BREATH" note in ttsNode.
    */
-  #openedWithSound = false;
+  #opener: TurnOpener = { kind: 'silent' };
+
+  /**
+   * The head-word of the PREVIOUS reply as the caller heard it — one per call.
+   *
+   * Koren, 2026-08-31: *"צריך לוודא שהסוכן לא חוזר על אותה מילה כל פעם בתחילת המשפט."* The
+   * acknowledgement deck was measured innocent (see spoken-openers.ts); what was missing is that
+   * the deck, the dictation nod, the thinking fillers and the model's own word all write to this
+   * one position and none of them could see the others. This is the shared memory that makes the
+   * comparison expressible at all.
+   */
+  readonly spokenOpeners = new SpokenOpenerTracker();
 
   #lastAck: string | null = null;
 
@@ -378,7 +395,7 @@ class ClickScalesAgent extends voice.Agent {
       // turn-opener mechanism below exists to undo a problem the acknowledgement creates, so with
       // the acknowledgement off it has nothing to do.
       this.#spokenAck = null;
-      this.#openedWithSound = false;
+      this.#opener = { kind: 'silent' };
       return inner;
     }
 
@@ -395,6 +412,10 @@ class ClickScalesAgent extends voice.Agent {
       // finished his sentence — see dictation.ts and the 050- / "טוב, הבנתי." exchange it quotes.
       midDictation: env.VOICE_DICTATION_NOD_ENABLED && isDictationTurn(this.lastUserUtterance),
       nod: DICTATION_NOD,
+      // The head-word of the previous reply, whatever produced it — see SpokenOpenerTracker. Null
+      // switches the whole no-repeat rule off (VOICE_OPENER_NO_REPEAT_ENABLED), restoring the
+      // 2026-08-31 behaviour exactly.
+      avoidOpener: env.VOICE_OPENER_NO_REPEAT_ENABLED ? this.spokenOpeners.avoid : null,
       // Did he actually TELL her something? Only then may the receipt claim comprehension. Same
       // source and same staleness as midDictation above — the committed caller turn.
       callerShared:
@@ -411,9 +432,9 @@ class ClickScalesAgent extends voice.Agent {
       // Nothing for dropAckEcho to remove: a hesitation is not a word the model would echo.
       this.#spokenAck = null;
     }
-    // A receipt and a nod both occupy the head of the breath; a hesitation is itself the filler
-    // (and already clears the armed one below), and 'silent' leaves the position free.
-    this.#openedWithSound = !allowsArmedFiller(opener);
+    // ttsNode reads this to decide whether an armed hesitation may share the breath, and to record
+    // what the caller heard at the head of the reply.
+    this.#opener = opener;
     if (opener.kind === 'nod') {
       // Logged because it is invisible otherwise: the nod and the receipt are both one short word
       // at the head of a reply, and only this line says which act she performed.
@@ -481,26 +502,39 @@ class ClickScalesAgent extends voice.Agent {
     let filler = this.pendingFiller;
     this.pendingFiller = null;
 
-    // ONE OPENING SOUND PER BREATH. Koren, 2026-08-31: *"שימוש במילות מילוי יותר מדי ובכפילות
-    // נשמע רובוטי ומוזר. מילת מילוי צריכה להגיע באופן חד פעמי בכל משפט."*
+    // TWO SOUNDS, ONE BREATH — and whether they go together, not how many there are.
     //
-    // The transcript he was describing:  [21s] "טוב,"  …  [23s] "אהה. רגע..."  — an
-    // acknowledgement from llmNode and an armed hesitation from the think-timer, glued together by
-    // `withFiller`'s leadIn into one utterance. Two noises before a single word of content.
+    // The transcript that started this: [21s] "טוב," … [23s] "אהה. רגע..." — an acknowledgement
+    // from llmNode and an armed hesitation from the think-timer, glued together by `withFiller`'s
+    // leadIn. We read Koren's note as a hard cap of one sound per breath and shipped that.
     //
-    // The `hesitation` opener already refuses to double up (it clears pendingFiller). The `ack` and
-    // `nod` openers did not, because the leadIn plumbing was built to let the acknowledgement leave
-    // FIRST and unheld — which it still does. What changes is that it now leaves ALONE: if this
-    // step already put a sound at the head of the reply, the armed hesitation is dropped, unspoken
-    // and uncharged, and the call keeps its budget for a turn that opens with nothing.
-    const openedWithSound = this.#openedWithSound;
-    this.#openedWithSound = false;
-    if (filler && openedWithSound) {
+    // He then LISTENED to the three versions (round-7 card `n4a`) and chose the double:
+    // *"אהה ורגע יכולים להתאים ביחד, אבל רגע ושניה או רגע וחכה זה מילים שלא יכולות ללכת ביחד."*
+    // So the cap is gone and `mayPairInOneBreath` is the rule — a receipt may be followed by a
+    // hesitation (two different acts), two hesitations may never stack (the same act twice, which
+    // is the stutter), and a nod classifies as a hesitation so it is refused by the same rule.
+    // VOICE_FILLER_PAIRING_ENABLED=false restores the cap exactly. See turn-opener.ts.
+    const opener = this.#opener;
+    this.#opener = { kind: 'silent' };
+    if (filler && !allowsArmedFiller(opener, filler, { pairing: env.VOICE_FILLER_PAIRING_ENABLED })) {
       console.log(
-        `thinking_filler ${JSON.stringify({ filler, dropped: 'opener_already_spoken', spoken: false })}`,
+        `thinking_filler ${JSON.stringify({
+          filler,
+          dropped: 'sounds_do_not_pair',
+          opener: opener.kind === 'silent' ? null : opener.word,
+          spoken: false,
+        })}`,
       );
       filler = null;
     }
+
+    // WHAT THE CALLER WILL HEAR AT THE HEAD OF THIS REPLY, so the NEXT turn can avoid repeating it.
+    // Our own sound when there is one, otherwise the armed hesitation, otherwise the model's first
+    // word — observed below without buffering. See SpokenOpenerTracker.
+    if (opener.kind !== 'silent') this.spokenOpeners.record(opener.word);
+    else if (filler) this.spokenOpeners.record(filler);
+    else this.spokenOpeners.record(null);
+    const watchModelOpener = opener.kind === 'silent' && filler === null;
 
     // Both ends of the speech path, on one line per reply. See timeFirstChunk() for why: dead air
     // is end-of-turn + <something> + TTS first byte, and `<something>` behaved differently on a
@@ -528,9 +562,17 @@ class ClickScalesAgent extends voice.Agent {
               filler,
               dropAckEcho(
                 ack,
-                timeFirstChunk(text as AsyncIterable<string>, startedAt, (ms) => {
-                  llmFirstChunk = ms;
-                }),
+                timeFirstChunk(
+                  watchModelOpener
+                    ? observeFirstOpener(text as AsyncIterable<string>, (word) =>
+                        this.spokenOpeners.record(word),
+                      )
+                    : (text as AsyncIterable<string>),
+                  startedAt,
+                  (ms) => {
+                    llmFirstChunk = ms;
+                  },
+                ),
               ),
               {
                 leadIn: ack ? `${ack} ` : null,
@@ -1372,6 +1414,15 @@ export default defineAgent({
           // Permission to let the email go and keep the meeting. Same flag as book_meeting's
           // nullable email argument, so she is never told to make a call the tool would refuse.
           bookWithoutEmail: env.VOICE_BOOK_WITHOUT_EMAIL,
+          // Where a lead may WhatsApp his email address when the phone line will not carry it
+          // (Koren, round-8 card e5). Empty unless a WhatsApp sender is actually configured, and
+          // empty means she makes no such offer — she must never name a channel that will not
+          // reach us. An INBOUND message needs no template and no consent: it stamps the lead's
+          // 24h window itself (whatsapp.routes.ts -> touchWhatsappWindow), which is why this
+          // direction works where our outbound confirmation still does not.
+          whatsappHandbackNumber: env.VOICE_EMAIL_WHATSAPP_HANDBACK_ENABLED
+            ? (env.TWILIO_WHATSAPP_NUMBER ?? '')
+            : '',
           // The prompt lists the words the caller will actually hear, so the bank and its
           // description can never disagree about what she has already said.
           acknowledgements: env.VOICE_ACK_LEDGER_ENABLED

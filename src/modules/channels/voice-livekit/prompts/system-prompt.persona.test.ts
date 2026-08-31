@@ -28,6 +28,66 @@ import {
  * If one of these fails, the question is never "update the fixture". It is "which live call did I
  * just change".
  *
+ * Regenerated 2026-08-31 (LATEST), on `feature/voice-round7-verdicts`, and this one is different
+ * from every regeneration above it: **it is not driven by a call, it is driven by Koren LISTENING
+ * to the previous two changes and reversing five of them.**
+ *
+ * WHICH LIVE CALL DID I JUST CHANGE — the same 2026-08-31 11:37 production call as the two entries
+ * below, but the input is his verdicts on the round-7 and round-8 A/B pages
+ * (`tests/hebrew-tts-niqqud-ab/index-round7.html`, `index-round8.html`), where every card played
+ * that call's own moment twice. Eleven round-7 cards confirmed what had shipped; four did not.
+ * Round 8 kept one card and reversed four. **Where his ear disagreed with what we shipped, his ear
+ * wins** — he is a native Hebrew speaker judging a Hebrew phone call, and none of it is visible to
+ * a test.
+ *
+ * Nine deliberate deltas:
+ *
+ *   - **Note 4 was OVER-corrected and is partly undone** (card `n4a`). The merged change collapsed
+ *     the turn opener and the armed hesitation into one rule so only one could speak, on the
+ *     strength of "מילת מילוי צריכה להגיע באופן חד פעמי בכל משפט". He then heard the three versions
+ *     and picked the DOUBLE we had just deleted, explaining the actual rule: *"אהה ורגע יכולים
+ *     להתאים ביחד, אבל רגע ושניה או רגע וחכה זה מילים שלא יכולות ללכת ביחד."* The prompt line no
+ *     longer forbids "אהה. רגע..." — it forbids two of the SAME kind of sound. The code half is
+ *     `turn-opener.ts` `mayPairInOneBreath`, whose categories are read out of the two banks.
+ *   - **Small talk must be SITUATIONAL** (card `n7a`). Note 7 had offered a generic pleasantry
+ *     ("איך היה היום שלך עד עכשיו?") as an acceptable fallback and the prompt said so. He was given
+ *     that line against "תפסתי אותךָ באמצע משהו, או שיש לךָ דקה?" and chose the second. The rejected
+ *     line is now NAMED as the shape to avoid rather than merely deleted, because it is the obvious
+ *     thing the model would otherwise reach for.
+ *   - **`סגור` gains a POSITION rule** (card `sg1`). His own addition to the slang bank, and he
+ *     approved it at the END of a sentence and standing ALONE while rejecting it MID-sentence. The
+ *     round-trip had transcribed all three carriers perfectly, so this is a constraint no machine
+ *     screen could ever have produced. It is recorded at the bank's definition and stated in the
+ *     Spoken Register craft rules, scoped explicitly to that one word.
+ *   - **The email method is largely REVERTED to the Latin-letter form** (cards `e1`, `e2`, `e2b`,
+ *     `e4`, `e6`). The previous regeneration replaced it with a Hebrew word-first method; the
+ *     round-8 phone-band measurement already argued against that (`קאסקורן` 0/3, Hebrew letter
+ *     names losing a letter) and his ear agreed on every card. So: ask for the whole address at
+ *     once, read it back in English letters with the domain in English, spell in English letter
+ *     names on a miss. `קאסקורן` and "קיי, איי, אס" are gone; "ג'ימייל נקודה קום" survives once, as
+ *     the named counter-example. The INPUT-parsing half in `email-dictation.ts` is untouched — it
+ *     resolves what the CALLER says and none of these verdicts are about that.
+ *   - **A third form for the fragmented-spelling read-back** (card `e3`, NO verdict — he endorsed
+ *     neither variant). The stitching stays; what she SAYS about it now reads the joined address
+ *     back in English letters and states how many letters there are, so a piece the line ate is
+ *     audible to him without his being asked to choose between two readings. **This wording is a
+ *     proposal and is UNHEARD — round 9 card `e3c`.**
+ *   - **Rule 5 may now ask HIM to WhatsApp the address** (card `e5`, his amendment). The previous
+ *     regeneration deliberately promised no channel, and that reasoning still holds for OUTBOUND:
+ *     a cold caller has no open window and the `meeting_confirmation` template is still pending.
+ *     Koren's direction is the opposite one and it is not blocked — an INBOUND message stamps
+ *     `leads.last_inbound_whatsapp_at` (`whatsapp.routes.ts` → `touchWhatsappWindow`) and opens the
+ *     24h freeform window by itself. The clause is INTERPOLATED (`whatsappHandbackNumber`) and empty
+ *     by default, because the only sender in the system is the optional platform-wide
+ *     `TWILIO_WHATSAPP_NUMBER` and she must never name a channel that will not reach us.
+ *
+ * `greeting-default.txt` is byte-identical and was NOT regenerated. Every persona-owned section
+ * (Role, FAQ, gender rules) was diffed and is unchanged. Every new byte is independently pinned —
+ * by `system-prompt.test.ts` for the four reversals, and by the new
+ * `system-prompt.verdicts.test.ts` for the eleven things he CONFIRMED, which exists precisely
+ * because a future session reading only the code will find good reasons to change several of them
+ * back.
+ *
  * Regenerated again, 2026-08-30, on `feature/voice-identity-character`, from the call report of
  * 2026-08-29 18:30 (docs/handoffs/2026-08-30-voice-character-plan.md). The deliberate changes:
  *   - A "Call Memory" section (P0-1). On that call she asked the lead's name THREE times until he
