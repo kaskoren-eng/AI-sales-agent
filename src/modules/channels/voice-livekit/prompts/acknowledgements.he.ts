@@ -33,6 +33,28 @@
 export const ACKNOWLEDGEMENTS_HE = ['אוקיי.', 'אהה.', 'בסדר.'] as const;
 
 /**
+ * THE TWO THAT ARE NOT RECEIPTS — they are claims, and a claim has to be true.
+ *
+ * Koren, 2026-08-31, on a ten-minute production call: *"הסוכן אמר 'טוב, הבנתי' או 'הבנתי אותך'
+ * יותר מדי פעמים, וצריך באמת להגיע בהקשר כשהלקוח משתף מידע שרלוונטי לשיחה. לא סתם להגיד 'טוב,
+ * הבנתי' על כל דבר."* The deck spoke one of these roughly every other turn — after "מחר.", after
+ * "כן.", after a question — and `repeatedPhraseCount` came back 34.
+ *
+ * The distinction the wide bank missed: "אוקיי." means *I heard you* and is true after anything,
+ * including a one-word answer and including a question. "הבנתי אותך." means *I have taken in what
+ * you told me*, and after "מחר." there was nothing to take in. Said on every turn it stops being
+ * listening and becomes the receipt ritual — the same defect as the mirrored compliment and the
+ * "רק לוודא" preamble, wearing a different hat.
+ *
+ * So these leave the every-turn deck and become EARNED: `AcknowledgementLedger.next({ earned })`
+ * only reaches for one when the caller's turn actually carried something
+ * (`callerSharedSubstance`, engagement.ts) and the previous receipt was not one of these either.
+ * They stay listed in ACKNOWLEDGEMENTS_HE_WIDE below because that constant is what
+ * VOICE_ACK_EARNED_ENABLED=false restores and what the prompt shows the model.
+ */
+export const ACK_COMPREHENSION_HE = ['הבנתי אותך.', 'טוב, הבנתי.'] as const;
+
+/**
  * The widened bank (VOICE_ACK_LEDGER_ENABLED), and why widening is the only real lever.
  *
  * 2026-08-29: six of her eight turns opened with one of the three words above — "אהה." ×2,
@@ -50,15 +72,15 @@ export const ACKNOWLEDGEMENTS_HE = ['אוקיי.', 'אהה.', 'בסדר.'] as co
  * and they refer to hearing rather than agreeing, so they pass both gates where the bare forms do
  * not.
  *
- * ⚠️ NEITHER HAS BEEN HEARD ON A PHONE LINE YET. Unlike the slang bank there is no round-5
- * screening for acknowledgements, and these are longer than the originals (~3-4 syllables against
- * 2), so they occupy more of the window the model is thinking in. Both facts need an ear on a real
- * call; VOICE_ACK_LEDGER_ENABLED=false restores the three-word bank exactly.
+ * ⚠️ BOTH HAVE NOW BEEN HEARD, AND THE VERDICT WAS NO — not on how they SOUND (the pronunciation
+ * was fine) but on how often they were true. See ACK_COMPREHENSION_HE above: they are still in this
+ * constant, because this is what VOICE_ACK_EARNED_ENABLED=false restores and what the prompt shows
+ * the model, but the live deck no longer spends them like receipts.
+ * VOICE_ACK_LEDGER_ENABLED=false restores the three-word bank exactly.
  */
 export const ACKNOWLEDGEMENTS_HE_WIDE = [
   ...ACKNOWLEDGEMENTS_HE,
-  'הבנתי אותך.',
-  'טוב, הבנתי.',
+  ...ACK_COMPREHENSION_HE,
 ] as const;
 
 /**
@@ -75,21 +97,51 @@ export const ACKNOWLEDGEMENTS_HE_WIDE = [
  */
 export class AcknowledgementLedger {
   readonly #bank: readonly string[];
+  /** The comprehension claims — drawn from only when the caller earned one. Empty disables them. */
+  readonly #earned: readonly string[];
   #deck: string[] = [];
+  #earnedDeck: string[] = [];
   #last: string | null = null;
+  /** Whether the LAST word handed out was a comprehension claim, so two never run together. */
+  #lastWasEarned = false;
   readonly #counts = new Map<string, number>();
   /** Injectable so the shuffle is deterministic in tests; production uses Math.random. */
   readonly #random: () => number;
 
-  constructor(bank: readonly string[] = ACKNOWLEDGEMENTS_HE_WIDE, random: () => number = Math.random) {
+  constructor(
+    bank: readonly string[] = ACKNOWLEDGEMENTS_HE,
+    random: () => number = Math.random,
+    earned: readonly string[] = ACK_COMPREHENSION_HE,
+  ) {
     this.#bank = bank;
     this.#random = random;
+    // A word cannot be both an every-turn receipt and an earned claim — if a caller passes the WIDE
+    // bank (the kill-switch path) the comprehension words are already in the deck, and offering
+    // them twice would make the deck's flat distribution a lie.
+    this.#earned = earned.filter((word) => !bank.includes(word));
   }
 
-  next(): string {
+  /**
+   * The next thing she says at the head of a turn.
+   *
+   * `earned` is the caller's last turn having actually carried something (see
+   * `callerSharedSubstance`). It is a PERMISSION, not an instruction: a comprehension claim is only
+   * used when it is earned AND the previous one was not also a claim, so even a caller who tells
+   * her his life story hears "הבנתי אותך" at most every other turn.
+   */
+  next(opts: { earned?: boolean } = {}): string {
+    if (opts.earned === true && this.#earned.length > 0 && !this.#lastWasEarned) {
+      if (this.#earnedDeck.length === 0) this.#earnedDeck = this.#shuffled(this.#earned);
+      const claim = this.#earnedDeck.pop()!;
+      this.#last = claim;
+      this.#lastWasEarned = true;
+      this.#counts.set(claim, (this.#counts.get(claim) ?? 0) + 1);
+      return claim;
+    }
     if (this.#deck.length === 0) this.#refill();
     const word = this.#deck.pop()!;
     this.#last = word;
+    this.#lastWasEarned = false;
     this.#counts.set(word, (this.#counts.get(word) ?? 0) + 1);
     return word;
   }
@@ -102,7 +154,11 @@ export class AcknowledgementLedger {
   }
 
   #refill(): void {
-    const deck = [...this.#bank];
+    this.#deck = this.#shuffled(this.#bank);
+  }
+
+  #shuffled(source: readonly string[]): string[] {
+    const deck = [...source];
     for (let i = deck.length - 1; i > 0; i--) {
       const j = Math.floor(this.#random() * (i + 1));
       [deck[i], deck[j]] = [deck[j]!, deck[i]!];
@@ -111,7 +167,7 @@ export class AcknowledgementLedger {
     if (deck.length > 1 && deck[deck.length - 1] === this.#last) {
       [deck[0], deck[deck.length - 1]] = [deck[deck.length - 1]!, deck[0]!];
     }
-    this.#deck = deck;
+    return deck;
   }
 }
 

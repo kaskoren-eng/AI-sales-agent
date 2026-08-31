@@ -29,6 +29,12 @@
  * acceptable answer here — it is the extra word that made her sound like a machine, never the
  * missing one.
  *
+ * WHICH RECEIPT, added 2026-08-31: two of the five words in the wide bank ("טוב, הבנתי.",
+ * "הבנתי אותך.") are not receipts at all — they claim to have UNDERSTOOD something, and the deck
+ * spoke them after "מחר." and after questions. `callerShared` carries the one fact that makes the
+ * claim true, and the ledger decides; this function still only decides WHETHER a receipt is the
+ * right act for the step.
+ *
  * AND THE THIRD CASE, added 2026-08-30: the caller is in the middle of reading out a phone number
  * or an email. A receipt there is an interruption — it closes a turn he has not finished — so the
  * step opens with a VOCAL NOD instead ("אה אה"), which says *still listening* and hands the floor
@@ -69,7 +75,16 @@ export function chooseTurnOpener(input: {
    * is on, `pickAcknowledgement(lastAck)` when it is off. This function only decides WHETHER a
    * receipt is the right sound for this step.
    */
-  nextAck: () => string;
+  nextAck: (opts: { earned: boolean }) => string;
+  /**
+   * True when the caller's last turn actually TOLD her something — see `callerSharedSubstance`
+   * in engagement.ts. It only decides whether the supplier may reach for a comprehension claim
+   * ("הבנתי אותך.") instead of a plain receipt ("אוקיי."); a receipt is correct either way, which
+   * is why the default is false and why nothing downstream has to handle a missing signal.
+   *
+   * Koren, 2026-08-31: *"לא סתם להגיד 'טוב, הבנתי' על כל דבר."*
+   */
+  callerShared?: boolean;
   /** The call's filler budget — `ThinkingFillerLedger.offer()`. Returns null when spent. */
   offerFiller: () => string | null;
 }): TurnOpener {
@@ -87,7 +102,32 @@ export function chooseTurnOpener(input: {
   // different act — "still listening" rather than "I have it" — and a deck word here would both
   // say the wrong thing and thin out the receipts for the turns that need them.
   if (input.midDictation && input.nod) return { kind: 'nod', word: input.nod };
-  return { kind: 'ack', word: input.nextAck() };
+  return { kind: 'ack', word: input.nextAck({ earned: input.callerShared === true }) };
+}
+
+/**
+ * MAY THE ARMED HESITATION ALSO LAND ON THIS STEP?
+ *
+ * Koren, 2026-08-31: *"שימוש במילות מילוי יותר מדי ובכפילות נשמע רובוטי ומוזר. מילת מילוי צריכה
+ * להגיע באופן חד פעמי בכל משפט."* The transcript he was describing:
+ *
+ *     [21s]  KEREN  "טוב,"
+ *     [23s]  KEREN  "אהה. רגע..."
+ *
+ * Two separate mechanisms writing to the same position. `llmNode` injects the opener at the head of
+ * the reply stream; the 2.5-second think-timer arms a hesitation that `ttsNode` glues to the front
+ * of the model's first words, and `withFiller`'s `leadIn` lets the opener through in front of it.
+ * Both fire, and the caller hears two noises before a single word of content.
+ *
+ * The rule is one sound per breath, and only the `silent` opener leaves the position free. The
+ * `hesitation` opener IS the filler (and spends the same budget); a receipt and a nod each occupy
+ * the head of the reply as completely as a hesitation would.
+ *
+ * DROPPING IT COSTS NOTHING: an armed filler is only CHARGED when it is spoken, so the call keeps
+ * its three for a turn that genuinely opens with nothing. See ThinkingFillerLedger.
+ */
+export function allowsArmedFiller(opener: TurnOpener): boolean {
+  return opener.kind === 'silent';
 }
 
 /**

@@ -64,6 +64,40 @@ import {
  * new byte is independently pinned by system-prompt.test.ts; the greeting fixture and every
  * persona-owned section (Role, FAQ, gender rules) were verified UNCHANGED before regenerating.
  *
+ * Regenerated AGAIN, 2026-08-31, on `feature/voice-persona-notes`, from the ten-minute production
+ * call in `call-reports/calls-2026-08-31.md` (11:37 Israel time, 602s, NO booking despite the lead
+ * agreeing to a time; repeatedPhraseCount 34, repeatedOpenerCount 4, fragmentedTurns 8). Koren's
+ * nine notes. WHICH LIVE CALL DID I JUST CHANGE — that one, in the direction his notes asked for.
+ * The deliberate changes, and why each is a byte in the golden file rather than a code fix:
+ *
+ *   - **A "No Preamble" section** (VOICE_NO_PREAMBLE_ENABLED). Four of the nine notes are ONE
+ *     habit: she acknowledged, mirrored his own words back, told him his topic was important, and
+ *     announced that she was about to confirm something — before nearly every sentence. Fixing them
+ *     as four string edits would have deleted four examples and left the habit, so the section names
+ *     the habit and lists his four examples as its shapes. It also ENDS by protecting the two things
+ *     he asked to keep (the empathy beat, the opening slang), which is itself pinned by a test.
+ *   - **The verification preamble is gone from every site**: both detail-collection scripts, both
+ *     name-ask variant lists, and the handoff question. Note 1 — and a round-6 TTS test had already
+ *     proven both spellings ("רק לוודא" and the shipped "רק לוודֵא") come back through the 8kHz
+ *     phone band as "רק לוועדה", so deleting the phrase is the only fix available.
+ *   - **"נעים מאוד קורן", with no comma inside it** (note 2) — in Call Memory, in Step 2, and as a
+ *     craft rule in Emotional Color. The comma was doing structural work in speech-guard.ts's
+ *     repeat-greeting regex, which is now name-aware; that is the code half.
+ *   - **The Emotional Color surprise beat is scoped** (note 3). "וואלה? זה ממש מעניין." was copied
+ *     verbatim onto a man answering what he does for a living. It now says his line of work is not
+ *     a surprise.
+ *   - **Small talk before business** (note 7), with the distinction from the preamble spelled out,
+ *     because that distinction is the hard part of the whole change.
+ *   - **The discovery bank is split MANDATORY (3) / OPTIONAL (3)** with an engagement rule (note 8).
+ *     Nothing was dropped — all six intents and all thirty phrasings survive, reordered. The code
+ *     half is engagement.ts, whose note the prompt names verbatim so they cannot drift.
+ *   - **`סגור` joins the slang bank and the count moves to nine** — Koren's own uncommitted edit,
+ *     applied deliberately. It is the one bank word that has NOT been round-5 screened.
+ *
+ * The greeting fixture is byte-identical, and every persona-owned section (Role, FAQ, gender rules)
+ * was verified unchanged before regenerating — the only Step-2 line that mentions gender moved for
+ * the comma, not for the rule. Every new byte is independently pinned by system-prompt.test.ts.
+ *
  * Regenerated AGAIN, 2026-08-30, on `feature/voice-hebrew-speech`, from the two production calls in
  * `call-reports/calls-2026-08-30.md` and Koren's seven notes on how she SOUNDS. Four deliberate
  * changes, every one of them a thing he heard:

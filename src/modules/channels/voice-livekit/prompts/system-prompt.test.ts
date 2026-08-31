@@ -222,7 +222,12 @@ describe('Keren Phase 4 — tools-mode prompt', () => {
     // Koren's content (OBJECTION_PLAYBOOK_HE) — the semantic reflex the code can't type. It rides in
     // the prompt on the tools variant only; the deprecated no-tools prompt stays byte-stable.
     expect(TOOLS_PROMPT).toContain('## Objection Handling');
-    expect(TOOLS_PROMPT).toMatch(/ACKNOWLEDGE the concern/u);
+    // 2026-08-31: the playbook used to OPEN with "first ACKNOWLEDGE the concern in one short
+    // sentence", which is the generator of "מחיר זה חשוב" — Koren's note 9. It now says the
+    // opposite, and the price play says it twice because that is the one he heard.
+    expect(TOOLS_PROMPT).toMatch(/\*\*Go straight to the answer\*\*/u);
+    expect(TOOLS_PROMPT).not.toMatch(/ACKNOWLEDGE the concern/u);
+    expect(TOOLS_PROMPT).not.toContain('הכירי בכך שתקציב חשוב');
     expect(TOOLS_PROMPT).toMatch(/מחיר|נשמע רובוטי|אני צריך להתייעץ/u);
     expect(SYSTEM_PROMPT_HE).not.toContain('## Objection Handling');
   });
@@ -570,7 +575,10 @@ describe('Keren — spoken register (2026-08-27)', () => {
   });
 
   it('BOUNDS the vocabulary — a word nobody screened can fail silently on a phone line', () => {
-    expect(SYSTEM_PROMPT_HE).toMatch(/These eight are the whole vocabulary/u);
+    // Nine since 2026-08-31 — Koren added `סגור` himself. The COUNT and the list must move
+    // together, or the prompt tells her a number that does not match the words in front of it.
+    expect(SYSTEM_PROMPT_HE).toMatch(/These nine are the whole vocabulary/u);
+    expect(REGISTER_VOCABULARY).toHaveLength(9);
     // Both banks are named in the section, so "the register vocabulary" has ONE meaning. וואלה was
     // reported as an invented word; it is in EMOTIONAL_COLOR and passed round 4b.
     for (const word of REGISTER_VOCABULARY) expect(SYSTEM_PROMPT_HE).toContain(word);
@@ -611,7 +619,9 @@ describe('Keren — spoken register (2026-08-27)', () => {
   it('every slang-bank word is in the prompt, and the ledger tracks the same list', () => {
     // SPOKEN_REGISTER_SLANG is consumed by the PhraseLedger (agent.ts) — the bank and the
     // tracked-word list must never drift apart, and every entry passed round-5 screening.
-    expect(SPOKEN_REGISTER_SLANG).toEqual(['סבבה', 'אחלה', 'מעולה', 'בקטנה', 'על הדרך']);
+    // `סגור` is Koren's own 2026-08-31 addition. Screened before it was committed, not after:
+    // roundtrip7.ts, 3/3 carriers came back as `סגור` through the 8kHz phone band.
+    expect(SPOKEN_REGISTER_SLANG).toEqual(['סבבה', 'אחלה', 'מעולה', 'בקטנה', 'על הדרך', 'סגור']);
     for (const word of SPOKEN_REGISTER_SLANG) {
       expect(SYSTEM_PROMPT_HE).toContain(word);
     }
@@ -749,13 +759,154 @@ describe('the 2026-08-30 calls — greeting once, joy in proportion, pauses that
 
   it('does not open both read-backs with the same three words', () => {
     // "רק לוודֵא — קורן, נכון?" at 153.7s and "רק לוודֵא — קורן שטרית, נכון?" at 163.8s.
-    expect(tools).toContain('אז רשמתי אפס חמש אפס');
-    expect(tools).toContain('**Vary the confirmation.**');
+    // 2026-08-31 supersedes the wording: Koren's own edit made the phone read-back
+    // "חוזרת על המספר", and his note 1 removed the preamble from the name read-back entirely.
+    expect(tools).toContain('חוזרת על המספר — אפס חמש אפס');
+    expect(tools).toContain('**Read it back with no preamble in front of it.**');
+    expect(tools).toMatch(/Vary the second one\./u);
   });
 
   it('tells her not to answer a half-finished dictation', () => {
     // The code half is the mid-dictation nod (dictation.ts); this is the guidance half.
     expect(tools).toContain('While he is READING SOMETHING OUT, do not answer him');
     expect(tools).toMatch(/never acknowledge a half-finished number/u);
+  });
+});
+
+/**
+ * THE 2026-08-31 PRODUCTION CALL — Koren's nine notes, in the prompt.
+ *
+ * Ten minutes, no booking despite the lead agreeing to a time. Measured: repeatedPhraseCount 34,
+ * repeatedOpenerCount 4, fragmentedTurns 8, duplicateReplies 1. Four of the nine (1, 3, 6, 9) turned
+ * out to be ONE habit — she performs a receipt before nearly every sentence — so they are tested as
+ * one section with his four examples as the cases, not as four independent string assertions.
+ *
+ * ⚠️ NONE OF THIS PROVES THE BEHAVIOUR CHANGED. These prove the instruction is present and says what
+ * he asked for. Whether the model obeys it is observable only on a call.
+ */
+describe('the 2026-08-31 call — the receipt ritual, and what must survive it', () => {
+  const tools = buildSystemPrompt({ toolsEnabled: true });
+  const acked = buildSystemPrompt({ toolsEnabled: true, instantAck: true });
+
+  it('names the habit ONCE, as a habit, rather than banning four phrases', () => {
+    expect(SYSTEM_PROMPT_HE).toContain('## No Preamble');
+    expect(SYSTEM_PROMPT_HE).toMatch(/It is ONE habit, not four/u);
+    expect(SYSTEM_PROMPT_HE).toContain('**Start with the substance.**');
+    // Present in BOTH speech-rhythm configurations — the ritual is not a property of who writes
+    // the opener.
+    expect(acked).toContain('## No Preamble');
+  });
+
+  it('note 1 — every variant of the verification preamble is named and banned', () => {
+    for (const preamble of ['רק לוודא', 'רק שאדע', 'רק שאדייק', 'אני רוצה לוודא']) {
+      expect(SYSTEM_PROMPT_HE, preamble).toContain(preamble);
+    }
+    // …and none of them is ever shown IN USE. A banned phrase that is also still offered as an
+    // example is how this one survived the last edit: the model copies examples. In the ban each
+    // is a bare quoted item ("רק לוודא", "רק שאדע"); in use it is followed by the thing it
+    // introduces — "רק לוודא — קורן שטרית, נכון?" or "רק שאדע, איך קוראים לך?".
+    for (const preamble of ['רק לוודא', 'רק שאדע', 'רק שאדייק', 'אני רוצה לוודא']) {
+      expect(tools, `${preamble} must never appear in use`).not.toMatch(
+        new RegExp(`${preamble}\\s*[—–,-]`, 'u'),
+      );
+    }
+    // Why it can never be re-spelled instead: it does not survive the phone band.
+    expect(SYSTEM_PROMPT_HE).toContain('רק לוועדה');
+  });
+
+  it('note 3 — his own words handed back, with a compliment on top', () => {
+    // 44s: "בניית אתרים זה תחום מעניין." — a near-verbatim copy of the Emotional Color surprise
+    // beat, fired on a man answering what he does for a living.
+    expect(SYSTEM_PROMPT_HE).toContain('בניית אתרים זה תחום מעניין');
+    expect(SYSTEM_PROMPT_HE).toMatch(/His line of work is not a surprise/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/A compliment — on his work, on his business, or on his question/u);
+    // The generator itself is scoped now, not merely counter-instructed.
+    expect(SYSTEM_PROMPT_HE).not.toContain('The caller shares something impressive or unexpected →');
+  });
+
+  it('note 6 — "הבנתי" is earned, and the prompt half says what the code half does', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/\*\*"הבנתי" has to be earned\.\*\*/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/Never two replies in a row/u);
+  });
+
+  it('note 9 — nothing in front of a price answer telling him prices matter', () => {
+    // 281s: "בסדר. מחיר זה חשוב." · 301s: "תקציב זה חשוב."
+    expect(SYSTEM_PROMPT_HE).toContain('מחיר זה חשוב');
+    expect(SYSTEM_PROMPT_HE).toContain('תקציב זה חשוב');
+    expect(SYSTEM_PROMPT_HE).toMatch(/A statement that his topic matters/u);
+  });
+
+  it('note 2 — a short set phrase carries no comma inside it', () => {
+    expect(SYSTEM_PROMPT_HE).toContain('נעים מאוד קורן');
+    expect(SYSTEM_PROMPT_HE).toMatch(/do not put a comma inside it/u);
+    // The two places that used to DEMONSTRATE the comma version — Call Memory and Step 2 — both
+    // showed it in parentheses as the thing to say. The comma form now survives only inside the
+    // rule that forbids it (`never "נעים מאוד, קורן"`), which is why this is shape-specific.
+    expect(SYSTEM_PROMPT_HE).not.toMatch(/\("נעים מאוד, קורן"/u);
+    expect(SYSTEM_PROMPT_HE).not.toMatch(/Examples:.*"מעולה, קורן\."/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/\("נעים מאוד קורן"/u);
+  });
+
+  it('note 4 — one opening sound per reply, never two stacked', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/keep exactly one thought per opening/u);
+    expect(SYSTEM_PROMPT_HE).toContain('אהה. רגע...');
+  });
+
+  it('note 7 — small talk before business, and why it is NOT the preamble', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/two sentences of small talk, BEFORE any business question/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/Small talk is an EXCHANGE/u);
+    // The distinction is the hard part, so his own bad example is quoted inside the rule.
+    expect(SYSTEM_PROMPT_HE).toMatch(
+      /If your small talk turns out to be a compliment about his line of work, it is a preamble/u,
+    );
+    expect(SYSTEM_PROMPT_HE).toMatch(/One exchange, two sentences at the outside/u);
+  });
+
+  it('note 8 — three mandatory questions, three optional, and a rule for choosing', () => {
+    expect(SYSTEM_PROMPT_HE).toMatch(/\*\*MANDATORY — all three, on every call/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(
+      /\*\*OPTIONAL — only when he is giving you more than short answers/u,
+    );
+    expect(SYSTEM_PROMPT_HE).toMatch(/READ HIM, AND MATCH HIS SIZE/u);
+    // Every one of the six original intents survived the split — none was lost in the reorder.
+    for (const probe of [
+      'איזה עסק יש לך ומה אתה מוכר בדיוק?',
+      'כמה פניות נכנסות אליך ביום, פחות או יותר?',
+      'יש משהו שהיית רוצה לשפר בנושא הזה?',
+      'מי מטפל בפניות היום, ותוך כמה זמן חוזרים ללקוח?',
+      'איך מגיעים אליך לקוחות היום?',
+      'מה בעצם המוצר או השירות המרכזי שלך?',
+    ]) {
+      expect(SYSTEM_PROMPT_HE, probe).toContain(probe);
+    }
+    // The prompt and the code half must name the same thing, or the injected note is noise.
+    expect(SYSTEM_PROMPT_HE).toContain('Caller engagement — automatic');
+  });
+
+  it('NOTE 5 — the two things he asked to KEEP are still here, and protected by name', () => {
+    // "הבעת רגש… כשקורה איזשהו אירוע של דחייה של הסוכן או כשלקוח מציין משהו ממש מבאס. זה גם נקודה
+    // לשימור, כי הסוכנת עשתה את זה טוב… נקודה נוספת לשימור: השימוש היה נכון בסלנג בתחילת השיחה."
+    expect(SYSTEM_PROMPT_HE).toContain('אוף... זה באמת מבאס.');
+    expect(SYSTEM_PROMPT_HE).toContain('אני מבינה... זה באמת מתסכל.');
+    expect(SYSTEM_PROMPT_HE).toMatch(/Real feeling, when the moment carries it/u);
+    expect(SYSTEM_PROMPT_HE).toMatch(/The everyday register, including at the start of the call/u);
+    // …and the No Preamble section must not have quietly banned them on its way past.
+    expect(SYSTEM_PROMPT_HE).toMatch(
+      /a feeling he actually expressed, not the mere existence of his topic/u,
+    );
+    expect(SYSTEM_PROMPT_HE).toContain('## Emotional Color');
+    expect(SYSTEM_PROMPT_HE).toContain('## Spoken Register');
+    for (const word of REGISTER_VOCABULARY) expect(SYSTEM_PROMPT_HE, word).toContain(word);
+  });
+
+  it('the kill-switch removes the section and NOTHING else', () => {
+    const off = buildSystemPrompt({ toolsEnabled: true, noPreamble: false });
+    expect(off).not.toContain('## No Preamble');
+    // Everything the section protects lives in other sections and must survive its removal.
+    expect(off).toContain('## Emotional Color');
+    expect(off).toContain('## Spoken Register');
+    expect(off).toContain('אוף... זה באמת מבאס.');
+    expect(off).toMatch(/two sentences of small talk/u);
+    expect(off).toMatch(/MANDATORY — all three/u);
   });
 });

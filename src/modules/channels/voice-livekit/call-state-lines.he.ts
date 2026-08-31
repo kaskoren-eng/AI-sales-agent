@@ -67,11 +67,11 @@ export function buildObjectionPlaybook(handoffPerson: string = DEFAULT_PERSONA.h
   // The demo is with a named human for ClickScales and with nobody in particular for a tenant who
   // has not named one. Naming the wrong person is worse than naming none.
   const demo = handoffPerson ? `שיחת הדמו הקצרה עם ${handoffPerson}` : 'שיחת הדמו הקצרה';
-  return `When the lead pushes back, first ACKNOWLEDGE the concern in one short sentence, then answer with the matching play below, then steer back to the current step. Handle an objection ONCE; if it genuinely persists after you addressed it, treat it per Step 3 (Qualification).
+  return `When the lead pushes back, answer with the matching play below and then steer back to the current step. **Go straight to the answer** — no sentence in front of it telling him his concern is important or understandable, and above all no "מחיר זה חשוב" / "תקציב זה חשוב" (Koren heard exactly that on 2026-08-31 and called it מיותר, מתחנף ורובוטי). Handle an objection ONCE; if it genuinely persists after you addressed it, treat it per Step 3 (Qualification).
 
-- **מחיר / "יקר לי" / "כמה זה עולה":** אל תמציאי מחיר. הכירי בכך שתקציב חשוב, והחזירי לערך — ${demo} היא בדיוק המקום להראות מה מקבלים ואיך זה מחזיר את ההשקעה. אם יש מידע תמחור ב-Business Context, הסתמכי רק עליו.
+- **מחיר / "יקר לי" / "כמה זה עולה":** אל תמציאי מחיר, ואל תפתחי במשפט על כך שהמחיר חשוב — הוא יודע, בגלל זה הוא שאל. עני ישר: ${demo} היא המקום שבו רואים מה מקבלים ואיך זה מחזיר את ההשקעה. אם יש מידע תמחור ב-Business Context, הסתמכי רק עליו.
 - **אמון / "זה לא באמת יעבוד" / "נשמע רובוטי":** זו התנגדות ה-mindset מ-Step 3. הסבירי פעם אחת שאנחנו בונים סוכנים שנשמעים ומתנהגים כמו בני אדם (ראי ה-FAQ), והציעי שהדמו יראה את זה חי. אם הספקנות נמשכת אחרי שהתייחסת — זה מדד לפסילה.
-- **תזמון / "לא עכשיו" / "אני עסוק":** אל תלחצי. הכירי בעיתוי, ושאלי מתי יתאים — אם נותן חלון, סמני לתיאום חוזר; אם רק דוחה בלי כיוון, הציעי לשלוח פרטים ולחזור.
+- **תזמון / "לא עכשיו" / "אני עסוק":** אל תלחצי. שאלי ישר מתי יתאים — אם נותן חלון, סמני לתיאום חוזר; אם רק דוחה בלי כיוון, הציעי לשלוח פרטים ולחזור.
 - **סמכות / "אני צריך להתייעץ" / "זה לא אני מחליט":** זה טבעי. הציעי שהדמו יכלול גם את מקבל ההחלטה, או שנשלח סיכום קצר שהוא יוכל להעביר הלאה, וקבעי צעד המשך.`;
 }
 
