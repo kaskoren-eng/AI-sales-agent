@@ -682,7 +682,25 @@ function finish(
   console.log('tool_call', JSON.stringify({ name: log.name, durationMs, ok, ...(error ? { error } : {}) }));
 }
 
-/** PII never reaches a log line — phones/emails are cut to identifiable-to-us-only suffixes. */
+/**
+ * PII never reaches a log line — phones/emails are cut to identifiable-to-us-only suffixes.
+ *
+ * A REDACTION HAS TO LEAVE THE DIAGNOSTIC BEHIND, and for names this one did not.
+ *
+ * The 2026-08-31 13:52 call report showed `"name": "ק…"` on its only tool call, and the question
+ * that produced — did she capture the lead's name, or one stray letter of it? — could not be
+ * answered from the report at all, because both readings render identically: the rule kept the
+ * first character and threw the length away. The length is kept now. `ק…(4)` is "קורן" captured
+ * properly; `ק…(1)` is a genuinely broken capture; neither is a name anyone can read.
+ *
+ * FOR THE RECORD, THAT CALL'S CAPTURE WAS FINE. `redactArgs` runs only on the copy that goes into
+ * `ToolCallLog.args` — the console line and the CallReport, which lands in
+ * `call_learnings.analysis`. What the tool hands the database is never touched by this function,
+ * so a redacted log has never meant a redacted save.
+ *
+ * The rule is deliberately NOT loosened. A first name is less identifying than a phone number, but
+ * it is still the lead's, and a call report is a file that gets pasted into chat windows.
+ */
 export function redactArgs(args: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(args)) {
@@ -692,9 +710,17 @@ export function redactArgs(args: Record<string, unknown>): Record<string, unknow
     }
     const k = key.toLowerCase();
     if (k.includes('phone')) out[key] = `…${value.slice(-4)}`;
-    else if (k.includes('email')) out[key] = `…${value.slice(value.indexOf('@'))}`;
-    else if (k.includes('name')) out[key] = `${value.slice(0, 1)}…`;
-    else out[key] = value.length > 120 ? `${value.slice(0, 120)}…` : value;
+    else if (k.includes('email')) {
+      // `indexOf` returns -1 on an address with no `@` in it, and that is a real case: a dictated
+      // address arrives through the STT and can lose its "שטרודל". `slice(-1)` on that yields the
+      // LAST CHARACTER of the address, which reads like a domain and is not one.
+      const at = value.indexOf('@');
+      out[key] = at === -1 ? `…(${[...value].length} chars, no @)` : `…${value.slice(at)}`;
+    } else if (k.includes('name')) {
+      // Code POINTS, not UTF-16 units. A Hebrew name is BMP so the two agree today, but a pasted
+      // name carrying an emoji or a combining mark would report a number nobody could use.
+      out[key] = `${value.slice(0, 1)}…(${[...value].length})`;
+    } else out[key] = value.length > 120 ? `${value.slice(0, 120)}…` : value;
   }
   return out;
 }

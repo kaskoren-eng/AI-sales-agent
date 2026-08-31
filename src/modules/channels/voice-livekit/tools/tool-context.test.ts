@@ -390,10 +390,29 @@ describe('timedTool', () => {
 });
 
 describe('redactArgs — PII never reaches a log line', () => {
-  it('cuts phones to last-4, emails to domain, names to an initial', () => {
+  it('cuts phones to last-4, emails to domain, names to an initial AND a length', () => {
     expect(
       redactArgs({ phone: '+972501234567', email: 'dana@example.com', name: 'דנה לוי', notes: 'עסק קטן' }),
-    ).toEqual({ phone: '…4567', email: '…@example.com', name: 'ד…', notes: 'עסק קטן' });
+    ).toEqual({ phone: '…4567', email: '…@example.com', name: 'ד…(7)', notes: 'עסק קטן' });
+  });
+
+  it('a one-letter name is now DISTINGUISHABLE from a real one', () => {
+    // The 2026-08-31 13:52 report read `"name": "ק…"` and nobody could tell which of these it was.
+    expect(redactArgs({ name: 'קורן' }).name).toBe('ק…(4)');
+    expect(redactArgs({ name: 'ק' }).name).toBe('ק…(1)');
+  });
+
+  it('an email with no @ does not render its last character as a domain', () => {
+    // A dictated address that lost its "שטרודל" used to come out as `…m` — which reads like a
+    // domain, is not one, and is exactly the kind of log that sends a diagnosis the wrong way.
+    expect(redactArgs({ email: 'korengmail.com' }).email).toBe('…(14 chars, no @)');
+  });
+
+  it('still never lets a readable name, phone or address into the log', () => {
+    const out = redactArgs({ name: 'קורן שטרית', phone: '+972509788845', email: 'kaskoren@gmail.com' });
+    expect(JSON.stringify(out)).not.toContain('קורן שטרית');
+    expect(JSON.stringify(out)).not.toContain('9788845');
+    expect(JSON.stringify(out)).not.toContain('kaskoren');
   });
 
   it('passes non-strings through and truncates long strings', () => {
