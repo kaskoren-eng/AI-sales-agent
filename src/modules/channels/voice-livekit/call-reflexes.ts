@@ -43,6 +43,43 @@ export function decideSilenceAction(strike: number, stage: CallStage): ReflexAct
 }
 
 /**
+ * How long the CALLER has actually been quiet, against how long he is allowed to think.
+ *
+ * ── WHY THIS IS NOT JUST A BIGGER NUMBER ─────────────────────────────────────────────────────
+ *
+ * The 2026-08-31 13:52 production call fired the silence reflex TWICE inside the first minute of a
+ * 3.5-minute call — 7287ms at 27s and 7345ms at 46s, both `endedBy: silence_reflex`. At 36s she
+ * asked "אתה עדיין איתי?" and he answered "כן, אני פה"; at 57s she said "אני כאן, אין לחץ" into a
+ * pause he was clearly still thinking in. Both landed immediately after she had asked him an OPEN
+ * discovery question, which is precisely when a person needs a few seconds.
+ *
+ * WHAT THE CALL DATA ACTUALLY SAYS, read off the metric stream rather than assumed. In both windows
+ * NOTHING ran: no STT final, no end-of-turn, no LLM request, no preemptive draft, no tool. The
+ * caller was not mid-utterance and no turn was in flight — so suppressing the reflex "while speech
+ * is in flight" would not have prevented either of these, and this function deliberately does not
+ * pretend otherwise. He was simply thinking, in silence, with nothing on the line.
+ *
+ * The same is true of the two 15s silences on the 08:37 call the same morning, which is what set
+ * the timer to 7000 in the first place. Every `away` event across both instrumented production
+ * calls was a thinking caller; not one was a dead line, and in every case he spoke on his own 2-5s
+ * after the nudge and 11-20s after she stopped. The nudge has never yet rescued a call, and it has
+ * twice interrupted a man mid-thought.
+ *
+ * So the lever is TIME, but it is a time that has to be measured from the right event and kept
+ * apart from the SDK's own state machine — which is what this function is for. `awayMs` (LiveKit's
+ * `userAwayTimeout`) still decides when the caller is *away*, and the call report still attributes
+ * gaps by it. `minQuietMs` decides when she is allowed to SAY something about it.
+ *
+ * Returns the number of ms still to wait, or 0 when the nudge may go now. `minQuietMs = 0`
+ * restores the 2026-08-31 behaviour exactly: nudge the instant the SDK says 'away'.
+ */
+export function silenceNudgeWaitMs(quietForMs: number, minQuietMs: number): number {
+  if (minQuietMs <= 0) return 0;
+  const remaining = minQuietMs - quietForMs;
+  return remaining > 0 ? remaining : 0;
+}
+
+/**
  * An answering machine picked up (AMD). Leave the voicemail message and hang up — never run a
  * discovery call into a beep. `_category` (AMD's classification) is accepted for future
  * message-by-category tuning; today one message covers every machine.

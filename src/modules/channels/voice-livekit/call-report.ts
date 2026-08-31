@@ -252,6 +252,22 @@ export interface CallReportJson {
      */
     consecutiveOpenerRepeats: number;
     /**
+     * Times a tool-call / JSON payload was cut out of her speech before it reached the TTS.
+     *
+     * SHOULD ALWAYS BE ZERO, and any non-zero reading is a report about the MODEL, not about our
+     * wording: it means gpt-5.4 emitted a tool call on the final channel instead of the tool
+     * channel, and the guard caught it. It happened once on the 2026-08-31 13:52 production call,
+     * before the guard existed, and the caller heard nineteen seconds of `to=functions.
+     * capture_lead_info`, Chinese glitch tokens and his own details as raw JSON.
+     *
+     * Count it here so we learn how often it happens rather than finding out from a transcript.
+     * `toolCallLeakReasons` says WHICH markers fired, because "a brace arrived" and "the harmony
+     * routing header arrived" are different diagnoses. See toolcall-leak.ts.
+     */
+    toolCallLeaks: number;
+    /** The distinct leak markers seen on this call, in first-seen order. Empty on a clean call. */
+    toolCallLeakReasons: string[];
+    /**
      * Share of her replies carrying one of the eight screened everyday words — the Spoken Register
      * quota, measured instead of assumed.
      *
@@ -513,6 +529,21 @@ export class CallReport {
     }
   }
 
+  #toolCallLeaks = 0;
+  readonly #toolCallLeakReasons: string[] = [];
+
+  /**
+   * One sentence had a tool-call payload cut out of it before it could be spoken.
+   *
+   * Called from `guardStream`'s leak hook. Deliberately takes only the REASONS and never the
+   * payload: it carried the lead's name, business and pain point, and the report file is not a
+   * place for PII (see redactArgs in tools/tool-context.ts).
+   */
+  recordToolCallLeak(reasons: readonly string[]): void {
+    this.#toolCallLeaks++;
+    for (const r of reasons) if (!this.#toolCallLeakReasons.includes(r)) this.#toolCallLeakReasons.push(r);
+  }
+
   recordMetric(stage: string, m: Record<string, unknown>): void {
     const pick = (k: string): number | undefined =>
       typeof m[k] === 'number' ? Math.round(m[k] as number) : undefined;
@@ -767,6 +798,8 @@ export class CallReport {
         repeatedPhraseCount: countRepeatedFourGrams(agentLines) + countRepeatedOpeners(agentLines),
         repeatedOpenerCount: countRepeatedOpeners(agentLines),
         consecutiveOpenerRepeats: countConsecutiveOpenerRepeats(agentLines),
+        toolCallLeaks: this.#toolCallLeaks,
+        toolCallLeakReasons: [...this.#toolCallLeakReasons],
         registerTouchPct:
           agentLines.length === 0
             ? null

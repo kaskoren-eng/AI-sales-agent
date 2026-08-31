@@ -120,6 +120,8 @@ export async function buildTestApp(
     VOICE_SILENCE_AWAY_MS: 7000,
     VOICE_EMAIL_DICTATION_ENABLED: true,
     VOICE_BOOK_WITHOUT_EMAIL: true,
+    VOICE_TOOLCALL_LEAK_GUARD_ENABLED: true,
+    VOICE_SILENCE_NUDGE_MS: 20000,
     ...opts.envOverrides,
   };
 
