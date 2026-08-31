@@ -1,3 +1,4 @@
+import { DICTATION_NODS } from './dictation.js';
 import { dropEchoedOpener } from './prompts/acknowledgements.he.js';
 import { normalizeSpokenNumbers } from './speech-numbers.he.js';
 import { hasLeakMarker, scrubToolCallLeak } from './toolcall-leak.js';
@@ -401,6 +402,58 @@ const NIQQUD = /[֑-ׇ]/gu;
 /** Removes Hebrew niqqud / cantillation so only THIS FILE's verified marks reach the TTS. */
 export function stripNiqqud(text: string): string {
   return text.replace(NIQQUD, '');
+}
+
+/**
+ * THE ONE POINTED THING WE INJECT THAT THE STRIP MUST NOT TOUCH — the dictation nod.
+ *
+ * Every other verified mark in this file is RE-APPLIED after the strip, by the tables below, keyed
+ * on the unpointed text (that is what the round-10 filler rows in PRONUNCIATION_FIXES do). That
+ * mechanism is not available to the nod, and the reason is exact rather than stylistic:
+ *
+ *   - Koren's round-11 nod `אֶמ.` strips to `אמ.`;
+ *   - `אמ.` is ALSO the receipt he chose on round-10 card `f1`, and it must stay unpointed
+ *     — that is the form he heard, inside a sentence, and picked;
+ *   - `guardStream` splits on sentence terminators and the nod is injected as its own sentence, so
+ *     the nod and the receipt both arrive here as the whole chunk `"אמ."`. They are
+ *     byte-identical, with no context left to scope a rule on. A `PRONUNCIATION_FIXES` row that
+ *     repointed the nod would repoint the receipt too, reverting a verdict he never gave.
+ *
+ * And leaving it alone is not an option either: `אמ.` synthesized ALONE measured 0.16s at
+ * peak 49 of 32767 on round 11 — effectively SILENCE — which is why he rejected clip
+ * `n1_A` and chose the pointed `אֶמ.` (1.04s, peak 31823). Strip that mark and the
+ * nod stops making a sound, on a phone call, with every test in this repo still green.
+ *
+ * So the exemption keys on the MARK — the one thing only our own constants carry at this point
+ * in the pipeline. It is deliberately narrow: an exact literal match against a member of
+ * `DICTATION_NODS`, and nothing else. Model-emitted pointing on every other word is stripped exactly
+ * as before, which is the whole reason the strip exists (known-issues §13).
+ */
+const POINTED_OWN_SOUNDS: readonly string[] = DICTATION_NODS.filter((n) => /[\u0591-\u05C7]/u.test(n));
+
+/**
+ * Strips niqqud everywhere EXCEPT inside one of our own screened, pointed interjections.
+ *
+ * A literal scan rather than a built regex: the bank members contain "." and a regex assembled from
+ * them would need escaping to stay literal, which is one more thing to get wrong in the one function
+ * whose failure mode is a nod nobody can hear. With an empty protected list this is exactly
+ * `stripNiqqud`, so removing the last pointed nod cannot change anything else's behaviour.
+ */
+export function stripNiqqudExceptOwnSounds(text: string): string {
+  if (POINTED_OWN_SOUNDS.length === 0) return stripNiqqud(text);
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const kept = POINTED_OWN_SOUNDS.find((sound) => text.startsWith(sound, i));
+    if (kept !== undefined) {
+      out += kept;
+      i += kept.length;
+      continue;
+    }
+    out += stripNiqqud(text[i]!);
+    i += 1;
+  }
+  return out;
 }
 
 /**
@@ -856,7 +909,11 @@ export function guardSpeech(
   // Strip any niqqud the MODEL emitted — unverified pointing is unreliable on Cartesia. MUST run
   // BEFORE the fixes below, which inject this file's own verified marks; reversed, it erases them.
   // Only logs when it actually removed something, so it stays quiet on the common (unpointed) case.
-  const unpointed = stripNiqqud(out);
+  //
+  // ...except our own pointed dictation nods, which CANNOT be re-applied afterwards: the unpointed
+  // `אֶמ.` is byte-identical to the receipt `אמ.`, and one of them must
+  // keep its mark while the other must not. See stripNiqqudExceptOwnSounds.
+  const unpointed = stripNiqqudExceptOwnSounds(out);
   if (unpointed !== out) {
     interventions.push('stripped model-emitted niqqud (unverified pointing is unreliable on Cartesia)');
     out = unpointed;

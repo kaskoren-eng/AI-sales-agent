@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DICTATION_NOD } from './dictation.js';
+import { DICTATION_NODS } from './dictation.js';
 import { countConsecutiveOpenerRepeats, countRepeatedOpeners } from './phrase-ledger.js';
 import {
   ACKNOWLEDGEMENTS_HE,
@@ -165,16 +165,38 @@ describe('chooseTurnOpener — the same word never opens two replies running', (
     }
   });
 
-  it('THE ONE THAT COULD NOT ROTATE: a second dictation nod becomes silence, not a receipt', () => {
-    // DICTATION_NOD is a single constant, so a phone number followed by an email said it twice by
-    // construction. Silence rather than a receipt, because a receipt mid-dictation is the very
-    // interruption the nod exists to prevent.
+  it('THE ONE THAT COULD NOT ROTATE, AND NOW CAN: a second dictation nod picks another sound', () => {
+    // This test used to assert SILENCE. The nod was one constant, so a phone number followed by an
+    // email said the same sound twice by construction, and the only repair available was to say
+    // nothing on the second turn. Koren's round-11 verdict is three sounds used at random, which
+    // removes the cause — so the honest assertion now is that the second turn still NODS, with a
+    // different sound, through the same `avoidOpener` window every other opening sound uses.
+    for (const heard of DICTATION_NODS) {
+      const opener = chooseTurnOpener({
+        afterToolCall: false,
+        fillersEnabled: true,
+        midDictation: true,
+        nods: DICTATION_NODS,
+        avoidOpener: heard,
+        nextAck: () => {
+          throw new Error('must not fall back to a receipt in the middle of a dictation');
+        },
+        offerFiller: anyFiller,
+      });
+      expect(opener.kind, heard).toBe('nod');
+      expect((opener as { word: string }).word, heard).not.toBe(heard);
+    }
+  });
+
+  it('...and falls SILENT rather than acknowledge if the bank is ever cut back to one', () => {
+    // The fail-safe branch, still reachable and still correct: a receipt mid-dictation is the very
+    // interruption the nod exists to prevent (he said "050-", she said "טוב, הבנתי.").
     const opener = chooseTurnOpener({
       afterToolCall: false,
       fillersEnabled: true,
       midDictation: true,
-      nod: DICTATION_NOD,
-      avoidOpener: DICTATION_NOD,
+      nods: [DICTATION_NODS[0]],
+      avoidOpener: DICTATION_NODS[0],
       nextAck: () => {
         throw new Error('must not fall back to a receipt in the middle of a dictation');
       },
@@ -183,17 +205,36 @@ describe('chooseTurnOpener — the same word never opens two replies running', (
     expect(opener.kind).toBe('silent');
   });
 
+  it('A RECEIPT ON THE PREVIOUS TURN BLOCKS THE NOD THAT IS THE SAME SOUND', () => {
+    // `אֶמ.` (a nod) and `אמ.` (a receipt) differ by one mark and are one sound to a listener.
+    // `openerKey` strips niqqud, so they are one key here — which is exactly why the nod goes
+    // through the SHARED no-repeat window instead of a parallel one of its own.
+    for (let i = 0; i < 200; i++) {
+      const opener = chooseTurnOpener({
+        afterToolCall: false,
+        fillersEnabled: true,
+        midDictation: true,
+        nods: DICTATION_NODS,
+        avoidOpener: 'אמ.',
+        nextAck: () => 'אוקי.',
+        offerFiller: anyFiller,
+      });
+      expect((opener as { word: string }).word).not.toBe('אֶמ.');
+    }
+  });
+
   it('the first dictation turn still nods — the rule only fires on a repeat', () => {
     const opener = chooseTurnOpener({
       afterToolCall: false,
       fillersEnabled: true,
       midDictation: true,
-      nod: DICTATION_NOD,
+      nods: DICTATION_NODS,
       avoidOpener: 'אוקיי',
       nextAck: () => 'אוקיי.',
       offerFiller: anyFiller,
     });
-    expect(opener).toEqual({ kind: 'nod', word: DICTATION_NOD });
+    expect(opener.kind).toBe('nod');
+    expect([...DICTATION_NODS]).toContain((opener as { word: string }).word);
   });
 
   it('a hesitation that would repeat is withheld unspoken, so the budget survives', () => {
@@ -219,12 +260,13 @@ describe('chooseTurnOpener — the same word never opens two replies running', (
       afterToolCall: false,
       fillersEnabled: true,
       midDictation: true,
-      nod: DICTATION_NOD,
+      nods: DICTATION_NODS,
       avoidOpener: null,
       nextAck: () => 'אוקיי.',
       offerFiller: anyFiller,
     });
-    expect(opener).toEqual({ kind: 'nod', word: DICTATION_NOD });
+    expect(opener.kind).toBe('nod');
+    expect([...DICTATION_NODS]).toContain((opener as { word: string }).word);
   });
 
   it('end to end: forty turns of every mechanism, and no two adjacent openers match', () => {
@@ -237,7 +279,7 @@ describe('chooseTurnOpener — the same word never opens two replies running', (
         fillersEnabled: true,
         // Two dictation turns in a row on purpose — the phone number, then the email.
         midDictation: turn % 7 === 3 || turn % 7 === 4,
-        nod: DICTATION_NOD,
+        nods: DICTATION_NODS,
         callerShared: turn % 3 === 0,
         avoidOpener: tracker.avoid,
         nextAck: (opts) => ledger.next(opts),

@@ -37,8 +37,9 @@
  *
  * AND THE THIRD CASE, added 2026-08-30: the caller is in the middle of reading out a phone number
  * or an email. A receipt there is an interruption — it closes a turn he has not finished — so the
- * step opens with a VOCAL NOD instead ("אה אה"), which says *still listening* and hands the floor
- * straight back. Koren heard the failure on a production call: he said "050-", she answered
+ * step opens with a VOCAL NOD instead, drawn at random from `DICTATION_NODS` (Koren's round-11
+ * verdict: `אֶמ.` · `אהם.` · `אָה.`), which says *still listening* and hands the floor straight
+ * back. Koren heard the failure on a production call: he said "050-", she answered
  * "טוב, הבנתי.", and he then said the other seven digits into her sentence. See dictation.ts.
  */
 
@@ -70,9 +71,14 @@ export function chooseTurnOpener(input: {
    * the 2026-08-30 behaviour exactly: a full receipt in the middle of a phone number.
    */
   midDictation?: boolean;
-  /** The nod to use when `midDictation`. Injectable so the round-6 pick is one constant, not a
-   * literal buried in a branch. */
-  nod?: string;
+  /**
+   * The nods to draw from when `midDictation` — Koren's round-11 bank, `DICTATION_NODS`.
+   * Injectable for the same reason it always was: the pick lives in dictation.ts next to the
+   * verdict that produced it, not as literals buried in a branch here.
+   */
+  nods?: readonly string[];
+  /** Injectable so the random draw is deterministic in tests. Production uses Math.random. */
+  random?: () => number;
   /**
    * Where the next receipt comes from. A SUPPLIER rather than a word, because the choice is now a
    * per-call decision the agent owns: an AcknowledgementLedger deck when VOICE_ACK_LEDGER_ENABLED
@@ -122,14 +128,28 @@ export function chooseTurnOpener(input: {
   // The nod is NOT drawn from the acknowledgement deck, and it does not spend it. It is a
   // different act — "still listening" rather than "I have it" — and a deck word here would both
   // say the wrong thing and thin out the receipts for the turns that need them.
-  if (input.midDictation && input.nod) {
-    // DICTATION_NOD is a single constant — the one opening sound with no rotation of its own — so
-    // two dictation turns running (the phone number, then the email) say it twice by construction.
-    // When it would repeat, the step opens with NOTHING rather than with a receipt: a receipt here
-    // is the very interruption the nod exists to prevent (he said "050-", she said "טוב, הבנתי."),
-    // and inventing a second nod is not available — an unscreened Hebrew interjection fails
-    // silently on the line, which is why this constant is one word and marked provisional.
-    return repeats(input.nod) ? { kind: 'silent' } : { kind: 'nod', word: input.nod };
+  if (input.midDictation && input.nods && input.nods.length > 0) {
+    // AT RANDOM, out of the bank, and never the sound he just heard.
+    //
+    // This branch used to hold ONE constant, and that was the defect `spoken-openers.ts` names:
+    // the nod was "the one opening sound with no rotation of its own", so a phone number followed
+    // by an email said the same sound twice by construction, and the only repair available was to
+    // fall SILENT on the second one. Koren's round-11 verdict on card `n1` was three sounds, used
+    // randomly, which removes the cause rather than the symptom.
+    //
+    // The no-repeat filter is the SAME one every other opening sound goes through — `avoidOpener`,
+    // fed by SpokenOpenerTracker — and not a parallel mechanism. That matters beyond tidiness:
+    // `openerKey` strips niqqud, so the nod `אֶמ.` and the receipt `אמ.` are ONE key, and a receipt
+    // on the previous turn correctly blocks that nod on this one. They are the same sound.
+    //
+    // The silence fallback is kept for the case where every member is blocked — unreachable with
+    // three distinct keys and a window of one, reachable again if the bank is ever cut to a single
+    // string. Silence rather than a receipt, because a receipt mid-dictation is the very
+    // interruption the nod exists to prevent (he said "050-", she said "טוב, הבנתי.").
+    const free = input.nods.filter((word) => !repeats(word));
+    if (free.length === 0) return { kind: 'silent' };
+    const random = input.random ?? Math.random;
+    return { kind: 'nod', word: free[Math.floor(random() * free.length)] ?? free[0]! };
   }
   return {
     kind: 'ack',
@@ -221,8 +241,23 @@ export function openingSoundCategory(sound: string): OpeningSoundCategory {
  * `VOICE_FILLER_PAIRING_ENABLED=false` is still the coarse switch and is strictly more restrictive
  * than this, so it remains an exact rollback of the pairing behaviour as a whole.
  *
- * ⚠️ HE HAS NEVER HEARD "אמ. אֶממ..." — this guard is a prediction, not a verdict. If a listening
- * round says the pair is fine, delete the check; it is deliberately one line.
+ * ⚠️ IT WAS A PREDICTION WHEN IT SHIPPED. IT IS NOW HIS VERDICT, AND HE ARRIVED AT IT TWICE.
+ *
+ * Round-11 card `p1` put the blocked pair `"אמ. אֶממ... בוא נבדוק…"` (A) against the pair this rule
+ * ALLOWS, `"אמ. רֶגַע... בוא נבדוק…"` (B), and against what the code produces today, `"אמ. בוא
+ * נבדוק…"` (C). He first picked **A** — and then reversed himself, unprompted, in his own words:
+ *
+ *     "My bad, it's better if the agent will reply 'אמ. רגע..' better than that option I've
+ *      picked, because that option can cause potential problems."
+ *
+ * So the verdict is **B**, the pair the rule already permits, and the rule stays exactly as it
+ * shipped in `fa2cb68`. The invitation that used to be here — *if a listening round says the pair
+ * is fine, delete the check* — is spent, and deleting it now would be undoing a verdict.
+ *
+ * The round trip agrees with him, for once in the same direction: A came back from the 8kHz band as
+ * a single collapsed `"אממ."` — the two sounds MERGED into one — while B came back as
+ * `"אממ, רגע,"` with both intact. That merge is the "potential problem" he means, and it is the
+ * round-7 stutter wearing a new face. His ear decided; the transcript is corroboration, not proof.
  */
 export function mayPairInOneBreath(first: string, second: string): boolean {
   const a = openingSoundCategory(first);
@@ -256,8 +291,18 @@ function sharesStem(a: string, b: string): boolean {
  *   - `silent` opener → the head of the breath is free, any armed filler may take it.
  *   - `ack` opener → a receipt, so a hesitation behind it is a different act. Allowed.
  *   - `hesitation` opener → the same act twice (`רגע` then `שנייה`). Refused, always.
- *   - `nod` opener → `"אה אה."` classifies as a hesitation, so it is refused by the same rule,
- *     and it should be: mid-dictation the floor belongs to the caller, not to a second noise.
+ *   - `nod` opener → refused ALWAYS, and refused on the OPENER KIND rather than on the sound.
+ *     Mid-dictation the floor belongs to the caller: he is halfway through a phone number, and a
+ *     second noise on top of the nod is the interruption the nod exists to prevent.
+ *
+ *     ⚠️ This used to be an accident and it was one turn away from breaking. `"אה אה."` was
+ *     refused because its lead token `אה` happened to be a member of THINKING_FILLERS_HE, i.e.
+ *     because the nod classified as a hesitation. Koren's round-11 bank has three members and they
+ *     land in three DIFFERENT categories — `אֶמ.` leads on `אמ` (a receipt, so `acknowledgement`),
+ *     `אָה.` leads on `אה` (`hesitation`), `אהם.` is in no bank at all (`unscreened`) — so the
+ *     coincidence is gone and one of the three would have started allowing a filler behind it,
+ *     with nothing failing. The category lookup answers "what act is this sound"; only `kind`
+ *     knows the sound is being used to hold the floor open. `turn-opener.test.ts` pins all three.
  *
  * `pairing: false` (VOICE_FILLER_PAIRING_ENABLED=false) restores the hard one-sound cap shipped in
  * `2dcb23d` exactly — only a `silent` opener leaves the position free.
@@ -272,6 +317,9 @@ export function allowsArmedFiller(
 ): boolean {
   if (armedFiller === null || armedFiller === '') return false;
   if (opener.kind === 'silent') return true;
+  // The caller is still reading out his number. Nothing stacks on a nod — see the note above on
+  // why this is decided by the opener's KIND and not by the category its sound happens to fall in.
+  if (opener.kind === 'nod') return false;
   if (opts.pairing === false) return false;
   return mayPairInOneBreath(opener.word, armedFiller);
 }

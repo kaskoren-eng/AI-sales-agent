@@ -11,7 +11,7 @@ import {
   withFiller,
 } from './speech-guard.js';
 import { THINKING_FILLERS_HE } from './prompts/thinking-fillers.he.js';
-import { DICTATION_NOD } from './dictation.js';
+import { DICTATION_NODS } from './dictation.js';
 
 /**
  * These are the ACTUAL sentences the agent said to Koren on a real call. Not hypotheticals.
@@ -370,11 +370,86 @@ describe('the thinking fillers reach the voice with the marks he chose', () => {
     expect(guardSpeech('רגע.').text).toBe('רגע.');
   });
 
-  it('AND IT MUST NOT REPOINT THE DICTATION NOD — that card has no verdict', () => {
-    // Round-10 card `n1`: he rejected all four spellings of "אה אה.". A bare אה → אֶה rule would
-    // have changed the nod on his behalf, which is exactly the kind of silent drift this round is
-    // about. The nod is spoken alone, so it never carries the ellipsis the rule keys on.
-    expect(guardSpeech(DICTATION_NOD).text).toBe('אה אה.');
+  it('AND IT MUST NOT REPOINT A DICTATION NOD — the nod carries its own marks', () => {
+    // The ellipsis scope is what keeps the round-10 filler rows off the nod bank. `אָה.` leads on
+    // the same two letters as the filler `אֶה...` and must keep the KAMATZ Koren chose, not
+    // acquire the segol; a bare `אה` → `אֶה` rule would silently overwrite one verdict with
+    // another. Neither nod carries an ellipsis, so neither rule can reach it.
+    expect(guardSpeech('אָה.').text).toBe('אָה.');
+    expect(guardSpeech('אהם.').text).toBe('אהם.');
+  });
+});
+
+/**
+ * ROUND 11, CARD `n1` — AND THE ONE ASSERTION THAT IS ABOUT WHAT CARTESIA ACTUALLY RECEIVES.
+ *
+ * Koren chose three nods and two of them carry niqqud (`אֶמ.`, `אָה.`). Writing those strings
+ * into `DICTATION_NODS` is NOT enough, and the failure is silent: the nod is injected by `llmNode`
+ * into the reply stream, so it meets `guardSpeech`'s niqqud strip like any other text, Cartesia
+ * receives the unpointed form, and nothing anywhere fails.
+ *
+ * For `אֶמ.` that is not a cosmetic loss. Stripped it becomes `אמ.`, and `אמ.` synthesized
+ * alone measured 0.16s at peak 49 of 32767 on round 11 — effectively silence. He heard that clip
+ * (`n1_A`) and rejected it. So the mark is the difference between a nod and no nod at all.
+ *
+ * It ALSO cannot be fixed the way the round-10 fillers were, and that is why the mechanism here is
+ * different: `אֶמ.` strips to exactly the receipt `אמ.` he chose on round-10 card `f1`, and
+ * `guardStream` hands both to the guard as their own standalone sentence. A `PRONUNCIATION_FIXES`
+ * row keyed on `אמ.` cannot tell them apart, and would revert his receipt verdict to fix his nod
+ * verdict. The exemption keys on the mark instead.
+ *
+ * Every assertion below is about the STRING THAT LEAVES THE GUARD, never about the bank.
+ */
+describe('the dictation nods reach the voice with the marks he chose', () => {
+  const chunks = async function* (...c: string[]) { for (const x of c) yield x; };
+  const drain = async (it: AsyncIterable<string>) => {
+    const o: string[] = [];
+    for await (const x of it) o.push(x);
+    return o.join('');
+  };
+
+  it('every nod in the bank survives guardSpeech byte-for-byte', () => {
+    for (const nod of DICTATION_NODS) {
+      expect(guardSpeech(nod).text, nod).toBe(nod);
+    }
+  });
+
+  it('and survives guardStream, which is the path production actually uses', async () => {
+    for (const nod of DICTATION_NODS) {
+      // The nod is enqueued by llmNode as its own chunk, ahead of the model's first tokens.
+      const out = await drain(guardStream(chunks(`${nod} `, 'בוא נמשיך.')));
+      expect(out, nod).toContain(nod);
+    }
+  });
+
+  it('and survives even if it is NOT split off into its own sentence', () => {
+    // Belt and braces on an assumption about the tokenizer: the exemption is a literal match
+    // wherever the string appears, so it does not depend on where guardStream cuts.
+    expect(guardSpeech('אֶמ. בוא נמשיך.').text).toBe('אֶמ. בוא נמשיך.');
+  });
+
+  it('THE COLLISION: the RECEIPT אמ. is left unpointed — that is a different verdict', () => {
+    // Round-10 card `f1`. He heard `אמ.` inside a sentence and picked it. The nod `אֶמ.` strips
+    // to this exact string, which is why the nod is protected by its MARK and not repaired from
+    // its unpointed form: a rule that repointed one would repoint the other.
+    expect(guardSpeech('אמ.').text).toBe('אמ.');
+    expect(guardSpeech('אמ. כמה פניות נכנסות?').text).toBe('אמ. כמה פניות נכנסות?');
+  });
+
+  it('THE EXEMPTION IS NARROW: model-emitted pointing on any other word is still stripped', () => {
+    // The strip exists because unverified model pointing is distorted on Cartesia (known-issues
+    // §13). Widening the exemption beyond our own constants would undo the reason for the strip.
+    const guarded = guardSpeech('שָׁלוֹם, אֲנַחְנוּ מתחילים.');
+    expect(guarded.text).toBe('שלום, אנחנו מתחילים.');
+    expect(guarded.interventions.join(' ')).toContain('niqqud');
+    // ...and a pointed אמ that is NOT the nod (a different mark) is not smuggled through either.
+    expect(guardSpeech('אַמ.').text).toBe('אמ.');
+  });
+
+  it('a nod is never reported as an intervention — nothing was stripped from it', () => {
+    for (const nod of DICTATION_NODS) {
+      expect(guardSpeech(nod).interventions.join(' '), nod).not.toContain('niqqud');
+    }
   });
 });
 

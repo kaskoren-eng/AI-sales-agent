@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DICTATION_NOD, isDictationTurn } from './dictation.js';
+import { DICTATION_NODS, isDictationTurn } from './dictation.js';
 import { ACKNOWLEDGEMENTS_HE_WIDE } from './prompts/acknowledgements.he.js';
 
 /**
@@ -56,21 +56,41 @@ describe('isDictationTurn — is the caller reading something out?', () => {
     expect(isDictationTurn('   ')).toBe(false);
   });
 
-  it('the nod is short and is not a sentence', () => {
-    // The whole point is that it does not close the caller's turn. If this ever grows a verb,
-    // it has become a receipt again.
-    expect(DICTATION_NOD.length).toBeLessThanOrEqual(8);
-    // Read out of the banks rather than from a hand-written list, so a receipt that changes
-    // spelling (round 10 moved two of the three) cannot slip past a stale literal here.
-    for (const receipt of [...ACKNOWLEDGEMENTS_HE_WIDE]) {
-      expect(DICTATION_NOD.startsWith(receipt.replace(/[.,!?…׃]/gu, ''))).toBe(false);
+  it('every nod is short and none of them is a sentence', () => {
+    // The whole point is that it does not close the caller's turn. If one of these ever grows a
+    // verb, it has become a receipt again.
+    for (const nod of DICTATION_NODS) {
+      expect(nod.length, nod).toBeLessThanOrEqual(8);
     }
   });
 
-  it('is STILL the unscreened 2026-08-30 constant — round 10 rejected every alternative', () => {
-    // Card `n1` offered four spellings and Koren picked none of them, so this is unchanged not
-    // because it passed but because nothing beat it. Round 11 is where it is settled. If this
-    // assertion is edited, a listening verdict must be quoted in the same commit.
-    expect(DICTATION_NOD).toBe('אה אה.');
+  it('THE BANK IS HIS, VERBATIM — round-11 card `n1`, options C, F and L', () => {
+    // *"אופציות מעולות שאני רוצה שנשתמש בכל אחת מהם באופן רנדומלי: C, F, L"* — all three, at random.
+    // Byte-for-byte, INCLUDING the niqqud: two of these are inaudible or a different vowel without
+    // it, and the marks only survive to Cartesia because speech-guard.ts exempts these exact
+    // strings from the niqqud strip. If this literal is edited, a listening verdict must be quoted
+    // in the same commit and the exemption re-checked — see speech-guard.test.ts.
+    expect([...DICTATION_NODS]).toEqual(['אֶמ.', 'אהם.', 'אָה.']);
+  });
+
+  it('a nod is never a receipt — except the ONE he chose to be both, deliberately', () => {
+    // Read out of the receipt bank rather than from a hand-written list, so a receipt that changes
+    // spelling (round 10 moved two of the three) cannot slip past a stale literal here.
+    //
+    // `אֶמ.` IS the receipt `אמ.` with a segol on it, and that is not an oversight in either
+    // direction: he chose `אמ.` for the receipt on round-10 card `f1` (heard inside a sentence) and
+    // `אֶמ.` for the nod on round-11 card `n1` (heard alone), and the mark is the difference
+    // between 1.04s of sound and 0.16s of near-silence when the sound stands on its own. Because
+    // `openerKey` strips niqqud they are ONE key to the no-repeat rule, so a receipt on the
+    // previous turn already blocks this nod on the next — which is the correct behaviour and is
+    // pinned in spoken-openers.test.ts.
+    const sameSoundAsAReceipt = ['אֶמ.'];
+    for (const nod of DICTATION_NODS) {
+      if (sameSoundAsAReceipt.includes(nod)) continue;
+      for (const receipt of [...ACKNOWLEDGEMENTS_HE_WIDE]) {
+        const stem = receipt.replace(/[.,!?…׃]/gu, '');
+        expect(nod.replace(/[֑-ׇ]/gu, '').startsWith(stem), `${nod} / ${receipt}`).toBe(false);
+      }
+    }
   });
 });
