@@ -1,0 +1,41 @@
+<meta charset="utf-8"><title>סבב 12 — המשפטים של השומר</title>
+<style>
+:root{--bg:#0f1115;--fg:#e8eaed;--mut:#9aa0a6;--card:#171a21;--line:#262b36;--acc:#7c8cff}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,Segoe UI,Arial;padding:28px}
+h1{font-size:22px;margin:0 0 6px} h2{font-size:16px;margin:0 0 12px;color:var(--acc)}
+.intro{max-width:70ch;color:var(--mut);margin-bottom:26px}
+.intro b{color:var(--fg)}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+.vs{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.v{border:1px solid var(--line);border-radius:8px;padding:12px;background:#12151c}
+.k{display:inline-block;font-weight:700;background:var(--acc);color:#0f1115;border-radius:4px;padding:0 8px;margin-bottom:6px}
+.lab{color:var(--mut);font-size:13px;margin-bottom:6px}
+.txt{font-size:16px;margin-bottom:10px}
+audio{width:100%} .pick{display:block;margin-top:8px;font-size:13px;cursor:pointer}
+button{background:var(--acc);color:#0f1115;border:0;border-radius:8px;padding:10px 18px;font-size:15px;font-weight:600;cursor:pointer}
+pre{background:#12151c;border:1px solid var(--line);border-radius:8px;padding:12px;white-space:pre-wrap}
+</style>
+<h1>סבב 12 — שני המשפטים שהשומר אומר</h1>
+<div class="intro" dir="rtl">
+בשיחה של 16:51 היא אמרה <b>"קבענו לאחת עשרה"</b> — ולא נקבע כלום. השומר החדש מחליף את ההבטחה
+באמת. <b>אבל שומר פועל רק כשיש תקלה</b>, ולכן דווקא המשפט שהוא אומר הוא הדבר היחיד בשיחה
+שאף אחד מעולם לא שמע.<br><br>
+<b>A</b> = מה שנאמר בפועל בשיחה. <b>B</b> = מה שהיא תגיד מעכשיו.<br>
+sonic-3.5, מהירות 0.9, עוצמה 1.4 — בדיוק כמו בפרודקשן.
+</div>
+<section><h2>t1 · היא עוד לא קבעה — מה היא אומרת במקום ההבטחה</h2><div class="vs"><div class="v"><div class="k">A</div><div class="lab">מה שנאמר בשיחה (273s) — הבטחה על פגישה שלא קיימת</div><div class="txt" dir="rtl">קבענו לאחת עשרה. קורן, מה השם המלא שלךָ?</div><audio controls preload="none" src="r12_t1_A.wav"></audio><label class="pick"><input type="radio" name="pick_t1" value="A"> זה הכי טוב</label></div><div class="v"><div class="k">B</div><div class="lab">אחרי השינוי — האמת, שהיא גם הצעד הבא</div><div class="txt" dir="rtl">אני צריכה עוד כמה פרטים לפני שאני קובעת. קורן, מה השם המלא שלךָ?</div><audio controls preload="none" src="r12_t1_B.wav"></audio><label class="pick"><input type="radio" name="pick_t1" value="B"> זה הכי טוב</label></div></div></section><section><h2>t2 · אין דרך לקבוע — המשפט שמעביר לצוות</h2><div class="vs"><div class="v"><div class="k">A</div><div class="lab">מה שנאמר בשיחה קודמת — הבטחה + אישור שלא יגיע</div><div class="txt" dir="rtl">קבעתי לך שיחת דמו למחר. תקבל אישור, תודה רבה ונדבר!</div><audio controls preload="none" src="r12_t2_A.wav"></audio><label class="pick"><input type="radio" name="pick_t2" value="A"> זה הכי טוב</label></div><div class="v"><div class="k">B</div><div class="lab">אחרי השינוי — מה שבאמת קורה</div><div class="txt" dir="rtl">אעביר את הבקשה לצוות ונחזור אליך לאישור מדויק.</div><audio controls preload="none" src="r12_t2_B.wav"></audio><label class="pick"><input type="radio" name="pick_t2" value="B"> זה הכי טוב</label></div></div></section>
+<button onclick="s()">צור סיכום</button>
+<pre id="out" dir="ltr"></pre>
+<script>
+function s(){
+  const ids=["t1", "t2"];
+  let t='round12 verdicts (sonic-3.5)
+';
+  for(const id of ids){
+    const el=document.querySelector('input[name="pick_'+id+'"]:checked');
+    t+=id+': '+(el?el.value:'-')+'
+';
+  }
+  document.getElementById('out').textContent=t;
+}
+</script>
