@@ -77,7 +77,27 @@ export interface AgentGap {
   tools: Array<{ name: string; durationMs: number }>;
   /** How much of the gap the tools account for. The remainder is the next step's TTFT + TTS. */
   toolMs: number;
+  /**
+   * What BROKE the silence, when it was one of our own timers rather than the conversation.
+   *
+   * WHY THIS FIELD EXISTS. The 2026-08-31 call carried two gaps of 15294ms and 15363ms with
+   * `tools: []` and `toolMs: 0` — fifteen seconds attributed to nothing at all, which reads exactly
+   * like a stalled LLM and is not one. They were the SDK's `userAwayTimeout` (15s, its default,
+   * never set by us) finally letting the silence reflex speak. An unattributed fifteen-second stall
+   * is worse than a slow one: nobody can tell a framework default from a hung request by looking at
+   * it. Absent on an ordinary gap — the caller was answering, and that is not a defect.
+   */
+  endedBy?: ReflexStage;
 }
+
+/**
+ * The reflex timers that can end a silence on their own, as `recordMetric` stages.
+ *
+ * `silence_reflex` = the caller went quiet and VOICE_SILENCE_AWAY_MS expired.
+ * `mute_checkback` = SHE went quiet on purpose (a hold) and VOICE_HOLD_CHECKBACK_MS expired.
+ */
+export const REFLEX_STAGES = ['silence_reflex', 'mute_checkback'] as const;
+export type ReflexStage = (typeof REFLEX_STAGES)[number];
 
 /**
  * One tool invocation (Phase 4): what the LLM called, how long it took, whether it worked.
@@ -551,7 +571,8 @@ export class CallReport {
     if (gap && gap.fromMs === this.#transcript.at(-2)?.spokeUntilMs) {
       console.log(
         `latency agent_gap ms=${gap.gapMs} toolMs=${gap.toolMs} ` +
-          `unexplainedMs=${gap.gapMs - gap.toolMs} tools=${gap.tools.map((t) => t.name).join(',') || 'none'}`,
+          `unexplainedMs=${gap.gapMs - gap.toolMs} tools=${gap.tools.map((t) => t.name).join(',') || 'none'} ` +
+          `endedBy=${gap.endedBy ?? 'reply'}`,
       );
     }
   }
@@ -808,11 +829,17 @@ export class CallReport {
       const tools = this.#toolCalls
         .filter((t) => t.atMs > from && t.atMs <= to + 250)
         .map((t) => ({ name: t.name, durationMs: t.durationMs }));
+      // Same window, same reasoning, for the timers that speak on their own. A reflex line is the
+      // LAST thing that happens in a gap, so its metric lands just before the audio it triggered.
+      const reflex = this.#metrics.find(
+        (m) => (REFLEX_STAGES as readonly string[]).includes(m.stage) && m.atMs > from && m.atMs <= to + 250,
+      );
       gaps.push({
         fromMs: from,
         gapMs,
         tools,
         toolMs: tools.reduce((n, t) => n + t.durationMs, 0),
+        ...(reflex ? { endedBy: reflex.stage as ReflexStage } : {}),
       });
     }
     return gaps;

@@ -92,6 +92,27 @@ export const SCENARIOS: Scenario[] = [
     ],
   },
   {
+    name: 'email_spelling',
+    description:
+      'THE ONE THAT COST TWO BOOKINGS. The 2026-08-31 exchange, turn for turn: he gives the address ' +
+      'as a Hebrew word, she reads back the wrong prefix, he contradicts it and spells the front in ' +
+      'fragmented Latin letters ("K-A." / "F." / "K-O-R-E-N."), and says "לא נכון" to her read-back. ' +
+      'What to judge: does she EVER say `koren@gmail.com` again after he rejects it, does she join ' +
+      'the letters into one string instead of treating them as rival readings, and does she read the ' +
+      'address back in Hebrew rather than spelling Latin letters down an 8kHz line. Real address: ' +
+      'kaskoren@gmail.com. Behaviour, not latency — read the transcript, not the timings.',
+    utterances: [
+      'כן, בוא נקבע. אני פנוי מחר בשלוש.',
+      'קוראים לי קורן שטרית',
+      "המייל שלי קו קורן שטרודל ג'ימייל נקודה קום",
+      'זה בהתחלה. K. A-S.',
+      'לא נכון.',
+      'K-A.',
+      'S.',
+      "K-O-R-E-N שטרודל ג'ימייל נקודה קום",
+    ],
+  },
+  {
     name: 'hot_lead_booking',
     description:
       'PHASE 4 END-TO-END: a qualified lead who wants a demo — drives the full tool chain ' +

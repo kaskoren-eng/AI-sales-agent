@@ -330,6 +330,27 @@ const envSchema = z.object({
   // never feels dropped. 0 disables the watchdog and restores the indefinite silence.
   VOICE_HOLD_CHECKBACK_MS: z.coerce.number().int().nonnegative().default(7000),
 
+  // How long the CALLER may sit in silence before she checks he is still there.
+  //
+  // THE 15-SECOND DEAD LINE, and it was never ours to begin with. The silence reflex fires off the
+  // SDK's `user_state_changed -> 'away'` event, and that event is driven by LiveKit's own
+  // `userAwayTimeout`, whose default is 15 SECONDS (`agent_session.js`: `userAwayTimeout: 15`, armed
+  // the moment her audio stops and the caller is not speaking). Nothing in this repo ever set it, so
+  // "how long a caller hears nothing at all" was a framework default nobody had chosen.
+  //
+  // Measured on the 2026-08-31 production call: two silences of 15294ms and 15363ms, at 117s and
+  // 301s. NOTHING ran inside either window — no STT final, no end-of-turn, no LLM request, no
+  // preemptive draft, no tool: the only pipeline event in the whole 15s was the TTS first byte of
+  // the nudge itself (236ms / 275ms), and 15000 + that is the gap to the millisecond. The dead-air
+  // metric cannot see it — its stopwatch runs from the CALLER's turn ending, and there was no
+  // caller turn — which is why it read a healthy max of 3977ms on the same call.
+  //
+  // 7000 matches VOICE_HOLD_CHECKBACK_MS on purpose: those two timers answer the same question from
+  // the two sides of the call (she is quiet / he is quiet) and there is no reason for a caller to
+  // wait longer for one than the other. Set 15000 to restore the SDK default behaviour exactly;
+  // 0 disables the away timer altogether (no silence reflex at all — the pre-2026-07 behaviour).
+  VOICE_SILENCE_AWAY_MS: z.coerce.number().int().nonnegative().default(7000),
+
   // Agent spoken language (ISO 639-1) — drives both STT and TTS
   VOICE_LANGUAGE: z.string().default('he'),
   // Biasing prompt for the STT. Hebrew transcription invents words it half-hears — it turned
@@ -535,6 +556,14 @@ const envSchema = z.object({
   // unlocked for an engaged one. It never changes her speech. OFF drops the note entirely; the
   // prompt's mandatory/optional split stays either way.
   VOICE_ENGAGEMENT_NOTE_ENABLED: envBool(true),
+  // Kill-switch for email-dictation memory (2026-08-31). Two consecutive production calls captured
+  // `koren@gmail.com` for a lead whose address is `kaskoren@gmail.com`, and the second one lost the
+  // booking over it: he spelled the prefix twice, she read back the value he had just contradicted,
+  // and the call ran out before it converged. ON: the letters he spells are stitched across his
+  // fragmented turns and handed to the model in order, a value he rejected out loud is recorded so
+  // it can never be read back or saved again, and the spoken domain ("ג'ימייל נקודה קום") is
+  // resolved to `gmail.com`. OFF restores the previous behaviour exactly. See email-dictation.ts.
+  VOICE_EMAIL_DICTATION_ENABLED: envBool(true),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),

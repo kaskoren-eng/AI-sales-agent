@@ -47,6 +47,7 @@ import { MAX_FILLERS_PER_CALL, ThinkingFillerLedger } from './prompts/thinking-f
 import { allowsArmedFiller, chooseTurnOpener, chunkCallsTool } from './turn-opener.js';
 import { DICTATION_NOD, isDictationTurn } from './dictation.js';
 import { EngagementTracker, callerSharedSubstance } from './engagement.js';
+import { EmailDictation } from './email-dictation.js';
 import {
   AddressGenderTracker,
   dropAckEcho,
@@ -233,6 +234,16 @@ class ClickScalesAgent extends voice.Agent {
     env.VOICE_REGISTER_NUDGE_ENABLED && env.VOICE_SPOKEN_REGISTER_ENABLED
       ? new SpokenRegisterTracker()
       : undefined;
+
+  /**
+   * The email being spelled out right now (VOICE_EMAIL_DICTATION_ENABLED).
+   *
+   * Set after construction rather than through the constructor, like `onSilentReply` and
+   * `onModelFirstToken`: it is fed from the same ConversationItemAdded hook and read only by the
+   * coach note, so nothing in the class body needs it at construction time. `undefined` when the
+   * switch is off, and every reader is written for that. See email-dictation.ts.
+   */
+  emailDictation: EmailDictation | undefined;
 
   /** The last coach note injected, so an unchanged note is never re-written into the ctx. */
   lastCoachNote: string | null = null;
@@ -668,7 +679,8 @@ async function injectCoachNote(agent: ClickScalesAgent): Promise<void> {
     // "He is giving you four-word answers — mandatory questions only." Fires on a CHANGE of level,
     // so a consistent caller costs one line for the whole call. See engagement.ts.
     const engagementNote = agent.engagementTracker?.note() ?? null;
-    const note = [phraseNote, factNote, engagementNote].filter(Boolean).join('\n');
+    const emailNote = agent.emailDictation?.note() ?? null;
+    const note = [phraseNote, factNote, engagementNote, emailNote].filter(Boolean).join('\n');
     if (!note || note === agent.lastCoachNote) return;
     const ctx = agent.chatCtx.copy();
     ctx.items = ctx.items.filter((it) => it.id !== COACH_NOTE_ID);
@@ -840,6 +852,13 @@ export default defineAgent({
     // where a name gets set, and this is what decides whether an offered name may REPLACE one the
     // lead already gave. `undefined` runs the pre-fact-memory behaviour exactly. See fact-memory.ts.
     const factMemory = env.VOICE_FACT_MEMORY_ENABLED ? new FactMemory() : undefined;
+
+    // THE EMAIL HE IS SPELLING (VOICE_EMAIL_DICTATION_ENABLED). One per call, attached to the agent
+    // below once it exists. It holds the letters across the turns the endpointer shreds his answer
+    // into, and it is what NOTICES a read-back being contradicted — the refusal itself is enforced
+    // by `factMemory.reject`, so with fact memory switched off this still coaches but cannot block
+    // a save. See email-dictation.ts.
+    const emailDictation = env.VOICE_EMAIL_DICTATION_ENABLED ? new EmailDictation() : undefined;
 
     const { runtime, disabledReason, settings: tenantSettings } = await buildToolRuntime(env, {
       callId: ctx.room.name ?? 'unknown',
@@ -1027,6 +1046,9 @@ export default defineAgent({
         // Anything that made noise in the meantime already ended the silence.
         if (session.agentState === 'speaking' || session.agentState === 'thinking') return;
         if (callState?.isTerminal()) return;
+        // Attributed in the report the same way the silence reflex is — see `endedBy` in
+        // call-report.ts. A gap this watchdog ended must not read as an unexplained stall either.
+        report.recordMetric('mute_checkback', { durationMs: env.VOICE_HOLD_CHECKBACK_MS });
         console.log('reflex_mute_checkback', JSON.stringify({ afterMs: env.VOICE_HOLD_CHECKBACK_MS }));
         session.say(HOLD_CHECKBACK_HE, { allowInterruptions: true });
       }, env.VOICE_HOLD_CHECKBACK_MS);
@@ -1227,6 +1249,21 @@ export default defineAgent({
         agent.lastUserUtterance = item.textContent ?? null;
         // How much is he giving her? Drives which discovery questions she is allowed to ask.
         agent.engagementTracker?.observeCaller(item.textContent);
+        // EMAIL DICTATION: stitch the letters he is spelling, and catch the moment he says a value
+        // she read back is wrong. The rejection is handed straight to fact memory, which is where
+        // capture_lead_info will look before it saves anything (fact-memory.ts `reject`).
+        if (item.textContent && agent.emailDictation) {
+          const wrong = agent.emailDictation.observeCallerUtterance(item.textContent);
+          if (wrong) {
+            agent.factMemory?.reject('email', wrong);
+            // The VALUE is the lead's address and never goes to stdout — its shape is all anyone
+            // debugging this needs, and an agent log is not a place for a customer's email.
+            console.log(
+              'email_rejected',
+              JSON.stringify({ chars: wrong.length, domain: wrong.split('@')[1] ?? null }),
+            );
+          }
+        }
       }
       else if (item?.role === 'assistant') {
         callState?.onAgentTurn();
@@ -1240,6 +1277,9 @@ export default defineAgent({
         // rather than from the model's intent, so the count is of asks the caller actually heard —
         // which is what he was reacting to when he said "we already covered this".
         if (item.textContent) agent.factMemory?.observeAgentUtterance(item.textContent);
+        // What she just READ BACK, so his next "לא נכון" has a value to attach to. Same source and
+        // the same de-dupe as the line above — see email-dictation.ts.
+        if (item.textContent) agent.emailDictation?.observeAgentUtterance(item.textContent);
         // Spoken register: is she actually reaching for an everyday word, or only being told to?
         if (item.textContent) agent.registerTracker?.observe(item.textContent);
         // Closes the caller's turn for the engagement window: everything he says before her NEXT
@@ -1270,7 +1310,8 @@ export default defineAgent({
         (env.VOICE_PHRASE_LEDGER_ENABLED ||
           agent.factMemory ||
           agent.registerTracker ||
-          agent.engagementTracker)
+          agent.engagementTracker ||
+          agent.emailDictation)
       ) {
         void trimmed.then(() => injectCoachNote(agent));
       }
@@ -1368,6 +1409,9 @@ export default defineAgent({
     // Now that she exists, give her deliberate silence a way out. See the MUTE WATCHDOG above.
     agent.onSilentReply = armMuteWatchdog;
 
+    // …and the spelling memory for the email. See email-dictation.ts.
+    agent.emailDictation = emailDictation;
+
     // The model's REAL first-token time. The SDK's own ttft now measures our acknowledgement, so
     // without this the ~840ms GPT actually takes would simply disappear from the report and every
     // future reading would flatter the change that hid it.
@@ -1446,11 +1490,32 @@ export default defineAgent({
     // (VOICE_STATE_MACHINE_ENABLED=false) none of these handlers are subscribed, and Keren behaves
     // exactly as she did before the state machine.
     if (callState) {
-    // SILENCE — the caller went quiet (user state → 'away', ~15s of no reply). Strike 1 is a
-    // stage-scoped check-in; strike 2 wraps and hangs up. Gated so a nudge never lands on top of an
+    // SILENCE — the caller went quiet. Strike 1 is a stage-scoped check-in; strike 2 reassures and
+    // holds the line; past the cap she waits quietly. Gated so a nudge never lands on top of an
     // in-flight draft (which would clip her).
-    session.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
-      if (ev.newState !== 'away' || callState.isTerminal()) return;
+    //
+    // ── THE FIFTEEN-SECOND DEAD LINE (2026-08-31), and how long it had been there ─────────────
+    //
+    // This handler fires off the SDK's `user_state_changed -> 'away'`, and that event is driven by
+    // `AgentSession`'s `userAwayTimeout` — DEFAULT 15 SECONDS, which nobody here had ever set. So
+    // the answer to "how long may a caller hear absolutely nothing?" was a framework default. On
+    // the 2026-08-31 production call it was collected twice, at 117s and at 301s: gaps of 15294ms
+    // and 15363ms in which NOTHING ran — no STT final, no end-of-turn, no LLM request, no
+    // preemptive draft, no tool. The only pipeline event inside either window was the TTS first
+    // byte of the nudge itself (236ms / 275ms), and 15000 + that is the gap to the millisecond.
+    //
+    // The bound is now ours: VOICE_SILENCE_AWAY_MS (agent.config.ts sets userAwayTimeout from it).
+    //
+    // ── AND IT ONLY EVER FIRED ONCE PER SILENCE ──────────────────────────────────────────────
+    //
+    // The SDK re-arms its away timer only when the user is 'listening' (agent_session.js
+    // `_updateUserState`), and after this handler runs the user is 'away' — so a caller who stayed
+    // silent through the nudge was never checked on again, however long he sat there. Strike 2 was
+    // unreachable inside a single silence. `armSilenceRecheck` below closes that: the same decision
+    // function, the same cap (`decideSilenceAction` returns null past MAX_SILENCE_NUDGES, so a call
+    // can never be nudged more than twice), just re-armed after her line finishes.
+    const nudgeOnSilence = (waitedMs: number): void => {
+      if (callState.isTerminal()) return;
       if (session.agentState === 'speaking' || session.agentState === 'thinking') return;
       // AND NOT WHILE HE IS TALKING. This guard checked only whether SHE was busy, so on
       // 2026-08-16 she cut across Koren mid-sentence with "רגע, אתה עוד על הקו?" — asking whether
@@ -1460,9 +1525,18 @@ export default defineAgent({
       const action = decideSilenceAction(callState.onSilenceStrike(), callState.stage);
       // Past the nudge cap: hold the line quietly and keep waiting — never hang up on silence.
       if (!action) return;
+      // ATTRIBUTION. Without this the silence lands in the report as an `agentGap` with `tools: []`
+      // and `toolMs: 0` — fifteen seconds explained by nothing, which reads exactly like a hung LLM
+      // and is not one. `call-report.ts` pairs this stage with the gap it ended (`endedBy`).
+      report.recordMetric('silence_reflex', { durationMs: waitedMs });
       console.log(
         'reflex_silence',
-        JSON.stringify({ strike: callState.silenceStrikes, stage: callState.stage, teardown: action.teardown }),
+        JSON.stringify({
+          strike: callState.silenceStrikes,
+          stage: callState.stage,
+          waitedMs,
+          teardown: action.teardown,
+        }),
       );
       const handle = session.say(action.say, { allowInterruptions: true });
       // Silence never tears down (a pause is not a dead call); the branch stays as a guard in case a
@@ -1471,7 +1545,40 @@ export default defineAgent({
         callState.markTerminal();
         if (runtime && action.endReason) runtime.endReason = action.endReason;
         runEndCallTeardown(session, handle);
+        return;
       }
+      armSilenceRecheck();
+    };
+
+    // The re-arm. Cancelled by either party making a sound, exactly like the mute watchdog, so it
+    // can only ever fire into a silence that is still going on.
+    let silenceRecheckTimer: ReturnType<typeof setTimeout> | null = null;
+    const cancelSilenceRecheck = (): void => {
+      if (silenceRecheckTimer) {
+        clearTimeout(silenceRecheckTimer);
+        silenceRecheckTimer = null;
+      }
+    };
+    function armSilenceRecheck(): void {
+      if (env.VOICE_SILENCE_AWAY_MS === 0) return;
+      cancelSilenceRecheck();
+      silenceRecheckTimer = setTimeout(() => {
+        silenceRecheckTimer = null;
+        // She may still be delivering the previous nudge; try again after it, rather than dropping
+        // the re-arm on the floor.
+        if (session.agentState === 'speaking' || session.agentState === 'thinking') {
+          armSilenceRecheck();
+          return;
+        }
+        nudgeOnSilence(env.VOICE_SILENCE_AWAY_MS);
+      }, env.VOICE_SILENCE_AWAY_MS);
+      silenceRecheckTimer.unref?.();
+    }
+
+    session.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
+      if (ev.newState === 'speaking') cancelSilenceRecheck();
+      if (ev.newState !== 'away') return;
+      nudgeOnSilence(env.VOICE_SILENCE_AWAY_MS);
     });
 
     // BARGE-IN — the caller talked over her. The SDK already yields; we only record it (analytics).

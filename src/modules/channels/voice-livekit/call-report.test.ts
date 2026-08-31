@@ -200,6 +200,51 @@ describe('CallReport agentGap — silence INSIDE a reply', () => {
     expect(line.spokeUntilMs).toBe(2_000);
     expect(line.atMs).toBeLessThan(1_000); // stamped now, at commit — not when she started
   });
+
+  /**
+   * The 2026-08-31 shape. Two gaps of 15294ms and 15363ms arrived with `tools: []` and `toolMs: 0`
+   * — fifteen seconds attributed to nothing, which reads exactly like a hung LLM. They were the
+   * silence reflex finally speaking, at the end of the SDK's 15-second `userAwayTimeout`. Nobody
+   * could tell those two things apart from the report, and that is the defect this closes.
+   */
+  it('names the reflex that ended a silence, so a timer never reads as a stall', () => {
+    const report = newReport();
+    const t0 = Date.now();
+    report.recordTranscript('assistant', 'בערך כמה פניות נכנסות אליךָ ביום?', {
+      startedSpeakingAt: sec(t0 + 111_351),
+      stoppedSpeakingAt: sec(t0 + 117_112),
+    });
+    // The reflex fires at the end of the wait, just before the audio it triggers.
+    vi.setSystemTime(t0 + 132_200);
+    report.recordMetric('silence_reflex', { durationMs: 7_000 });
+    vi.setSystemTime(t0 + 134_087);
+    report.recordTranscript('assistant', 'רגע, אתה עוד על הקו?', {
+      startedSpeakingAt: sec(t0 + 132_406),
+      stoppedSpeakingAt: sec(t0 + 134_087),
+    });
+
+    const [gap] = report.toJson().summary.agentGap.gaps;
+    expect(gap?.gapMs).toBe(15_294);
+    expect(gap?.tools).toEqual([]);
+    expect(gap?.endedBy).toBe('silence_reflex');
+  });
+
+  it('leaves an ordinary tool gap unattributed to any reflex — it was not one', () => {
+    const report = newReport();
+    const t0 = Date.now();
+    report.recordTranscript('assistant', 'אוקיי.', {
+      startedSpeakingAt: sec(t0 + 1_000),
+      stoppedSpeakingAt: sec(t0 + 2_000),
+    });
+    vi.setSystemTime(t0 + 3_000);
+    report.recordToolCall({ atMs: 0, name: 'capture_lead_info', durationMs: 900, ok: true });
+    vi.setSystemTime(t0 + 4_500);
+    report.recordTranscript('assistant', 'ומה שם המשפחה?', {
+      startedSpeakingAt: sec(t0 + 3_500),
+      stoppedSpeakingAt: sec(t0 + 4_500),
+    });
+    expect(report.toJson().summary.agentGap.gaps[0]?.endedBy).toBeUndefined();
+  });
 });
 
 /**
@@ -221,6 +266,7 @@ describe('CallReport pipeline record', () => {
       preemptiveMaxSpeechDurationMs: 10_000,
       preemptiveMaxRetries: 3,
       interruptionEnabled: true,
+      userAwayTimeoutSec: 7,
       vadAttached: true,
       vadIsSdkDefault: false,
       sttLabel: 'soniox.STT',

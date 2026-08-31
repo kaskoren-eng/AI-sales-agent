@@ -91,6 +91,7 @@ export async function executeCaptureLeadInfo(
       ...(args.phone ? { phone: args.phone } : {}),
     },
     refused: [],
+    rejected: [],
   };
 
   const leadId = await upsertLead(
@@ -143,6 +144,21 @@ export async function executeCaptureLeadInfo(
   // Qualification facts we DID accept are established too, so the reminder can stop her re-asking
   // for a business she already has (the fact-memory note; see fact-memory.ts).
   if (args.business_type) rt.factMemory?.establish('business', args.business_type);
+
+  // THE LEAD HIMSELF RULED THIS VALUE OUT. Reported before `refused`, and in stronger words,
+  // because it is the failure that has now cost two bookings: on 2026-08-31 she read
+  // `k o r e n at gmail dot com` back to a man whose address begins `kas`, he said "לא נכון", and
+  // she proposed the identical string again eight seconds later. A refusal the model is not told
+  // about is a refusal it will walk straight back into.
+  if (verdict.rejected.length > 0) {
+    const denied = verdict.rejected.map((r) => `${r.field} «${r.offered}»`).join('; ');
+    return (
+      `Saved the rest. NOT SAVED: ${denied}. The lead told you out loud that it is wrong, so it cannot be ` +
+      'the answer. Do not say it back to him and do not offer it again in any form. Ask him for ' +
+      'the part you are unsure of only — in Hebrew, and one piece at a time — and call this tool ' +
+      'again with the corrected value. Do not mention any of this to the lead.'
+    );
+  }
 
   if (verdict.refused.length === 0) {
     return 'Saved. Continue the conversation naturally — do not mention that you saved anything.';

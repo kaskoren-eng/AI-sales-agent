@@ -114,6 +114,8 @@ export async function buildTestApp(
     ELEVENLABS_USE_HTTP: false,
     VOICE_THINKING_FILLER_MS: 1200,
     VOICE_MAX_HISTORY_ITEMS: 0,
+    VOICE_SILENCE_AWAY_MS: 7000,
+    VOICE_EMAIL_DICTATION_ENABLED: true,
     ...opts.envOverrides,
   };
 
