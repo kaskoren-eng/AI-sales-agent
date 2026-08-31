@@ -5,7 +5,7 @@ Two branches. The first is **already on `main`**; the second is open.
 | branch | commit | state |
 |---|---|---|
 | `feature/voice-toolcall-leak` | `1fb7a33` | merged to `main` as `a1b71bf` by the supervisor |
-| `feature/voice-filler-sound` | see below | pushed, awaiting review |
+| `feature/voice-filler-sound` | `3e3cc02` | pushed to origin, awaiting review |
 
 Everything below was judged **by exit code**, never by reading a summary line.
 
@@ -206,7 +206,7 @@ exactly. Her going quiet — the failure a caller really experiences as a droppe
 | `npm run build` | exit 0 |
 | `bash scripts/ci/territory-check.sh feature/voice-filler-sound` | OK |
 | test reproducing the 196s string | `toolcall-leak.test.ts`, 26 cases |
-| branch pushed | see the note below |
+| branch pushed | `feature/voice-filler-sound` → origin, `3e3cc02` |
 
 ---
 
