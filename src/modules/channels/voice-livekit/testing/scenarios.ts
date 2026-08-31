@@ -60,6 +60,27 @@ export const SCENARIOS: Scenario[] = [
     ],
   },
   {
+    name: 'terse_caller',
+    description:
+      'THE ONE FOR THE MANDATORY/OPTIONAL SPLIT (Koren, 2026-08-31): *"אם הלקוח קצר מדי בשיחה ולא ' +
+      'משתף פעולה, הסוכן צריך להבין שהוא לא הולך לשאול הרבה שאלות, אלא רק מה שחשוב."* ' +
+      'A co-operative but MONOSYLLABIC caller — he answers everything and volunteers nothing, ' +
+      'which is the case `short_answers` cannot show because it is four utterances long and never ' +
+      'reaches discovery. Read the transcript for two things: did she ask the three MANDATORY ' +
+      'questions, and did she stop there instead of working through all six? ' +
+      'The engagement note that drives it is in the agent log as `coach_note … engagement":"terse`.',
+    utterances: [
+      'כן, ראיתי.',
+      'בניית אתרים.',
+      'בערך עשרים.',
+      'לבד.',
+      'לא יודע.',
+      'אולי.',
+      'כן.',
+      'בסדר, תשלחי.',
+    ],
+  },
+  {
     name: 'booking_details',
     description:
       'Name, phone, email — the details Phase 4 lives or dies on. A real call turned "קורן" into "קורנטיטרי". Check the agent log transcripts, not just the latency.',

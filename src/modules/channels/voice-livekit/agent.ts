@@ -44,8 +44,9 @@ import { SPOKEN_REGISTER_SLANG, buildSystemPrompt, readBusinessProfile } from '.
 import { buildGreeting, isDefaultPersona, readAgentPersona } from './persona.js';
 import { buildVoicemailMessage } from './call-state-lines.he.js';
 import { MAX_FILLERS_PER_CALL, ThinkingFillerLedger } from './prompts/thinking-fillers.he.js';
-import { chooseTurnOpener, chunkCallsTool } from './turn-opener.js';
+import { allowsArmedFiller, chooseTurnOpener, chunkCallsTool } from './turn-opener.js';
 import { DICTATION_NOD, isDictationTurn } from './dictation.js';
+import { EngagementTracker, callerSharedSubstance } from './engagement.js';
 import {
   AddressGenderTracker,
   dropAckEcho,
@@ -294,6 +295,15 @@ class ClickScalesAgent extends voice.Agent {
   /** The acknowledgement spoken on this reply, so ttsNode can drop the model's echo of it. */
   #spokenAck: string | null = null;
 
+  /**
+   * Did THIS step already put a sound at the head of the reply — a receipt or a nod?
+   *
+   * Separate from `#spokenAck` because a NOD sets no ack (there is no echo to drop) and still
+   * occupies the same position in the breath. ttsNode reads it to decide whether an armed
+   * hesitation may also land there. See the "ONE OPENING SOUND PER BREATH" note in ttsNode.
+   */
+  #openedWithSound = false;
+
   #lastAck: string | null = null;
 
   /**
@@ -304,7 +314,23 @@ class ClickScalesAgent extends voice.Agent {
    * do that: it spends every word once before repeating any. See acknowledgements.he.ts.
    */
   readonly ackLedger: AcknowledgementLedger | undefined = env.VOICE_ACK_LEDGER_ENABLED
-    ? new AcknowledgementLedger()
+    ? // ON (the default): three every-turn receipts, plus two comprehension claims the caller has
+      // to earn. OFF: the flat five-word deck of 2026-08-30, which is what Koren heard say
+      // "טוב, הבנתי" thirty-four times. See ACK_COMPREHENSION_HE.
+      env.VOICE_ACK_EARNED_ENABLED
+      ? new AcknowledgementLedger()
+      : new AcknowledgementLedger(ACKNOWLEDGEMENTS_HE_WIDE)
+    : undefined;
+
+  /**
+   * How much the caller is giving her — read from his turn lengths, injected at turn boundaries.
+   *
+   * Feeds two things: which discovery questions she is allowed to ask (the mandatory/optional split
+   * in the prompt), and nothing else. `undefined` when VOICE_ENGAGEMENT_NOTE_ENABLED is off, and
+   * every reader is written for that. See engagement.ts.
+   */
+  readonly engagementTracker: EngagementTracker | undefined = env.VOICE_ENGAGEMENT_NOTE_ENABLED
+    ? new EngagementTracker()
     : undefined;
 
   /**
@@ -341,6 +367,7 @@ class ClickScalesAgent extends voice.Agent {
       // turn-opener mechanism below exists to undo a problem the acknowledgement creates, so with
       // the acknowledgement off it has nothing to do.
       this.#spokenAck = null;
+      this.#openedWithSound = false;
       return inner;
     }
 
@@ -357,8 +384,12 @@ class ClickScalesAgent extends voice.Agent {
       // finished his sentence — see dictation.ts and the 050- / "טוב, הבנתי." exchange it quotes.
       midDictation: env.VOICE_DICTATION_NOD_ENABLED && isDictationTurn(this.lastUserUtterance),
       nod: DICTATION_NOD,
-      nextAck: () =>
-        this.ackLedger ? this.ackLedger.next() : pickAcknowledgement(this.#lastAck),
+      // Did he actually TELL her something? Only then may the receipt claim comprehension. Same
+      // source and same staleness as midDictation above — the committed caller turn.
+      callerShared:
+        env.VOICE_ACK_EARNED_ENABLED && callerSharedSubstance(this.lastUserUtterance),
+      nextAck: (opts) =>
+        this.ackLedger ? this.ackLedger.next(opts) : pickAcknowledgement(this.#lastAck),
       offerFiller: () => this.fillerLedger.offer(),
     });
 
@@ -369,6 +400,9 @@ class ClickScalesAgent extends voice.Agent {
       // Nothing for dropAckEcho to remove: a hesitation is not a word the model would echo.
       this.#spokenAck = null;
     }
+    // A receipt and a nod both occupy the head of the breath; a hesitation is itself the filler
+    // (and already clears the armed one below), and 'silent' leaves the position free.
+    this.#openedWithSound = !allowsArmedFiller(opener);
     if (opener.kind === 'nod') {
       // Logged because it is invisible otherwise: the nod and the receipt are both one short word
       // at the head of a reply, and only this line says which act she performed.
@@ -433,8 +467,29 @@ class ClickScalesAgent extends voice.Agent {
   ): ReturnType<voice.Agent['ttsNode']> {
     // The hesitation goes HERE — glued to the front of what she is about to say, so it is the first
     // sound out of her mouth and physically cannot arrive after she has finished. Consumed once.
-    const filler = this.pendingFiller;
+    let filler = this.pendingFiller;
     this.pendingFiller = null;
+
+    // ONE OPENING SOUND PER BREATH. Koren, 2026-08-31: *"שימוש במילות מילוי יותר מדי ובכפילות
+    // נשמע רובוטי ומוזר. מילת מילוי צריכה להגיע באופן חד פעמי בכל משפט."*
+    //
+    // The transcript he was describing:  [21s] "טוב,"  …  [23s] "אהה. רגע..."  — an
+    // acknowledgement from llmNode and an armed hesitation from the think-timer, glued together by
+    // `withFiller`'s leadIn into one utterance. Two noises before a single word of content.
+    //
+    // The `hesitation` opener already refuses to double up (it clears pendingFiller). The `ack` and
+    // `nod` openers did not, because the leadIn plumbing was built to let the acknowledgement leave
+    // FIRST and unheld — which it still does. What changes is that it now leaves ALONE: if this
+    // step already put a sound at the head of the reply, the armed hesitation is dropped, unspoken
+    // and uncharged, and the call keeps its budget for a turn that opens with nothing.
+    const openedWithSound = this.#openedWithSound;
+    this.#openedWithSound = false;
+    if (filler && openedWithSound) {
+      console.log(
+        `thinking_filler ${JSON.stringify({ filler, dropped: 'opener_already_spoken', spoken: false })}`,
+      );
+      filler = null;
+    }
 
     // Both ends of the speech path, on one line per reply. See timeFirstChunk() for why: dead air
     // is end-of-turn + <something> + TTS first byte, and `<something>` behaved differently on a
@@ -610,7 +665,10 @@ async function injectCoachNote(agent: ClickScalesAgent): Promise<void> {
   try {
     const phraseNote = env.VOICE_PHRASE_LEDGER_ENABLED ? agent.phraseLedger.note() : null;
     const factNote = agent.factMemory?.note() ?? null;
-    const note = [phraseNote, factNote].filter(Boolean).join('\n');
+    // "He is giving you four-word answers — mandatory questions only." Fires on a CHANGE of level,
+    // so a consistent caller costs one line for the whole call. See engagement.ts.
+    const engagementNote = agent.engagementTracker?.note() ?? null;
+    const note = [phraseNote, factNote, engagementNote].filter(Boolean).join('\n');
     if (!note || note === agent.lastCoachNote) return;
     const ctx = agent.chatCtx.copy();
     ctx.items = ctx.items.filter((it) => it.id !== COACH_NOTE_ID);
@@ -623,6 +681,9 @@ async function injectCoachNote(agent: ClickScalesAgent): Promise<void> {
         facts: agent.factMemory?.snapshot() ?? null,
         registerTouched: agent.registerTracker
           ? `${agent.registerTracker.touched}/${agent.registerTracker.replies}`
+          : null,
+        engagement: agent.engagementTracker
+          ? `${agent.engagementTracker.level} (${agent.engagementTracker.averageWords} words/turn)`
           : null,
         note: note.slice(0, 200),
       })}`,
@@ -1162,8 +1223,10 @@ export default defineAgent({
       if (item?.role === 'user') {
         callState?.onUserTurn();
         // The turn her NEXT reply is answering. Read in llmNode to decide whether the opener is a
-        // receipt or a nod — see dictation.ts.
+        // receipt, a nod, or a comprehension claim — see dictation.ts and engagement.ts.
         agent.lastUserUtterance = item.textContent ?? null;
+        // How much is he giving her? Drives which discovery questions she is allowed to ask.
+        agent.engagementTracker?.observeCaller(item.textContent);
       }
       else if (item?.role === 'assistant') {
         callState?.onAgentTurn();
@@ -1179,6 +1242,9 @@ export default defineAgent({
         if (item.textContent) agent.factMemory?.observeAgentUtterance(item.textContent);
         // Spoken register: is she actually reaching for an everyday word, or only being told to?
         if (item.textContent) agent.registerTracker?.observe(item.textContent);
+        // Closes the caller's turn for the engagement window: everything he says before her NEXT
+        // reply is one turn, however many items Soniox splits it into. See engagement.ts.
+        agent.engagementTracker?.observeAgentTurn();
       }
 
       // 1c. The caller stating their gender outright ("אני אישה", "אפשר בלשון זכר") switches the
@@ -1201,7 +1267,10 @@ export default defineAgent({
       const trimmed = trimHistory(agent, env.VOICE_MAX_HISTORY_ITEMS);
       if (
         item?.role === 'assistant' &&
-        (env.VOICE_PHRASE_LEDGER_ENABLED || agent.factMemory || agent.registerTracker)
+        (env.VOICE_PHRASE_LEDGER_ENABLED ||
+          agent.factMemory ||
+          agent.registerTracker ||
+          agent.engagementTracker)
       ) {
         void trimmed.then(() => injectCoachNote(agent));
       }
@@ -1258,6 +1327,7 @@ export default defineAgent({
           // the enforcement can never describe different rules.
           factMemory: env.VOICE_FACT_MEMORY_ENABLED,
           negationSafety: env.VOICE_NEGATION_SAFETY,
+          noPreamble: env.VOICE_NO_PREAMBLE_ENABLED,
           // The prompt lists the words the caller will actually hear, so the bank and its
           // description can never disagree about what she has already said.
           acknowledgements: env.VOICE_ACK_LEDGER_ENABLED

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ACKNOWLEDGEMENTS_HE,
   ACKNOWLEDGEMENTS_HE_WIDE,
+  ACK_COMPREHENSION_HE,
   AcknowledgementLedger,
   dropEchoedOpener,
   pickAcknowledgement,
@@ -140,5 +141,56 @@ describe('AcknowledgementLedger — a deck, not a dice roll', () => {
     const ledger = new AcknowledgementLedger(['אוקיי.']);
     expect(ledger.next()).toBe('אוקיי.');
     expect(ledger.next()).toBe('אוקיי.');
+  });
+});
+
+/**
+ * NOTE 6, 2026-08-31. `repeatedPhraseCount: 34` on a ten-minute call, and Koren's ear agreed:
+ * *"הסוכן אמר 'טוב, הבנתי' או 'הבנתי אותך' יותר מדי פעמים, וצריך באמת להגיע בהקשר כשהלקוח משתף
+ * מידע שרלוונטי לשיחה. לא סתם להגיד 'טוב, הבנתי' על כל דבר."*
+ */
+describe('the comprehension claim has to be earned', () => {
+  const isClaim = (word: string): boolean =>
+    (ACK_COMPREHENSION_HE as readonly string[]).includes(word);
+
+  it('is never spoken on an ordinary turn, however many turns go by', () => {
+    const ledger = new AcknowledgementLedger();
+    for (let i = 0; i < 40; i++) expect(isClaim(ledger.next())).toBe(false);
+  });
+
+  it('is available the moment the caller actually told her something', () => {
+    const ledger = new AcknowledgementLedger();
+    expect(isClaim(ledger.next({ earned: true }))).toBe(true);
+  });
+
+  it('never twice running, even when every single turn earns one', () => {
+    const ledger = new AcknowledgementLedger();
+    const spoken = Array.from({ length: 12 }, () => ledger.next({ earned: true }));
+    for (let i = 1; i < spoken.length; i++) {
+      expect(
+        isClaim(spoken[i]!) && isClaim(spoken[i - 1]!),
+        `${spoken[i - 1]} then ${spoken[i]}`,
+      ).toBe(false);
+    }
+    // …so even the most generous caller hears one on at most half his turns.
+    expect(spoken.filter(isClaim).length).toBeLessThanOrEqual(6);
+  });
+
+  it('the kill-switch path is the OLD behaviour exactly — a flat five-word deck', () => {
+    // VOICE_ACK_EARNED_ENABLED=false constructs it this way (agent.ts). The comprehension words are
+    // deck members again, and `earned` must not double-offer them from a second deck.
+    const ledger = new AcknowledgementLedger(ACKNOWLEDGEMENTS_HE_WIDE);
+    const round = ACKNOWLEDGEMENTS_HE_WIDE.map(() => ledger.next({ earned: true }));
+    expect(new Set(round).size).toBe(ACKNOWLEDGEMENTS_HE_WIDE.length);
+  });
+
+  it('the two banks are disjoint, and together they are the wide bank', () => {
+    for (const claim of ACK_COMPREHENSION_HE) {
+      expect(ACKNOWLEDGEMENTS_HE as readonly string[]).not.toContain(claim);
+      expect(ACKNOWLEDGEMENTS_HE_WIDE as readonly string[]).toContain(claim);
+    }
+    expect(ACKNOWLEDGEMENTS_HE_WIDE.length).toBe(
+      ACKNOWLEDGEMENTS_HE.length + ACK_COMPREHENSION_HE.length,
+    );
   });
 });

@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>סבב 7 · תשע ההערות מהשיחה של 31.8 · sonic-3.5</title>
+<style>
+  :root { --bg:#0e1116; --card:#171b22; --line:#252b36; --txt:#e6e9ef; --dim:#9aa4b2; --acc:#3b82f6; --keep:#22c55e; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:"Segoe UI",Arial,sans-serif; }
+  header, main { max-width:1100px; margin:0 auto; padding:0 20px; }
+  header { padding-top:26px; }
+  h1 { margin:0 0 6px; font-size:22px; }
+  h2 { font-size:18px; margin:34px 0 2px; }
+  .sub { color:var(--dim); font-size:14px; margin:4px 0 10px; line-height:1.6; }
+  .lede { background:#171b22; border:1px solid var(--line); border-inline-start:3px solid var(--acc);
+           border-radius:10px; padding:14px 16px; margin:14px 0 6px; font-size:14px; line-height:1.65; color:#cbd3de; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin:14px 0; }
+  .chead { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .cid { font-weight:700; font-size:19px; }
+  .tag { font-size:12px; color:var(--dim); font-family:monospace; }
+  .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:10px; }
+  .col { border:1px solid var(--line); border-radius:10px; padding:12px; background:#0f131a; }
+  .col:has(input:checked) { border-color:var(--acc); }
+  .vhead { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .vkey { font-family:monospace; font-weight:700; color:var(--acc); }
+  .vlabel { font-size:13px; color:var(--dim); }
+  .lbl { font-size:13px; color:var(--dim); display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
+  .none { color:#e0a0a0; }
+  .he { font-size:19px; margin-bottom:8px; line-height:1.5; }
+  audio { width:100%; height:34px; }
+  .psrow { display:flex; gap:14px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+  .note { flex:1; min-width:220px; background:#0e1116; border:1px solid var(--line); border-radius:8px;
+           color:var(--txt); padding:8px 10px; font-size:14px; }
+  #summary { width:100%; min-height:220px; background:#0f131a; color:var(--txt); border:1px solid var(--line);
+              border-radius:10px; padding:12px; font-family:monospace; font-size:13px; direction:ltr; }
+  button { background:var(--acc); border:0; color:#fff; border-radius:8px; padding:10px 18px;
+            font-size:14px; cursor:pointer; margin:10px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>סבב 7 — תשע ההערות מהשיחה של 31.8 (sonic-3.5, speed 0.9 · volume 1.4)</h1>
+  <div class="lede">
+    בכל כרטיס: <b>A זה מה ששמעת בשיחה בפועל</b> (הועתק מהתמלול, כולל הניקוד שהסוכן מוסיף לפני ההשמעה),
+    ו-B זה מה שהסוכן אומר אחרי השינוי. סמן מה עדיף, ובסוף ״צור סיכום״ והדבק לי בחזרה.<br>
+    ⚠️ הדף הזה בודק <b>ניסוח</b>, לא התנהגות. השאלה אם המודל באמת יפסיק לעשות את זה בשיחה אמיתית
+    לא נענית פה ולא נענית באף בדיקה בקוד — רק בשיחה.
+  </div>
+  <p class="sub">כל ההקלטות סונתזו במהירות ובעוצמה של הפרודקשן (0.9 / 1.4), כמו בסבב 6.</p>
+</header>
+<main>
+<h2>1 · "רק לוודא" / "רק שאדע" — ההקדמה לפני שאלה</h2><p class="sub">ההערה שלךָ: <b>״הסוכן אומר רק ׳שאדע׳ או ׳רק לוודא׳. זה נשמע לא אנושי, ועדיף פשוט בלי זה; פשוט לשאול.״</b> A בכל כרטיס הוא מה שנאמר בשיחה בפועל. ומעבר לאוזן — העברנו את שלוש ההקלטות האלה דרך קו של 8kHz ובחזרה (roundtrip7.ts): <b>בשתיים משלוש, ״רק לוודֵא״ חזר כ״רק לוועדה״</b>, ובאחת הוא שרד. כלומר זה נשבר לסירוגין — בדיוק ה״לא תמיד נכון״ שאמרת. לכן המשפט נמחק ולא אויית מחדש בפעם השלישית.</p>
+    <div class="card" data-id="n1a">
+      <div class="chead"><span class="cid">אישור השם — לפני ואחרי</span>
+        <span class="tag">n1a</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">היום (460s בשיחה)</span>
+          <span class="tag">3.12s</span></div>
+        <div class="he" dir="rtl">רק לוודֵא — קורן, מה שם המשפחה?</div>
+        <audio controls preload="none" src="r7_n1a_A.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n1a" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">אחרי השינוי — בלי הקדמה</span>
+          <span class="tag">1.6s</span></div>
+        <div class="he" dir="rtl">מה שם המשפחה שלךָ?</div>
+        <audio controls preload="none" src="r7_n1a_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n1a" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_n1a" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_n1a" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div>
+    <div class="card" data-id="n1b">
+      <div class="chead"><span class="cid">חזרה על הטלפון — לפני ואחרי</span>
+        <span class="tag">n1b</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">היום (512s בשיחה)</span>
+          <span class="tag">7.04s</span></div>
+        <div class="he" dir="rtl">רק לוודֵא. אפס חמש אפס, תשע שבע, שמונה שמונה שמונה, ארבע חמש?</div>
+        <audio controls preload="none" src="r7_n1b_A.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n1b" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">אחרי השינוי — העריכה שלךָ</span>
+          <span class="tag">7.68s</span></div>
+        <div class="he" dir="rtl">חוזרת על המספר — אפס חמש אפס, תשע שבע, שמונה שמונה שמונה, ארבע חמש?</div>
+        <audio controls preload="none" src="r7_n1b_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n1b" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_n1b" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_n1b" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div>
+    <div class="card" data-id="n1c">
+      <div class="chead"><span class="cid">אישור השם המלא — לפני ואחרי</span>
+        <span class="tag">n1c</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">היום</span>
+          <span class="tag">2.72s</span></div>
+        <div class="he" dir="rtl">רק לוודֵא — קורן שטרית, נכון?</div>
+        <audio controls preload="none" src="r7_n1c_A.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n1c" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">אחרי השינוי — הפרט הוא המשפט</span>
+          <span class="tag">1.76s</span></div>
+        <div class="he" dir="rtl">קורן שטרית, נכון?</div>
+        <audio controls preload="none" src="r7_n1c_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n1c" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_n1c" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_n1c" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div><h2>2 · הפסיק בתוך ״נעים מאוד, קורן״</h2><p class="sub">ההערה שלךָ: <b>״שימוש בפסיקים ונקודה ב׳נעים מאוד, כורן׳ יוצר ממש דיבור רובוטי. זה אמור לבוא ׳נעים מאוד כורן׳ במשפט חד בלי עצירות.״</b> הפסיק קונה בערך 0.18 שניות ולפעמים נעלם לגמרי — כאן שומעים אם הוא באמת מפריע.</p>
+    <div class="card" data-id="n2a">
+      <div class="chead"><span class="cid">נעים מאוד + שם — עם פסיק ובלי</span>
+        <span class="tag">n2a</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">היום (30s בשיחה) — עם פסיק</span>
+          <span class="tag">5.36s</span></div>
+        <div class="he" dir="rtl">נעים מאוד, קורן. אצלי אחלה — ספר לי קצת על העסק, במה אתה עוסק?</div>
+        <audio controls preload="none" src="r7_n2a_A.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n2a" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">בלי פסיק — משפט חד</span>
+          <span class="tag">4.88s</span></div>
+        <div class="he" dir="rtl">נעים מאוד קורן. אצלי אחלה — ספר לי קצת על העסק, במה אתה עוסק?</div>
+        <audio controls preload="none" src="r7_n2a_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n2a" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_n2a" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_n2a" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div>
+    <div class="card" data-id="n2b">
+      <div class="chead"><span class="cid">נעים מאוד + שם — לבד, בלי המשך</span>
+        <span class="tag">n2b</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">עם פסיק</span>
+          <span class="tag">1.76s</span></div>
+        <div class="he" dir="rtl">נעים מאוד, קורן.</div>
+        <audio controls preload="none" src="r7_n2b_A.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n2b" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">בלי פסיק</span>
+          <span class="tag">1.6s</span></div>
+        <div class="he" dir="rtl">נעים מאוד קורן.</div>
+        <audio controls preload="none" src="r7_n2b_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n2b" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_n2b" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_n2b" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div><h2>3 · לצטט אותו בחזרה ולהחמיא</h2><p class="sub">ההערה שלךָ: <b>״׳בניית אתרים. תחום מעניין׳ — זה ציטוט של הרובוט, וזה נשמע ממש רובוטי, מתחנף ומוזר.״</b> המקור היה דוגמה בפרומפט עצמו (״וואלה? זה ממש מעניין״) שהמודל העתיק מילה במילה.</p>
+    <div class="card" data-id="n3a">
+      <div class="chead"><span class="cid">ציטוט המילים שלו + מחמאה</span>
+        <span class="tag">n3a</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">היום (44s בשיחה)</span>
+          <span class="tag">7.6s</span></div>
+        <div class="he" dir="rtl">בניית אתרים זה תחום מעניין. איך לקוחות חדשים מגיעים אליךָ היום — דרך המלצות, גוגל, או משהו אחר?</div>
+        <audio controls preload="none" src="r7_n3a_A.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n3a" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">אחרי השינוי — ישר לשאלה</span>
+          <span class="tag">5.76s</span></div>
+        <div class="he" dir="rtl">איך לקוחות חדשים מגיעים אליךָ היום — דרך המלצות, גוגל, או משהו אחר?</div>
+        <audio controls preload="none" src="r7_n3a_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n3a" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_n3a" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_n3a" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div>
+    <div class="card" data-id="n3b">
+      <div class="chead"><span class="cid">&quot;וואלה? זה ממש מעניין&quot; על תשובה רגילה</span>
+        <span class="tag">n3b</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">היום (48s בשיחה)</span>
+          <span class="tag">6.0s</span></div>
+        <div class="he" dir="rtl">וואלה? זה ממש מעניין. כשנכנסות אליךָ הרבה פניות, מי תופס אותן בדרך כלל?</div>
+        <audio controls preload="none" src="r7_n3b_A.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n3b" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">אחרי השינוי — בלי התלהבות מומצאת</span>
+          <span class="tag">6.08s</span></div>
+        <div class="he" dir="rtl">כשנכנסות אליךָ הרבה פניות, מי תופס אותן בדרך כלל — אתה לבד, או שיש עוד מישהו בצוות?</div>
+        <audio controls preload="none" src="r7_n3b_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n3b" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_n3b" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_n3b" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div><h2>4 · שתי מילות מילוי בנשימה אחת</h2><p class="sub">ההערה שלךָ: <b>״שימוש במילות מילוי יותר מדי ובכפילות… מילת מילוי צריכה להגיע באופן חד פעמי בכל משפט.״</b> A הוא באג אמיתי בקוד: הקבלה והמילת־מילוי נכתבו על ידי שני מנגנונים שונים לאותו מקום.</p>
+    <div class="card" data-id="n4a">
+      <div class="chead"><span class="cid">מילת מילוי כפולה</span>
+        <span class="tag">n4a</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">היום (23s בשיחה) — קבלה + היסוס</span>
+          <span class="tag">3.68s</span></div>
+        <div class="he" dir="rtl">אהה. רגע... בוא נבדוק מה הכי מתאים לעסק שלךָ.</div>
+        <audio controls preload="none" src="r7_n4a_A.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n4a" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">אחרי השינוי — סאונד אחד בנשימה</span>
+          <span class="tag">3.04s</span></div>
+        <div class="he" dir="rtl">אהה. בוא נבדוק מה הכי מתאים לעסק שלךָ.</div>
+        <audio controls preload="none" src="r7_n4a_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n4a" value="B"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">C</span>
+          <span class="vlabel">רק ההיסוס, בלי הקבלה</span>
+          <span class="tag">3.28s</span></div>
+        <div class="he" dir="rtl">רגע... בוא נבדוק מה הכי מתאים לעסק שלךָ.</div>
+        <audio controls preload="none" src="r7_n4a_C.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n4a" value="C"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_n4a" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_n4a" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div><h2>5 · מה שאסור היה לקלקל — בקרה</h2><p class="sub">אלה שתי הנקודות שביקשת <b>לשמר</b>. A ו-B כאן הם בכוונה כמעט אותו דבר. אם הם נשמעים לךָ פחות טוב מאשר בשיחה — השינוי פגע במשהו שנאמר לו לא לגעת בו, וזה מה שהכרטיסים האלה קיימים כדי לתפוס.</p>
+    <div class="card" data-id="n5a">
+      <div class="chead"><span class="cid">הבעת רגש על משהו מבאס — לשימור</span>
+        <span class="tag">n5a</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">היום (103s בשיחה)</span>
+          <span class="tag">7.92s</span></div>
+        <div class="he" dir="rtl">אוף... זה באמת מבאס. בדיוק במצבים כאלה הסוכן שלנו תופס את השיחות הראשונות ונותן מענה מיידי.</div>
+        <audio controls preload="none" src="r7_n5a_A.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n5a" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">אותו דבר, אחרי השינוי</span>
+          <span class="tag">7.68s</span></div>
+        <div class="he" dir="rtl">אוף... זה באמת מבאס. בדיוק במצבים כאלה הסוכן שלנו תופס את השיחות הראשונות ונותן מענה מיידי.</div>
+        <audio controls preload="none" src="r7_n5a_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n5a" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_n5a" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_n5a" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div>
+    <div class="card" data-id="n5b">
+      <div class="chead"><span class="cid">סלנג בתחילת השיחה — לשימור</span>
+        <span class="tag">n5b</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">היום (16s בשיחה)</span>
+          <span class="tag">4.08s</span></div>
+        <div class="he" dir="rtl">בסדר. סבבה לגמרי. רק שאדע, איך קוראים לךָ?</div>
+        <audio controls preload="none" src="r7_n5b_A.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n5b" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">אחרי השינוי — הסלנג נשאר, ההקדמה יורדת</span>
+          <span class="tag">2.96s</span></div>
+        <div class="he" dir="rtl">בסדר. סבבה לגמרי. איך קוראים לךָ?</div>
+        <audio controls preload="none" src="r7_n5b_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n5b" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_n5b" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_n5b" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div><h2>6 · ״טוב, הבנתי״ — מתי זה מגיע</h2><p class="sub">ההערה שלךָ: <b>״צריך באמת להגיע בהקשר כשהלקוח משתף מידע שרלוונטי לשיחה. לא סתם להגיד ׳טוב, הבנתי׳ על כל דבר.״</b> המילים האלה הן שלנו, לא של המודל — הסוכן מדבר אותן בתחילת כל תור. עכשיו הן נאמרות רק אחרי תור שבאמת אמר משהו. בכרטיס הראשון תשפוט את A על תשובה של שתי מילים; בשני, על תור שבאמת סיפר משהו.</p>
+    <div class="card" data-id="n6a">
+      <div class="chead"><span class="cid">&quot;טוב, הבנתי&quot; על תשובה של מילה אחת</span>
+        <span class="tag">n6a</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">היום (229s, אחרי &quot;בכלל אני לבד&quot;)</span>
+          <span class="tag">2.8s</span></div>
+        <div class="he" dir="rtl">טוב, הבנתי. זה מסביר את העומס.</div>
+        <audio controls preload="none" src="r7_n6a_A.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n6a" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">אחרי השינוי — קבלה פשוטה</span>
+          <span class="tag">2.24s</span></div>
+        <div class="he" dir="rtl">אוקיי. זה מסביר את העומס.</div>
+        <audio controls preload="none" src="r7_n6a_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n6a" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_n6a" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_n6a" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div>
+    <div class="card" data-id="n6b">
+      <div class="chead"><span class="cid">אותן מילים, על תור שבאמת סיפר משהו</span>
+        <span class="tag">n6b</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">הבנתי אותךָ — כשהוא באמת שיתף</span>
+          <span class="tag">3.28s</span></div>
+        <div class="he" dir="rtl">הבנתי אותךָ. זה באמת מתסכל כשיש עומס כזה.</div>
+        <audio controls preload="none" src="r7_n6b_A.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n6b" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">קבלה פשוטה באותו מקום</span>
+          <span class="tag">3.12s</span></div>
+        <div class="he" dir="rtl">אוקיי. זה באמת מתסכל כשיש עומס כזה.</div>
+        <audio controls preload="none" src="r7_n6b_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n6b" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_n6b" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_n6b" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div><h2>7 · סמול טוק לפני העסק</h2><p class="sub">ההערה שלךָ: <b>״הסוכן צריך לנהל סמול טוק קטן של משפט או שניים לפני שניגש רק למקצועיים.״</b> המתח מול הערה 3 הוא כל הקושי: סמול טוק הוא חילופי דברים, לא מחמאה על התחום שלו.</p>
+    <div class="card" data-id="n7a">
+      <div class="chead"><span class="cid">ישר לעסק, או שתי שורות סמול טוק</span>
+        <span class="tag">n7a</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">היום — ישר לשאלה המקצועית</span>
+          <span class="tag">4.0s</span></div>
+        <div class="he" dir="rtl">נעים מאוד קורן. ספר לי קצת על העסק, במה אתה עוסק?</div>
+        <audio controls preload="none" src="r7_n7a_A.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n7a" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">סמול טוק גנרי</span>
+          <span class="tag">3.28s</span></div>
+        <div class="he" dir="rtl">נעים מאוד קורן. איך היה היום שלךָ עד עכשיו?</div>
+        <audio controls preload="none" src="r7_n7a_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n7a" value="B"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">C</span>
+          <span class="vlabel">סמול טוק שקשור למה שהוא אמר</span>
+          <span class="tag">4.32s</span></div>
+        <div class="he" dir="rtl">נעים מאוד קורן. תפסתי אותךָ באמצע משהו, או שיש לךָ דקה?</div>
+        <audio controls preload="none" src="r7_n7a_C.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n7a" value="C"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_n7a" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_n7a" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div><h2>9 · ״מחיר זה חשוב״ לפני תשובה על מחיר</h2><p class="sub">ההערה שלךָ: <b>״זה משפט מיותר. נשמע שוב מתחנף ורובוטי.״</b> המקור היה הוראה מפורשת בפלייבוק ההתנגדויות (״הכירי בכך שתקציב חשוב״) — היא נמחקה.</p>
+    <div class="card" data-id="n9a">
+      <div class="chead"><span class="cid">מחיר — עם ובלי &quot;מחיר זה חשוב&quot;</span>
+        <span class="tag">n9a</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">היום (281s בשיחה)</span>
+          <span class="tag">6.8s</span></div>
+        <div class="he" dir="rtl">בסדר. מחיר זה חשוב. את המספר המדויק קורן יסביר בשיחה עצמה, כי זה תלוי במה אתה צריך.</div>
+        <audio controls preload="none" src="r7_n9a_A.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n9a" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">אחרי השינוי — ישר לתשובה</span>
+          <span class="tag">6.64s</span></div>
+        <div class="he" dir="rtl">את המספר המדויק קורן יסביר בשיחה עצמה, כי זה תלוי במה אתה צריך ובאיך בונים את זה לעסק שלךָ.</div>
+        <audio controls preload="none" src="r7_n9a_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_n9a" value="B"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_n9a" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_n9a" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div><h2>בונוס · המילה סגור</h2><p class="sub">הוספת אותה לבנק הסלנג בעצמךָ, וכל שאר המילים בבנק עברו סינון דרך קו טלפון לפני שנכנסו — כי מילה עברית שלא נבדקה נכשלת <b>בשקט</b> (״חח״ יצא כאותיות, ״אוו״ נבלע לגמרי). העברנו גם אותה: <b>3 מתוך 3 חזרו כ״סגור״</b> דרך קו של 8kHz (roundtrip7.ts). מה שנשאר לךָ זה האוזן — האם זה נשמע כמו משהו שבן אדם אומר.</p>
+    <div class="card" data-id="sg1">
+      <div class="chead"><span class="cid">סגור — המילה היחידה בבנק שלא עברה סינון</span>
+        <span class="tag">sg1</span></div>
+      <div class="cols">
+      <div class="col">
+        <div class="vhead"><span class="vkey">A</span>
+          <span class="vlabel">סוף משפט</span>
+          <span class="tag">2.56s</span></div>
+        <div class="he" dir="rtl">אז סגור, נתראה מחר באחת.</div>
+        <audio controls preload="none" src="r7_sg1_A.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_sg1" value="A"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">B</span>
+          <span class="vlabel">אמצע משפט</span>
+          <span class="tag">3.28s</span></div>
+        <div class="he" dir="rtl">אם זה סגור מבחינתךָ, אני קובעת את זה עכשיו.</div>
+        <audio controls preload="none" src="r7_sg1_B.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_sg1" value="B"> זה עדיף</label>
+        </div>
+      </div>
+      <div class="col">
+        <div class="vhead"><span class="vkey">C</span>
+          <span class="vlabel">לבד</span>
+          <span class="tag">0.88s</span></div>
+        <div class="he" dir="rtl">סגור.</div>
+        <audio controls preload="none" src="r7_sg1_C.wav"></audio>
+        <div class="psrow">
+          <label class="lbl"><input type="radio" name="pick_sg1" value="C"> זה עדיף</label>
+        </div>
+      </div></div>
+      <div class="psrow">
+        <label class="lbl none"><input type="radio" name="pick_sg1" value="none"> שניהם לא טובים</label>
+        <input type="text" class="note" name="note_sg1" dir="rtl" placeholder="מה שמעת?">
+      </div>
+    </div>
+<h2>סיכום</h2>
+<button id="btn">צור סיכום</button>
+<textarea id="summary" readonly placeholder="הסיכום יופיע כאן"></textarea>
+</main>
+<script>
+const KEY = 'r7-verdicts';
+const state = JSON.parse(localStorage.getItem(KEY) || '{}');
+document.querySelectorAll('input').forEach(el => {
+  if (el.type === 'radio' && state[el.name] === el.value) el.checked = true;
+  if (el.type === 'text' && state[el.name]) el.value = state[el.name];
+  el.addEventListener(el.type === 'text' ? 'input' : 'change', () => {
+    state[el.name] = el.value;
+    localStorage.setItem(KEY, JSON.stringify(state));
+  });
+});
+document.getElementById('btn').addEventListener('click', () => {
+  const lines = ['round7 verdicts (sonic-3.5)'];
+  document.querySelectorAll('.card').forEach(card => {
+    const id = card.dataset.id;
+    const pick = state['pick_' + id] || '-';
+    const note = state['note_' + id] ? '  note: ' + state['note_' + id] : '';
+    lines.push(id + ': ' + pick + note);
+  });
+  const box = document.getElementById('summary');
+  box.value = lines.join('\n');
+  box.select();
+});
+</script>
+</body>
+</html>

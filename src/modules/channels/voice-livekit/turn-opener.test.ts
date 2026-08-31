@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { ACKNOWLEDGEMENTS_HE, pickAcknowledgement } from './prompts/acknowledgements.he.js';
 import { THINKING_FILLERS_HE } from './prompts/thinking-fillers.he.js';
-import { chooseTurnOpener, chunkCallsTool } from './turn-opener.js';
+import {
+  ACK_COMPREHENSION_HE,
+  AcknowledgementLedger,
+} from './prompts/acknowledgements.he.js';
+import { allowsArmedFiller, chooseTurnOpener, chunkCallsTool } from './turn-opener.js';
 import { DICTATION_NOD } from './dictation.js';
 
 /**
@@ -148,6 +152,65 @@ describe('chooseTurnOpener — the caller is still reading out a number', () => 
 
   it('falls back to a receipt when no nod word is supplied', () => {
     expect(nodded({ nod: undefined }).kind).toBe('ack');
+  });
+});
+
+/**
+ * NOTE 6, 2026-08-31 — WHICH receipt, not whether. See ACK_COMPREHENSION_HE.
+ */
+describe('chooseTurnOpener — a comprehension claim needs the caller to have said something', () => {
+  const openWith = (callerShared: boolean, ledger: AcknowledgementLedger): string => {
+    const opener = chooseTurnOpener({
+      afterToolCall: false,
+      fillersEnabled: true,
+      callerShared,
+      nextAck: (opts) => ledger.next(opts),
+      offerFiller: () => THINKING_FILLERS_HE[0]!,
+    });
+    return (opener as { word: string }).word;
+  };
+
+  it('hands the permission through to the supplier, and withholds it by default', () => {
+    const ledger = new AcknowledgementLedger();
+    expect(ACK_COMPREHENSION_HE as readonly string[]).toContain(openWith(true, ledger));
+    const plain = new AcknowledgementLedger();
+    expect(ACK_COMPREHENSION_HE as readonly string[]).not.toContain(openWith(false, plain));
+  });
+
+  it('omitting callerShared entirely is the same as "he did not" — no signal, no claim', () => {
+    const ledger = new AcknowledgementLedger();
+    const opener = chooseTurnOpener({
+      afterToolCall: false,
+      fillersEnabled: true,
+      nextAck: (opts) => ledger.next(opts),
+      offerFiller: () => THINKING_FILLERS_HE[0]!,
+    });
+    expect(ACK_COMPREHENSION_HE as readonly string[]).not.toContain(
+      (opener as { word: string }).word,
+    );
+  });
+});
+
+/**
+ * NOTE 4, 2026-08-31: *"שימוש במילות מילוי יותר מדי ובכפילות… מילת מילוי צריכה להגיע באופן חד פעמי
+ * בכל משפט."* The transcript: [21s] "טוב," … [23s] "אהה. רגע..." — the opener and the armed
+ * think-timer hesitation in one breath.
+ */
+describe('allowsArmedFiller — one opening sound per breath', () => {
+  it('a receipt already occupies the head of the reply', () => {
+    expect(allowsArmedFiller({ kind: 'ack', word: 'אהה.' })).toBe(false);
+  });
+
+  it('so does a mid-dictation nod', () => {
+    expect(allowsArmedFiller({ kind: 'nod', word: DICTATION_NOD })).toBe(false);
+  });
+
+  it('a hesitation IS the filler — a second one would be the stutter', () => {
+    expect(allowsArmedFiller({ kind: 'hesitation', word: 'רגע...' })).toBe(false);
+  });
+
+  it('only silence leaves the position free', () => {
+    expect(allowsArmedFiller({ kind: 'silent' })).toBe(true);
   });
 });
 

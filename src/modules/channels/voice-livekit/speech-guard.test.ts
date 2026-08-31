@@ -725,6 +725,48 @@ describe('guardSpeech — she introduces herself once', () => {
     expect(guardSpeech('נעים מאוד, קורן.').text).toBe('נעים מאוד, קורן.');
     expect(guardSpeech('נעים מאוד, קורן.', { allowIntroduction: true }).text).toBe('נעים מאוד, קורן.');
   });
+
+  /**
+   * NOTE 2, 2026-08-31: *"פסיקים ונקודה… ב'נעים מאוד, כורן' יוצר ממש דיבור רובוטי. זה אמור לבוא
+   * 'נעים מאוד כורן' במשפט חד בלי עצירות."* The prompt now teaches the comma-less form — and the
+   * comma was the only thing telling the old lookahead where the greeting ended. Without these the
+   * repeat-greeting guard would have gone on passing its tests while silently ceasing to fire on
+   * the exact sentence she now says.
+   */
+  it('still recognises the greeting when the comma before the name is GONE', () => {
+    const r = guardSpeech('נעים מאוד קורן.', { allowIntroduction: false, leadName: 'קורן' });
+    expect(r.text).toBe('');
+    expect(r.silent).toBe(true);
+  });
+
+  it('comma-less, full name, both tokens', () => {
+    const r = guardSpeech('נעים מאוד קורן שטרית.', {
+      allowIntroduction: false,
+      leadName: 'קורן שטרית',
+    });
+    expect(r.text).toBe('');
+  });
+
+  it('comma-less needs the name to be a WHOLE word', () => {
+    // Without the boundary, a lead called קורן would make "נעים מאוד קורנפלקס" a greeting.
+    const r = guardSpeech('נעים מאוד קורנפלקס.', { allowIntroduction: false, leadName: 'קורן' });
+    expect(r.text).toBe('נעים מאוד קורנפלקס.');
+  });
+
+  it('comma-less, and we do NOT know his name → nothing is removed', () => {
+    // The name is what marks the end of the phrase. With no name there is no evidence this is a
+    // standing greeting rather than "נעים מאוד לשמוע", and the guard stays out of it.
+    const r = guardSpeech('נעים מאוד קורן.', { allowIntroduction: false });
+    expect(r.text).toBe('נעים מאוד קורן.');
+  });
+
+  it('"נעים מאוד לשמוע" survives even when we hold a name', () => {
+    const r = guardSpeech('נעים מאוד לשמוע את זה.', {
+      allowIntroduction: false,
+      leadName: 'קורן',
+    });
+    expect(r.text).toBe('נעים מאוד לשמוע את זה.');
+  });
 });
 
 describe('guardStream — the first greeting passes, the second does not', () => {

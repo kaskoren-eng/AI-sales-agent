@@ -301,7 +301,42 @@ function lastMatchGender(sentence: string, fem: RegExp, masc: RegExp): AddressGe
  * of the sentence, a comma, or a dash. "נעים מאוד לשמוע" is a different sentence with a different
  * meaning and is left alone, because the lookahead does not match it.
  */
-const INTRODUCTION = /(^|\s)נעים\s+(?:מאוד|מאד|להכיר)(?=\s*(?:[,.!?…׃—–-]|$))/u;
+const INTRODUCTION_CORE = 'נעים\\s+(?:מאוד|מאד|להכיר)';
+
+/** Punctuation, or the end of the sentence — the original lookahead. */
+const INTRODUCTION_TAIL = '[,.!?…׃—–-]|$';
+
+const INTRODUCTION = new RegExp(`(^|\\s)${INTRODUCTION_CORE}(?=\\s*(?:${INTRODUCTION_TAIL}))`, 'u');
+
+/**
+ * The same phrase, but also recognised when the LEAD'S NAME follows it with no comma between.
+ *
+ * Koren, 2026-08-31: *"פסיקים ונקודה… ב'נעים מאוד, כורן' יוצר ממש דיבור רובוטי. זה אמור לבוא 'נעים
+ * מאוד כורן' במשפט חד בלי עצירות."* The prompt now teaches the comma-less form — and the comma was
+ * doing structural work here: it was the only thing telling this regex where the greeting ended.
+ * Without this the repeat-greeting removal (VOICE_INTRO_ONCE_ENABLED) would have silently stopped
+ * matching the exact sentence it was written for, which is the worst kind of regression: a shipped
+ * guard that quietly stops guarding.
+ *
+ * The name is required to be a WHOLE word (no Hebrew letter may follow), so "נעים מאוד קורנפלקס"
+ * does not read as a greeting to a man called קורן, and "נעים מאוד לשמוע" is still untouched.
+ */
+function introductionPattern(nameAlternation: string | null): RegExp {
+  const tail = nameAlternation
+    ? `${INTRODUCTION_TAIL}|(?:${nameAlternation})(?![֐-׿])`
+    : INTRODUCTION_TAIL;
+  return new RegExp(`(^|\\s)${INTRODUCTION_CORE}(?=\\s*(?:${tail}))`, 'u');
+}
+
+/** The lead's stored name as a regex alternation of its tokens, or null when we have no name. */
+function nameAlternation(leadName?: string | null): string | null {
+  const tokens = (leadName ?? '')
+    .split(/\s+/u)
+    .map((t) => t.replace(/[.,!?…׃]+/gu, ''))
+    .filter(Boolean)
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'));
+  return tokens.length > 0 ? tokens.join('|') : null;
+}
 
 /** Punctuation and whitespace only — what a sentence looks like after its only clause is removed. */
 const NOTHING_LEFT = /^[\s.,!?…׃—–-]*$/u;
@@ -315,18 +350,15 @@ const NOTHING_LEFT = /^[\s.,!?…׃—–-]*$/u;
  * nothing but the greeting, which `guardStream` renders as silence rather than an empty utterance.
  */
 export function stripIntroduction(text: string, leadName?: string | null): string {
-  const match = INTRODUCTION.exec(text);
+  const alt = nameAlternation(leadName);
+  const match = introductionPattern(alt).exec(text);
   if (!match) return text;
 
   let out = text.slice(0, match.index + (match[1] ?? '').length) + text.slice(match.index + match[0].length);
-  const tokens = (leadName ?? '')
-    .split(/\s+/u)
-    .map((t) => t.replace(/[.,!?…׃]+/gu, ''))
-    .filter(Boolean);
-  if (tokens.length > 0) {
-    const alt = tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('|');
+  if (alt) {
     // Only the name, only immediately after the greeting, only once — "נעים מאוד, קורן שטרית."
-    // eats both tokens because each is a token of the name we hold.
+    // eats both tokens because each is a token of the name we hold. The comma is optional: the
+    // sentence she is now taught to say is "נעים מאוד קורן", with nothing between them.
     out = out.replace(new RegExp(`^\\s*[,،—–-]?\\s*(?:(?:${alt})(?![֐-׿])\\s*)+`, 'u'), ' ');
   }
   out = out.replace(/^\s*[,،—–-]\s*/u, ' ');
@@ -449,7 +481,9 @@ export async function* guardStream(
       allowIntroduction: allowIntroduction(greetedInThisReply),
       leadName: leadName(),
     });
-    if (INTRODUCTION.test(chunk)) greetedInThisReply = true;
+    // Name-aware, like the removal itself: "נעים מאוד קורן." is a greeting even with no comma in
+    // it, and a latch that could not see it would let the NEXT sentence greet him again.
+    if (introductionPattern(nameAlternation(leadName())).test(chunk)) greetedInThisReply = true;
     for (const note of guarded.interventions) {
       console.log(`speech_guard ${JSON.stringify({ note, said: guarded.text.slice(0, 80) })}`);
     }

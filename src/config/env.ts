@@ -514,6 +514,27 @@ const envSchema = z.object({
   // שאומרים רק בתחילת השיחה". ON drops a second greeting from her speech (and tells the model why in
   // the Call Memory section); OFF restores the repeat.
   VOICE_INTRO_ONCE_ENABLED: envBool(true),
+  // Kill-switch for the EARNED comprehension acknowledgement (2026-08-31). Koren, on a ten-minute
+  // production call: "הסוכן אמר 'טוב, הבנתי' או 'הבנתי אותך' יותר מדי פעמים, וצריך באמת להגיע
+  // בהקשר כשהלקוח משתף מידע שרלוונטי לשיחה". ON: those two words leave the every-turn deck and are
+  // spoken only when the caller's turn actually carried something, and never twice running; the
+  // other three ("אוקיי." / "אהה." / "בסדר.") are pure receipts and still fire every turn. OFF
+  // restores the flat five-word deck of 2026-08-30 exactly. See engagement.ts.
+  VOICE_ACK_EARNED_ENABLED: envBool(true),
+  // Kill-switch for the "No Preamble" prompt section (2026-08-31). Four of Koren's nine notes on
+  // that morning's call were one habit: she acknowledged, mirrored his words, told him his topic
+  // was important, and announced that she was about to confirm something — before every sentence.
+  // ON adds the section that names the habit and forbids all four shapes (while explicitly
+  // protecting the empathy beat and the opening slang, which he asked to KEEP). OFF restores the
+  // 2026-08-30 prompt's silence on it. Prompt-only; nothing in code reads it but the builder.
+  VOICE_NO_PREAMBLE_ENABLED: envBool(true),
+  // Kill-switch for the caller-engagement note (2026-08-31). Koren: "אם הלקוח קצר מדי בשיחה ולא
+  // משתף פעולה, הסוכן צריך להבין שהוא לא הולך לשאול הרבה שאלות, אלא רק מה שחשוב". ON measures how
+  // many words the caller gives per turn and injects one advisory line at a turn boundary when the
+  // level changes — mandatory discovery questions only for a terse caller, the optional ones
+  // unlocked for an engaged one. It never changes her speech. OFF drops the note entirely; the
+  // prompt's mandatory/optional split stays either way.
+  VOICE_ENGAGEMENT_NOTE_ENABLED: envBool(true),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),

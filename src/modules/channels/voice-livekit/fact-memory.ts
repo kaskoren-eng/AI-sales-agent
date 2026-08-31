@@ -98,6 +98,9 @@ const ASK_PATTERNS: Record<FactField, RegExp[]> = {
     /מה\s+שמ(ך|ךָ|ך\?)/u,
     /עם\s+מי\s+אני\s+מדבר(ת)?/u,
     /לא\s+תפסתי\s+את\s+ה?שם/u,
+    // No longer a phrasing the prompt offers — "No Preamble" (2026-08-31) removed every "רק שאדע"
+    // variant. Kept as a DETECTOR, not a suggestion: if the model reaches for it anyway, this still
+    // has to count the ask, and the cost of an unused pattern is nothing.
     /רק\s+שאדע.{0,20}(שם|מי)/u,
     /אפשר\s+לדעת\s+עם\s+מי/u,
   ],
