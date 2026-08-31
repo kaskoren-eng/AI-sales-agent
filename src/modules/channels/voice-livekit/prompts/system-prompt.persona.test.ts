@@ -28,7 +28,38 @@ import {
  * If one of these fails, the question is never "update the fixture". It is "which live call did I
  * just change".
  *
- * Regenerated 2026-08-31 (LATEST), on `feature/voice-round11-verdicts`. **ONE LINE, and it is not
+ * Regenerated 2026-08-31 evening (LATEST), on `feature/voice-detail-collection`. **Three sections,
+ * all three driven by one production call, and this is the regeneration with the most behaviour in
+ * it since the persona merge — so here is exactly what moved and why.**
+ *
+ * WHICH LIVE CALL DID I JUST CHANGE — the 2026-08-31 16:51 call on build 7943a26
+ * (`call-reports/calls-2026-08-31-third.md`). Koren's verdict: *"השינויים טובים אבל בשלב משיכת
+ * הפרטים היא התבלבלה וטעתה וסיימה את השיחה בלי לקחת פרטים."* `book_meeting` was never called; no
+ * surname, phone or email was ever captured; the lead agreed to 11:00 the next morning and got
+ * nothing.
+ *
+ *   1. **Step 3 — "Before you disqualify anybody" (new section, VOICE_LATE_DISQUALIFY_ENABLED).**
+ *      She signed the lead off 79 seconds in, off ONE answer, on inquiry volume — which the
+ *      paragraph directly above the disqualifiers already said never disqualifies anybody. Nothing
+ *      in the code disqualifies (`call-state.ts` has no such transition and `end_call` was not
+ *      called), so this is entirely a reading of that section, and the section now has three
+ *      conditions in front of it. No disqualifier was deleted or softened.
+ *   2. **Step 4 rule 5 — the email give-up, RESCOPED.** Its trigger named no field ("let the field
+ *      go"), it put a claim about a phone number in her mouth without checking she had one, and it
+ *      ended "close the call". She applied all three to the SURNAME and hung up. Koren's round-8
+ *      `e5` verdict — the PERMISSION to keep the meeting and drop the field — is untouched and
+ *      still on `VOICE_BOOK_WITHOUT_EMAIL`; what changed is what it attaches to.
+ *   3. **Step 4 booking mechanics — "so does every other way of saying it".** She said "קבענו
+ *      לאחת עשרה" with only `check_calendar_availability` behind her. The section named only
+ *      "קבעתי לך"; it now names the plural and the other five Hebrew ways of claiming the same
+ *      thing, matching `FALSE_BOOKING_WIDE` in speech-guard.ts word for word.
+ *
+ * `diff` on the three golden files: those three blocks and nothing else — verified before this
+ * note was written, not asserted after it. And the standing caveat applies to all three: a prompt
+ * change is invisible to every test in this repo. These fixtures prove the instruction is in the
+ * text, never that gpt-5.4 obeys it on turn thirty of a real call.
+ *
+ * Regenerated before that on 2026-08-31, on `feature/voice-round11-verdicts`. **ONE LINE, and it is not
  * an instruction — it is a claim about ourselves that had stopped being true.** The Spoken Register
  * section told the model that each of the nine everyday words *"was tested through a real phone
  * line and heard back correctly"*. No word in that bank has ever been screened on a live PSTN

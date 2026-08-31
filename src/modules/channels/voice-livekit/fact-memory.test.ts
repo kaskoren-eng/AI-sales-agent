@@ -67,6 +67,48 @@ describe('FactMemory — the note', () => {
     expect(m.note()).toContain('Do not ask again');
   });
 
+  /**
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   * "CONTINUE WITHOUT IT" ENDED A CALL — 2026-08-31 16:51, replayed from the transcript.
+   * ═════════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Her real utterances, run through this class. Every ASK_PATTERN hit is genuine; the counter did
+   * exactly what it was built to do. What it produced was a note reading *"You have already asked
+   * 2+ times for: his phone number, his email address … Continue without it."* — and sixteen
+   * seconds later she said "יש לי מספיק כדי להעביר לצוות", called `end_call`, and left a lead who
+   * had agreed to 11:00 the next morning with no booking at all.
+   *
+   * Neither field was optional in the sense she took: `book_meeting` cannot run without a phone.
+   * The counter is unchanged (see the note's own comment for why every alternative counting rule
+   * breaks the 2026-08-29 fix); the WORDING is what carries this.
+   */
+  it('the exhaustion note never licenses ending the call — the 16:51 replay', () => {
+    const m = new FactMemory();
+    m.establish('name', 'קורן');
+    m.establish('business', 'בניית אתרים');
+    for (const [at, line] of [
+      [294_000, 'אוקי. טריט, נכון? מה מספר הטלפון שלךָ?'],
+      [300_000, 'בסדר. מה מספר הטלפון שלךָ?'],
+      [320_000, 'אוקי. שפיץ טריט, נכון? ומה כתובת המייל?'],
+      [331_000, 'אוקי. השם משפחה הוא שפיץ? מה כתובת המייל שלךָ?'],
+    ] as Array<[number, string]>) {
+      m.observeAgentUtterance(line, at);
+    }
+    // The reproduction: both fields really do reach the limit, and both really are still missing.
+    expect(m.asks('phone')).toBe(MAX_ASKS_PER_FACT);
+    expect(m.asks('email')).toBe(MAX_ASKS_PER_FACT);
+    const note = m.note() ?? '';
+    expect(note).toContain('his phone number, his email address');
+
+    // The fix: "continue" is now unambiguous about WHAT continues.
+    expect(note).toMatch(/Continue the CALL without it/u);
+    expect(note).toMatch(/keep selling, keep booking/u);
+    expect(note).toMatch(/not a reason to end the call/u);
+    expect(note).toMatch(/never by this one/u);
+    // And the bare phrase that had the second reading is gone.
+    expect(note).not.toMatch(/machine\. Continue without it\./u);
+  });
+
   it('stops nagging about a fact she asked for and then GOT', () => {
     const m = new FactMemory();
     for (let i = 0; i < MAX_ASKS_PER_FACT; i++) {

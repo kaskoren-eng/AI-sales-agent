@@ -200,6 +200,152 @@ describe('guardStream — the booking-claim rewrite is conditional on a REAL boo
 });
 
 /**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * THE 273-SECOND BROKEN PROMISE — 2026-08-31 16:51, build 7943a26, live PSTN.
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * The whole call ran four tool calls: two `capture_lead_info`, one `check_calendar_availability`
+ * at 243s, and `end_call` at 352s. `book_meeting` was NEVER called. In between:
+ *
+ *     [267s] CALLER  "שעה 11:00."
+ *     [273s] KEREN   "בסדר. קבענו לאחת עשרה. קורן, מה השם המלא שלךָ?"
+ *
+ * She told a man his meeting was booked for eleven the next morning. Nothing was booked. Every
+ * other defect on that call cost us a lead; this one cost a person his morning — he is the only
+ * one who finds out, and he finds out by waiting for a call that never comes.
+ *
+ * The guard that exists for exactly this WAS armed and running (`allowBookingClaims` was false —
+ * `book_meeting` had not succeeded) and it let the sentence through, because every one of its five
+ * patterns was first-person SINGULAR and she used the plural. `קבענו` is `קבעתי` with a different
+ * subject and the identical claim.
+ *
+ * These tests replay her exact sentence. The first is the reproduction; the rest are the boundary
+ * — what must still get through, so the fix cannot be paid for by muzzling her.
+ */
+describe('the 273s false booking — "קבענו לאחת עשרה" with nothing booked', () => {
+  const chunks = async function* (...c: string[]) {
+    for (const x of c) yield x;
+  };
+  const drain = async (it: AsyncIterable<string>) => {
+    const out: string[] = [];
+    for await (const x of it) out.push(x);
+    return out;
+  };
+
+  /** Her verbatim line from the call report, minus the acknowledgement we speak in front of it. */
+  const HER_LINE = 'קבענו לאחת עשרה. קורן, מה השם המלא שלךָ?';
+
+  it('REPRODUCTION: the shipped guard let it through — the old patterns do not match the plural', () => {
+    // The five original patterns, with the widening switched off: this is what production did.
+    const asShipped = guardSpeech(HER_LINE, {
+      allowBookingClaims: false,
+      wideBookingClaimGuard: false,
+    });
+    expect(asShipped.text).toContain('קבענו לאחת עשרה');
+    expect(asShipped.bookingClaimRewritten).toBeFalsy();
+  });
+
+  it('FIXED: with the guard at its default the claim cannot reach the caller', () => {
+    const guarded = guardSpeech(HER_LINE, { allowBookingClaims: false });
+    expect(guarded.text).not.toContain('קבענו');
+    expect(guarded.bookingClaimRewritten).toBe(true);
+    // The question she was actually in the middle of asking is untouched — the rewrite replaces
+    // the CLAIM, never the turn.
+    expect(guarded.text).toContain('מה השם המלא שלךָ?');
+  });
+
+  it('on a tools call mid-collection she is rewritten into the NEXT STEP, not into a handover', async () => {
+    // "אעביר את הבקשה לצוות ונחזור אליך" is the right truth when there is no way to book at all.
+    // Said here it would be a farewell followed by "and what is your full name?" — she was three
+    // steps from a real booking. See TRUTH_PRE_BOOKING.
+    const out = (
+      await drain(guardStream(chunks(HER_LINE), () => false, undefined, false, undefined, undefined, {}, { possible: true }))
+    ).join('');
+    expect(out).toContain('אני צריכה עוד כמה פרטים לפני שאני קובעת');
+    expect(out).not.toMatch(/אעביר את הבקשה לצוות/u);
+    expect(out).toContain('מה השם המלא שלךָ?');
+  });
+
+  it('on a no-tools call it is still the handover line, exactly as before', async () => {
+    const out = (await drain(guardStream(chunks(HER_LINE), () => false))).join('');
+    expect(out).toMatch(/אעביר את הבקשה לצוות/u);
+  });
+
+  it('once book_meeting has succeeded the plural is the truth and passes through', () => {
+    expect(guardSpeech(HER_LINE, { allowBookingClaims: true }).text).toContain('קבענו לאחת עשרה');
+  });
+
+  it('catches the other five ways of saying the same thing', () => {
+    for (const claim of [
+      'סגרנו על מחר בעשר.',
+      'שריינתי לך את השעה.',
+      'הפגישה נקבעה למחר בבוקר.',
+      'רשמתי אותך למחר בעשר.',
+      'הפגישה מסודרת.',
+    ]) {
+      const r = guardSpeech(claim, { allowBookingClaims: false });
+      expect(r.bookingClaimRewritten, claim).toBe(true);
+    }
+  });
+
+  /**
+   * THE BOUNDARY, and it is the half that could do real damage if it were wrong. Every sentence
+   * here is one she is SUPPOSED to say while booking, and a guard that ate any of them would break
+   * the flow it is protecting — the last one is `book_meeting`'s own filler line, spoken by our own
+   * code through this same node.
+   */
+  it('leaves every legitimate present- and future-tense booking sentence alone', () => {
+    for (const fine of [
+      'בוא נקבע — נוח לךָ מחר?',
+      'אין בעיה, איזה יום יותר מתאים לךָ?',
+      'רגע, אני קובעת לך את הפגישה...',
+      'אני צריכה עוד כמה פרטים לפני שאני קובעת.',
+      'אני בודקת זמינות למחר.',
+      'יש לי פנוי מעשר עד שלוש, איזו שעה מתאימה לךָ?',
+    ]) {
+      const r = guardSpeech(fine, { allowBookingClaims: false });
+      expect(r.bookingClaimRewritten, fine).toBeFalsy();
+    }
+  });
+
+  it('KILL-SWITCH: wideBookingClaimGuard=false restores the five original patterns and nothing else', () => {
+    const off = { allowBookingClaims: false, wideBookingClaimGuard: false };
+    expect(guardSpeech('קבענו לאחת עשרה.', off).bookingClaimRewritten).toBeFalsy();
+    // …while the originals stay armed. This flag widens the guard; it never disarms it.
+    expect(guardSpeech('קבעתי לך שיחת דמו למחר.', off).bookingClaimRewritten).toBe(true);
+  });
+});
+
+/**
+ * The empty sentence on the same call, at 300s:
+ *
+ *     [300s] KEREN  "בסדר. . מה מספר הטלפון שלךָ?"
+ *
+ * I could not attribute the lone "." to a producer — the call report stores the SPOKEN text, so
+ * the model's raw output for that turn is gone. This closes the class instead of guessing at the
+ * cause; `interventions` still names it every time it fires, so the producer stays findable.
+ */
+describe('a sentence with no word in it never reaches the TTS', () => {
+  it('punctuation alone is silence, not an utterance', () => {
+    for (const empty of ['.', ' . ', '...', ' — ', ',']) {
+      const r = guardSpeech(empty);
+      expect(r.silent, JSON.stringify(empty)).toBe(true);
+      expect(r.text).toBe('');
+    }
+  });
+
+  it('says so in the interventions, so whatever produced it is still findable', () => {
+    expect(guardSpeech('.').interventions.join(' ')).toMatch(/no word in it/u);
+  });
+
+  it('a real sentence with heavy punctuation is untouched', () => {
+    for (const real of ['אמ.', 'אֶה...', 'בסדר.', 'רֶגַע...', 'כן — בהחלט.']) {
+      expect(guardSpeech(real).silent, real).toBe(false);
+    }
+  });
+});
+
+/**
  * THE GENDER FIX — a TTS bug, fixed in the pipeline, not by crippling her vocabulary.
  *
  * Koren: "אותה מילה, פעם זכר פעם נקבה" — Cartesia guesses the vowels at random, because Hebrew does

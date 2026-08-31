@@ -623,6 +623,50 @@ const envSchema = z.object({
   // is no good reason to set it and it exists only so the mechanism has an off switch like every
   // other one here. See toolcall-leak.ts.
   VOICE_TOOLCALL_LEAK_GUARD_ENABLED: envBool(true),
+  // ── The 2026-08-31 16:51 call: she promised a booking that did not exist, then hung up ────────
+  //
+  // Widens the speech guard's false-booking rewrite past first-person-singular. She said
+  // "קבענו לאחת עשרה" — "WE booked for eleven" — with only check_calendar_availability behind her,
+  // and the guard that exists for exactly this was armed, running, and blind to the plural. The
+  // lead left the call expecting a call at 11:00 that nothing in any calendar knew about.
+  //
+  // ON: קבענו / סגרנו / שריינתי / נקבעה / רשמתי אותך / הפגישה מסודרת are rewritten too, until
+  // book_meeting returns success. Deliberately excluded is the whole present/future family
+  // (בוא נקבע, אני קובעת) — those are how she legitimately offers and narrates, and one of them is
+  // book_meeting's own filler line. OFF restores the five original patterns exactly.
+  //
+  // Another flag whose default is NOT "what we did yesterday": telling a lead his meeting is booked
+  // when it is not has no acceptable version. See FALSE_BOOKING_WIDE in speech-guard.ts.
+  VOICE_BOOKING_CLAIM_GUARD_WIDE: envBool(true),
+  // The code-truth booking note: "nothing has been booked yet, and here is what book_meeting still
+  // needs". Fires only between the first availability check and a successful booking. The prompt
+  // said all of this already and was 13,000 tokens behind her by the time it mattered — the phrase
+  // ledger lesson, applied to the one claim on this call that reaches a person after it ends.
+  // OFF: no note, exactly as before. See booking-note.ts.
+  VOICE_BOOKING_NOTE_ENABLED: envBool(true),
+  // The half of that note which reads the caller's own number back to him instead of asking him to
+  // dictate it. On the 16:51 call she asked for the phone twice, got nothing, and ended the call
+  // partly for want of a number that was sitting in the tool runtime the whole time. It is a
+  // CONFIRMATION, never a substitution — a man may want the demo on a different number, and only he
+  // knows that. Inbound calls only (there is no caller ID to offer otherwise).
+  //
+  // The one flag here that changes what she SAYS on every inbound call, which is why it is separate
+  // from VOICE_BOOKING_NOTE_ENABLED: OFF keeps the booking note and drops only this paragraph.
+  VOICE_CALLER_PHONE_KNOWN_ENABLED: envBool(true),
+  // Hebrew letters spelled for a NAME, stitched across the turns the endpointer shreds. He spelled
+  // ט · ר · י · ת across two turns on the 16:51 call and nothing joined them; she then concatenated
+  // two separate mishearings into "שפיץ טריט" and read that back as his name. email-dictation.ts
+  // does this for LATIN letters in an address and cannot see either. Advisory only — a note the
+  // model may ignore; it can never change what she says by itself. OFF: no note.
+  // See name-dictation.ts.
+  VOICE_NAME_DICTATION_ENABLED: envBool(true),
+  // Step 3 may not disqualify until all three mandatory discovery questions are answered, the
+  // objection has been addressed once, and what is left maps onto a real disqualifier. On the 16:51
+  // call she signed a lead off 79 seconds in, off ONE answer, on inquiry volume — which the
+  // paragraph directly above the disqualifiers already said never disqualifies anybody. He talked
+  // over the farewell and agreed to a demo five minutes later.
+  // OFF restores the 2026-08-31 Step 3 exactly. See DISQUALIFY_GATE in system-prompt.he.ts.
+  VOICE_LATE_DISQUALIFY_ENABLED: envBool(true),
   // How long the caller may think, in silence, before she asks whether he is still there.
   //
   // SEPARATE FROM VOICE_SILENCE_AWAY_MS ON PURPOSE. That one is the SDK's `userAwayTimeout` — when

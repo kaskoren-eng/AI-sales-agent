@@ -54,6 +54,8 @@ import {
 import { DICTATION_NODS, isDictationTurn } from './dictation.js';
 import { EngagementTracker, callerSharedSubstance } from './engagement.js';
 import { EmailDictation } from './email-dictation.js';
+import { NameDictation } from './name-dictation.js';
+import { bookingNote } from './booking-note.js';
 import {
   AddressGenderTracker,
   dropAckEcho,
@@ -180,6 +182,10 @@ class ClickScalesAgent extends voice.Agent {
    */
   onSpeechLeak: ((reasons: readonly string[]) => void) | null = null;
 
+  /** A claim that the meeting was already booked, rewritten before it was spoken. Counted on the
+   * call for the same reason a leak is: its absence is the news. See FALSE_BOOKING_WIDE. */
+  onFalseBookingClaim: ((spoken: string) => void) | null = null;
+
   /**
    * The MODEL's real time-to-first-token, which the SDK's own metric can no longer see.
    *
@@ -260,6 +266,9 @@ class ClickScalesAgent extends voice.Agent {
    * switch is off, and every reader is written for that. See email-dictation.ts.
    */
   emailDictation: EmailDictation | undefined;
+
+  /** Hebrew letters spelled for a NAME, stitched across turns. See name-dictation.ts. */
+  nameDictation: NameDictation | undefined;
 
   /** The last coach note injected, so an unchanged note is never re-written into the ctx. */
   lastCoachNote: string | null = null;
@@ -627,6 +636,15 @@ class ClickScalesAgent extends voice.Agent {
               enabled: env.VOICE_TOOLCALL_LEAK_GUARD_ENABLED,
               onLeak: (reasons) => this.onSpeechLeak?.(reasons),
             },
+            // THE FALSE-BOOKING REWRITE'S TWO KNOBS (2026-08-31). `possible` picks WHICH truth
+            // replaces the claim: on a tools call that simply has not booked yet she is rewritten
+            // into the next step ("I need a few more details first"), not into a handover to the
+            // team — a handover mid-collection would say goodbye and then ask for his name.
+            {
+              possible: this.toolRuntime !== null,
+              wide: env.VOICE_BOOKING_CLAIM_GUARD_WIDE,
+              onFalseClaim: (spoken) => this.onFalseBookingClaim?.(spoken),
+            },
           ),
           startedAt,
           (ms) => {
@@ -744,7 +762,31 @@ async function injectCoachNote(agent: ClickScalesAgent): Promise<void> {
     // so a consistent caller costs one line for the whole call. See engagement.ts.
     const engagementNote = agent.engagementTracker?.note() ?? null;
     const emailNote = agent.emailDictation?.note() ?? null;
-    const note = [phraseNote, factNote, engagementNote, emailNote].filter(Boolean).join('\n');
+    const nameNote = agent.nameDictation?.note() ?? null;
+    // THE ONLY NOTE READ OFF THE TOOL RUNTIME RATHER THAN OFF THE TRANSCRIPT — what is actually
+    // booked, and which of `book_meeting`'s required arguments still have no value. Last in the
+    // list because it is the one that must not be argued with. See booking-note.ts.
+    const rt = agent.toolRuntime;
+    const bookNote =
+      env.VOICE_BOOKING_NOTE_ENABLED && rt
+        ? bookingNote({
+            toolsEnabled: true,
+            booked: rt.bookingCompleted,
+            // `check_calendar_availability` sets lastCheckedDurationMinutes on every path; the
+            // stage is the fallback for a call where the advisory state layer is switched off.
+            scheduling:
+              rt.lastCheckedDurationMinutes !== null ||
+              rt.callState?.stage === 'scheduling' ||
+              rt.callState?.stage === 'closing',
+            name: agent.factMemory?.get('name') ?? null,
+            phone: agent.factMemory?.get('phone') ?? null,
+            callerPhone: rt.callerPhone,
+            offerCallerPhone: env.VOICE_CALLER_PHONE_KNOWN_ENABLED,
+          })
+        : null;
+    const note = [phraseNote, factNote, engagementNote, emailNote, nameNote, bookNote]
+      .filter(Boolean)
+      .join('\n');
     if (!note || note === agent.lastCoachNote) return;
     const ctx = agent.chatCtx.copy();
     ctx.items = ctx.items.filter((it) => it.id !== COACH_NOTE_ID);
@@ -923,6 +965,7 @@ export default defineAgent({
     // by `factMemory.reject`, so with fact memory switched off this still coaches but cannot block
     // a save. See email-dictation.ts.
     const emailDictation = env.VOICE_EMAIL_DICTATION_ENABLED ? new EmailDictation() : undefined;
+    const nameDictation = env.VOICE_NAME_DICTATION_ENABLED ? new NameDictation() : undefined;
 
     const { runtime, disabledReason, settings: tenantSettings } = await buildToolRuntime(env, {
       callId: ctx.room.name ?? 'unknown',
@@ -1328,6 +1371,17 @@ export default defineAgent({
             );
           }
         }
+        // NAME DICTATION: the same two jobs for a Hebrew name — stitch the letters he is spelling
+        // across the turns the endpointer cuts it into, and catch the moment he says the name she
+        // read back is wrong. See name-dictation.ts.
+        if (item.textContent && agent.nameDictation) {
+          const wrongName = agent.nameDictation.observeCallerUtterance(item.textContent);
+          if (wrongName) {
+            agent.factMemory?.reject('name', wrongName);
+            // The NAME is the lead's own and never goes to stdout, same rule as the email above.
+            console.log('name_rejected', JSON.stringify({ chars: wrongName.length }));
+          }
+        }
       }
       else if (item?.role === 'assistant') {
         callState?.onAgentTurn();
@@ -1344,6 +1398,7 @@ export default defineAgent({
         // What she just READ BACK, so his next "לא נכון" has a value to attach to. Same source and
         // the same de-dupe as the line above — see email-dictation.ts.
         if (item.textContent) agent.emailDictation?.observeAgentUtterance(item.textContent);
+        if (item.textContent) agent.nameDictation?.observeAgentUtterance(item.textContent);
         // Spoken register: is she actually reaching for an everyday word, or only being told to?
         if (item.textContent) agent.registerTracker?.observe(item.textContent);
         // Closes the caller's turn for the engagement window: everything he says before her NEXT
@@ -1433,6 +1488,10 @@ export default defineAgent({
           factMemory: env.VOICE_FACT_MEMORY_ENABLED,
           negationSafety: env.VOICE_NEGATION_SAFETY,
           noPreamble: env.VOICE_NO_PREAMBLE_ENABLED,
+          // The three tests Step 3 must pass before it may disqualify anybody. Prompt-only —
+          // there is no code path that disqualifies, which is why the 79-second sign-off on the
+          // 2026-08-31 16:51 call had nothing to intercept it. See DISQUALIFY_GATE.
+          lateDisqualify: env.VOICE_LATE_DISQUALIFY_ENABLED,
           // Permission to let the email go and keep the meeting. Same flag as book_meeting's
           // nullable email argument, so she is never told to make a call the tool would refuse.
           bookWithoutEmail: env.VOICE_BOOK_WITHOUT_EMAIL,
@@ -1488,9 +1547,17 @@ export default defineAgent({
     // …and the spelling memory for the email. See email-dictation.ts.
     agent.emailDictation = emailDictation;
 
+    // …and the same for a Hebrew name spelled letter by letter. See name-dictation.ts.
+    agent.nameDictation = nameDictation;
+
     // A tool call that came out on the wrong channel and was stopped before it was spoken. Counted
     // on the call so it is a number rather than something you have to spot in a transcript.
     agent.onSpeechLeak = (reasons) => report.recordToolCallLeak(reasons);
+
+    // A claim that the meeting was already booked, caught before it was spoken. Counted for the
+    // same reason a leak is: on the 2026-08-31 16:51 call this was the one defect that reached a
+    // person AFTER the call ended, and a number is the only way anybody sees it did not recur.
+    agent.onFalseBookingClaim = (spoken) => report.recordFalseBookingClaim(spoken);
 
     // The model's REAL first-token time. The SDK's own ttft now measures our acknowledgement, so
     // without this the ~840ms GPT actually takes would simply disappear from the report and every
