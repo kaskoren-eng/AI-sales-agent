@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bookingNote, type BookingNoteState } from './booking-note.js';
+import { bookingNote, toSpokenIsraeliNumber, type BookingNoteState } from './booking-note.js';
 
 /**
  * THE THREE FALSE STATEMENTS OF FACT ON THE 2026-08-31 16:51 CALL.
@@ -54,11 +54,19 @@ describe('bookingNote — what is actually booked', () => {
 
   it('offers the number he is calling from as a CONFIRMATION, never as a substitution', () => {
     const note = bookingNote(base) ?? '';
-    expect(note).toContain('+972509788845');
     expect(note).toMatch(/Do not make him dictate it/u);
     expect(note).toMatch(/ask him to confirm/u);
     // The other half of the rule: a man may want the demo on a different number.
     expect(note).toMatch(/Only if he gives you a different number/u);
+  });
+
+  it('hands her the number in the form she has to SAY, and never the E.164', () => {
+    // The 15:02 call on 2026-09-01: given `+972509788845` the model converted it itself and read
+    // back `050-978845` — nine digits, to the man whose number it is. It now copies instead.
+    const note = bookingNote(base) ?? '';
+    expect(note).toContain('0509788845');
+    expect(note).not.toContain('+972509788845');
+    expect(note).toMatch(/do not reformat, regroup, drop or add a single digit/u);
   });
 
   it('KILL-SWITCH: offerCallerPhone=false keeps the note and drops only that paragraph', () => {
@@ -94,5 +102,38 @@ describe('bookingNote — the bounds that keep it from costing tokens on every c
 
   it('a booking that succeeded reports itself even before the scheduling flag is set', () => {
     expect(bookingNote({ ...base, booked: true, scheduling: false })).not.toBeNull();
+  });
+});
+
+describe('toSpokenIsraeliNumber — conversion, so the model never has to do arithmetic', () => {
+  it('turns the E.164 the SIP participant carries into the number she says', () => {
+    expect(toSpokenIsraeliNumber('+972509788845')).toBe('0509788845');
+    expect(toSpokenIsraeliNumber('972509788845')).toBe('0509788845');
+    // Zadarma is not consistent about separators; digits are all that matter.
+    expect(toSpokenIsraeliNumber('+972-50-978-8845')).toBe('0509788845');
+  });
+
+  it('leaves an already-local number exactly as it is', () => {
+    expect(toSpokenIsraeliNumber('0509788845')).toBe('0509788845');
+    expect(toSpokenIsraeliNumber('050-978-8845')).toBe('0509788845');
+  });
+
+  it('adds the trunk prefix to a bare Israeli mobile', () => {
+    expect(toSpokenIsraeliNumber('509788845')).toBe('0509788845');
+  });
+
+  it('hands back anything it does not recognise UNTOUCHED', () => {
+    // A foreign caller is better spoken oddly than spoken wrong: reshaping on a guess is exactly
+    // the behaviour this function exists to take away from the model.
+    expect(toSpokenIsraeliNumber('+14155552671')).toBe('+14155552671');
+    expect(toSpokenIsraeliNumber('anonymous')).toBe('anonymous');
+  });
+
+  it('never loses or invents a digit — the defect itself, stated as a property', () => {
+    const digits = (s: string): string => s.replace(/\D/gu, '');
+    for (const raw of ['+972509788845', '972509788845', '0509788845', '509788845']) {
+      expect(digits(toSpokenIsraeliNumber(raw))).toHaveLength(10);
+      expect(toSpokenIsraeliNumber(raw)).toBe('0509788845');
+    }
   });
 });

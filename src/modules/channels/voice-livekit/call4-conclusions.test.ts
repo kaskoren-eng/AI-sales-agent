@@ -243,7 +243,12 @@ describe('conclusion 6 — one question per reply, enforced', () => {
         oneQuestion: true,
       }),
     );
-    expect(out.trim()).toBe(line);
+    // What this test is about is that the QUESTION survives the one-question rule: an either/or
+    // carries one mark and must not be cut down. `נוח` arrives pointed because the pronunciation
+    // dictionary now fixes it (round 15, n1=B) — a different mechanism in the same pipeline, and
+    // deliberately not asserted away here: this line is the closing question of every call, so if
+    // the pointing ever stops reaching it, this test should be one of the places that says so.
+    expect(out.trim()).toBe('מתי הכי נוֹחַ לךָ — בבוקר, או אחר הצהריים?');
   });
 
   it('the switch OFF speaks both, as on 2026-08-31', async () => {

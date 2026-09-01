@@ -156,6 +156,32 @@ const PRONUNCIATION_FIXES: Array<[RegExp, string]> = [
   [/(?<![֐-׿])((?:ו|ש|וש|כש|וכש)?אני(?:\s+לא)?)\s+רוצה(?![֐-׿])/gu, '$1 רוצָה'],
   [/(?<![֐-׿])((?:ו|ש|וש|כש|וכש)?היא(?:\s+לא)?)\s+רוצה(?![֐-׿])/gu, '$1 רוצָה'],
   [/(?<![֐-׿])((?:ו|ש|וש|כש|וכש)?הוא(?:\s+לא)?)\s+רוצה(?![֐-׿])/gu, '$1 רוצֶה'],
+  // ── THE TWO WORDS HE STOPPED A LIVE CALL OVER (round 15, 2026-09-01) ──────────────────────
+  //
+  // נוח: "no-ach" (comfortable) came out "nach". It is the last word of the sentence that closes
+  // every call — "נוח לךָ מחר בבוקר?" — so it was mispronounced on the most important line she
+  // speaks. Round-15 winner n1=B: holam male on the vav AND patach on the het. Two marks, not one:
+  // holam-only (D) and patach-only (C) were both on the page and both lost by ear.
+  //
+  // ליד / לידים: the loanword "leed" was read as the Hebrew preposition לְיַד (= beside). On the
+  // 2026-09-01 14:56 call Koren stopped the conversation twice over it ("את לא עושה את ההגייה
+  // הנכונה") and she never recovered the word — she switched to "פנייה" to get out of it.
+  // Round-15 winners l1=B / l2=B: one hiriq per yod-syllable. The `לייד` respelling and the
+  // English `lead` inside the Hebrew sentence were on the page and both lost.
+  //
+  // ⚠️ KNOWN AND ACCEPTED COST: `ליד` is also a real Hebrew preposition ("ליד השולחן"), and
+  // nothing here can tell the two apart — they are the same three letters. So a genuine "beside"
+  // would now be spoken "leed". Accepted deliberately: in a sales call about incoming enquiries
+  // the loanword is constant and the preposition is rare, and the failure Koren actually hit is
+  // the one being fixed. If a call ever surfaces the reverse, this row comes out.
+  //
+  // The prefix group is what makes these rows work at all. Every other row in this table uses a
+  // bare letter lookbehind, which BLOCKS a prefixed form — `הלידים` would never have matched, and
+  // that is the form she actually says. Only real prefixes are allowed, so a longer word that
+  // merely ends in these letters is still protected.
+  [/(?<![֐-׿])((?:ו|ש|וש|כש|ה|כ|ל|מ)?)נוח(?![֐-׿])/gu, '$1נוֹחַ'],
+  [/(?<![֐-׿])((?:ה|ו|וה|ש|שה|כש|כ|ב|ל|מ)?)לידים(?![֐-׿])/gu, '$1לִידִים'],
+  [/(?<![֐-׿])((?:ה|ו|וה|ש|שה|כש|כ|ב|מ)?)ליד(?![֐-׿])/gu, '$1לִיד'],
   // ── THE THINKING FILLERS (round 10, 2026-08-31) ───────────────────────────────────────────
   //
   // These three entries exist for a reason that is not true of any other row in this table: the

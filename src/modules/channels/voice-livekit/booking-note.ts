@@ -71,6 +71,41 @@ export interface BookingNoteState {
   offerCallerPhone: boolean;
 }
 
+/**
+ * `+972509788845` → `0509788845` — the number in the form she has to SAY.
+ *
+ * ── THE DIGIT THAT WENT MISSING (Koren, 2026-09-01) ──────────────────────────────────────────
+ *
+ * LiveKit hands us E.164 off the SIP participant, and this note used to paste that straight into
+ * the prompt: *"he is calling from +972509788845"*. Nothing then converted it, so the MODEL did —
+ * in its head, mid-call, in Hebrew — and on the 15:02 call it dropped a digit:
+ *
+ *     [389s] KEREN  "חוזרת על המספר — אפס חמש אפס, תשע שבע שמונה שמונה, ארבע חמש. נכון?"
+ *
+ * That is `050-978845`. NINE digits, read back to the man whose number it is. Proven rather than
+ * guessed: `normalizeSpokenNumbers('050-978845')` reproduces that sentence exactly, digit for
+ * digit and group for group, while the correct `0509788845` yields "…שמונה, שמונה ארבע חמש". The
+ * speech layer spoke faithfully what it was handed; the loss happened one layer up. (She got it
+ * right twelve seconds later, unprompted, which is what a guess looks like when it is a guess.)
+ *
+ * Two smaller hazards died with it: a model that copies the E.164 verbatim would have her say a
+ * literal "+972509788845" (`PHONE_RE` requires a leading 0, so the speech normaliser leaves it
+ * alone), and `book_meeting` takes `phone` from the model — so a dropped digit was also the number
+ * saved against the booking, i.e. a demo call to a number that does not exist.
+ *
+ * Conversion, not arithmetic, is the whole point: she now COPIES digits instead of transforming
+ * them. Anything unrecognised is returned untouched rather than reshaped on a guess — a foreign
+ * caller's number is better spoken oddly than spoken wrong.
+ */
+export function toSpokenIsraeliNumber(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.startsWith('972')) return `0${digits.slice(3)}`;
+  if (digits.startsWith('0')) return digits;
+  // A bare Israeli mobile with no trunk prefix, as some carriers send it.
+  if (/^5\d{8}$/.test(digits)) return `0${digits}`;
+  return raw;
+}
+
 const FIELD_LABEL: Record<BookingRequiredField, string> = {
   name: 'his full name',
   phone: 'his phone number',
@@ -131,11 +166,12 @@ export function bookingNote(state: BookingNoteState): string | null {
   // (VOICE_CALLER_PHONE_KNOWN_ENABLED) because it changes what she says on every inbound call.
   if (state.offerCallerPhone && !state.phone && state.callerPhone) {
     parts.push(
-      `You already have a number for him: he is calling from ${state.callerPhone}. Do not make him ` +
-        'dictate it. Read it back and ask him to confirm it is the right mobile — a natural ' +
-        'variation of "המספר שאתה מתקשר ממנו, זה הנייד הנכון?" — and if he says yes, that is the ' +
-        'value you pass to `book_meeting`. Only if he gives you a different number do you take one ' +
-        'down.',
+      `You already have a number for him: he is calling from ${toSpokenIsraeliNumber(state.callerPhone)}. ` +
+        'Those digits are exact — read them back EXACTLY as given, and do not reformat, regroup, ' +
+        'drop or add a single digit. Do not make him dictate it — read them back and ask him to ' +
+        'confirm it is the right mobile, a natural variation of "המספר שאתה מתקשר ממנו, זה הנייד הנכון?" — and if ' +
+        'he says yes, that is the value you pass to `book_meeting`. Only if he gives you a ' +
+        'different number do you take one down.',
     );
   }
 

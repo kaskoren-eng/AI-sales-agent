@@ -453,6 +453,41 @@ describe('the pronunciation dictionary — gender-neutral fixed words', () => {
     expect(guardSpeech('רק לוודא, הפגישה מחר?').text).toBe('רק לוודֵא, הפגישה מחר?');
   });
 
+  it('נוח gets both marks — the closing question of every call (round 15, n1=B)', () => {
+    // "no-ach" came out "nach" on the one sentence that books the meeting. Holam-only and
+    // patach-only were both offered on the page and both lost by ear; the winner is both marks.
+    expect(applyPronunciationFixes('נוח לך מחר בבוקר?')).toBe('נוֹחַ לך מחר בבוקר?');
+    expect(applyPronunciationFixes('אם נוח לך, נתקדם')).toBe('אם נוֹחַ לך, נתקדם');
+  });
+
+  it('ליד and לידים get a hiriq per syllable, WITH their prefixes (round 15, l1=B / l2=B)', () => {
+    // The prefixed form is the one she actually says, and a bare letter lookbehind would have
+    // blocked it — which is why these two rows carry a prefix group and the older rows do not.
+    expect(applyPronunciationFixes('ככה כל ליד מקבל מענה מהר.')).toBe(
+      'ככה כל לִיד מקבל מענה מהר.',
+    );
+    expect(applyPronunciationFixes('הלידים שנכנסים אליך')).toBe('הלִידִים שנכנסים אליך');
+    expect(applyPronunciationFixes('ולידים חדשים')).toBe('ולִידִים חדשים');
+  });
+
+  it('does not touch a longer word that merely ends in those letters', () => {
+    // Only real prefixes are allowed, so `תלידים`-shaped words and `הליד` inside a longer word
+    // stay plain. This is the guarantee the prefix group has to keep to be safe at all.
+    const t = 'המוליד, הילדים והמלידה.';
+    expect(applyPronunciationFixes(t)).toBe(t);
+  });
+
+  it('the pronunciation rows are idempotent — a second pass changes nothing', () => {
+    // Every row is written so the niqqud it inserts breaks its own pattern. Without that, the
+    // guard running twice on one sentence would double the marks and distort the word.
+    const once = applyPronunciationFixes('נוח לך? הלידים ממתינים.');
+    expect(applyPronunciationFixes(once)).toBe(once);
+  });
+
+  it('runs inside the live guard, on the sentence from the 14:56 call', () => {
+    expect(guardSpeech('ככה כל ליד מקבל מענה מהר.').text).toBe('ככה כל לִיד מקבל מענה מהר.');
+  });
+
   it('רוצה follows its SUBJECT: the agent is feminine about herself even on a masculine call', () => {
     // "אני רוצה" is Keren speaking — feminine (rotsA) regardless of who she is talking to.
     // When tenant agent_persona ships, this gender comes from it.
