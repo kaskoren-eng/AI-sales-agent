@@ -106,3 +106,153 @@
     });
   });
 })();
+
+/* LEAD JOURNEY — scroll engine.
+   Drives four things off one scroll position: the active step, the phone
+   pane it shows, the rail fill + node, and the section background tone.
+   Picks the step nearest the viewport centre in BOTH directions, so
+   scrolling back always restores the exact state (and replays the pane
+   build-up). The rail is trimmed to end on the closing check mark. */
+(function(){
+  var steps = Array.prototype.slice.call(document.querySelectorAll('.jn-step'));
+  var panes = Array.prototype.slice.call(document.querySelectorAll('.jn-pane'));
+  if (!steps.length || !panes.length) return;
+  var clock = document.querySelector('.jn-status span');
+  var count = document.querySelector('.jn-count');
+  var band  = document.querySelector('.jnr');
+  var stepsEl = document.querySelector('.jn-steps');
+  var rail = document.querySelector('.jn-rail');
+  var fill = rail && rail.querySelector('i');
+  var endMark = document.querySelector('.jn-endline__mark');
+  var times = ['21:40','21:40','21:41','21:44','21:45','21:42','22:40'];
+  var current = -1, ticking = false;
+
+  function activate(i){
+    if (i === current) return; /* don't restart animations mid-view */
+    current = i;
+    steps.forEach(function(s,k){ s.classList.toggle('on', k===i); });
+    panes.forEach(function(p,k){ p.classList.toggle('on', k===i); });
+    if (clock) clock.textContent = times[i] || times[times.length-1];
+    if (count) count.textContent = (i+1) + ' / ' + steps.length;
+    if (band) band.setAttribute('data-tone', steps[i].dataset.tone || i);
+  }
+  /* the dashed rail must stop at the centre of the closing check, not run past it */
+  function sizeRail(){
+    if (!rail || !stepsEl || !endMark) return;
+    var top = stepsEl.getBoundingClientRect().top;
+    var m = endMark.getBoundingClientRect();
+    rail.style.height = Math.max(0, (m.top + m.height/2) - top) + 'px';
+  }
+  function pick(){
+    ticking = false;
+    sizeRail();   /* keep the rail's end anchored to the check as content reflows */
+    var mid = window.innerHeight / 2, best = 0, bestd = Infinity;
+    steps.forEach(function(s,i){
+      var r = s.getBoundingClientRect();
+      var d = Math.abs(r.top + r.height/2 - mid);
+      if (d < bestd){ bestd = d; best = i; }
+    });
+    activate(best);
+    /* The fill tracks the SCROLL POSITION, not the active node: it follows the
+       viewport's centre line 1:1 so the line glides with the wheel instead of
+       hopping between steps. Clamped to the rail so it never over/undershoots. */
+    if (fill && rail){
+      var rr = rail.getBoundingClientRect();
+      var h = mid - rr.top;
+      fill.style.height = Math.max(0, Math.min(rr.height, h)) + 'px';
+    }
+  }
+  function onScroll(){ if (!ticking){ ticking = true; requestAnimationFrame(pick); } }
+  window.addEventListener('scroll', onScroll, {passive:true});
+  window.addEventListener('resize', function(){ sizeRail(); onScroll(); });
+  sizeRail(); pick();
+  window.addEventListener('load', function(){ sizeRail(); pick(); });
+
+  /* MOBILE: the sticky phone can't hold the pane content on small screens,
+     so each pane moves INLINE into its own step and renders full-width.
+     Desktop keeps the sticky phone; resizing moves them back. */
+  var screenEl = document.querySelector('.jn-screen');
+  var mq = window.matchMedia('(max-width:900px)');
+  function placePanes(){
+    if (mq.matches){
+      panes.forEach(function(p,i){
+        if (steps[i] && p.parentNode !== steps[i]){
+          steps[i].appendChild(p);
+          p.classList.add('jn-pane--inline');
+        }
+      });
+    } else if (screenEl){
+      panes.forEach(function(p){
+        if (p.parentNode !== screenEl){
+          screenEl.appendChild(p);
+          p.classList.remove('jn-pane--inline');
+        }
+      });
+    }
+    sizeRail();
+  }
+  placePanes();
+  if (mq.addEventListener) mq.addEventListener('change', placePanes);
+})();
+
+/* AGENT CALL RECORDINGS (hero).
+   Pre-recorded real calls instead of a live demo: zero marginal cost per
+   visitor. One shared <audio>; each row swaps the source. A missing file
+   marks its row "soon" instead of breaking. */
+(function(){
+  var box = document.querySelector('.krec');
+  if (!box) return;
+  var audio = box.querySelector('.krec__audio');
+  var rows = Array.prototype.slice.call(box.querySelectorAll('.krec__row'));
+  var base = box.dataset.audioBase || '/assets/audio/';
+  var he = document.documentElement.lang === 'he';
+  var SOON = he ? 'בקרוב' : 'soon';
+  var current = null;
+
+  function fmt(sec){
+    sec = Math.max(0, Math.round(sec));
+    return Math.floor(sec/60) + ':' + ('0'+(sec%60)).slice(-2);
+  }
+  function setPlaying(row, on){
+    rows.forEach(function(r){ r.removeAttribute('data-playing'); r.querySelector('.krec__play').textContent = '▶'; });
+    if (on && row){ row.setAttribute('data-playing',''); row.querySelector('.krec__play').textContent = '❚❚'; }
+    if (on) box.setAttribute('data-live',''); else box.removeAttribute('data-live');
+  }
+
+  /* fill real durations from file metadata (never invented) */
+  rows.forEach(function(row){
+    var probe = document.createElement('audio');
+    probe.preload = 'metadata';
+    probe.src = base + row.dataset.src;
+    probe.onloadedmetadata = function(){
+      row.querySelector('.krec__dur').textContent = fmt(probe.duration);
+    };
+    probe.onerror = function(){
+      row.querySelector('.krec__dur').textContent = SOON;
+      row.setAttribute('data-missing','');
+    };
+  });
+
+  rows.forEach(function(row){
+    row.addEventListener('click', function(){
+      if (row.hasAttribute('data-missing')) return;
+      if (current === row && !audio.paused){ audio.pause(); setPlaying(null, false); return; }
+      current = row;
+      audio.src = base + row.dataset.src;
+      audio.play().then(function(){ setPlaying(row, true); }).catch(function(){
+        row.querySelector('.krec__dur').textContent = SOON;
+        row.setAttribute('data-missing','');
+        setPlaying(null, false);
+      });
+    });
+  });
+
+  audio.addEventListener('timeupdate', function(){
+    if (!current || !audio.duration) return;
+    current.querySelector('.krec__bar i').style.width = (audio.currentTime / audio.duration * 100) + '%';
+  });
+  audio.addEventListener('ended', function(){
+    if (current) current.querySelector('.krec__bar i').style.width = '0%';
+    setPlaying(null, false);
+  });
+})();

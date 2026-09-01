@@ -20,9 +20,12 @@
 <meta name="twitter:card" content="summary_large_image">
 
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&family=Rubik:wght@500;600;700;800&family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@200;300;400;500;600;700&family=IBM+Plex+Sans+Hebrew:wght@200;300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/styles.css">
 </head>
 <body>
@@ -31,10 +34,10 @@
 <!-- ================= ניווט ================= -->
 <nav class="nav">
   <div class="wrap nav__in">
-    <a class="logo" href="#top"><span class="wave" data-wave="7"></span> ClickScales</a>
+    <a class="logo" href="#top"><svg class="logo__mark" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="19.5" fill="none" stroke="#2563EB" stroke-width="3.6"/><rect x="13.2" y="20" width="3.6" height="8" rx="1.8" fill="#2563EB"/><rect x="17.7" y="17" width="3.6" height="14" rx="1.8" fill="#2979EE"/><rect x="22.2" y="14" width="3.6" height="20" rx="1.8" fill="#2E90F1"/><rect x="26.7" y="17" width="3.6" height="14" rx="1.8" fill="#33A6F4"/><rect x="31.2" y="20" width="3.6" height="8" rx="1.8" fill="#38BDF8"/></svg><span class="logo__word"><b>Click</b>Scales</span></a>
     <div class="nav__links">
+      <a href="#demo">המסע של ליד</a>
       <a href="#capabilities">מה הסוכן עושה</a>
-      <a href="#demo">שיחה אמיתית</a>
       <a href="#integrations">חיבורים</a>
       <a href="#pricing">מחיר ודמו</a>
       <a href="#faq">שאלות</a>
@@ -60,7 +63,7 @@
       </p>
       <div class="hero__actions">
         <a class="btn btn--primary" href="#pricing">קבעו שיחת דמו</a>
-        <a class="btn btn--ghost" href="#demo">הקשיבו לשיחה אמיתית <span class="flip">→</span></a>
+        <a class="btn btn--ghost" href="#demo">ראו איך זה עובד <span class="flip">→</span></a>
       </div>
       <div class="hero__meta">
         <span><i class="dot"></i> עולה לאוויר תוך 5 ימי עסקים</span>
@@ -69,69 +72,264 @@
       </div>
     </div>
 
-    <!-- האלמנט החתימתי: שיחה חיה, באמצע משפט -->
-    <div class="panel">
-      <div class="panel__bar">
-        <span class="live"><i class="blip"></i> בשיחה</span>
-        <span class="wave" data-wave="22"></span>
-        <span class="clock num">01:12</span>
+    <!-- real call recordings: zero marginal cost, real proof -->
+    <div class="kdemo krec" data-audio-base="/assets/audio/">
+      <div class="kdemo__hd"><span class="kdemo__dot"></span> הקלטות אמיתיות · הסוכן הקולי בפעולה</div>
+      <div class="krec__body">
+        <h3>אל תאמינו לנו. תשמעו אותו.</h3>
+        <p class="krec__sub">שיחות אמיתיות של הסוכן עם לידים. לחצו והקשיבו.</p>
+        <span class="krec__wave" data-wave="44" aria-hidden="true"></span>
+        <div class="krec__list">
+          <button class="krec__row" type="button" data-src="booking.mp3">
+            <span class="krec__play">▶</span>
+            <span class="krec__meta"><b>תיאום פגישה עם ליד חדש</b><u class="krec__bar"><i></i></u></span>
+            <span class="krec__dur num">--:--</span>
+          </button>
+          <button class="krec__row" type="button" data-src="price-objection.mp3">
+            <span class="krec__play">▶</span>
+            <span class="krec__meta"><b>טיפול בהתנגדות מחיר</b><u class="krec__bar"><i></i></u></span>
+            <span class="krec__dur num">--:--</span>
+          </button>
+          <button class="krec__row" type="button" data-src="callback.mp3">
+            <span class="krec__play">▶</span>
+            <span class="krec__meta"><b>ליד שביקש שיחה חוזרת</b><u class="krec__bar"><i></i></u></span>
+            <span class="krec__dur num">--:--</span>
+          </button>
+        </div>
+        <p class="kdemo__fine">הקלטות מתוך שיחות דמו של המערכת. רוצים לשמוע אותו על הלידים שלכם? <a href="#pricing">קבעו דמו</a></p>
       </div>
-      <div class="panel__body">
-        <div class="line line--he">
-          <div class="line__who">קרן · הסוכן</div>
-          <div class="line__txt" dir="auto">היי יובל, קרן מ־ClickScales. השארת פרטים לפני רגע — נוח לך לדבר דקה?</div>
-        </div>
-        <div class="line line--he">
-          <div class="line__who">יובל · ליד</div>
-          <div class="line__txt" dir="auto">כן, בטח. מה אתם עושים בעצם?</div>
-        </div>
-        <div class="line line--he">
-          <div class="line__who">קרן · הסוכן</div>
-          <div class="line__txt" dir="auto">בונים לעסק שלך סוכן שמתקשר לכל ליד תוך פחות מדקה. כמה לידים נכנסים אצלכם בחודש?</div>
-        </div>
-        <div class="line line--he">
-          <div class="line__who">יובל · ליד</div>
-          <div class="line__txt" dir="auto">בערך 200. הבעיה שאנחנו חוזרים אליהם רק למחרת.</div>
-        </div>
-
-        <div class="extract">
-          <div class="extract__hd">מה הסוכן עשה עם זה</div>
-          <ul>
-            <li><i class="tick"></i><span><b>סינן</b> — 200 לידים בחודש, היום חוזרים אליהם רק למחרת</span></li>
-            <li><i class="tick"></i><span><b>קבע פגישה</b> — חמישי 14:00, הזמנה וקישור Meet נשלחו</span></li>
-            <li><i class="tick"></i><span><b>עדכן CRM</b> — ליד נוצר, סטטוס: פגישה נקבעה</span></li>
-          </ul>
-        </div>
-      </div>
+      <audio class="krec__audio" preload="none" hidden></audio>
     </div>
   </div>
 </header>
 
-<!-- ================= מספרים ================= -->
-<section class="stats">
-  <div class="wrap stats__row">
-    <div>
-      <div class="stat__v num">&lt;60</div>
-      <div class="stat__k">שניות עד מענה ראשון לכל ליד</div>
+<section class="band jnr" id="demo">
+  <div class="wrap">
+    <div class="secdiv" aria-hidden="true"><span class="wave secdiv__wave" data-wave="8"></span><span class="secdiv__lbl">ONE LEAD. ZERO TOUCH.</span></div>
+    <div class="rv">
+      <div class="eyebrow">המסע של ליד אחד</div>
+      <h2>ליד נכנס ב־<span class="num">21:40</span>.<br>ככה נראות הדקות הבאות…</h2>
+      <p class="lede">תהליך מלא, המנוהל כולו על ידי הסוכן.</p>
+      <div class="jn-chiprow">
+        <span class="jn-chip">מענה לכל ליד באופן מיידי</span>
+        <span class="jn-chip">עובד בכל שעה ויום, ללא הפסקה</span>
+        <span class="jn-chip">שיחה אנושית ומקצועית</span>
+        <span class="jn-chip">מתועד אוטומטית ב־CRM</span>
+      </div>
     </div>
-    <div>
-      <div class="stat__v num">24/7</div>
-      <div class="stat__k">זמינות — ערבים, סופ״ש וחגים</div>
+
+    <div class="jn-grid">
+      <div class="jn-steps">
+        <div class="jn-rail" aria-hidden="true"><i></i></div>
+        <div class="jn-step" data-tone="0">
+          <div class="jn-node" aria-hidden="true"></div>
+          <div class="jn-step__time"><span class="num">21:40:00</span><span class="jn-delta">שניה 0</span></div>
+          <h3>ליד חדש נכנס מהאתר</h3>
+          <p>מיכל השאירה פרטים בטופס. הליד נכתב מיד ל־CRM, והמערכת כבר התחילה לעבוד.</p>
+          <div class="jn-why">רוב העסקים חוזרים לליד אחרי שעות. הסיכוי לסגור צונח כבר אחרי הדקות הראשונות.</div>
+        </div>
+        <div class="jn-step" data-tone="1">
+          <div class="jn-node" aria-hidden="true"></div>
+          <div class="jn-step__time"><span class="num">21:40:38</span><span class="jn-delta">אחרי 38 שניות</span></div>
+          <h3>הסוכן מתקשר באותו רגע. לא מחר.</h3>
+          <p>דקות ספורות, ולפעמים שניות, אחרי שהליד השאיר פרטים, הוא כבר מקבל שיחה אמיתית בעברית שנשמעת אנושית.</p>
+          <div class="jn-why">ליד שמחכה מתקרר, או ממשיך למתחרה הבא ברשימה. שיחה מיידית תופסת אותו ברגע שהוא הכי חם: כשהוא עדיין מול הטופס שלכם.</div>
+        </div>
+        <div class="jn-step" data-tone="2">
+          <div class="jn-node" aria-hidden="true"></div>
+          <div class="jn-step__time"><span class="num">21:41</span><span class="jn-delta">דקה 1</span></div>
+          <h3>שיחת אפיון אמיתית, כולל התנגדויות</h3>
+          <p>הסוכן שואל, מקשיב, ועונה גם על שאלת המחיר. בלי להתבלבל ובלי לקרוא מדף מסרים.</p>
+        </div>
+        <div class="jn-step" data-tone="3">
+          <div class="jn-node" aria-hidden="true"></div>
+          <div class="jn-step__time"><span class="num">21:44</span><span class="jn-delta">דקה 4</span></div>
+          <h3>הכול מתועד ב־CRM. לבד.</h3>
+          <p>סטטוס, ניקוד, כאב, התנגדות והצעד הבא, יחד עם הקלטת השיחה ותמלול מלא, בכרטיס הליד. הסוכן עושה את הכול בעצמו.</p>
+          <div class="jn-why">אתם פותחים את הכרטיס ורואים בדיוק מה נאמר, בלי לשאול אף אחד ובלי "מה סיכמנו איתו?".</div>
+        </div>
+        <div class="jn-step" data-tone="4">
+          <div class="jn-node" aria-hidden="true"></div>
+          <div class="jn-step__time"><span class="num">21:45</span><span class="jn-delta">דקה 5</span></div>
+          <h3>פגישה ביומן, אישור בוואטסאפ</h3>
+          <p>הפגישה נקבעה בחלון פנוי אמיתי ביומן שלכם. הליד קיבל זימון, אישור ותזכורות.</p>
+          <div class="jn-why">תזכורת יום לפני ותזכורת שעה לפני, כדי שהפגישה שנקבעה תהיה גם פגישה שמתקיימת.</div>
+        </div>
+        <div class="jn-step" data-tone="5">
+          <div class="jn-node" aria-hidden="true"></div>
+          <div class="jn-step__time"><span class="num">↺</span><span class="jn-delta">ואם הליד לא ענה?</span></div>
+          <h3>אין ליד שנופל בין הכיסאות</h3>
+          <p>לא ענתה? הסוכן שולח הודעת וואטסאפ, מתזמן ניסיון חיוג נוסף, וממשיך לעקוב עד שיש שיחה או תשובה.</p>
+          <div class="jn-why">רוב הלידים לא הולכים לאיבוד כי אמרו "לא". הם הולכים לאיבוד כי אף אחד לא ניסה פעם שנייה.</div>
+        </div>
+        <div class="jn-step" data-tone="6">
+          <div class="jn-node" aria-hidden="true"></div>
+          <div class="jn-step__time"><span class="num">22:40</span><span class="jn-delta">שעה אחרי, כמו שביקשה</span></div>
+          <h3>הסוכן מתאים את עצמו לליד</h3>
+          <p>ליד שאומר "אני באמצע משהו, אפשר לדבר עוד שעה?" מקבל שיחה חוזרת בדיוק בזמן שביקש. וגם קצב המעקב מתאים את עצמו: ליד שמשתף פעולה מתקדם מהר לפגישה, וליד מהוסס מקבל פולואו־אפ רך ומתחשב יותר.</p>
+          <div class="jn-why">פולואו־אפ קבוע מרגיש כמו ספאם. פולואו־אפ שמקשיב למה שהליד אמר מרגיש כמו שירות.</div>
+        </div>
+        <div class="jn-endline">
+          <span class="jn-endline__mark" aria-hidden="true">✓</span>
+          <div><b>ליד אחד. סוכן אחד.</b><br>אפס שעות אדם.</div>
+        </div>
+      </div>
+
+      <div class="jn-phonecol" aria-hidden="true">
+        <div class="jn-phone"><div class="jn-screen">
+          <div class="jn-status"><span>21:40</span><span>CLICKSCALES</span></div>
+
+          <div class="jn-pane on" data-pane="0">
+            <div class="jn-card">
+              <span class="jn-lbl">NEW LEAD · WEBSITE FORM</span>
+              <dl style="margin:0">
+                <div class="jn-kv"><dt>שם</dt><dd>מיכל לוי</dd></div>
+                <div class="jn-kv"><dt>עסק</dt><dd>סוכנות שיווק</dd></div>
+                <div class="jn-kv"><dt>טלפון</dt><dd class="num">052-555-0134</dd></div>
+                <div class="jn-kv"><dt>לידים בחודש</dt><dd class="num">~150</dd></div>
+              </dl>
+            </div>
+            <div class="jn-card" style="display:flex; align-items:center; gap:10px">
+              <span class="jn-pulse"></span>
+              <span style="font-size:13px; font-weight:600">נכתב ל־CRM · הסוכן הקולי מתכונן לחיוג</span>
+            </div>
+          </div>
+
+          <div class="jn-pane" data-pane="1">
+            <div class="jn-callface">
+              <div class="jn-callviz" aria-hidden="true"><svg viewBox="0 0 240 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle class="jn-cv-ring" cx="46" cy="48" r="30" stroke="#2563EB" stroke-opacity=".3" stroke-width="1.5"/>
+                <circle cx="46" cy="48" r="24" stroke="#2563EB" stroke-width="2.2"/>
+                <rect class="jn-cv-bar" style="animation-delay:0s"    x="33.5" y="43" width="3" height="10" rx="1.5" fill="#2563EB"/>
+                <rect class="jn-cv-bar" style="animation-delay:.11s"  x="39"   y="39" width="3" height="18" rx="1.5" fill="#2979EE"/>
+                <rect class="jn-cv-bar" style="animation-delay:.22s"  x="44.5" y="35" width="3" height="26" rx="1.5" fill="#2E90F1"/>
+                <rect class="jn-cv-bar" style="animation-delay:.33s"  x="50"   y="39" width="3" height="18" rx="1.5" fill="#33A6F4"/>
+                <rect class="jn-cv-bar" style="animation-delay:.44s"  x="55.5" y="43" width="3" height="10" rx="1.5" fill="#38BDF8"/>
+                <path d="M78 48H162" stroke="#CBD5E1" stroke-width="1.5" stroke-dasharray="4 5" stroke-linecap="round"/>
+                <circle class="jn-cv-dot" style="animation-delay:0s"   cx="78" cy="48" r="2.6" fill="#2563EB"/>
+                <circle class="jn-cv-dot" style="animation-delay:.7s"  cx="78" cy="48" r="2.6" fill="#2E90F1"/>
+                <circle class="jn-cv-dot" style="animation-delay:1.4s" cx="78" cy="48" r="2.6" fill="#38BDF8"/>
+                <circle cx="194" cy="48" r="24" stroke="#94A3B8" stroke-width="2.2"/>
+                <circle cx="194" cy="41.5" r="6.5" stroke="#334155" stroke-width="2.2"/>
+                <path d="M183.5 61.5c0-5.8 4.7-10.5 10.5-10.5s10.5 4.7 10.5 10.5" stroke="#334155" stroke-width="2.2" stroke-linecap="round"/>
+                <path d="M222 40c2.6 4.8 2.6 11.2 0 16" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round"/>
+                <path d="M228.5 34c4.6 8.6 4.6 19.4 0 28" stroke="#94A3B8" stroke-opacity=".55" stroke-width="1.8" stroke-linecap="round"/>
+              </svg></div>
+              <div class="jn-cwho">הסוכן הקולי שלכם ← מיכל לוי</div>
+              <div class="jn-csub"><span class="num">00:38</span> מרגע שליחת הטופס</div>
+              <div class="jn-csub">שיחה יוצאת · מספר מזוהה של העסק שלכם</div>
+              <div class="jn-csub" style="display:flex; align-items:center; gap:7px; margin-block-start:6px"><span class="jn-rec"></span>השיחה מוקלטת ומתומללת בזמן אמת</div>
+            </div>
+          </div>
+
+          <div class="jn-pane" data-pane="2">
+            <div class="jn-bubble jn-bubble--agent" dir="auto"><span class="jn-who">AI AGENT</span>ערב טוב מיכל, מדברים איתך מ[העסק שלכם]. השארת עכשיו פרטים באתר, תפסתי אותך בזמן טוב?</div>
+            <div class="jn-bubble jn-bubble--lead" dir="auto"><span class="jn-who">MICHAL · LEAD</span>וואו, מהר. כן, אפשר לדבר.</div>
+            <div class="jn-bubble jn-bubble--lead" dir="auto"><span class="jn-who">MICHAL · LEAD</span>כמה זה עולה? קיבלנו הצעות של 8,000 בחודש.</div>
+            <div class="jn-bubble jn-bubble--agent" dir="auto"><span class="jn-who">AI AGENT</span>אצלנו זה מתחיל ב־1,500 ₪ לחודש, בלי דמי הקמה. רוצה לקבוע שיחה שבה תראי את זה עובד?</div>
+            <div class="jn-live"><span class="jn-rec"></span>REC · LIVE TRANSCRIPT</div>
+          </div>
+
+          <div class="jn-pane" data-pane="3">
+            <div class="jn-card">
+              <span class="jn-lbl">CRM · AUTO WRITE-BACK</span>
+              <dl style="margin:0">
+                <div class="jn-kv"><dt>סטטוס</dt><dd>חדש ← פגישה נקבעה</dd></div>
+                <div class="jn-kv"><dt>ניקוד</dt><dd><span class="jn-tag">HOT · 4/4</span></dd></div>
+                <div class="jn-kv"><dt>כאב</dt><dd>אין מי שחוזר ללידים</dd></div>
+                <div class="jn-kv"><dt>התנגדות</dt><dd>מחיר · הצעה מתחרה</dd></div>
+                <div class="jn-kv"><dt>צעד הבא</dt><dd>דמו · חמישי 14:00</dd></div>
+              </dl>
+            </div>
+            <div class="jn-card jn-m-hide">
+              <span class="jn-lbl">CALL RECORD · ATTACHED TO LEAD</span>
+              <div class="jn-play"><i>▶</i><u><b></b></u><span class="num" style="font-size:12.5px; font-weight:700">4:11</span></div>
+              <div class="jn-ok" style="margin-block-start:6px"><b>✓</b> הקלטת השיחה שמורה בכרטיס הליד</div>
+              <div class="jn-ok"><b>✓</b> תמלול מלא של השיחה מצורף</div>
+            </div>
+          </div>
+
+          <div class="jn-pane" data-pane="4">
+            <div class="jn-cal">
+              <div class="jn-cal__hd">חמישי · <span class="num">14:00–14:30</span></div>
+              <div class="jn-cal__bd">
+                <strong>שיחת דמו · מיכל לוי</strong>
+                <span style="color:var(--slate)">סוכנות שיווק · ~150 לידים בחודש</span>
+                <div class="jn-ok"><b>✓</b> נוצר קישור Google Meet</div>
+                <div class="jn-ok jn-m-hide"><b>✓</b> זימון נשלח במייל</div>
+                <div class="jn-ok"><b>✓</b> אישור וואטסאפ · <span class="num">21:45</span></div>
+                <div class="jn-ok jn-m-hide"><b>✓</b> תזכורות: רביעי 14:00 · חמישי 13:00</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="jn-pane" data-pane="5">
+            <div class="jn-card">
+              <span class="jn-lbl">CALL ATTEMPT · NO ANSWER</span>
+              <div style="display:flex; align-items:center; gap:10px; font-size:13.5px">
+                <span style="color:#D93025; font-family:var(--mono)">✕</span>
+                <span>מיכל לא ענתה · <span class="num">21:41</span></span>
+              </div>
+            </div>
+            <div class="jn-card" style="border-inline-start:3px solid #1FA860">
+              <span class="jn-lbl">WHATSAPP · SENT 21:42</span>
+              <p style="font-size:13.5px; line-height:1.55; margin:0" dir="auto">היי מיכל 👋 ראינו שהשארת פרטים באתר וניסינו להתקשר. מתי נוח לך שנחזור אלייך? אפשר גם לבחור זמן כאן: <span style="color:var(--indigo); text-decoration:underline">קביעת שיחה</span></p>
+            </div>
+            <div class="jn-card">
+              <span class="jn-lbl">FOLLOW-UP · SCHEDULED</span>
+              <div class="jn-ok"><b>✓</b> ניסיון חיוג נוסף: מחר <span class="num">10:00</span></div>
+              <div class="jn-ok"><b>✓</b> הליד סומן "בתהליך מעקב" ב־CRM</div>
+              <div class="jn-ok"><b>✓</b> אם אין מענה: משימה אליכם, עם כל ההיסטוריה</div>
+            </div>
+          </div>
+
+          <div class="jn-pane" data-pane="6">
+            <div class="jn-bubble jn-bubble--lead" dir="auto"><span class="jn-who">MICHAL · LEAD</span>היי, כן השארתי פרטים, אבל אני באמצע משהו. אפשר לדבר עוד שעה?</div>
+            <div class="jn-bubble jn-bubble--agent" dir="auto"><span class="jn-who">AI AGENT</span>בטח מיכל, אחזור אלייך ב־22:40. ערב טוב בינתיים!</div>
+            <div class="jn-card">
+              <span class="jn-lbl">CALLBACK · SCHEDULED</span>
+              <div class="jn-ok"><b>✓</b> שיחה חוזרת: היום <span class="num">22:40</span></div>
+              <div class="jn-ok"><b>✓</b> בדיוק בזמן שהליד ביקש</div>
+            </div>
+            <div class="jn-card">
+              <span class="jn-lbl">FOLLOW-UP · ADAPTIVE</span>
+              <div class="jn-ok"><b>✓</b> ליד משתף פעולה: תהליך מהיר עד פגישה</div>
+              <div class="jn-ok"><b>✓</b> ליד מהוסס: מעקב מרווח ומתחשב</div>
+              <div class="jn-ok"><b>✓</b> הקצב נקבע לפי השיחה עצמה</div>
+            </div>
+          </div>
+
+          <div class="jn-count">1 / 7</div>
+        </div></div>
+      </div>
     </div>
-    <div>
-      <div class="stat__v num">5</div>
-      <div class="stat__k">ימי עסקים מחתימה עד סוכן חי</div>
-    </div>
-    <div>
-      <div class="stat__v num">20–30%</div>
-      <div class="stat__k">מהלידים המסוננים קובעים פגישה</div>
+
+    <div class="jn-recap rv">
+      <h3>מה נשאר לכם לעשות? להגיע לפגישה.</h3>
+      <div class="jn-recap__grid">
+        <div class="jn-recap__card"><b>01</b><h4>פגישה סגורה ביומן</h4><p>עם ליד שכבר עבר אפיון, שמע מחיר, ובחר להמשיך.</p></div>
+        <div class="jn-recap__card"><b>02</b><h4>כרטיס ליד מלא ב־CRM</h4><p>ניקוד, כאב, התנגדויות והצעד הבא, בשדות הנכונים.</p></div>
+        <div class="jn-recap__card"><b>03</b><h4>הקלטה + תמלול</h4><p>כל מילה מהשיחה שמורה. נכנסים לפגישה כשאתם יודעים הכול.</p></div>
+      </div>
     </div>
   </div>
 </section>
 
+<section class="jn-outro">
+  <div class="wrap">
+    <h2>הגיע הזמן להפסיק להיות עבדים של הפייפליין שלכם.</h2>
+    <p>כל ליד שמגיע אליכם עובר סינון ותהליך מלא. אף ליד לא נופל בין הכיסאות.<br>מרגע השארת הפרטים ועד רגע קבלת ההחלטה. וכשזה קורה, הוא כבר מולכם.</p>
+    <a class="jn-cta" href="#pricing">רוצים את זה לעסק שלכם? קבעו דמו</a>
+  </div>
+</section>
+
+<!-- ================= מספרים ================= -->
+
+
 <!-- ================= יכולות ================= -->
 <section class="band" id="capabilities">
   <div class="wrap">
+    <div class="secdiv" aria-hidden="true"><span class="wave secdiv__wave" data-wave="8"></span><span class="secdiv__lbl">A FULL SALES REP. EVERY CHANNEL.</span></div>
     <div class="rv">
       <div class="eyebrow">מה הסוכן עושה</div>
       <h2>עובד מכירות מלא. לא ווידג׳ט באתר.</h2>
@@ -143,32 +341,32 @@
 
     <div class="feat rv">
       <div class="card">
-        <div class="card__ico">⚡</div>
+        <div class="card__ico"><svg viewBox="0 0 44 44" aria-hidden="true"><rect x="2" y="15" width="7" height="3.2" rx="1.6" fill="#C3CDDB"/><rect x="0" y="25.8" width="10" height="3.2" rx="1.6" fill="#C3CDDB"/><g transform="skewX(-10) translate(7 0)"><rect x="12" y="17.5" width="4" height="9" rx="2.0" fill="#2563EB"/><rect x="17.5" y="14.0" width="4" height="16" rx="2.0" fill="#2979EE"/><rect x="23" y="10.0" width="4" height="24" rx="2.0" fill="#2E90F1"/><rect x="28.5" y="14.0" width="4" height="16" rx="2.0" fill="#33A6F4"/><rect x="34" y="17.5" width="4" height="9" rx="2.0" fill="#38BDF8"/></g></svg></div>
         <h3>מתקשר תוך פחות מדקה</h3>
         <p>הליד ממלא טופס — והטלפון כבר מצלצל. לא בעוד חמש דקות, לא מחר בבוקר. לפני שהוא הספיק לפתוח את המייל של המתחרה שלכם.</p>
       </div>
       <div class="card">
-        <div class="card__ico">◍</div>
+        <div class="card__ico"><svg viewBox="0 0 44 44" aria-hidden="true"><rect x="6" y="15.0" width="4" height="8" rx="2.0" fill="#0C1226"/><rect x="11.5" y="11.5" width="4" height="15" rx="2.0" fill="#0C1226"/><rect x="17" y="14.0" width="4" height="10" rx="2.0" fill="#0C1226"/><rect x="23" y="21.0" width="4" height="10" rx="2.0" fill="#2979EE"/><rect x="28.5" y="17.5" width="4" height="17" rx="2.0" fill="#2E90F1"/><rect x="34" y="21.5" width="4" height="9" rx="2.0" fill="#38BDF8"/></svg></div>
         <h3>שיחת discovery אמיתית</h3>
         <p>בלי תסריט ובלי מענה קולי. הסוכן שואל שאלה, מקשיב לתשובה וממשיך לאן שהתשובה מובילה — כולל ההתנגדויות שבאמת חוזרות בענף שלכם.</p>
       </div>
       <div class="card">
-        <div class="card__ico">%</div>
+        <div class="card__ico"><svg viewBox="0 0 44 44" aria-hidden="true"><rect x="8" y="8" width="4" height="10" rx="2" fill="#C3CDDB"/><rect x="14.5" y="8" width="4" height="15" rx="2" fill="#C3CDDB"/><rect x="21" y="8" width="4" height="26" rx="2" fill="#2E90F1"/><rect x="27.5" y="8" width="4" height="13" rx="2" fill="#C3CDDB"/><rect x="34" y="8" width="4" height="9" rx="2" fill="#C3CDDB"/><rect x="4" y="26.4" width="36" height="3" rx="1.5" fill="#0C1226"/><path d="M20 38.5l2.4 2.4 4.8-5" stroke="#2563EB" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></div>
         <h3>מסנן לפי הקריטריונים שלכם</h3>
         <p>אתם מגדירים מי ליד רציני — תקציב, טיימליין, גודל חברה. רק מי שעומד ברף מגיע ליומן. את השאר הסוכן דוחה יפה.</p>
       </div>
       <div class="card card--ai">
-        <div class="card__ico">↻</div>
+        <div class="card__ico"><svg viewBox="0 0 44 44" aria-hidden="true"><rect x="20.4" y="4" width="3.2" height="8" rx="1.6" fill="#2563EB" transform="rotate(0 22 22)"/><rect x="20.4" y="4" width="3.2" height="6.5" rx="1.6" fill="#2979EE" transform="rotate(45 22 22)"/><rect x="20.4" y="4" width="3.2" height="8.5" rx="1.6" fill="#2E90F1" transform="rotate(90 22 22)"/><rect x="20.4" y="4" width="3.2" height="6" rx="1.6" fill="#33A6F4" transform="rotate(135 22 22)"/><rect x="20.4" y="4" width="3.2" height="8" rx="1.6" fill="#38BDF8" transform="rotate(180 22 22)"/><rect x="20.4" y="4" width="3.2" height="6.5" rx="1.6" fill="#2563EB" transform="rotate(225 22 22)"/><rect x="20.4" y="4" width="3.2" height="8.5" rx="1.6" fill="#2979EE" transform="rotate(270 22 22)"/><path d="M30.5 7.5l5.4 1.1-1.1 5.4z" fill="#0C1226"/><circle cx="22" cy="22" r="4" fill="none" stroke="#C3CDDB" stroke-width="2"/><path d="M22 19.5V22l2 1.4" stroke="#0C1226" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg></div>
         <h3>פולואפים בלי פספוסים</h3>
         <p>לא ענו — הוא מנסה שוב. אמרו ״תחזור אליי ביום ראשון״ — הוא שם ביום ראשון. תזכורות לפני הפגישה יוצאות בוואטסאפ ובמייל. שום ליד לא נופל בין הכיסאות.</p>
       </div>
       <div class="card card--ai">
-        <div class="card__ico">✓</div>
+        <div class="card__ico"><svg viewBox="0 0 44 44" aria-hidden="true"><rect x="4" y="17.5" width="4" height="9" rx="2.0" fill="#2563EB"/><rect x="9.5" y="14.0" width="4" height="16" rx="2.0" fill="#2979EE"/><rect x="15" y="16.5" width="4" height="11" rx="2.0" fill="#2E90F1"/><path d="M21 22h4m0 0l-2.2-2.2M25 22l-2.2 2.2" stroke="#5B667E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/><rect x="29" y="13.4" width="12" height="3" rx="1.5" fill="#0C1226"/><rect x="29" y="20.5" width="12" height="3" rx="1.5" fill="#0C1226"/><rect x="29" y="27.6" width="6" height="3" rx="1.5" fill="#0C1226"/><rect x="36.6" y="27.1" width="4" height="4" rx="1" fill="#2E90F1"/></svg></div>
         <h3>ה־CRM מתעדכן לבד</h3>
         <p>כל שיחה, סטטוס והערה נכנסים ל־CRM שלכם אוטומטית — עם תמליל וסיכום. אף אחד לא צריך לזכור לתעד ביום שישי.</p>
       </div>
       <div class="card">
-        <div class="card__ico">עב</div>
+        <div class="card__ico"><svg viewBox="0 0 44 44" aria-hidden="true"><rect x="4" y="17.5" width="4" height="9" rx="2.0" fill="#2563EB"/><rect x="9.5" y="14.0" width="4" height="16" rx="2.0" fill="#2979EE"/><rect x="30.5" y="14.0" width="4" height="16" rx="2.0" fill="#33A6F4"/><rect x="36" y="17.5" width="4" height="9" rx="2.0" fill="#38BDF8"/><text x="21" y="29.5" text-anchor="middle" font-family="Rubik, Assistant, sans-serif" font-weight="800" font-size="21" fill="#0C1226">א</text></svg></div>
         <h3>עברית שנשמעת אנושית</h3>
         <p>נבנה עברית־first, לא מתורגם לעברית. קצב טבעי, אינטונציה אמיתית, ועובר לאנגלית כשהליד עובר. אם שואלים אותו ישירות — הוא אומר בכנות שהוא סוכן AI, והשקיפות הזו דווקא בונה אמון.</p>
       </div>
@@ -177,97 +375,12 @@
 </section>
 
 <!-- ================= דמו ================= -->
-<section class="band demo" id="demo">
-  <div class="wrap">
-    <div class="demo__hd rv">
-      <div>
-        <div class="eyebrow">ליד אחד, ארבע דקות</div>
-        <h2>שיחה שנכנסה ב־21:40.<br>הנה מה שיצא ממנה.</h2>
-      </div>
-      <div class="tabs" role="tablist" aria-label="תוצרי השיחה">
-        <button class="tab" role="tab" aria-selected="true" id="tab-p1" aria-controls="p1" data-pane="p1">פגישה נקבעה</button>
-        <button class="tab" role="tab" aria-selected="false" id="tab-p2" aria-controls="p2" data-pane="p2">עדכון CRM</button>
-        <button class="tab" role="tab" aria-selected="false" id="tab-p3" aria-controls="p3" data-pane="p3">ניתוח שיחה</button>
-      </div>
-    </div>
 
-    <div class="stage rv">
-      <div class="stage__left">
-        <p class="stage__lbl">תמליל · שיחה יוצאת · 04:11</p>
-        <div class="tline">
-          <div class="tline__t">00:04</div>
-          <div class="tline__b" dir="auto"><b>קרן · הסוכן</b>ערב טוב מיכל, קרן מ־ClickScales. מילאת עכשיו טופס באתר — תפסתי אותך בסדר?</div>
-        </div>
-        <div class="tline">
-          <div class="tline__t">00:11</div>
-          <div class="tline__b" dir="auto"><b>מיכל · ליד</b>וואו, מהר. כן, אפשר לדבר.</div>
-        </div>
-        <div class="tline">
-          <div class="tline__t">01:26</div>
-          <div class="tline__b" dir="auto"><b>מיכל · ליד</b>אנחנו סוכנות, מקבלים בערך 150 לידים בחודש ואין לנו מי שיחזור אליהם.</div>
-        </div>
-        <div class="tline">
-          <div class="tline__t">02:48</div>
-          <div class="tline__b" dir="auto"><b>מיכל · ליד</b>כמה זה עולה? כי קיבלנו הצעות של 8,000 בחודש.</div>
-        </div>
-        <div class="tline">
-          <div class="tline__t">02:55</div>
-          <div class="tline__b" dir="auto"><b>קרן · הסוכן</b>אצלנו זה מתחיל ב־1,500 ₪ לחודש בלי דמי הקמה. את רוצה שנקבע שיחה שבה תראי את זה עובד?</div>
-        </div>
-        <div class="tline">
-          <div class="tline__t">03:39</div>
-          <div class="tline__b" dir="auto"><b>מיכל · ליד</b>כן. יום חמישי אחרי הצהריים עדיף.</div>
-        </div>
-      </div>
-
-      <div class="stage__right">
-        <div class="pane" role="tabpanel" tabindex="0" aria-labelledby="tab-p1" id="p1" data-on>
-          <p class="stage__lbl">נכתב ליומן שלכם</p>
-          <div class="out">יום חמישי 14:00 — 30 דקות
-שיחת היכרות · מיכל לוי, סוכנות שיווק
-
-נוצר קישור Google Meet
-הזמנה נשלחה לליד במייל
-אישור בוואטסאפ נשלח ב־21:45
-תזכורות בתור: רביעי 14:00, חמישי 13:00
-
-נקבע ישירות ביומן שלכם,
-במשבצת שבאמת הייתה פנויה.</div>
-        </div>
-
-        <div class="pane" role="tabpanel" tabindex="0" aria-labelledby="tab-p2" id="p2">
-          <p class="stage__lbl">נכתב חזרה ל־CRM שלכם</p>
-          <dl>
-            <div class="field"><dt>סטטוס</dt><dd>חדש ← פגישה נקבעה</dd></div>
-            <div class="field"><dt>ניקוד</dt><dd>HOT · 4 מתוך 4 קריטריונים</dd></div>
-            <div class="field"><dt>נפח לידים</dt><dd>כ־150 בחודש</dd></div>
-            <div class="field"><dt>הכאב</dt><dd>אין מי שיחזור ללידים</dd></div>
-            <div class="field"><dt>התנגדות</dt><dd>מחיר — הצעה מתחרה 8,000 ₪</dd></div>
-            <div class="field"><dt>הצעד הבא</dt><dd>דמו, חמישי 14:00</dd></div>
-          </dl>
-        </div>
-
-        <div class="pane" role="tabpanel" tabindex="0" aria-labelledby="tab-p3" id="p3">
-          <p class="stage__lbl">מה הסוכן למד</p>
-          <dl>
-            <div class="field"><dt>זמן מענה</dt><dd>38 שניות מרגע הטופס</dd></div>
-            <div class="field"><dt>אורך השיחה</dt><dd>4:11 דקות</dd></div>
-            <div class="field"><dt>התנגדות</dt><dd>מחיר — פעם 3 החודש</dd></div>
-            <div class="field"><dt>טופלה תוך</dt><dd>7 שניות, השיחה המשיכה</dd></div>
-          </dl>
-          <div class="meter">
-            <div class="meter__bar"><b style="width:41%"></b></div>
-            <div class="meter__k"><span>הסוכן <span class="num">41%</span></span><span>הליד <span class="num">59%</span></span></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
 
 <!-- ================= חיבורים ================= -->
 <section class="band" id="integrations">
   <div class="wrap">
+    <div class="secdiv" aria-hidden="true"><span class="wave secdiv__wave" data-wave="8"></span><span class="secdiv__lbl">PLUGS INTO YOUR STACK.</span></div>
     <div class="rv">
       <div class="eyebrow">חיבורים</div>
       <h2>מתחבר לכלים שאתם כבר עובדים איתם.</h2>
@@ -303,6 +416,7 @@
 <!-- ================= מחיר ודמו ================= -->
 <section class="band" id="pricing">
   <div class="wrap">
+    <div class="secdiv" aria-hidden="true"><span class="wave secdiv__wave" data-wave="8"></span><span class="secdiv__lbl">PRICING. DEMO. GO LIVE.</span></div>
     <div class="rv">
       <div class="eyebrow">מחיר ודמו</div>
       <h2>מתחילים בדמו, לא בהתחייבות.</h2>
@@ -382,6 +496,7 @@
 <!-- ================= שאלות נפוצות ================= -->
 <section class="band band--tight" id="faq">
   <div class="wrap">
+    <div class="secdiv" aria-hidden="true"><span class="wave secdiv__wave" data-wave="8"></span><span class="secdiv__lbl">QUESTIONS. ANSWERED.</span></div>
     <div class="rv" style="text-align:center">
       <div class="eyebrow" style="justify-content:center">שאלות נפוצות</div>
       <h2>תשובות ישירות.</h2>
@@ -417,7 +532,8 @@
 </section>
 
 <!-- ================= CTA ================= -->
-<section class="wrap">
+<section class="wrap ctaband">
+  <div class="secdiv" aria-hidden="true"><span class="wave secdiv__wave" data-wave="8"></span><span class="secdiv__lbl">READY WHEN YOU ARE.</span></div>
   <div class="cta rv">
     <span class="wave wave--light" data-wave="30"></span>
     <h2>הליד הבא שלכם יכול להיות על הקו תוך 60 שניות.</h2>
@@ -437,7 +553,7 @@
   <div class="wrap">
     <div class="foot">
       <div>
-        <a class="logo" href="#top"><span class="wave" data-wave="7"></span> ClickScales</a>
+        <a class="logo" href="#top"><svg class="logo__mark" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="19.5" fill="none" stroke="#2563EB" stroke-width="3.6"/><rect x="13.2" y="20" width="3.6" height="8" rx="1.8" fill="#2563EB"/><rect x="17.7" y="17" width="3.6" height="14" rx="1.8" fill="#2979EE"/><rect x="22.2" y="14" width="3.6" height="20" rx="1.8" fill="#2E90F1"/><rect x="26.7" y="17" width="3.6" height="14" rx="1.8" fill="#33A6F4"/><rect x="31.2" y="20" width="3.6" height="8" rx="1.8" fill="#38BDF8"/></svg><span class="logo__word"><b>Click</b>Scales</span></a>
         <p class="foot__blurb">בונים לעסקים סוכן מכירות AI שמתקשר, מסנן וקובע פגישות — מסביב לשעון, בעברית אנושית.</p>
       </div>
       <div>

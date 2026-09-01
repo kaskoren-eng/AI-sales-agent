@@ -1,9 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="ClickScales">
-  <rect width="32" height="32" rx="7" fill="#0C1226"/>
-  <g fill="#5C61E0">
-    <rect x="6"  y="13" width="3" height="6"  rx="1.5"/>
-    <rect x="11" y="9"  width="3" height="14" rx="1.5"/>
-    <rect x="16" y="6"  width="3" height="20" rx="1.5"/>
-    <rect x="21" y="11" width="3" height="10" rx="1.5"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+<circle cx="24" cy="24" r="19" fill="none" stroke="#2563EB" stroke-width="4.4"/>
+<rect x="12.9" y="19.8" width="4" height="8.4" rx="2" fill="#2563EB"/>
+<rect x="17.6" y="16.6" width="4" height="14.8" rx="2" fill="#2979EE"/>
+<rect x="22.3" y="13.4" width="4" height="21.2" rx="2" fill="#2E90F1"/>
+<rect x="27" y="16.6" width="4" height="14.8" rx="2" fill="#33A6F4"/>
+<rect x="31.7" y="19.8" width="4" height="8.4" rx="2" fill="#38BDF8"/>
 </svg>

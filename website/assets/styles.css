@@ -35,9 +35,12 @@
 
   /* Latin leads, Hebrew is the fallback face in the same stack
      so a mixed Hebrew/Latin/number line resolves per character. */
-  --display:"Bricolage Grotesque","Rubik",system-ui,sans-serif;
-  --body:"Instrument Sans","Assistant",system-ui,sans-serif;
-  --mono:"JetBrains Mono","Assistant",ui-monospace,monospace;
+  /* One family, three scripts (2026-09-01). Latin, Hebrew and mono are all
+     IBM Plex, so a mixed line like "ליד נכנס ב־21:40" is drawn by one
+     designer. Hierarchy comes from WEIGHT, not from a second typeface. */
+  --display:"IBM Plex Sans","IBM Plex Sans Hebrew",system-ui,sans-serif;
+  --body:"IBM Plex Sans","IBM Plex Sans Hebrew",system-ui,sans-serif;
+  --mono:"IBM Plex Mono","IBM Plex Sans Hebrew",ui-monospace,monospace;
 }
 
 *{box-sizing:border-box}
@@ -56,7 +59,7 @@ a{color:inherit}
 
 /* ---- type ---- */
 h1,h2,h3,h4{font-family:var(--display); margin:0; letter-spacing:-.03em; line-height:1.03; font-weight:700}
-h1{font-size:clamp(40px,6.2vw,74px); font-weight:800}
+h1{font-size:clamp(40px,6.2vw,74px); font-weight:700}
 h2{font-size:clamp(31px,4vw,50px)}
 h3{font-size:20px; letter-spacing:-.02em; line-height:1.25}
 p{margin:0}
@@ -140,7 +143,7 @@ p{margin:0}
 /* ============ NAV ============ */
 .nav{position:sticky; top:0; z-index:60; background:rgba(237,240,246,.82); backdrop-filter:blur(14px); border-block-end:1px solid var(--mist)}
 .nav__in{display:flex; align-items:center; gap:34px; height:70px}
-.logo{display:flex; align-items:center; gap:10px; font-family:var(--display); font-weight:800; font-size:19px; letter-spacing:-.03em; text-decoration:none}
+.logo{display:flex; align-items:center; gap:10px; font-family:var(--display); font-weight:700; font-size:19px; letter-spacing:-.03em; text-decoration:none}
 .logo .wave{height:19px}
 .logo .wave i{width:2.5px; opacity:.85}
 .nav__links{display:flex; gap:26px; margin-inline-start:auto; font-size:15px; color:var(--slate)}
@@ -206,7 +209,7 @@ p{margin:0}
 /* ============ STATS ============ */
 .stats{border-block:1px solid var(--mist); padding-block:38px; background:rgba(255,255,255,.5)}
 .stats__row{display:grid; grid-template-columns:repeat(4,1fr); gap:24px}
-.stat__v{font-family:var(--display); font-size:clamp(30px,3.4vw,42px); font-weight:800; letter-spacing:-.04em; line-height:1}
+.stat__v{font-family:var(--display); font-size:clamp(30px,3.4vw,42px); font-weight:700; letter-spacing:-.04em; line-height:1}
 .stat__k{font-family:var(--mono); font-size:11.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--slate); margin-block-start:11px; line-height:1.5}
 
 /* ============ FEATURES ============ */
@@ -277,7 +280,7 @@ p{margin:0}
 .price{display:grid; grid-template-columns:.85fr 1.15fr; gap:24px; margin-block-start:48px; align-items:start}
 .plan{background:var(--surface); border:1.5px solid var(--ink); border-radius:var(--r-lg); padding:34px 30px; box-shadow:0 30px 60px -40px rgba(12,18,38,.6)}
 .plan h3{font-family:var(--mono); font-size:13px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; color:var(--slate)}
-.plan__price{font-family:var(--display); font-size:52px; font-weight:800; letter-spacing:-.04em; margin-block:18px 4px; line-height:1; display:flex; align-items:baseline; gap:8px}
+.plan__price{font-family:var(--display); font-size:52px; font-weight:700; letter-spacing:-.04em; margin-block:18px 4px; line-height:1; display:flex; align-items:baseline; gap:8px}
 .plan__from{font-family:var(--body); font-size:16px; font-weight:600; color:var(--slate); letter-spacing:0}
 .plan__per{font-family:var(--mono); font-size:12px; color:var(--slate)}
 .plan ul{list-style:none; margin-block:26px 0; padding-block:22px 0; padding-inline:0; border-block-start:1px solid var(--mist); display:grid; gap:11px}
@@ -392,3 +395,553 @@ footer{border-block-start:1px solid var(--mist); padding-block:64px 40px; margin
 .skip:focus{inset-inline-start:24px}
 /* Form controls need a 3:1 border to be perceivable, not just pretty. */
 .field input,.field select,.field textarea{border-color:var(--mist-control)}
+
+/* ============================================================
+   LEAD JOURNEY — scroll-driven section (replaces the old tabbed
+   demo). All classes are jn-prefixed: .card/.pane/.cta/.wave etc.
+   already exist above with different meanings.
+   Logical properties only — one stylesheet serves LTR + RTL.
+   ============================================================ */
+.jnr .lede{margin-block-start:18px}
+.jn-chiprow{display:flex; flex-wrap:wrap; gap:10px; margin-block-start:26px}
+.jn-chip{background:var(--surface); border:1px solid var(--mist); border-radius:999px; padding:8px 16px; font-size:14px; font-weight:600; display:flex; align-items:center; gap:8px}
+.jn-chip::before{content:""; width:7px; height:7px; border-radius:50%; background:var(--amber)}
+
+.jn-grid{display:grid; grid-template-columns:1fr 400px; gap:clamp(32px,6vw,96px); align-items:start; margin-block-start:24px}
+.jn-steps{padding-block-end:14vh}
+.jn-step{min-height:86vh; display:flex; flex-direction:column; justify-content:center; opacity:.5; transition:opacity .35s ease; padding-block:7vh}
+.jn-step.on{opacity:1}
+.jn-step__time{display:flex; align-items:center; gap:12px; margin-block-end:14px}
+.jn-step__time .num{font-size:14px; font-weight:700; color:var(--indigo); background:var(--indigo-soft); border-radius:8px; padding:4px 10px}
+.jn-delta{font-size:13px; color:var(--slate); font-weight:600}
+.jn-step h3{font-family:var(--display); font-size:clamp(24px,2.6vw,34px); font-weight:700; letter-spacing:-.02em; line-height:1.15}
+.jn-step p{margin-block-start:12px; color:var(--ink); max-width:44ch; font-size:18px}
+.jn-why{margin-block-start:14px; border-inline-start:3px solid var(--amber); padding-inline-start:14px; font-size:15.5px; color:var(--ink); max-width:44ch}
+
+.jn-phonecol{position:sticky; top:6vh; height:88vh; display:flex; align-items:center; justify-content:center}
+.jn-phone{width:min(340px,86vw); aspect-ratio:9/18.2; background:var(--night); border-radius:44px; padding:12px; box-shadow:0 30px 80px rgba(12,18,38,.28); position:relative; animation:jn-float 7s ease-in-out infinite}
+@keyframes jn-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+.jn-phone::before{content:""; position:absolute; top:22px; left:50%; transform:translateX(-50%); width:100px; height:24px; background:var(--night); border-radius:14px; z-index:3}
+.jn-screen{position:relative; width:100%; height:100%; background:var(--paper); border-radius:34px; overflow:hidden}
+.jn-status{position:absolute; inset-inline:0; top:0; height:52px; display:flex; align-items:flex-end; justify-content:space-between; padding:0 22px 6px; font-family:var(--mono); font-size:11px; color:var(--slate); z-index:2; direction:ltr}
+.jn-count{position:absolute; inset-block-end:10px; inset-inline-start:50%; transform:translateX(-50%); font-family:var(--mono); font-size:10.5px; color:var(--slate); background:var(--surface); border:1px solid var(--mist); border-radius:999px; padding:3px 12px; z-index:2; direction:ltr}
+[dir="rtl"] .jn-count{transform:translateX(50%)}
+
+.jn-pane{position:absolute; inset:0; padding:62px 16px 16px; opacity:0; transform:translateY(18px) scale(.985); transition:opacity .5s ease, transform .5s ease; pointer-events:none; display:flex; flex-direction:column; gap:10px; overflow:hidden}
+.jn-pane.on{opacity:1; transform:none; pointer-events:auto}
+
+@keyframes jn-rise{from{opacity:0; transform:translateY(14px)} to{opacity:1; transform:none}}
+.jn-pane .jn-card, .jn-pane .jn-cal, .jn-pane .jn-bubble, .jn-pane .jn-callface{opacity:0}
+.jn-pane.on .jn-card, .jn-pane.on .jn-cal, .jn-pane.on .jn-callface{animation:jn-rise .5s ease both}
+.jn-pane.on .jn-card:nth-child(2){animation-delay:.35s}
+.jn-pane.on .jn-card:nth-child(3){animation-delay:.65s}
+.jn-pane.on .jn-kv{opacity:0; animation:jn-rise .4s ease both}
+.jn-pane.on .jn-kv:nth-child(1){animation-delay:.25s}
+.jn-pane.on .jn-kv:nth-child(2){animation-delay:.4s}
+.jn-pane.on .jn-kv:nth-child(3){animation-delay:.55s}
+.jn-pane.on .jn-kv:nth-child(4){animation-delay:.7s}
+.jn-pane.on .jn-kv:nth-child(5){animation-delay:.85s}
+.jn-pane.on .jn-ok{opacity:0; animation:jn-rise .4s ease both; animation-delay:.5s}
+.jn-pane.on .jn-ok + .jn-ok{animation-delay:.8s}
+.jn-pane.on .jn-ok + .jn-ok + .jn-ok{animation-delay:1.1s}
+.jn-pane.on .jn-ok + .jn-ok + .jn-ok + .jn-ok{animation-delay:1.4s}
+
+.jn-card{background:var(--surface); border:1px solid var(--mist); border-radius:var(--r); padding:14px 16px; box-shadow:0 6px 18px rgba(12,18,38,.06)}
+.jn-lbl{font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--slate); margin-block-end:8px; direction:ltr; text-align:start; unicode-bidi:isolate; display:block}
+.jn-kv{display:flex; justify-content:space-between; gap:10px; padding-block:5px; border-block-end:1px dashed var(--mist); font-size:13.5px}
+.jn-kv:last-child{border-block-end:0}
+.jn-kv dt{color:var(--slate); font-weight:600}
+.jn-kv dd{margin:0; font-weight:600; text-align:end}
+.jn-tag{display:inline-block; font-family:var(--mono); font-size:10.5px; padding:3px 8px; border-radius:6px; background:var(--amber-soft); color:var(--amber); font-weight:700}
+.jn-pulse{width:9px; height:9px; border-radius:50%; background:#1FA860; display:inline-block; flex-shrink:0; animation:jn-pu 1.6s infinite}
+@keyframes jn-pu{0%{box-shadow:0 0 0 0 rgba(31,168,96,.5)} 70%{box-shadow:0 0 0 9px rgba(31,168,96,0)} 100%{box-shadow:0 0 0 0 rgba(31,168,96,0)}}
+.jn-rec{width:8px; height:8px; border-radius:50%; background:#D93025; display:inline-block; flex-shrink:0; animation:jn-pu 1.4s infinite}
+
+.jn-callface{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center}
+.jn-avatar{width:84px; height:84px; border-radius:50%; background:var(--indigo); color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--display); font-size:26px; font-weight:700; position:relative}
+.jn-ring, .jn-ring::after{position:absolute; inset:-12px; border:2px solid rgba(47,53,199,.35); border-radius:50%; animation:jn-ring 1.8s infinite}
+.jn-ring::after{content:""; inset:-14px; animation-delay:.6s}
+@keyframes jn-ring{0%{transform:scale(.9); opacity:1} 100%{transform:scale(1.45); opacity:0}}
+.jn-callface .jn-cwho{font-family:var(--display); font-weight:700; font-size:19px; margin-block-start:14px}
+.jn-csub{color:var(--slate); font-size:13.5px}
+.jn-eq{display:flex; gap:4px; align-items:flex-end; height:26px; margin-block-start:10px}
+.jn-eq b{width:4px; border-radius:2px; background:var(--amber); animation:jn-eq 1s infinite ease-in-out}
+.jn-eq b:nth-child(2){animation-delay:.1s}.jn-eq b:nth-child(3){animation-delay:.2s}.jn-eq b:nth-child(4){animation-delay:.3s}.jn-eq b:nth-child(5){animation-delay:.4s}.jn-eq b:nth-child(6){animation-delay:.5s}
+@keyframes jn-eq{0%,100%{height:6px}50%{height:24px}}
+
+.jn-bubble{max-width:88%; padding:9px 13px; border-radius:14px; font-size:13.5px; line-height:1.5; box-shadow:0 4px 12px rgba(12,18,38,.05)}
+.jn-pane.on .jn-bubble{animation:jn-rise .5s ease both}
+.jn-pane.on .jn-bubble:nth-child(2){animation-delay:.5s}
+.jn-pane.on .jn-bubble:nth-child(3){animation-delay:1.1s}
+.jn-pane.on .jn-bubble:nth-child(4){animation-delay:1.7s}
+.jn-bubble--agent{background:var(--night); color:#fff; align-self:flex-start; border-start-start-radius:4px}
+.jn-bubble--agent .jn-who{color:var(--amber-glow)}
+.jn-bubble--lead{background:var(--surface); border:1px solid var(--mist); align-self:flex-end; border-start-end-radius:4px}
+.jn-who{display:block; font-size:10.5px; font-weight:700; margin-block-end:2px; color:var(--slate); font-family:var(--mono); direction:ltr; text-align:start; unicode-bidi:isolate}
+.jn-live{margin-block-start:auto; font-family:var(--mono); font-size:10.5px; color:var(--slate); direction:ltr; text-align:start; display:flex; align-items:center; gap:6px; opacity:0}
+.jn-pane.on .jn-live{animation:jn-rise .5s ease both; animation-delay:2.2s}
+
+.jn-cal{background:var(--surface); border:1px solid var(--mist); border-radius:var(--r); overflow:hidden}
+.jn-cal__hd{background:var(--indigo); color:#fff; padding:10px 16px; font-family:var(--display); font-weight:700; font-size:15px}
+.jn-cal__bd{padding:14px 16px; display:flex; flex-direction:column; gap:8px; font-size:13.5px}
+.jn-ok{display:flex; gap:8px; align-items:center; font-size:13px}
+.jn-ok b{color:#1FA860; font-family:var(--mono)}
+.jn-play{display:flex; align-items:center; gap:10px; padding-block:4px}
+.jn-play i{width:30px; height:30px; border-radius:50%; background:var(--indigo); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-style:normal; flex-shrink:0}
+.jn-play u{flex:1; height:5px; border-radius:3px; background:var(--sunken); position:relative; overflow:hidden; text-decoration:none; display:block}
+.jn-play u b{position:absolute; inset-block:0; inset-inline-start:0; width:34%; background:var(--amber); border-radius:3px}
+
+.jn-recap{margin-block-start:8px}
+.jn-recap h3{font-family:var(--display); font-size:clamp(24px,3vw,36px); letter-spacing:-.02em; margin-block-end:30px}
+.jn-recap__grid{display:grid; grid-template-columns:repeat(3,1fr); gap:16px}
+.jn-recap__card{background:var(--surface); border:1px solid var(--mist); border-radius:var(--r-lg); padding:24px}
+.jn-recap__card b{display:flex; width:34px; height:34px; border-radius:10px; background:var(--indigo-soft); color:var(--indigo); align-items:center; justify-content:center; font-family:var(--mono); margin-block-end:14px}
+.jn-recap__card h4{font-family:var(--display); font-size:18px; letter-spacing:-.02em; margin:0 0 6px}
+.jn-recap__card p{color:var(--slate); font-size:15px}
+
+.jn-outro{background:var(--night); color:#fff; padding-block:96px; text-align:center}
+.jn-outro h2{color:#fff}
+.jn-outro p{color:#9AA3BD; margin-block-start:16px; font-size:18px; margin-inline:auto; max-width:60ch}
+.jn-cta{display:inline-block; margin-block-start:30px; background:var(--amber); color:var(--night); font-weight:700; text-decoration:none; padding:15px 34px; border-radius:999px; font-size:17px}
+.jn-cta:hover{background:var(--amber-glow)}
+
+/* Hebrew: mono is Latin-only on this site; the label content is Latin, keep it. */
+
+@media (max-width:900px){
+  .jn-grid{grid-template-columns:1fr}
+  .jn-phonecol{position:sticky; top:0; height:auto; padding-block:12px; background:linear-gradient(var(--paper) 82%, transparent); z-index:5; order:-1}
+  .jn-phone{width:min(240px,72vw); aspect-ratio:9/15.8; border-radius:32px; padding:9px}
+  .jn-screen{border-radius:24px}
+  .jn-phone::before{width:70px; height:17px; top:15px}
+  .jn-pane{padding:44px 12px 12px}
+  .jn-status{height:36px; padding:0 16px 4px}
+  .jn-step{min-height:62vh}
+  .jn-steps{padding-block-end:6vh}
+  .jn-recap__grid{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){
+  .jn-pane .jn-card, .jn-pane .jn-cal, .jn-pane .jn-bubble, .jn-pane .jn-callface,
+  .jn-pane .jn-kv, .jn-pane .jn-ok, .jn-pane .jn-live{opacity:1 !important}
+  .jn-pane{transition:none}
+  .jn-step{opacity:1}
+}
+/* pane 7 (adaptive follow-up): cards follow the two bubbles, so they wait for them */
+.jn-pane.on .jn-bubble ~ .jn-card{animation-delay:1.2s}
+.jn-pane.on .jn-bubble ~ .jn-card + .jn-card{animation-delay:1.7s}
+/* hero: the static call panel was replaced 2026-08-31 by the live voice-demo
+   widget (.kdemo), so the hero is back to two columns. */
+
+/* ============================================================
+   JOURNEY FIXES 2026-08-31 (Koren):
+   1. Desktop: the phone rose under the sticky nav (70px) and its
+      top was clipped. Anchor the sticky column BELOW the nav and
+      cap the phone's width by viewport height so the whole device
+      always fits the space under the nav.
+   2. Mobile: step text scrolled visibly "into" the phone through
+      the semi-transparent gradient. The phone strip is now a
+      solid, bordered panel (like a sticky header) and smaller,
+      so the text below it stays readable.
+   ============================================================ */
+.jn-phonecol{top:calc(71px + 2vh); height:calc(96vh - 71px)}
+.jn-phone{width:min(340px, 86vw, calc((94vh - 71px - 4vh) * 9 / 18.2))}
+
+@media (max-width:900px){
+  .jn-phonecol{top:71px; height:auto; padding-block:10px 12px;
+    background:var(--paper); border-block-end:1px solid var(--mist);
+    box-shadow:0 10px 24px rgba(12,18,38,.07)}
+  .jn-phone{width:min(180px, 56vw, calc((100vh - 420px) * 9 / 16.4)); min-width:150px}
+  .jn-pane{padding:38px 10px 10px; gap:7px}
+  .jn-status{height:32px; padding:0 14px 3px; font-size:9.5px}
+  .jn-phone::before{width:56px; height:14px; top:12px}
+  .jn-count{padding:2px 9px; font-size:9.5px}
+  .jn-card{padding:10px 12px}
+  .jn-kv{font-size:11.5px; padding-block:3px}
+  .jn-bubble{font-size:11px; padding:7px 10px}
+  .jn-ok{font-size:10.5px}
+  .jn-cal__hd{padding:7px 12px; font-size:13px}
+  .jn-cal__bd{padding:10px 12px; font-size:11.5px; gap:5px}
+  .jn-callface .jn-cwho{font-size:14px}
+  .jn-csub{font-size:11px}
+  .jn-avatar{width:56px; height:56px; font-size:18px}
+  .jn-lbl{font-size:8.5px}
+  .jn-play i{width:24px; height:24px}
+  .jn-step{min-height:56vh; padding-block:5vh}
+  .jn-step p{font-size:16.5px}
+  .jn-why{font-size:14px}
+}
+@media (max-width:900px){
+  /* small screens: drop the equalizer inside the call face and pad the pane
+     bottom so the step counter never overlaps content */
+  .jn-eq{display:none}
+  .jn-callface{gap:4px}
+  .jn-pane{padding-block-end:34px}
+}
+@media (max-width:900px){
+  /* the calendar and follow-up panes need a slightly taller screen */
+  .jn-phone{aspect-ratio:9/19; width:min(190px, 56vw, calc((100vh - 400px) * 9 / 19))}
+  .jn-cal__bd{font-size:11px; gap:4px}
+  .jn-ok{font-size:10px; gap:5px}
+  .jn-cal .jn-ok b, .jn-card .jn-ok b{font-size:10px}
+}
+@media (max-width:900px){
+  /* the small phone can't hold every card; secondary proof lines hide on mobile */
+  .jn-phonecol .jn-m-hide{display:none !important}
+  .jn-kv{font-size:10.5px}
+  .jn-kv dd{max-width:60%}
+}
+
+/* ============================================================
+   LIVE VOICE DEMO (hero, 2026-08-31)
+   A real in-browser call: mic -> LiveKit -> the agent. The widget is
+   pure UI here; site.js talks to the token endpoint. While the
+   backend endpoint is not deployed yet, the button degrades into
+   a "book a demo" link, so shipping the UI first is safe.
+   ============================================================ */
+.kdemo{background:var(--surface); border:1px solid var(--mist); border-radius:var(--r-lg);
+  box-shadow:0 24px 60px rgba(12,18,38,.10); overflow:hidden; align-self:center}
+.kdemo__hd{display:flex; align-items:center; gap:9px; padding:12px 20px;
+  border-block-end:1px solid var(--mist); font-family:var(--mono); font-size:11.5px;
+  letter-spacing:.1em; text-transform:uppercase; color:var(--slate); direction:ltr}
+[dir="rtl"] .kdemo__hd{font-family:var(--body); letter-spacing:0; text-transform:none; direction:rtl; font-weight:700; font-size:13px}
+.kdemo__dot{width:9px; height:9px; border-radius:50%; background:#1FA860; animation:jn-pu 1.6s infinite}
+.kdemo__body{padding:26px 24px 20px; display:flex; flex-direction:column; align-items:center; text-align:center; gap:10px}
+.kdemo__avatar{width:84px; height:84px; border-radius:50%; background:var(--indigo); color:#fff;
+  display:flex; align-items:center; justify-content:center; font-family:var(--display);
+  font-size:30px; font-weight:700; position:relative; margin-block-end:4px}
+.kdemo__ring, .kdemo__ring::after{position:absolute; inset:-11px; border:2px solid rgba(47,53,199,.35); border-radius:50%; animation:jn-ring 1.8s infinite}
+.kdemo__ring::after{content:""; inset:-13px; animation-delay:.6s}
+.kdemo h3{font-size:22px; letter-spacing:-.02em}
+.kdemo__body > p{color:var(--slate); font-size:15px; max-width:34ch}
+.kdemo__btn{margin-block-start:6px; min-width:230px}
+.kdemo__btn[data-live]{background:#C22C2C}
+.kdemo__btn[data-live]:hover{background:#A82222}
+.kdemo__status{font-size:13.5px; color:var(--slate); min-height:1.4em}
+.kdemo__status[data-err]{color:#C22C2C}
+.kdemo__timer{font-weight:700; color:var(--indigo); font-size:15px}
+.kdemo__fine{font-size:11.5px; color:var(--slate); opacity:.8; max-width:36ch}
+@media (max-width:900px){ .kdemo{margin-block-start:26px} }
+
+/* ============================================================
+   AGENT RECORDINGS (hero, 2026-08-31) — replaced the live demo
+   widget: pre-recorded calls cost nothing per visitor. Reuses the
+   .kdemo card shell; only the rows are new.
+   ============================================================ */
+.krec__body{padding:24px 22px 18px; display:flex; flex-direction:column; gap:8px}
+.krec__body h3{font-size:22px; letter-spacing:-.02em}
+.krec__sub{color:var(--slate); font-size:15px}
+.krec__list{display:flex; flex-direction:column; gap:8px; margin-block-start:8px}
+.krec__row{display:flex; align-items:center; gap:12px; width:100%; text-align:start;
+  background:var(--paper); border:1px solid var(--mist); border-radius:var(--r);
+  padding:12px 14px; cursor:pointer; font:inherit; color:inherit; transition:border-color .2s, background .2s}
+.krec__row:hover{border-color:var(--indigo); background:var(--indigo-soft)}
+.krec__row[data-playing]{border-color:var(--indigo); background:var(--indigo-soft)}
+.krec__row[data-missing]{opacity:.55; cursor:default}
+.krec__play{width:36px; height:36px; border-radius:50%; background:var(--indigo); color:#fff;
+  display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0}
+.krec__row[data-missing] .krec__play{background:var(--mist-strong)}
+.krec__meta{flex:1; min-width:0; display:flex; flex-direction:column; gap:6px}
+.krec__meta b{font-size:14.5px; font-weight:600; line-height:1.3}
+.krec__bar{display:block; height:4px; border-radius:2px; background:var(--sunken); overflow:hidden; text-decoration:none}
+.krec__bar i{display:block; height:100%; width:0; background:var(--amber); border-radius:2px; transition:width .3s linear}
+.krec__dur{font-size:12px; color:var(--slate); font-weight:700; flex-shrink:0}
+.kdemo__fine a{color:var(--indigo); font-weight:600}
+@media (max-width:900px){ .krec__body h3{font-size:19px} }
+
+/* ============================================================
+   AGENT RECORDINGS v2 — "night console" look (2026-08-31).
+   Koren: the light card read as cheap. This flips it onto the
+   brand night surface (same as the outro band): flat dark card,
+   glowing indigo waveform, mono/amber telemetry. No gradients,
+   per the brand brief.
+   ============================================================ */
+.krec{background:var(--night); border-color:rgba(255,255,255,.09);
+  box-shadow:0 30px 80px rgba(12,18,38,.40)}
+.krec .kdemo__hd{border-block-end-color:rgba(255,255,255,.09); color:#8E97B3}
+.krec__body h3{color:#fff}
+.krec__sub{color:#9AA3BD}
+.krec__wave{display:flex; gap:3px; align-items:center; justify-content:center;
+  height:38px; margin-block:8px 2px}
+.krec__wave i{display:inline-block; width:3px; border-radius:2px;
+  background:#4A51E0; opacity:.55; transition:opacity .4s}
+.krec[data-live] .krec__wave i{opacity:1; animation:krec-eq 1.1s ease-in-out infinite}
+.krec[data-live] .krec__wave i:nth-child(3n){animation-delay:.15s}
+.krec[data-live] .krec__wave i:nth-child(3n+1){animation-delay:.3s}
+.krec[data-live] .krec__wave i:nth-child(5n){animation-delay:.45s}
+@keyframes krec-eq{0%,100%{transform:scaleY(.55)}50%{transform:scaleY(1.25)}}
+.krec[data-live] .krec__wave{filter:drop-shadow(0 0 10px rgba(74,81,224,.65))}
+.krec__row{background:rgba(255,255,255,.04); border-color:rgba(255,255,255,.10); color:#E8ECF6}
+.krec__row:hover{background:rgba(47,53,199,.16); border-color:rgba(122,128,255,.55)}
+.krec__row[data-playing]{background:rgba(47,53,199,.20); border-color:rgba(122,128,255,.75);
+  box-shadow:0 0 26px rgba(47,53,199,.35)}
+.krec__row[data-missing]{opacity:.4}
+.krec__play{background:rgba(255,255,255,.10); color:#fff}
+.krec__row[data-playing] .krec__play{background:var(--amber); color:var(--night)}
+.krec__row[data-missing] .krec__play{background:rgba(255,255,255,.06); color:#5B667E}
+.krec__meta b{color:#E8ECF6}
+.krec__bar{background:rgba(255,255,255,.12)}
+.krec__dur{color:var(--amber-glow); font-family:var(--mono)}
+.krec .kdemo__fine{color:#77809C}
+.krec .kdemo__fine a{color:var(--amber-glow)}
+
+/* ============================================================
+   JOURNEY BACKGROUND TONES (2026-08-31, Koren; Thoughtly-style).
+   The section's background hue shifts with the active step, so
+   scrolling FEELS like moving between stages. Flat tints only,
+   all whisper-light so text contrast is untouched; the WhatsApp
+   stage (step 6) goes light green by explicit request.
+   ============================================================ */
+.jnr{--jn-bg:var(--paper); background-color:var(--jn-bg);
+  transition:background-color 1s ease}
+.jnr[data-tone="0"]{--jn-bg:#EDF0F6}  /* lead in — house paper        */
+.jnr[data-tone="1"]{--jn-bg:#E9EBFB}  /* dialing — indigo air         */
+.jnr[data-tone="2"]{--jn-bg:#F6F0E2}  /* live conversation — warm amber */
+.jnr[data-tone="3"]{--jn-bg:#E8EEF5}  /* CRM write-back — steel blue  */
+.jnr[data-tone="4"]{--jn-bg:#EFEAF8}  /* calendar — soft violet       */
+.jnr[data-tone="5"]{--jn-bg:#E6F3EA}  /* WhatsApp follow-up — light green */
+.jnr[data-tone="6"]{--jn-bg:#E5F1F1}  /* adaptive callback — calm teal */
+/* the sticky pieces sit on the same tone so nothing looks pasted on */
+@media (max-width:900px){ .jn-phonecol{background:var(--jn-bg); transition:background-color 1s ease} }
+.jnr .jn-chip{transition:background .6s ease}
+
+/* ============================================================
+   CAPABILITY ICONS v2 (2026-08-31) — hand-drawn stroke SVGs
+   replace the glyph placeholders. One indigo stroke + one amber
+   accent per icon, blueprint feel; tiles grew a little to give
+   the linework air.
+   ============================================================ */
+.card__ico{width:54px; height:54px; border-radius:15px}
+.card__ico svg{width:36px; height:36px; display:block}
+.card:hover .card__ico svg{transform:translateY(-1px)}
+.card__ico svg{transition:transform .25s ease}
+
+/* ============================================================
+   SECTION DIVIDERS (2026-08-31, Thoughtly-style, per Koren):
+   a dashed rule fencing each stage of the page, with the brand
+   waveform glyph on the start side and a mono caption on the end
+   side. Reuses the .wave component; captions stay Latin/mono on
+   both languages (house rule: mono never sets Hebrew).
+   ============================================================ */
+.secdiv{border-block-start:1.5px dashed var(--mist-strong);
+  padding-block-start:18px; margin-block-end:60px;
+  display:flex; justify-content:space-between; align-items:center; gap:16px}
+.secdiv__wave{height:15px}
+.secdiv__wave i{width:2.5px; opacity:.7}
+.secdiv__lbl{font-family:var(--mono); font-size:11px; font-weight:500;
+  letter-spacing:.18em; color:var(--slate); direction:ltr; unicode-bidi:isolate;
+  text-align:end; flex-shrink:0}
+/* inside the journey the second fence separates flow from takeaways */
+.jnr .secdiv + .jn-recap{margin-block-start:0}
+@media (max-width:900px){
+  .secdiv{margin-block-end:40px}
+  .secdiv__lbl{font-size:9.5px; letter-spacing:.14em}
+}
+
+
+/* ============================================================
+   JOURNEY ON MOBILE v3 (2026-08-31): no sticky phone at all.
+   Each step's phone-screen pane renders inline, full width, as a
+   card inside the step. Nothing is clipped, nothing is squeezed;
+   the background tones still shift per step.
+   ============================================================ */
+@media (max-width:900px){
+  .jn-phonecol{display:none !important}
+  .jn-step{min-height:0; padding-block:8vh 3vh; opacity:.55}
+  .jn-step.on{opacity:1}
+  .jn-steps{padding-block-end:2vh}
+}
+.jn-pane--inline{position:static; opacity:1 !important; transform:none !important;
+  pointer-events:auto; padding:0; margin-block-start:18px; overflow:visible;
+  display:flex; flex-direction:column; gap:10px}
+.jn-pane--inline .jn-card, .jn-pane--inline .jn-cal, .jn-pane--inline .jn-bubble,
+.jn-pane--inline .jn-callface, .jn-pane--inline .jn-kv, .jn-pane--inline .jn-ok,
+.jn-pane--inline .jn-live{opacity:1; animation:none}
+.jn-step.on .jn-pane--inline .jn-card, .jn-step.on .jn-pane--inline .jn-cal,
+.jn-step.on .jn-pane--inline .jn-bubble, .jn-step.on .jn-pane--inline .jn-callface{
+  animation:jn-rise .5s ease both}
+.jn-pane--inline .jn-callface{flex:none; padding:20px 16px; background:var(--surface);
+  border:1px solid var(--mist); border-radius:var(--r); box-shadow:0 6px 18px rgba(12,18,38,.06)}
+.jn-pane--inline .jn-bubble{max-width:94%; font-size:14px}
+.jn-pane--inline .jn-kv{font-size:13.5px; padding-block:5px}
+.jn-pane--inline .jn-ok{font-size:13px}
+.jn-pane--inline .jn-cal__bd{font-size:13.5px; gap:7px}
+.jn-pane--inline .jn-cal__hd{font-size:15px; padding:10px 16px}
+.jn-pane--inline .jn-lbl{font-size:10px}
+.jn-pane--inline .jn-live{margin-block-start:2px}
+
+/* ============================================================
+   OFFICIAL LOGO + BRAND-BLUE TOUCHES (2026-08-31, per Koren).
+   The company logo (circle + five-bar waveform, royal->sky blue)
+   replaces the generated wave glyph in nav and footer, and the
+   same blues appear as light accents. The indigo system stays.
+   ============================================================ */
+:root{ --brand:#2563EB; --brand-sky:#38BDF8 }
+.logo__mark{width:34px; height:34px; flex-shrink:0}
+.logo__word{color:var(--brand)}
+.logo__word b{color:var(--ink); font-weight:700}
+/* touch 1: the highlighted words in the hero title go brand blue */
+.hero h1 .em{color:var(--brand)}
+/* touch 2: the recordings-card waveform echoes the logo's five blues */
+.krec__wave i{background:#2E90F1}
+.krec__wave i:nth-child(4n){background:#2563EB}
+.krec__wave i:nth-child(4n+2){background:#33A6F4}
+.krec__wave i:nth-child(4n+3){background:#38BDF8}
+/* touch 3: the section-divider glyph leans brand blue */
+.secdiv__wave i{background:var(--brand)}
+
+
+
+
+
+/* ============================================================
+   JOURNEY RAIL (2026-08-31, Koren / Thoughtly ref).
+   The sticky phone stays — this adds the running timeline the
+   steps hang off: a dashed rail that fills in brand blue as you
+   scroll, a node per step, and the closing check that sits ON
+   the rail (its height is set in JS so the line stops there).
+   ============================================================ */
+.jn-steps{position:relative; padding-inline-start:56px}
+.jn-rail{position:absolute; inset-block-start:0; inset-inline-start:15px; width:2px;
+  background:repeating-linear-gradient(var(--mist-strong) 0 5px, transparent 5px 10px)}
+.jn-rail i{position:absolute; inset-block-start:0; inset-inline-start:0; width:2px; height:0;
+  background:var(--brand)} /* height is set per animation frame — no transition, or it stutters */
+.jn-step{position:relative}
+.jn-node{position:absolute; inset-inline-start:-47px; inset-block-start:calc(8vh + 4px);
+  width:12px; height:12px; border-radius:50%; background:var(--paper);
+  border:2px solid var(--mist-strong);
+  transition:border-color .3s, background .3s, box-shadow .3s}
+.jn-step.on .jn-node{border-color:var(--brand); background:var(--brand);
+  box-shadow:0 0 0 5px rgba(37,99,235,.16)}
+.jn-step__time .num{transition:color .3s, background .3s}
+.jn-step.on .jn-step__time .num{color:var(--brand); background:rgba(37,99,235,.10)}
+
+.jn-endline{position:relative; display:flex; align-items:center; min-height:30px;
+  font-size:16px; color:var(--slate); line-height:1.5; margin-block-start:8px}
+.jn-endline b{color:var(--ink); font-family:var(--display); font-size:18px; letter-spacing:-.02em}
+.jn-endline__mark{position:absolute; inset-inline-start:-53px; inset-block-start:2px;
+  width:26px; height:26px; border-radius:50%; background:#1FA860; color:#fff;
+  display:grid; place-items:center; font-size:13px}
+
+@media (max-width:900px){
+  .jn-steps{padding-inline-start:34px}
+  .jn-rail{inset-inline-start:8px}
+  .jn-node{inset-inline-start:-31px; inset-block-start:calc(5vh + 4px)}
+  .jn-endline{font-size:15px}
+  .jn-endline__mark{inset-inline-start:-32px; width:22px; height:22px; font-size:11px}
+}
+
+/* ============================================================
+   VERTICAL RHYTHM (2026-08-31, Koren: "spacing looks uneven").
+   Before this block the page ran six different vertical gaps
+   (104 / 96 / 88 / 76 / 72 / 0) and four heading-to-content gaps
+   (52 / 48 / 46 / 8). Everything below is driven by four tokens,
+   so every section now breathes identically. Declared last so it
+   wins over the earlier per-component values.
+   ============================================================ */
+:root{
+  --sp-band:104px;   /* vertical padding inside every section      */
+  --sp-rule:56px;    /* dashed divider  -> section heading         */
+  --sp-head:48px;    /* heading block   -> content grid            */
+  --sp-sub:88px;     /* content block   -> secondary block         */
+}
+
+/* --- 1. every section gets the same padding, including the ones
+       that used to be special-cased (FAQ, dark outro, final CTA) --- */
+.band,
+.band--tight,
+.jn-outro,
+main > section.wrap{padding-block:var(--sp-band)}
+.hero{padding-block:calc(var(--sp-band) - 16px) var(--sp-band)}
+footer{margin-block-start:0}           /* the CTA section already pads */
+
+/* --- 2. one divider rhythm everywhere --- */
+.secdiv{padding-block-start:20px; margin-block-end:var(--sp-rule)}
+.ctaband > .secdiv{margin-block-end:var(--sp-rule)}
+
+/* --- 3. one heading -> content gap everywhere --- */
+.feat,
+.int,
+.price,
+.faq,
+.jn-grid{margin-block-start:var(--sp-head)}
+
+/* --- 4. inside the journey: kill the viewport-relative padding and
+       give the recap the same secondary-block gap as everything else --- */
+.jn-steps{padding-block-end:0}
+.jn-recap{margin-block-start:var(--sp-sub)}
+.jn-endline{margin-block-start:0; padding-block-end:8px}
+
+@media (max-width:900px){
+  :root{ --sp-band:72px; --sp-rule:40px; --sp-head:34px; --sp-sub:56px }
+  .hero{padding-block:calc(var(--sp-band) - 8px) var(--sp-band)}
+}
+
+/* ============================================================
+   TYPE SYSTEM — "one family, two extremes" (2026-09-01, option D).
+   Everything is IBM Plex. Hierarchy is built from WEIGHT and SIZE
+   only, never from a second typeface. The rule is optical: the
+   bigger the type, the LIGHTER it is set, so a 74px headline at
+   200 and a 20px card title at 600 read with the same visual
+   force. The hero then splits its own sentence — thin setup,
+   bold payoff — which is where the contrast actually lives.
+   Declared last so it wins over the earlier per-element weights.
+   ============================================================ */
+h1{font-weight:200; letter-spacing:-.035em}
+h2{font-weight:300; letter-spacing:-.03em}
+h3{font-weight:600; letter-spacing:-.015em}
+h4{font-weight:600}
+
+/* the hero's payoff clause: same font, opposite end of the range */
+.hero h1 .em{font-weight:700; color:var(--brand)}
+/* numbers inside a light headline need a touch more body to hold up */
+h1 .num, h2 .num{font-weight:500}
+
+/* section + card headings elsewhere in the page */
+.jn-step h3{font-weight:600; letter-spacing:-.02em}
+.jn-recap h3, .recap h3{font-weight:300}
+.jn-recap__card h4{font-weight:600}
+.jn-outro h2, .cta h2{font-weight:300}
+.krec__body h3, .kdemo h3{font-weight:600}
+.faq .q h3, .q h3{font-weight:600}
+.formcard h3{font-weight:600}
+.plan__price{font-weight:600; letter-spacing:-.035em}
+.stat__v{font-weight:600}
+.logo{font-weight:600}
+.logo__word b{font-weight:700}
+.jn-avatar, .kdemo__avatar{font-weight:600}
+
+/* Plex Sans Hebrew has no italic — make sure nothing asks for one */
+em, i, .tl-quote{font-style:normal}
+
+/* Hebrew never takes uppercase/letter-spacing (brand brief §3.1) — the
+   mono labels stay Latin, so this only guards stray Hebrew in mono spots. */
+[dir="rtl"] .num{font-weight:500}
+/* keep the hero card's closing CTA from breaking mid-phrase */
+.kdemo__fine a{white-space:nowrap}
+
+/* ---- phone screen: counter clearance -------------------------------------
+   The "n / 7" pill is pinned to the foot of the screen. Without reserved room
+   the last line of a pane (REC · LIVE TRANSCRIPT) runs underneath it. */
+.jn-pane:not(.jn-pane--inline){padding-block-end:40px}
+
+/* ---- call illustration (pane 2) -----------------------------------------
+   Replaces the "AI" avatar: agent (logo waveform) on one side, a person on
+   the other, packets moving down the line between them. Vector only, drawn
+   from the logo's own shapes so it can't read as stock art. */
+.jn-callviz{width:min(240px,86%); margin-block-end:2px}
+.jn-callviz svg{width:100%; height:auto; display:block}
+.jn-cv-bar{transform-box:fill-box; transform-origin:50% 50%;
+  animation:jn-cvbar 1.05s ease-in-out infinite}
+@keyframes jn-cvbar{0%,100%{transform:scaleY(.4)}50%{transform:scaleY(1)}}
+.jn-cv-dot{animation:jn-cvdot 2.1s linear infinite}
+@keyframes jn-cvdot{
+  0%{transform:translateX(0); opacity:0}
+  12%{opacity:1} 88%{opacity:1}
+  100%{transform:translateX(84px); opacity:0}}
+.jn-cv-ring{transform-box:fill-box; transform-origin:50% 50%;
+  animation:jn-cvring 2.1s ease-out infinite}
+@keyframes jn-cvring{0%{transform:scale(.86); opacity:.6} 100%{transform:scale(1.3); opacity:0}}
+@media (prefers-reduced-motion:reduce){
+  .jn-cv-bar,.jn-cv-dot,.jn-cv-ring{animation:none}
+  .jn-cv-dot{opacity:1}
+}
+.jn-callface .jn-cwho{margin-block-start:10px}
