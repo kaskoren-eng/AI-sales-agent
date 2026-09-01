@@ -692,7 +692,7 @@ const envSchema = z.object({
   // half-second — spoken INSIDE her speech window — came back as "כן, מרגיש לך", and she read her
   // own echo, minus its negation, as a yes and hung up on a lead she had recorded as "hot" 96
   // seconds earlier. The gate refuses a hang-up built on an overlap, an echo, or an inference, and
-  // makes her ask "שאסגור את זה כרגע?" instead. opt_out is never delayed (legal), and the gate
+  // makes her ask "אתה רוצה שנעצור כאן?" instead. opt_out is never delayed (legal), and the gate
   // stops refusing after two so a caller can always get off the phone.
   // OFF restores the ungated tool exactly. See end-call-gate.ts.
   VOICE_END_CALL_CONFIRM_ENABLED: envBool(true),

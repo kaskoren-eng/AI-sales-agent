@@ -99,7 +99,7 @@ export interface ToolRuntimeContext {
    * construction site — including eight test fixtures that build this object by hand — keeps
    * compiling and behaves exactly as it did. See end-call-gate.ts.
    *
-   * `endCallConfirmationAsked`: the gate has already made her ask "שאסגור את זה כרגע?" once.
+   * `endCallConfirmationAsked`: the gate has already made her ask "אתה רוצה שנעצור כאן?" once.
    * `endCallRefusals`: how many hang-ups it has refused, capped by MAX_REFUSALS so a caller who
    * genuinely wants off the phone can always get off it.
    */

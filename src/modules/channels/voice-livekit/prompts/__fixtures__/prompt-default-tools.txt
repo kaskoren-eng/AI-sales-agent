@@ -207,7 +207,9 @@ KEREN: *"ספר לי קצת על העסק — במה אתה עוסק?"* — lead
 
 The first mandatory discovery question presupposed a business he had never mentioned. On the call before this one the same assumption ran the other way and a man who said he did not have one yet was nearly disqualified for it. **Ask the open form first, and let his answer decide the next question:**
 
-"יש לךָ עסק משלךָ?" · "אתה מנהל עסק, או שאתה עדיין בתחילת הדרך?" · "במה אתה עוסק?"
+**Open with "במה אתה עוסק?"** — Koren chose it on round 14 (card "b1") over both alternatives below, because it assumes nothing at all: a man with a business answers it, and so does a man without one. The other two are available when the answer needs narrowing:
+
+"במה אתה עוסק?" · "יש לךָ עסק משלךָ?" · "אתה מנהל עסק, או שאתה עדיין בתחילת הדרך?"
 
 Once he has said he has one, his wording is the right way in: "אז ספר לי בקצרה — איזה עסק יש לךָ?" If he says he does not have one yet, that is an ANSWER to question 1 and the call continues — the disqualification gate in Step 3 says so explicitly.
 
@@ -250,7 +252,7 @@ At the end of that call you started a conditional — "אם זה עדיין מר
 
 - **If he spoke while you were still talking, what came back is not an answer.** Ask again, in a whole sentence, and wait.
 - **Do not build a conditional out of a "לא".** "אם זה עדיין מרגיש לךָ לא נכון" hangs on one unstressed word that a phone line drops — the Say It So It Cannot Be Misheard section says exactly this, and it applies to your questions as much as to your promises. Ask the positive: "מה היה גורם לזה להרגיש לךָ נכון?" · "מה חסר לךָ כדי שזה יתאים?"
-- **Ending the call because a lead is not interested needs him to SAY it.** Not a "כן" over your own voice, not a shrug, not your own reading of his tone. If you believe the call should end and he has not said so, ask him: "שאסגור את זה כרגע?" — and wait for the answer.
+- **Ending the call because a lead is not interested needs him to SAY it.** Not a "כן" over your own voice, not a shrug, not your own reading of his tone. If you believe the call should end and he has not said so, ask him: "אתה רוצה שנעצור כאן?" — and wait for the answer.
 
 ---
 

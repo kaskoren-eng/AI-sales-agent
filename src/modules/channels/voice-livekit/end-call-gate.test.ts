@@ -204,7 +204,7 @@ describe('what the gate must never block', () => {
   });
 
   it('once she has asked and he answered without talking over her, the answer stands', () => {
-    // He has been asked "שאסגור את זה כרגע?" directly. Whatever he said next is his decision, and
+    // He has been asked "אתה רוצה שנעצור כאן?" directly. Whatever he said next is his decision, and
     // pressing him a second time would be the agent arguing with a man who wants to hang up.
     expect(
       judgeEndCall({

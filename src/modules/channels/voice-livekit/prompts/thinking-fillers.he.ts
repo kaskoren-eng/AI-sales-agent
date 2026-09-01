@@ -55,7 +55,7 @@ export const THINKING_FILLERS_HE = [
  * phrases." It fired TWENTY-ONE TIMES in a seven-minute call — roughly every other turn, because
  * the v2 prompt is long and the LLM crosses the threshold constantly.
  *
- * A person hesitates once or twice in a conversation. Twenty-one times is not thinking, it is a
+ * A person hesitates few times in a conversation. Twenty-one times is not thinking, it is a
  * nervous tic, and it makes her sound LESS human, not more — which is the precise opposite of what
  * the feature is for. The threshold alone was not enough: the fix has to include a hard ceiling.
  */

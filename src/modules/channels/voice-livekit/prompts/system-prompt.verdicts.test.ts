@@ -292,7 +292,7 @@ describe('round 13 — the five listening verdicts and the six behavioural notes
     for (const p of BOTH) {
       expect(p).toContain('אם זה עדיין מרגיש לךָ לא נכון');
       expect(p).toMatch(/If he spoke while you were still talking, what came back is not an answer/u);
-      expect(p).toContain('שאסגור את זה כרגע?');
+      expect(p).toContain('אתה רוצה שנעצור כאן?');
     }
   });
 

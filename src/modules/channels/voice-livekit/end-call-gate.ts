@@ -224,7 +224,7 @@ export type EndCallVerdict =
  * in one word and a man who did not gets his call back. Koren has not heard this line: it is on
  * round 14 (`tests/hebrew-tts-niqqud-ab/round14.py`, card `c1`) and it is flagged in the handoff.
  */
-export const END_CALL_CONFIRM_HE = 'שאסגור את זה כרגע?';
+export const END_CALL_CONFIRM_HE = 'אתה רוצה שנעצור כאן?';
 
 /**
  * Should this `end_call` actually hang up?
