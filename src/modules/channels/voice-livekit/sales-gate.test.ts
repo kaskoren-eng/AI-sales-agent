@@ -172,8 +172,21 @@ describe('the sales model in the prompt', () => {
     expect(on).not.toContain('you have just rung a man who was doing something else');
   });
 
+  it('weaves advantages onto what HE said, and never lists them', () => {
+    // Koren, 2026-09-02: "present as many advantages as possible, matched to the customer's
+    // questions or the problems he raised." The ORDER rule (no advantage before a problem) was
+    // already here; what was missing was the density rule, and the hook that stops it becoming
+    // a feature list.
+    expect(on).toContain('Weave the advantages in; never list them');
+    expect(on).toContain('hangs on something HE said');
+    expect(on).toContain('what makes us different from the alternatives');
+    expect(on).toContain('Up to three in a sentence, never a paragraph');
+    expect(off).not.toContain('Weave the advantages in');
+  });
+
   it('stays inside the +5% token budget, because every token is latency on every turn', () => {
-    // Measured at +4.2% when this shipped. The ceiling is not decoration: the prompt is re-sent
+    // +4.97% as of 2026-09-02 (the advantage-weaving rule). This is now AT the wall: the next
+    // addition must be paid for by a deletion. The ceiling is not decoration: the prompt is re-sent
     // on every turn, so a section that grows costs the caller silence on every reply for the
     // life of the call. If this fails, the fix is to delete something — Phase 7 W7 names the
     // candidates — not to raise the number.

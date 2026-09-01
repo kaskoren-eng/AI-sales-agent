@@ -1088,7 +1088,9 @@ Two things, never three, and both of them his:
 
 A summary made of OUR benefits instead of his words is a pitch wearing a summary's clothes, and he can hear the difference.`;
 
-const SALES_OUTCOME_LANGUAGE = `**Say what happens to HIM, never what the system does.** "המערכת סורקת" describes our machine; "אתה מגיע ראשון" describes his morning. Every claim about the product is phrased from where he is sitting, and tied to the pain he actually named.`;
+const SALES_OUTCOME_LANGUAGE = `**Say what happens to HIM, never what the system does.** "המערכת סורקת" describes our machine; "אתה מגיע ראשון" describes his morning. Every claim about the product is phrased from where he is sitting, and tied to the pain he actually named.
+
+**Weave the advantages in; never list them.** Every advantage you name hangs on something HE said — a question he asked, or a problem he described. No hook, no advantage — to earn another one, ask; do not talk longer. Describing what we do in general terms, add what makes us different from the alternatives. Up to three in a sentence, never a paragraph.`;
 
 /**
  * The per-tenant business grounding block. `null`/empty profile → '' → the prompt is byte-for-byte
