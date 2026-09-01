@@ -4,6 +4,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { leads } from '../../../../db/schema/index.js';
 import { END_DISCLOSURE_INSTRUCTION, hasAiDisclosure } from '../compliance/ai-disclosure.js';
+import { isDisqualifyingEndReason, judgeEndCall } from '../end-call-gate.js';
 import { phoneSuffix } from './book-meeting.tool.js';
 import { timedTool, type ToolRuntimeContext } from './tool-context.js';
 
@@ -200,6 +201,43 @@ export function endCallTool(rt: ToolRuntimeContext) {
     execute: (args, { ctx, abortSignal }) =>
       timedTool(rt, 'end_call', args, async () => {
         const { reason } = args;
+
+        // ── THE DISQUALIFYING HANG-UP GATE ────────────────────────────────────────────────────
+        //
+        // BEFORE anything else, and before `rt.endReason` is touched: a refused hang-up must leave
+        // the call exactly as it found it. Writing the reason first would label a call that did not
+        // end, and `rt.endReason` is what reaches call_learnings.analysis.
+        //
+        // Only `not_qualified` / `not_interested` reach the gate. `opt_out` is a legal instruction
+        // and is never delayed; a booking, a bad time, a callback and a wrong number are all the
+        // caller's own choice. See end-call-gate.ts for the 260-second sequence this exists for.
+        if (rt.env.VOICE_END_CALL_CONFIRM_ENABLED && isDisqualifyingEndReason(reason)) {
+          const verdict = judgeEndCall({
+            reason,
+            lastCallerTurn: rt.report.lastCallerTurn(),
+            confirmationAsked: rt.endCallConfirmationAsked ?? false,
+            refusals: rt.endCallRefusals ?? 0,
+            recordedQualification: rt.callState?.facts.qualification,
+          });
+          if (!verdict.allow) {
+            rt.endCallRefusals = (rt.endCallRefusals ?? 0) + 1;
+            rt.endCallConfirmationAsked = true;
+            // Its own log line, greppable by one word, like `toolcall_leak`. A refused hang-up is
+            // invisible in the transcript — the only trace is a question she asks instead of a
+            // goodbye — so this is the only place the decision is recorded as it happens.
+            console.log(
+              `end_call_refused ${JSON.stringify({
+                reason,
+                code: verdict.code,
+                refusals: rt.endCallRefusals,
+                qualification: rt.callState?.facts.qualification ?? null,
+              })}`,
+            );
+            rt.report.recordEndCallRefusal(verdict.code);
+            return verdict.instruction;
+          }
+        }
+
         // A handoff already owns the end reason — a chained end_call must not relabel the call.
         if (rt.endReason !== 'handoff_requested') rt.endReason = reason;
         rt.callState?.onToolCall('end_call', true); // → terminal stage

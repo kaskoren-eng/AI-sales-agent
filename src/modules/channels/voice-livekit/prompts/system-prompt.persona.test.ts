@@ -28,7 +28,43 @@ import {
  * If one of these fails, the question is never "update the fixture". It is "which live call did I
  * just change".
  *
- * Regenerated 2026-08-31 evening (LATEST), on `feature/voice-detail-collection`. **Three sections,
+ * Regenerated 2026-09-01 (LATEST), on `feature/voice-call4-conclusions`. **Four files this time,
+ * and one of them is the greeting — which had been byte-identical through every merge since
+ * 2026-08-17. That is deliberate and it is the point of this note.**
+ *
+ * WHICH LIVE CALL DID I JUST CHANGE — the 2026-08-31 19:54 call on build 5e7d986
+ * (`call-reports/calls-2026-08-31-fourth.md`), and Koren's twelve conclusions from it. Four blocks
+ * moved, and `diff` shows those four and nothing else:
+ *
+ *   1. **`greeting-default.txt` — TWO COMMAS REMOVED, and no word changed.** Round-13 card `g1`
+ *      played him this exact sentence three ways through the phone band and he chose the one with
+ *      no commas and the mid-sentence full stop kept:
+ *
+ *        was:  שלום, מדברת קרן, העוזרת הדיגיטלית של ClickScales. איך אני יכולה לעזור?
+ *        now:  שלום מדברת קרן העוזרת הדיגיטלית של ClickScales. איך אני יכולה לעזור?
+ *
+ *      This is the first spoken line of every inbound call, so it is the highest-stakes byte in the
+ *      fixture set. It moved because his ear moved it, on the recording, not because anything in
+ *      the code wanted it to. See the note on DEFAULT_PERSONA.greeting.
+ *   2. **Speech Rhythm — the short opener is now CONDITIONAL** (`VOICE_ACK_ONLY_WHEN_NEEDED`). His
+ *      twelfth conclusion, after being told what the rule is for: *"make that rule weakened … better
+ *      to instruct the agent to use it on every long thinking turn or a complex answer."* The
+ *      section's old claim that this "is not a style preference" was true and incomplete — the
+ *      opener is a latency device, and on a one-line reply there is no latency to cover, so it was
+ *      pure cost. Both variants moved together; the code half is `chooseTurnOpener`.
+ *   3. **A new section — "What The Man On The Phone Told Us"** (`VOICE_CALL4_PROMPT_ENABLED`). His
+ *      five listening verdicts (sentence shape, the meanings of the slang bank, unambiguous
+ *      positives for a product claim, empathy-first on a stated fear) plus six behavioural notes.
+ *      It exists as ONE section rather than as eleven edits because three of the notes sit on top
+ *      of a rule he confirmed on an earlier round, and the section states each boundary rather than
+ *      leaving the model to arbitrate between two of his own verdicts.
+ *   4. **The objection playbook's opening paragraph — SPLIT IN TWO.** It said "go straight to the
+ *      answer, no sentence of understanding in front of it" (his round-7 note 9). His round-13 `e1`
+ *      pick is exactly such a sentence. Both are right: the ban is on commenting on his TOPIC, the
+ *      requirement is on recognising his FEAR. Gated by the same flag as (3) so the rule and its
+ *      counter-rule can never be live separately.
+ *
+ * Regenerated 2026-08-31 evening, on `feature/voice-detail-collection`. **Three sections,
  * all three driven by one production call, and this is the regeneration with the most behaviour in
  * it since the persona merge — so here is exactly what moved and why.**
  *
@@ -308,6 +344,8 @@ describe('the default persona reproduces the pre-persona prompt exactly', () => 
     //
     //   was:  שלום, מדברת קרן מ-ClickScales. איך אני יכולה לעזור?
     //   now:  שלום, מדברת קרן, העוזרת הדיגיטלית של ClickScales. איך אני יכולה לעזור?
+    //   and, on 2026-09-01, the two commas came out by ear (round-13 card `g1`):
+    //   now:  שלום מדברת קרן העוזרת הדיגיטלית של ClickScales. איך אני יכולה לעזור?
     //
     // Everything else about the default persona is still pinned byte-for-byte, including the whole
     // system prompt — this is the only line that moved, and it moved for a reason recorded above.
@@ -382,7 +420,7 @@ describe('a custom persona replaces every ClickScales-specific string', () => {
     expect(prompt).toContain('masculine forms (e.g. "אני שמח", "מצטער", "אני יכול", "אני סוכן")');
     expect(prompt).toContain('- **Yourself** — masculine singular: "אני יכול", "מצטער", "אני סוכן"');
     // Masculine throughout, INCLUDING the AI disclosure: "העוזר הדיגיטלי", not "העוזרת הדיגיטלית".
-    expect(buildGreeting(CUSTOM)).toBe('שלום, מדבר דניאל, העוזר הדיגיטלי של מוסך הצפון. איך אני יכול לעזור?');
+    expect(buildGreeting(CUSTOM)).toBe('שלום מדבר דניאל העוזר הדיגיטלי של מוסך הצפון. איך אני יכול לעזור?');
   });
 
   it('keeps the security rules, which no tenant setting may touch', () => {
@@ -456,7 +494,7 @@ describe('readAgentPersona merges field by field', () => {
     // the agent in the dashboard, and it keeps introducing itself by the old name on every call.
     const persona = readAgentPersona({ agent_persona: { agentName: 'מיכל', companyName: 'סטודיו מיכל' } });
     expect(persona.greeting).toBe('');
-    expect(buildGreeting(persona)).toBe('שלום, מדברת מיכל, העוזרת הדיגיטלית של סטודיו מיכל. איך אני יכולה לעזור?');
+    expect(buildGreeting(persona)).toBe('שלום מדברת מיכל העוזרת הדיגיטלית של סטודיו מיכל. איך אני יכולה לעזור?');
   });
 
   it('ignores a garbage gender rather than throwing', () => {

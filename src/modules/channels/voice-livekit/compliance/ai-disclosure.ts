@@ -43,8 +43,19 @@ export function hasAiDisclosure(text: string): boolean {
   return DISCLOSURE_PATTERNS.some((p) => p.test(text));
 }
 
-/** The one-liner end_call appends to the goodbye when nothing was disclosed during the call. */
+/**
+ * The one-liner end_call appends to the goodbye when nothing was disclosed during the call.
+ *
+ * ⚠️ ONE COMMA WAS REMOVED HERE ON 2026-09-01 AND NOBODY HAS HEARD THE RESULT. Koren's round-13
+ * card `g1` was the same sentence shape — a name-and-role clause read out as a greeting — and his
+ * verdict was that the commas make it robotic. The comma after `רק שתדע` is the same comma doing
+ * the same thing, and this sentence is spoken at the END of a call to a lead who never learned she
+ * was an AI, so it is a compliance line as well as a stylistic one. Zero words changed.
+ *
+ * It is on round 14 (card `d1`) and it has NOT yet been judged. If he dislikes it, the comma goes
+ * back — it is one character.
+ */
 export const END_DISCLOSURE_INSTRUCTION =
   'IMPORTANT: you have not yet told the caller you are an AI. Your goodbye MUST include one ' +
   'natural, warm Hebrew sentence disclosing you are Koren\'s digital assistant — for example: ' +
-  '"רק שתדע, אני העוזרת הדיגיטלית של קורן — היה כיף לדבר!".';
+  '"רק שתדע אני העוזרת הדיגיטלית של קורן — היה כיף לדבר!".';

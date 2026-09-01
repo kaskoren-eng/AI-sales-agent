@@ -108,7 +108,24 @@ export const DEFAULT_PERSONA: AgentPersona = {
   // as NOT SAID on 10 of 10 real calls while it was merely a prompt instruction. The wording is the
   // smallest change to Koren's tuned greeting that carries it — "מ-ClickScales" became
   // "העוזרת הדיגיטלית של ClickScales", four extra syllables, same rhythm.
-  greeting: 'שלום, מדברת קרן, העוזרת הדיגיטלית של ClickScales. איך אני יכולה לעזור?',
+  //
+  // ── THE TWO COMMAS ARE GONE, BY HIS EAR (round 13, card `g1`, 2026-08-31) ────────────────────
+  //
+  // Three variants of this exact sentence were synthesized on sonic-3.5 at the production speed and
+  // played to him: A with today's two commas, B with none, C with none AND the mid-sentence full
+  // stop replaced by an em-dash. **He chose B** — no commas, and the full stop KEPT.
+  //
+  // Not one word changed. This is the first line of every inbound call and it is Koren's own tuned
+  // Hebrew; the edit is two commas, and it is his, not ours. It is also the first time the greeting
+  // fixture has moved: `__fixtures__/greeting-default.txt` was regenerated in the same commit for
+  // this reason and no other, and `system-prompt.persona.test.ts` pins the new bytes.
+  //
+  // WHY IT SOUNDS BETTER, measured rather than guessed: on sonic-3.5 a comma buys about 0.18s and
+  // can vanish once the text is streamed, while a full stop survives every time. Two commas in a
+  // ten-word sentence are therefore two pauses that may or may not arrive — which is exactly the
+  // "רובוטי" reading he keeps giving this line. The full stop in the middle stays because it is the
+  // one pause that reliably lands.
+  greeting: 'שלום מדברת קרן העוזרת הדיגיטלית של ClickScales. איך אני יכולה לעזור?',
   faq: [
     {
       topic: 'Does the agent sound robotic?',
@@ -251,7 +268,13 @@ export function buildGreeting(persona: AgentPersona): string {
   const g = GENDER_FORMS[persona.agentGender];
   const explicit = persona.greeting.trim();
   if (!explicit) {
-    return `שלום, ${g.speaking} ${persona.agentName}, ${g.digitalAssistant} של ${persona.companyName}. איך אני ${g.can} לעזור?`;
+    // NO COMMAS — the same edit Koren made to the ClickScales greeting by ear on round-13 card
+    // `g1`, applied to the template every OTHER tenant's agent opens with. It is literally the same
+    // sentence with a different name in it, and his verdict was about the punctuation rather than
+    // about the words: two commas in a ten-word line are two pauses that sonic-3.5 may or may not
+    // deliver, while the full stop in the middle lands every time. Leaving them here would mean
+    // ClickScales' agent sounds better than every other tenant's for no reason anybody could state.
+    return `שלום ${g.speaking} ${persona.agentName} ${g.digitalAssistant} של ${persona.companyName}. איך אני ${g.can} לעזור?`;
   }
 
   // A tenant's own line is kept as written — unless it does not disclose, in which case one short

@@ -92,6 +92,19 @@ export interface ToolRuntimeContext {
   /** One-way latch: request_human_handoff flips it once; a repeat call is a no-op (no re-flag,
    * no double-ping to the owner). Same pattern as bookingCompleted. */
   handoffRequested: boolean;
+  /**
+   * The disqualifying-hang-up gate's two counters (2026-09-01, the 260-second hang-up).
+   *
+   * OPTIONAL rather than required, and read as `?? 0` / `?? false` everywhere, so every existing
+   * construction site — including eight test fixtures that build this object by hand — keeps
+   * compiling and behaves exactly as it did. See end-call-gate.ts.
+   *
+   * `endCallConfirmationAsked`: the gate has already made her ask "שאסגור את זה כרגע?" once.
+   * `endCallRefusals`: how many hang-ups it has refused, capped by MAX_REFUSALS so a caller who
+   * genuinely wants off the phone can always get off it.
+   */
+  endCallConfirmationAsked?: boolean;
+  endCallRefusals?: number;
   endReason: string | null;
   /** Raw tenants.settings loaded at gate time — previously discarded; tools read per-tenant
    * config (templates, reminders, limits) from here without a second DB round trip. */
@@ -577,6 +590,8 @@ export async function buildToolRuntime(
       lastCheckedDurationMinutes: null,
       bookingCompleted: false,
       handoffRequested: false,
+      endCallConfirmationAsked: false,
+      endCallRefusals: 0,
       endReason: null,
       settings,
       outboundQueue,
