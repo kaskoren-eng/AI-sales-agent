@@ -133,6 +133,10 @@ export async function buildTestApp(
     VOICE_SELF_NARRATION_GUARD_ENABLED: true,
     VOICE_CALL4_PROMPT_ENABLED: true,
     VOICE_ACK_ONLY_WHEN_NEEDED: true,
+    VOICE_REPEAT_GUARD_ENABLED: true,
+    VOICE_SLOT_MEMORY_ENABLED: true,
+    VOICE_STOP_ANNOUNCE_GUARD_ENABLED: true,
+    VOICE_PRODUCT_CLAIM_SLANG_GUARD: true,
     ...opts.envOverrides,
   };
 

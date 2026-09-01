@@ -1,5 +1,10 @@
 import { DICTATION_NODS } from './dictation.js';
+import { END_CALL_CONFIRM_HE } from './end-call-gate.js';
 import { dropEchoedOpener } from './prompts/acknowledgements.he.js';
+import {
+  SpokenSentenceLedger,
+  callerAskedToRepeat as callerAskedToRepeatText,
+} from './repeat-guard.js';
 import { normalizeSpokenNumbers } from './speech-numbers.he.js';
 import { hasLeakMarker, scrubToolCallLeak } from './toolcall-leak.js';
 
@@ -595,6 +600,91 @@ export function isSelfNarration(sentence: string): boolean {
 }
 
 /**
+ * ============================================================================================
+ * SHE ANNOUNCED THAT THE CALL WAS OVER, AND THEN CARRIED ON TALKING.
+ * ============================================================================================
+ *
+ * 2026-09-01 09:29, live PSTN, eleven seconds apart:
+ *
+ *   [320s] KEREN  "אני מבינה.. זה באמת יכול להרגיש מעצבן. אם זה מה שיושב עליך, עדיף שנעצור כאן. תודה"
+ *   [331s] KEREN  "אתה צודק. זה יצא לא טוב. אם תרצה, אני אעצור את המכירה ואענה רק על מה שמעניין אותךָ..."
+ *
+ * WHAT I ESTABLISHED, AND HOW. `end_call` was NOT called at 320s — the report's `toolCalls` array
+ * is complete and timestamped, and its only two `end_call` entries are at 474935ms and 477394ms,
+ * both `reason: "other"`, both after the booking failures. `summary.endCallRefusals` is 0, so the
+ * end-call gate never ran either. **Neither the tool nor the gate produced the reversal.** The
+ * model wrote a sentence that closed the call, nothing closed it, and the model then wrote a
+ * sentence that reopened it.
+ *
+ * THE FIX IS NOT TO LET HER HANG UP MORE READILY. It is that a stop is a DECISION and she does not
+ * get to announce one she is not making. So a sentence that announces the stop becomes the question
+ * the end-call gate already asks in the same situation — `END_CALL_CONFIRM_HE`, which is Koren's
+ * round-14 `c1=D` verdict, heard through the phone band and chosen by ear. The two turns then read
+ * as one person: she ASKS whether to stop, and her next turn offers to carry on differently.
+ *
+ * NARROW ON PURPOSE. This catches her PROPOSING an end ("עדיף שנעצור כאן", "בוא נסיים פה"); it does
+ * not touch a farewell ("תודה קורן, נדבר בקרוב", "שיהיה יום נעים"), because a farewell after
+ * `end_call` has actually been called is the truth. And it is skipped entirely once `end_call` has
+ * been invoked on this call — from that moment she is allowed to say the call is ending, because it
+ * is.
+ *
+ * Kill-switch: VOICE_STOP_ANNOUNCE_GUARD_ENABLED (default on).
+ */
+const STOP_ANNOUNCEMENT: RegExp[] = [
+  // "(it is) better that we stop / finish here" — her own conditional acceptance of an ending.
+  /(?:עדיף|אז|כדאי)\s+(?:ש)?(?:נעצור|נסיים|נסגור)(?:\s+(?:כאן|פה|את\s+ה?שיחה))?/u,
+  // "let's stop / let's finish here" — the imperative form of the same move.
+  /(?:בוא|בואו|בואי)\s+(?:נעצור|נסיים|נסגור)(?:\s+(?:כאן|פה|את\s+ה?שיחה))?/u,
+  // A bare first-person-plural announcement: "נעצור כאן", "נסיים פה", "אני אסיים כאן את השיחה".
+  /(?:^|\s)(?:אני\s+)?(?:אעצור|אסיים|נעצור|נסיים)\s+(?:כאן|פה)(?:\s+את\s+ה?שיחה)?/u,
+];
+
+/** Does this sentence ANNOUNCE that the call is stopping, rather than say goodbye? */
+export function announcesStop(sentence: string): boolean {
+  return STOP_ANNOUNCEMENT.some((p) => p.test(sentence));
+}
+
+/**
+ * ============================================================================================
+ * SLANG INSIDE A CLAIM ABOUT THE PRODUCT — the rule Koren gave us, enforced rather than asked for.
+ * ============================================================================================
+ *
+ * His round-13 `s2` verdict: when you describe what the product DOES, the word is `מעולה`,
+ * `מצוין` or `טוב מאוד` — never slang. It comes from a live call where he stopped her:
+ *
+ *     lead: "רגע, זה עובד אחלה או שזה עובד מעולה?"
+ *
+ * `אחלה` is casual enough that he could not tell whether "זה עובד אחלה" was a claim or a shrug.
+ *
+ * THE RULE REACHED THE PROMPT — `buildCall4Guidance` states it, `VOICE_SPOKEN_REGISTER_ENABLED` and
+ * `VOICE_CALL4_PROMPT_ENABLED` were both on for both 2026-09-01 calls, and the fixtures pin the
+ * text. It was still broken twice, and the reason is in the prompt too: the Spoken Register section
+ * offered *"זה עובד אחלה בדיוק במקרים כמו שלך."* as a worked EXAMPLE of the register, three hundred
+ * lines above the rule that bans it. On the 09:43 call she said "זה עובד אחלה למי שמקבל פניות" —
+ * the example, with its tail swapped. The example is fixed in the same commit as this guard; this
+ * is the half that survives the model finding another way to write the sentence.
+ *
+ * DELIBERATELY A ONE-WORD SWAP AND NOT A DROP. `מעולה` is in the same screened bank, it is the word
+ * he himself named for this position, and both are ordinary predicate adverbs — so the sentence
+ * keeps its grammar, its length and its rhythm and only stops being ambiguous. A drop would leave
+ * "זה עובד למי שמקבל פניות", which is a different and weaker claim.
+ *
+ * SCOPED TO THE CLAIM, which is the whole point of his note: slang stays legal for rapport. A bare
+ * "אחלה." reacting to something he said, or "מחר בבוקר יכול לעבוד אחלה" about an ARRANGEMENT, is
+ * left alone — the arrangement case is explicitly fine in his own wording ("Fine about an
+ * arrangement or an answer"). Only a claim verb immediately followed by the slang word matches.
+ *
+ * Kill-switch: VOICE_PRODUCT_CLAIM_SLANG_GUARD (default on).
+ */
+const PRODUCT_CLAIM_SLANG =
+  /(?<![א-ת])(עובד|עובדת|עובדים|מתאים|מתאימה|מתאימים|עוזר|עוזרת|מסתדר|מסתדרת|רץ|רצה)\s+(?:אחלה|סבבה)(?![א-ת])/gu;
+
+/** "זה עובד אחלה" → "זה עובד מעולה". Returns the text unchanged when nothing matched. */
+export function unambiguousProductClaim(text: string): string {
+  return text.replace(PRODUCT_CLAIM_SLANG, '$1 מעולה');
+}
+
+/**
  * A sentence that ASKS something — used to enforce one question per reply.
  *
  * Koren, 2026-08-31, conclusion 6: *"שאלה כפולה באותו המשפט שווה מקור לבעיות, אנחנו צריכים להימנע
@@ -706,6 +796,32 @@ export async function* guardStream(
     selfNarrationGuard?: boolean;
     /** Called once per sentence dropped for narrating her own configuration. */
     onSelfNarration?: (spoken: string) => void;
+    /** VOICE_STOP_ANNOUNCE_GUARD_ENABLED. Threaded through to guardSpeech. Default ON. */
+    stopAnnounceGuard?: boolean;
+    /** Has `end_call` been invoked on this call? Read per sentence, like the booking claim. */
+    endingRequested?: () => boolean;
+    /** Called once per unbacked ending announcement rewritten into the confirmation question. */
+    onStopAnnouncement?: (spoken: string) => void;
+    /** VOICE_PRODUCT_CLAIM_SLANG_GUARD. Threaded through to guardSpeech. Default ON. */
+    productClaimSlangGuard?: boolean;
+    /** Called once per product claim whose slang was swapped for `מעולה`. */
+    onProductClaimSlang?: (spoken: string) => void;
+  } = {},
+  /**
+   * THE ANTI-REPETITION GUARD (2026-09-01). Call-level state, so it arrives as a ledger rather than
+   * as a flag: one sentence must not be spoken twice inside half a minute, whether that is a
+   * restarted turn re-emitting its opener or one apology said twice for the same failed tool.
+   * See repeat-guard.ts.
+   */
+  repeat: {
+    /** VOICE_REPEAT_GUARD_ENABLED. Default OFF for legacy callers — see the block below. */
+    enabled?: boolean;
+    /** One per call, on the agent instance. Omitted → the guard cannot fire at all. */
+    ledger?: SpokenSentenceLedger;
+    /** The caller's last committed turn — read per sentence, to spot "say that again". */
+    lastCallerTurn?: () => string | null;
+    /** Called once per sentence suppressed, so the call report can count it. */
+    onDropped?: (spoken: string) => void;
   } = {},
 ): AsyncIterable<string> {
   let buffer = '';
@@ -718,6 +834,21 @@ export async function* guardStream(
    * statement (a false booking claim ending in "?") is not charged as one.
    */
   let questionsInThisReply = 0;
+  /**
+   * Has this reply put ANY sound on the wire yet, and what did the repeat guard take away?
+   *
+   * The pair exists for one case: a reply whose every sentence she has already said. Suppressing
+   * all of them would turn a repetition into DEAD AIR, which is the worse defect of the two — the
+   * caller cannot tell a silent agent from a dropped line. So the last suppressed sentence is kept
+   * and spoken at the tail if nothing else survived. It costs nothing on a normal reply, where
+   * `emittedSomething` is true before the first suppression can even happen.
+   */
+  let emittedSomething = false;
+  /** The last sentence the repeat guard took away, as a one-slot array: a `let` narrowed to
+   * `never` here, because every assignment happens inside the `flush` closure below and control
+   * flow analysis cannot see it. */
+  const lastSuppressed: string[] = [];
+  const repeatGuardArmed = repeat.enabled === true && repeat.ledger !== undefined;
 
   const flush = function* (chunk: string): Generator<string> {
     const flipped = genderTracker?.observe(chunk);
@@ -736,9 +867,14 @@ export async function* guardStream(
       bookingPossible: booking.possible === true,
       wideBookingClaimGuard: booking.wide !== false,
       selfNarrationGuard: reply.selfNarrationGuard !== false,
+      stopAnnounceGuard: reply.stopAnnounceGuard !== false,
+      endingRequested: reply.endingRequested?.() === true,
+      productClaimSlangGuard: reply.productClaimSlangGuard !== false,
     });
     if (guarded.selfNarrationDropped) reply.onSelfNarration?.(chunk.trim());
     if (guarded.bookingClaimRewritten) booking.onFalseClaim?.(guarded.text);
+    if (guarded.stopAnnouncementRewritten) reply.onStopAnnouncement?.(chunk.trim());
+    if (guarded.productClaimSlangRewritten) reply.onProductClaimSlang?.(guarded.text);
     if (guarded.leakReasons && guarded.leakReasons.length > 0) {
       // Its own log line, not folded into the interventions loop: this is the one intervention
       // that means the MODEL malfunctioned rather than misspoke, and it has to be findable in a
@@ -784,6 +920,37 @@ export async function* guardStream(
       }
     }
 
+    // THE SAME SENTENCE, TWICE — the 2026-09-01 09:29 restart and the 09:29 double apology.
+    //
+    // QUESTIONS ARE DELIBERATELY EXEMPT. The loudest repetition on that call was a question asked
+    // four times ("בבוקר, או אחר הצהריים?") and it is NOT fixed here: dropping it would leave the
+    // reply making a statement and then waiting for an answer to a question the caller never heard,
+    // which is dead air with extra steps. The question she must not ask twice is one she already
+    // has the answer to, and that is a memory problem — see slot-memory.ts. This guard is only for
+    // the sentence she is REPEATING, where saying it once is the whole of the fix.
+    //
+    // And never when he asked to hear it again: "לא שמעתי", "תגידי שוב", "מה אמרת" all make the
+    // repeat the correct answer, and a guard that suppressed it would make her ignore him.
+    if (
+      repeatGuardArmed &&
+      !isQuestionSentence(guarded.text) &&
+      SpokenSentenceLedger.suppressible(guarded.text) &&
+      !callerAskedToRepeatText(repeat.lastCallerTurn?.() ?? null) &&
+      repeat.ledger!.wasSaidRecently(guarded.text)
+    ) {
+      console.log(
+        `speech_guard ${JSON.stringify({
+          note: 'suppressed a sentence she had already said on this call',
+          said: guarded.text.slice(0, 80),
+        })}`,
+      );
+      repeat.onDropped?.(guarded.text);
+      lastSuppressed[0] = guarded.text;
+      return;
+    }
+    repeat.ledger?.observe(guarded.text);
+
+    emittedSomething = true;
     yield `${guarded.text} `;
   };
 
@@ -805,6 +972,20 @@ export async function* guardStream(
 
   // The tail: a final sentence with no terminator, or a bare control token (which has none).
   if (buffer.trim()) yield* flush(buffer);
+
+  // SILENCE IS WORSE THAN A REPEAT. If the anti-repetition guard took away every sentence in this
+  // reply, she says the last one after all — see `lastSuppressed` above.
+  const survivor = lastSuppressed[0];
+  if (!emittedSomething && survivor !== undefined) {
+    console.log(
+      `speech_guard ${JSON.stringify({
+        note: 'the whole reply was a repeat — speaking it rather than going silent',
+        said: survivor.slice(0, 80),
+      })}`,
+    );
+    repeat.ledger?.observe(survivor);
+    yield `${survivor} `;
+  }
 }
 
 /**
@@ -1019,6 +1200,16 @@ export interface GuardResult {
    * dropped rather than rewritten. Counted into the call report as `selfNarrationDropped`.
    */
   selfNarrationDropped?: boolean;
+  /**
+   * She announced the call was ending without ending it, and the announcement became the question
+   * the end-call gate asks. Counted into the call report as `stopAnnouncementsRewritten`.
+   */
+  stopAnnouncementRewritten?: boolean;
+  /**
+   * Slang inside a claim about the product was swapped for `מעולה` (round-13 `s2`). Counted into
+   * the call report as `productClaimSlangRewritten`.
+   */
+  productClaimSlangRewritten?: boolean;
 }
 
 /**
@@ -1071,6 +1262,25 @@ export function guardSpeech(
      * 2026-08-31 behaviour exactly. See SELF_NARRATION.
      */
     selfNarrationGuard?: boolean;
+    /**
+     * VOICE_STOP_ANNOUNCE_GUARD_ENABLED. Default TRUE here, like `toolCallLeakGuard` and for the
+     * same reason: a caller must never be told the call is over by an agent that is not ending it.
+     * False restores the 2026-09-01 behaviour exactly. See STOP_ANNOUNCEMENT.
+     */
+    stopAnnounceGuard?: boolean;
+    /**
+     * Has `end_call` actually been invoked on this call? Once it has, a sentence saying the call is
+     * ending is the truth and nothing here may touch it. Defaults FALSE — the pre-feature reading
+     * for a legacy caller is "nothing has ended anything", which is the safe direction: the worst a
+     * false negative costs is one extra question.
+     */
+    endingRequested?: boolean;
+    /**
+     * VOICE_PRODUCT_CLAIM_SLANG_GUARD. Default TRUE here, same rule as the two above: his round-13
+     * `s2` verdict is not a style preference, it is a claim a caller could not parse. False
+     * restores the 2026-09-01 behaviour. See PRODUCT_CLAIM_SLANG.
+     */
+    productClaimSlangGuard?: boolean;
   } = {},
 ): GuardResult {
   const interventions: string[] = [];
@@ -1078,6 +1288,8 @@ export function guardSpeech(
   let leakReasons: string[] | undefined;
   let leakOpen = false;
   let bookingClaimRewritten = false;
+  let stopAnnouncementRewritten = false;
+  let productClaimSlangRewritten = false;
 
   // FIRST, BEFORE EVERYTHING. A payload must not reach the booking rewrite (which would scan it),
   // the number speller (which would read its digits as Hebrew words) or the niqqud strip. It is
@@ -1137,6 +1349,27 @@ export function guardSpeech(
         out = out.replace(pattern, replacement);
         bookingClaimRewritten = true;
       }
+    }
+  }
+
+  // SHE IS ANNOUNCING AN ENDING SHE IS NOT CARRYING OUT. Rewritten into the question the end-call
+  // gate asks in the same situation, so the turn commits her to nothing she then walks back.
+  // Skipped once `end_call` has actually been invoked — from then on the ending is real.
+  if (opts.stopAnnounceGuard !== false && opts.endingRequested !== true && announcesStop(out)) {
+    interventions.push(
+      `rewrote an unbacked announcement that the call was ending: ${JSON.stringify(out.slice(0, 60))}`,
+    );
+    out = END_CALL_CONFIRM_HE;
+    stopAnnouncementRewritten = true;
+  }
+
+  // SLANG INSIDE A PRODUCT CLAIM (round-13 `s2`). One word, swapped for the one he named.
+  if (opts.productClaimSlangGuard !== false) {
+    const unambiguous = unambiguousProductClaim(out);
+    if (unambiguous !== out) {
+      interventions.push('swapped slang out of a claim about the product (round-13 s2: use מעולה)');
+      out = unambiguous;
+      productClaimSlangRewritten = true;
     }
   }
 
@@ -1204,7 +1437,16 @@ export function guardSpeech(
     return { text: '', silent: true, interventions, leakReasons, leakOpen, bookingClaimRewritten };
   }
 
-  return { text: spoken, silent: false, interventions, leakReasons, leakOpen, bookingClaimRewritten };
+  return {
+    text: spoken,
+    silent: false,
+    interventions,
+    leakReasons,
+    leakOpen,
+    bookingClaimRewritten,
+    stopAnnouncementRewritten,
+    productClaimSlangRewritten,
+  };
 }
 
 /**

@@ -70,6 +70,8 @@ import {
   withFiller,
 } from './speech-guard.js';
 import { PhraseLedger } from './phrase-ledger.js';
+import { SpokenSentenceLedger } from './repeat-guard.js';
+import { SlotMemory } from './slot-memory.js';
 import { FactMemory } from './fact-memory.js';
 import { SpokenRegisterTracker } from './register-tracker.js';
 import {
@@ -196,6 +198,15 @@ class ClickScalesAgent extends voice.Agent {
 
   /** A sentence narrating her own instructions/register, dropped (Koren's conclusion 8). */
   onSelfNarrationDropped: ((spoken: string) => void) | null = null;
+
+  /** A sentence she had already said on this call, suppressed. See repeat-guard.ts. */
+  onRepeatedSentenceDropped: ((spoken: string) => void) | null = null;
+
+  /** An unbacked "let us stop here", rewritten into the confirmation question. */
+  onStopAnnouncementRewritten: ((spoken: string) => void) | null = null;
+
+  /** Slang inside a product claim, swapped for `מעולה` (round-13 s2). */
+  onProductClaimSlangRewritten: ((spoken: string) => void) | null = null;
 
   /**
    * The MODEL's real time-to-first-token, which the SDK's own metric can no longer see.
@@ -390,6 +401,28 @@ class ClickScalesAgent extends voice.Agent {
   readonly engagementTracker: EngagementTracker | undefined = env.VOICE_ENGAGEMENT_NOTE_ENABLED
     ? new EngagementTracker()
     : undefined;
+
+  /**
+   * WHEN he said he wants the meeting (VOICE_SLOT_MEMORY_ENABLED), one per call.
+   *
+   * The field FactMemory does not have. She asked "בוקר, או אחר הצהריים?" four times on the
+   * 2026-09-01 09:29 call, twice after he had answered, and he ended the call over it. Fed from
+   * BOTH sides of the transcript — his answers and her asks — and its note rides the same
+   * turn-boundary injection as the phrase ledger's. See slot-memory.ts.
+   */
+  readonly slotMemory: SlotMemory | undefined = env.VOICE_SLOT_MEMORY_ENABLED
+    ? new SlotMemory()
+    : undefined;
+
+  /**
+   * EVERY SENTENCE SHE HAS SENT TO THE TTS (VOICE_REPEAT_GUARD_ENABLED), one per call.
+   *
+   * Lives on the agent rather than inside `guardStream` because the guard is about the CALL, not
+   * about one reply: the 2026-09-01 restarts were three separate replies four seconds apart, and
+   * the two identical booking apologies were six. A per-reply ledger would have seen neither.
+   * See repeat-guard.ts.
+   */
+  readonly spokenSentences = new SpokenSentenceLedger();
 
   /**
    * SAYS "אוקיי" THE INSTANT THE TURN ENDS, BEFORE THE MODEL HAS WRITTEN A WORD.
@@ -689,6 +722,27 @@ class ClickScalesAgent extends voice.Agent {
               onSecondQuestion: (spoken) => this.onSecondQuestionDropped?.(spoken),
               selfNarrationGuard: env.VOICE_SELF_NARRATION_GUARD_ENABLED,
               onSelfNarration: (spoken) => this.onSelfNarrationDropped?.(spoken),
+              // THE 2026-09-01 09:29 ENDING PAIR. `endingRequested` is read PER SENTENCE like the
+              // booking claim above, and it is true on TWO conditions rather than one: `endReason`
+              // is set the moment `end_call` is allowed through the gate, and `bookingCompleted`
+              // covers the legitimate wrap-up — the prompt has her say the goodbye BEFORE calling
+              // end_call, so a booked call would otherwise have its farewell turned into a
+              // question. Everything else that proposes a stop becomes the gate's own question.
+              stopAnnounceGuard: env.VOICE_STOP_ANNOUNCE_GUARD_ENABLED,
+              endingRequested: () =>
+                this.toolRuntime?.endReason != null || this.toolRuntime?.bookingCompleted === true,
+              onStopAnnouncement: (spoken) => this.onStopAnnouncementRewritten?.(spoken),
+              productClaimSlangGuard: env.VOICE_PRODUCT_CLAIM_SLANG_GUARD,
+              onProductClaimSlang: (spoken) => this.onProductClaimSlangRewritten?.(spoken),
+            },
+            // THE ANTI-REPETITION GUARD. The ledger is the agent's, so it spans the whole call;
+            // `lastCallerTurn` is read per sentence so "לא שמעתי" in the turn she is answering
+            // still buys him the repeat he asked for. See repeat-guard.ts.
+            {
+              enabled: env.VOICE_REPEAT_GUARD_ENABLED,
+              ledger: this.spokenSentences,
+              lastCallerTurn: () => this.lastUserUtterance,
+              onDropped: (spoken) => this.onRepeatedSentenceDropped?.(spoken),
             },
           ),
           startedAt,
@@ -806,6 +860,9 @@ async function injectCoachNote(agent: ClickScalesAgent): Promise<void> {
     // "He is giving you four-word answers — mandatory questions only." Fires on a CHANGE of level,
     // so a consistent caller costs one line for the whole call. See engagement.ts.
     const engagementNote = agent.engagementTracker?.note() ?? null;
+    // "He has already told you when." Placed with the other memory notes rather than with the
+    // booking note, because it is about what the CALLER said, not about what the tool needs.
+    const slotNote = agent.slotMemory?.note() ?? null;
     const emailNote = agent.emailDictation?.note() ?? null;
     const nameNote = agent.nameDictation?.note() ?? null;
     // THE ONLY NOTE READ OFF THE TOOL RUNTIME RATHER THAN OFF THE TRANSCRIPT — what is actually
@@ -829,7 +886,7 @@ async function injectCoachNote(agent: ClickScalesAgent): Promise<void> {
             offerCallerPhone: env.VOICE_CALLER_PHONE_KNOWN_ENABLED,
           })
         : null;
-    const note = [phraseNote, factNote, engagementNote, emailNote, nameNote, bookNote]
+    const note = [phraseNote, factNote, slotNote, engagementNote, emailNote, nameNote, bookNote]
       .filter(Boolean)
       .join('\n');
     if (!note || note === agent.lastCoachNote) return;
@@ -842,6 +899,7 @@ async function injectCoachNote(agent: ClickScalesAgent): Promise<void> {
       `coach_note ${JSON.stringify({
         repeated4grams: agent.phraseLedger.repeatedGramCount,
         facts: agent.factMemory?.snapshot() ?? null,
+        slot: agent.slotMemory?.snapshot() ?? null,
         registerTouched: agent.registerTracker
           ? `${agent.registerTracker.touched}/${agent.registerTracker.replies}`
           : null,
@@ -1401,6 +1459,9 @@ export default defineAgent({
         agent.lastUserUtterance = item.textContent ?? null;
         // How much is he giving her? Drives which discovery questions she is allowed to ask.
         agent.engagementTracker?.observeCaller(item.textContent);
+        // WHEN he wants it. Recorded only once the call is in the scheduling frame, so an
+        // incidental "מחר" earlier in the conversation is not read as a booking preference.
+        if (item.textContent) agent.slotMemory?.observeCallerUtterance(item.textContent);
         // EMAIL DICTATION: stitch the letters he is spelling, and catch the moment he says a value
         // she read back is wrong. The rejection is handed straight to fact memory, which is where
         // capture_lead_info will look before it saves anything (fact-memory.ts `reject`).
@@ -1440,6 +1501,10 @@ export default defineAgent({
         // rather than from the model's intent, so the count is of asks the caller actually heard —
         // which is what he was reacting to when he said "we already covered this".
         if (item.textContent) agent.factMemory?.observeAgentUtterance(item.textContent);
+        // Slot memory counts HER timing asks from the same source and for the same reason: the
+        // number that matters is how many times the caller heard the question, not how many times
+        // the model meant to ask it. See slot-memory.ts.
+        if (item.textContent) agent.slotMemory?.observeAgentUtterance(item.textContent);
         // What she just READ BACK, so his next "לא נכון" has a value to attach to. Same source and
         // the same de-dupe as the line above — see email-dictation.ts.
         if (item.textContent) agent.emailDictation?.observeAgentUtterance(item.textContent);
@@ -1475,6 +1540,7 @@ export default defineAgent({
           agent.factMemory ||
           agent.registerTracker ||
           agent.engagementTracker ||
+          agent.slotMemory ||
           agent.emailDictation)
       ) {
         void trimmed.then(() => injectCoachNote(agent));
@@ -1610,6 +1676,9 @@ export default defineAgent({
     // 6 and 8.
     agent.onSecondQuestionDropped = () => report.recordSecondQuestionDropped();
     agent.onSelfNarrationDropped = () => report.recordSelfNarrationDropped();
+    agent.onRepeatedSentenceDropped = () => report.recordRepeatedSentenceDropped();
+    agent.onStopAnnouncementRewritten = () => report.recordStopAnnouncementRewritten();
+    agent.onProductClaimSlangRewritten = () => report.recordProductClaimSlangRewritten();
 
     // The model's REAL first-token time. The SDK's own ttft now measures our acknowledgement, so
     // without this the ~840ms GPT actually takes would simply disappear from the report and every
