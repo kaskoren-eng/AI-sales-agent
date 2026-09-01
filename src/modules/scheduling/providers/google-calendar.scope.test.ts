@@ -134,3 +134,41 @@ describe('circuit breaker is per credential scope', () => {
     expect(slots.length).toBeGreaterThan(0);
   });
 });
+
+describe('a booking with no attendee email never asks Google to invite one', () => {
+  /**
+   * The 2026-09-01 06:29 production call. Name, phone and 12:30 tomorrow were all agreed;
+   * `book_meeting` was called three times with `email: null` — the deliberate exit added on
+   * 2026-08-31 so a lead who cannot spell his address over an 8kHz line still gets the meeting —
+   * and every call threw `Missing attendee email.` The booking was lost.
+   *
+   * The cause was one condition that predated the nullable email: `tryAttendees` asked only
+   * whether the service account was blocked, never whether there was an address to send. Google
+   * rejects `attendees: [{ email: undefined }]`, and the catch below it recognises only the
+   * service-account 403 — so the whole insert threw instead of falling back.
+   */
+  const noEmail = {
+    ...booking,
+    attendee: { name: 'Lead', phone: '+972500000000', timezone: 'Asia/Jerusalem' },
+  };
+
+  it('inserts once, with no attendees array, and reports the invite as not sent', async () => {
+    insert.mockResolvedValueOnce(okEvent());
+    const result = await provider().createBooking(noEmail);
+
+    expect(insert).toHaveBeenCalledTimes(1); // no throw, no 403 retry
+    expect(insert.mock.calls[0]![0].requestBody.attendees).toBeUndefined();
+    expect(result.inviteSent).toBe(false); // nobody was emailed, and we say so
+    expect(result.uid).toBe('evt-1'); // the meeting exists — that is the whole point
+  });
+
+  it('still invites when an address IS present', async () => {
+    insert.mockResolvedValueOnce(okEvent());
+    const result = await provider().createBooking(booking);
+
+    expect(insert.mock.calls[0]![0].requestBody.attendees).toEqual([
+      { email: 'lead@example.com', displayName: 'Lead' },
+    ]);
+    expect(result.inviteSent).toBe(true);
+  });
+});

@@ -294,7 +294,14 @@ export class GoogleCalendarProvider implements SchedulingProvider {
     // and BookingResult.inviteSent tells the caller not to claim an email was sent.
     // THE REAL FIX is granting the service account Domain-Wide Delegation (or moving to OAuth
     // on Koren's account) — pending decision, see Phase 4 notes.
-    const tryAttendees = !this.attendeeInvitesBlocked;
+    // AND an address to put on it. `attendee.email` became optional on 2026-08-31 so a lead who
+    // cannot get his address across an 8kHz line still gets the meeting — but this line did not
+    // learn that, so it kept asking Google to invite `email: undefined`. Google answers "Missing
+    // attendee email." and the catch below only recognises the service-account 403, so the whole
+    // booking threw. Measured on the 2026-09-01 06:29 call: name, phone and 12:30 tomorrow all
+    // agreed, book_meeting called three times, three throws, no meeting. The exit built for that
+    // exact case was unreachable because of this condition.
+    const tryAttendees = !this.attendeeInvitesBlocked && Boolean(params.attendee.email);
     let eventRes;
     let inviteSent = tryAttendees;
     try {
