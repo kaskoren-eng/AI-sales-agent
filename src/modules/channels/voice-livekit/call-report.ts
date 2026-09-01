@@ -8,6 +8,7 @@ import {
 } from './phrase-ledger.js';
 import type { PipelineSnapshot, PreemptiveCounters } from './pipeline-observer.js';
 import { hasRegisterTouch } from './register-tracker.js';
+import { isRestartOf } from './repeat-guard.js';
 
 /**
  * A durable record of one call: what was heard, what was said, and how slow it was.
@@ -215,8 +216,85 @@ export interface CallReportJson {
      * recordTranscript() now drops the draft echo, so this counts SPOKEN repeats only. If it ever
      * goes above zero, check `ttsSegments` against the number of unique replies before acting.
      * A log line is not evidence of a sound.
+     *
+     * WIDENED 2026-09-01. It counted only an EXACT repeat, and on the 09:29 call that made it read
+     * 0 through three replies that all began with the same thirteen words. It now also counts a
+     * RESTART — see `restartedReplies` below, which reports that half on its own so the two are
+     * never confused. The "should always be zero" reading is unchanged; what changed is that it can
+     * finally see the thing it was zero through.
      */
     duplicateReplies: number;
+    /**
+     * The half of `duplicateReplies` that is a RESTART — she began the same reply again after a
+     * barge-in cut the first attempt off.
+     *
+     * 2026-09-01 09:29: three replies in seven seconds, all opening
+     * "זה חשש הגיוני, והרבה בעלי עסקים שואלים את זה בדיוק ככה", and `duplicateReplies` read 0.
+     * The old test was `===` on the committed text and a restart is never byte-identical — the
+     * interruption picks the stopping point and it moves every time (0.27s, 0.45s, 0.56s of audio
+     * on those three), while the first attempt also carried the acknowledgement `llmNode` injects.
+     *
+     * The third metric in this file to stay green through the exact defect it exists to catch, and
+     * broken out rather than only folded in so the two halves stay legible: a WHOLE reply said
+     * twice is a different fault from a turn restarted after an interruption, and only one of them
+     * has ever actually happened. See `isRestartOf` in repeat-guard.ts.
+     */
+    restartedReplies: number;
+    /**
+     * Sentences the anti-repetition guard suppressed because she had already said them.
+     *
+     * NOT "should always be zero" — a non-zero reading is the mechanism WORKING, and it is the only
+     * number that says how often the model reaches for a sentence the caller has already heard. It
+     * covers both 2026-09-01 shapes: the restarted empathy opener and the two identical booking
+     * apologies six seconds apart. See VOICE_REPEAT_GUARD_ENABLED and repeat-guard.ts.
+     */
+    repeatedSentencesDropped: number;
+    /**
+     * Times she announced the call was ending without ending it, and the announcement became the
+     * end-call gate's confirmation question.
+     *
+     * 2026-09-01 09:29: *"אם זה מה שיושב עליך, עדיף שנעצור כאן. תודה"* at 320s, and eleven seconds
+     * later *"אם תרצה, אני אעצור את המכירה ואענה רק על מה שמעניין אותךָ"*. `end_call` was never
+     * called and `endCallRefusals` was 0, so neither the tool nor the gate produced that pair — the
+     * model wrote both halves. See STOP_ANNOUNCEMENT in speech-guard.ts.
+     */
+    stopAnnouncementsRewritten: number;
+    /**
+     * Times slang inside a claim about the product was swapped for `מעולה` (Koren's round-13 `s2`).
+     *
+     * A steady non-zero reading means the prompt rule is still not landing on its own — which is
+     * what the 2026-09-01 calls showed (three `אחלה`s across two calls, one of them the banned
+     * "זה עובד אחלה" verbatim). See PRODUCT_CLAIM_SLANG in speech-guard.ts.
+     */
+    productClaimSlangRewritten: number;
+    /**
+     * The silence INSIDE each thought the turn detector chopped in half — the measurement that has
+     * to exist before `VOICE_VAD_MIN_SILENCE_MS` is touched.
+     *
+     * `fragmentedTurns` says HOW MANY. It has never said how long he actually paused, so every
+     * discussion of raising the endpointing floor has been an argument rather than a calculation.
+     * On the 2026-09-01 09:29 call the nine measurable gaps ran 385-1186ms with a median near
+     * 700ms, against an `endOfTurnMedianMs` of 351 — i.e. the endpointer fired at its floor on
+     * every single turn, and the floor sits below the pause a thinking caller leaves mid-thought.
+     *
+     * `caughtAt` is the sizing table: how many of this call's fragments each candidate threshold
+     * would have held together. Read it against `deadAir.medianMs` — every millisecond added to the
+     * floor is added to EVERY turn, and dead air on that call was already 1470ms against a 1000ms
+     * budget. That trade is why the number was not simply raised.
+     *
+     * Both 2026-09-01 calls are the same instrument reading, not a contrast: the caller's median
+     * turn was 4 words on BOTH, and 55%/56% of his turns were 4 words or fewer. 1 fragment in 16
+     * caller turns against 11 in 60 is not evidence of a better-behaved call, it is a smaller
+     * sample of the same behaviour.
+     */
+    fragmentation: {
+      /** Fragments whose gap could be measured — a stitched STT hypothesis yields nonsense. */
+      samples: number;
+      medianMs: number | null;
+      maxMs: number | null;
+      /** Fragments a min-silence of N ms would have held together, per candidate N. */
+      caughtAt: Record<string, number>;
+    };
     /**
      * Distinct 4-grams the agent spoke 2+ times on this call — the "sounds like a robot" number.
      *
@@ -625,6 +703,27 @@ export class CallReport {
     this.#selfNarrationDropped++;
   }
 
+  #repeatedSentencesDropped = 0;
+
+  /** One sentence was suppressed because she had already said it on this call. */
+  recordRepeatedSentenceDropped(): void {
+    this.#repeatedSentencesDropped++;
+  }
+
+  #stopAnnouncementsRewritten = 0;
+
+  /** One unbacked "let us stop here" became the end-call gate's confirmation question. */
+  recordStopAnnouncementRewritten(): void {
+    this.#stopAnnouncementsRewritten++;
+  }
+
+  #productClaimSlangRewritten = 0;
+
+  /** One claim about the product had its slang swapped for `מעולה` (round-13 s2). */
+  recordProductClaimSlangRewritten(): void {
+    this.#productClaimSlangRewritten++;
+  }
+
   recordMetric(stage: string, m: Record<string, unknown>): void {
     const pick = (k: string): number | undefined =>
       typeof m[k] === 'number' ? Math.round(m[k] as number) : undefined;
@@ -897,11 +996,19 @@ export class CallReport {
     // signal that matters on a vad-mode call.
     let fragmentedTurns = 0;
     let duplicateReplies = 0;
+    let restartedReplies = 0;
+    /** The silence INSIDE each chopped thought — see `fragmentation` in the summary type. */
+    const fragmentGaps: number[] = [];
     for (let i = 1; i < this.#transcript.length; i++) {
       const prev = this.#transcript[i - 1]!;
       const curr = this.#transcript[i]!;
       if (prev.role === 'user' && curr.role === 'user' && curr.atMs - prev.atMs < 3_000) {
         fragmentedTurns++;
+        // The gap between his two halves, off the SDK's speaking clocks rather than off the commit
+        // timestamps. Bounded because a stitched STT hypothesis can stamp a start time from a
+        // minute earlier: on the 2026-09-01 09:29 call two of the eleven produced 165s and -451s.
+        const gap = (curr.spokeAtMs ?? NaN) - (prev.spokeUntilMs ?? NaN);
+        if (Number.isFinite(gap) && gap >= 0 && gap <= 5_000) fragmentGaps.push(Math.round(gap));
       }
       // The same answer, twice. Compared against the last few agent turns rather than only the
       // previous line, because a caller interjection often lands between the draft and the repeat.
@@ -909,7 +1016,17 @@ export class CallReport {
         const recent = this.#transcript
           .slice(Math.max(0, i - 4), i)
           .filter((x) => x.role === 'assistant');
+        // ⚠️ `===` WAS THE WHOLE OF THIS TEST UNTIL 2026-09-01, AND IT READ 0 ON A CALL WHERE SHE
+        // BEGAN THE SAME SENTENCE THREE TIMES IN SEVEN SECONDS. A restarted turn is never
+        // byte-identical: the interruption decides where it stops and lands somewhere new each
+        // time, and the first of the three also carried the injected acknowledgement. So the exact
+        // test is kept — a whole reply said twice is still worth its own signal — and `isRestartOf`
+        // is added beside it. See repeat-guard.ts for the measurement and the call it comes from.
         if (recent.some((x) => x.text.trim() === curr.text.trim())) duplicateReplies++;
+        else if (recent.some((x) => isRestartOf(x.text, curr.text))) {
+          duplicateReplies++;
+          restartedReplies++;
+        }
       }
     }
 
@@ -944,6 +1061,24 @@ export class CallReport {
         endCallRefusalReasons: [...this.#endCallRefusalReasons],
         secondQuestionsDropped: this.#secondQuestionsDropped,
         selfNarrationDropped: this.#selfNarrationDropped,
+        restartedReplies,
+        repeatedSentencesDropped: this.#repeatedSentencesDropped,
+        stopAnnouncementsRewritten: this.#stopAnnouncementsRewritten,
+        productClaimSlangRewritten: this.#productClaimSlangRewritten,
+        fragmentation: {
+          samples: fragmentGaps.length,
+          medianMs: median(fragmentGaps),
+          maxMs: fragmentGaps.length > 0 ? Math.max(...fragmentGaps) : null,
+          // How many of this call's chopped thoughts each candidate threshold would have held
+          // together. The point is to size the endpointer from measurement instead of argument —
+          // see `fragmentation` in the summary type for why we did not just raise the number.
+          caughtAt: {
+            500: fragmentGaps.filter((g) => g < 500).length,
+            700: fragmentGaps.filter((g) => g < 700).length,
+            900: fragmentGaps.filter((g) => g < 900).length,
+            1200: fragmentGaps.filter((g) => g < 1200).length,
+          },
+        },
         registerTouchPct:
           agentLines.length === 0
             ? null

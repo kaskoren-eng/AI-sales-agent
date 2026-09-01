@@ -734,6 +734,40 @@ const envSchema = z.object({
   // OFF restores the every-turn receipt exactly, in both halves. See callerTurnNeedsThinkingTime
   // in engagement.ts and the Speech Rhythm sections in system-prompt.he.ts.
   VOICE_ACK_ONLY_WHEN_NEEDED: envBool(true),
+  // ── The 2026-09-01 09:29 call, seven defects in one batch ────────────────────────────────────
+  // ONE SENTENCE, NOT TWICE. At 205/209/212s she began the same reply three times, each attempt
+  // cut off by the caller's next interjection after 0.3-0.6s of audio; at 462/468s she apologised
+  // for the same failed `book_meeting` twice, in two sentences whose second halves were
+  // word-for-word identical. A sentence already sent to the TTS inside the last 30s is suppressed.
+  // Questions are exempt (dropping the reply's only question would be dead air with extra steps —
+  // the question she must not repeat is one she has the answer to, which is VOICE_SLOT_MEMORY's
+  // job), and so is a repeat the caller ASKED for ("לא שמעתי", "תגידי שוב"). If suppression would
+  // leave the whole reply empty, the sentence is spoken after all.
+  // OFF restores the 2026-09-01 behaviour exactly. See repeat-guard.ts.
+  VOICE_REPEAT_GUARD_ENABLED: envBool(true),
+  // WHEN HE ALREADY TOLD YOU WHEN. She asked "בוקר, או אחר הצהריים?" at 161s, 174s, 186s and 293s
+  // — the last two after he had answered — and he ended the call: *"אני לא יודע למה את שואלת על זה
+  // סתם שאלות כמה פעמים."* FactMemory could not catch it because a time preference is not one of
+  // its four fields, and the booking note could not because the slot is not one of `book_meeting`'s
+  // required arguments. This is the missing field: day, part of day and hour, tracked from his own
+  // words and put in front of the model at the turn boundary.
+  // OFF and nothing is tracked. See slot-memory.ts.
+  VOICE_SLOT_MEMORY_ENABLED: envBool(true),
+  // SHE MAY NOT ANNOUNCE AN ENDING SHE IS NOT CARRYING OUT. At 320s: "אם זה מה שיושב עליך, עדיף
+  // שנעצור כאן. תודה", and eleven seconds later she carried on selling. `end_call` was never
+  // called and the gate never ran, so the model wrote both halves. A sentence that PROPOSES a stop
+  // becomes "אתה רוצה שנעצור כאן?" — the gate's own confirmation question, Koren's round-14 c1=D.
+  // A farewell is untouched, and the rule is skipped once `end_call` has actually been invoked.
+  // OFF restores the 2026-09-01 behaviour. See STOP_ANNOUNCEMENT in speech-guard.ts.
+  VOICE_STOP_ANNOUNCE_GUARD_ENABLED: envBool(true),
+  // NO SLANG INSIDE A PRODUCT CLAIM — his round-13 `s2` verdict, enforced. "זה עובד אחלה" becomes
+  // "זה עובד מעולה"; slang for rapport ("מחר בבוקר יכול לעבוד אחלה") is left alone. The rule was
+  // already in the prompt and was still broken twice on 2026-09-01, because the Spoken Register
+  // section three hundred lines above it offered "זה עובד אחלה בדיוק במקרים כמו שלך" as a worked
+  // example. That example is fixed in the same commit; this is the half that survives the model
+  // writing the sentence some other way.
+  // OFF restores the 2026-09-01 behaviour. See PRODUCT_CLAIM_SLANG in speech-guard.ts.
+  VOICE_PRODUCT_CLAIM_SLANG_GUARD: envBool(true),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),

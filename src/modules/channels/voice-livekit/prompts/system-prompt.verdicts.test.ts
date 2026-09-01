@@ -324,6 +324,35 @@ describe('round 13 — the five listening verdicts and the six behavioural notes
     expect(off).toContain('## Step 3: Qualification');
   });
 
+  it('round 14 e2 — the REJECTED empathy wording is no longer anywhere in the prompt', () => {
+    // 2026-09-01. The paragraph that carried it also INSTRUCTED the model to prefer it
+    // ("Until he has heard both, prefer the positive form when you compose your own"), and on the
+    // 09:29 call she opened three consecutive replies with it while his own wording never reached
+    // the caller. Round 14 settled e2=A six days after that instruction was written; nothing
+    // retired it. This is the assertion that would have caught that.
+    for (const p of BOTH) {
+      expect(p).toContain('זה חשש הגיוני, ואתה לא היחיד ששואל את זה');
+      expect(p).not.toContain('והרבה בעלי עסקים שואלים את זה בדיוק ככה');
+      expect(p).not.toMatch(/prefer the positive form when you compose your own/u);
+      expect(p).toMatch(/RESOLVED by ear on round 14/u);
+      // The negation warning itself survives — it applies to anything NEW she composes.
+      expect(p).toMatch(/never write an empathy line whose meaning hangs on one unstressed particle/u);
+    }
+  });
+
+  it('round 13 s2 — no worked example in the prompt teaches the banned product claim', () => {
+    // The Spoken Register section offered "זה עובד אחלה בדיוק במקרים כמו שלך" three hundred lines
+    // above the rule forbidding exactly that, and she said a near-copy of it on both 2026-09-01
+    // calls. An example that contradicts a rule teaches the example.
+    for (const p of BOTH) {
+      expect(p).toContain('זה עובד מעולה בדיוק במקרים כמו שלך.');
+      expect(p).not.toContain('זה עובד אחלה בדיוק במקרים כמו שלך.');
+    }
+    // The lead's own question — the reason the rule exists — is still quoted, and must be: it is
+    // a QUESTION he asked, not a sentence she is being shown how to write.
+    for (const p of BOTH) expect(p).toContain('רגע, זה עובד אחלה או שזה עובד מעולה?');
+  });
+
   it('the opener switch restores the every-turn wording, in both variants', () => {
     const off = buildSystemPrompt({ toolsEnabled: true, conditionalOpener: false });
     expect(off).toMatch(/Begin EVERY reply with a very short first sentence/u);
