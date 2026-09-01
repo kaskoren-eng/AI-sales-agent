@@ -153,6 +153,7 @@ async function buildAuthTestApp(db: ReturnType<typeof createMockDb>, redis = mak
     VOICE_ONE_QUESTION_ENABLED: true,
     VOICE_SELF_NARRATION_GUARD_ENABLED: true,
     VOICE_CALL4_PROMPT_ENABLED: true,
+    VOICE_SALES_MODEL_ENABLED: false,
     VOICE_ACK_ONLY_WHEN_NEEDED: true,
     VOICE_REPEAT_GUARD_ENABLED: true,
     VOICE_SLOT_MEMORY_ENABLED: true,

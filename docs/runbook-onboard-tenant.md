@@ -54,7 +54,7 @@ curl -sX POST https://ai-sales-agent-production-9736.up.railway.app/api/v1/admin
   -d '{"name":"Acme Dental","slug":"acme-dental","planCode":"base"}'
 ```
 
-Plans today: `base` (₪1,490 / 150 leads) · `growth` (₪2,490 / 400) · `custom` (₪4,000 / unlimited) ·
+Plans today: `base` (₪1,490) · `growth` (₪2,490) · `custom` (₪4,000+) — **quotas are MINUTES, not leads** (Koren, 2026-09-01); the minute figures are still TBD in `docs/gtm/pricing-model.md`. `plans.includedLeads` is superseded by `includedMinutes` (see `src/db/schema/billing.ts`). ·
 `internal` (₪0, not sellable — our own workspaces).
 
 **The plan is mandatory and cannot be usefully deferred.** `usage_periods` snapshots plan values when

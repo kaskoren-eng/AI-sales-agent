@@ -717,6 +717,23 @@ const envSchema = z.object({
   // mandatory question that persists until it is answered.
   // OFF restores the 2026-08-31 prompt sections exactly. See system-prompt.he.ts.
   VOICE_CALL4_PROMPT_ENABLED: envBool(true),
+  // THE SALES MODEL, 2026-09-01 — docs/gtm/keren-sales-model.md.
+  //
+  // The prompt ran a qualification form: open, three factual questions, classify, book. Five of
+  // the eight moves of a sales conversation were absent. This turns on all of them at once — the
+  // seven-stage flow, Gate A (no product talk before business + current process + pain), the five
+  // mandatory questions Koren set and owns, pain deepening, the interest check before the ask, and
+  // the summary close built from his words.
+  //
+  // ONE flag for the whole structure, deliberately: the gate is meaningless without somewhere for
+  // the call to go once it opens, and the summary close has nothing to summarise if the pain was
+  // never deepened. Half of this model is a prompt that describes half a conversation.
+  //
+  // Defaults FALSE — an unconfigured deploy renders the 2026-09-01 prompt byte for byte. Turn it
+  // on per environment while it is being measured. The code half is sales-gate.ts and moves with
+  // this same flag; a gate enforced without its prompt section is a note about a rule she was
+  // never given.
+  VOICE_SALES_MODEL_ENABLED: envBool(false),
   // KOREN'S TWELFTH CONCLUSION, 2026-09-01: *"make that rule weakened. Every turn can be a bit
   // problem.. but instead its better to instruct the agent to use it on every long thinking turn or
   // a complex answer."*

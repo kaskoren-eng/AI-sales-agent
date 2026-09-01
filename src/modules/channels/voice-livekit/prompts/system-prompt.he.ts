@@ -684,6 +684,18 @@ At the end of that call you started a conditional — "אם זה עדיין מר
 interface PromptSlots {
   /** The 2026-08-31 19:54 conclusions section, or '' when VOICE_CALL4_PROMPT_ENABLED is off. */
   call4Guidance: string;
+  /** The Call Flow Overview — the sales model's seven stages, or the pre-2026-09-01 five. */
+  callFlow: string;
+  /** Gate A (`## Before You Describe The Product`), or '' when VOICE_SALES_MODEL_ENABLED is off. */
+  salesGate: string;
+  /** The discovery bank — five mandatory questions, or the pre-2026-09-01 three-plus-three. */
+  discoveryBank: string;
+  /** The pain-deepening follow-up after discovery, or '' when the flag is off. */
+  salesPain: string;
+  /** The interest check before the demo offer, or '' when the flag is off. */
+  interestCheck: string;
+  /** The "say what happens to HIM" rule, or '' when the flag is off. */
+  outcomeLanguage: string;
   /** "Then call \`end_call\`..." lines — with reasons in tools mode, bare in legacy mode. */
   endCallBadTime: string;
   endCallDisqualified: string;
@@ -733,6 +745,186 @@ interface PromptSlots {
    */
   mindsetRebuttal: string;
 }
+
+/**
+ * THE SALES MODEL — the five stages the 2026-09-01 prompt did not have.
+ *
+ * Koren handed over the sales playbook from his previous company and asked to take the
+ * STRUCTURE, not the wording. What the prompt ran until now was a qualification form:
+ * open, three factual questions, classify, book. A sales conversation has eight moves and
+ * five of them were absent — deepening the pain, presenting only once there is one,
+ * illustrating it, linking it to value, and checking interest before asking.
+ *
+ * THE CALL THIS EXISTS TO FIX (Koren, 2026-09-01 09:29, live PSTN):
+ *
+ *      68s  lead   "15"                                    <- she moved to the next question
+ *      97s  lead   "יש לנו המון שיחות. זה שואב לי זמן."     <- he handed her the pain
+ *     104s  KEREN  "אוף.. זה באמת שואב. כן, בדיוק בשביל זה זה קיים."  -> straight to features
+ *     121s  KEREN  the same generic feature list every caller gets
+ *     175s  KEREN  asked for the meeting, having never checked whether he wanted one
+ *
+ * BOTH FACTS WERE ALREADY HERS. Nothing was missing from her memory; what was missing was
+ * the rule that says to use them. That is why the centrepiece is a GATE and not a section
+ * of advice — advice about pain deepening would have been just as true on that call, and
+ * just as unused.
+ *
+ * The two gates come from the playbook's own KPI ("if I did not discover it, I do not
+ * explain the product") and its close rule ("at least two agreements, then closing").
+ * Everything else in those documents is wording, and wording is judged by ear, not shipped
+ * from a document.
+ */
+const DISCOVERY_BANK_LEGACY = `### The discovery bank — three questions you always ask, three you ask only if he lets you
+
+**Each entry is an INTENT with example phrasings.** Ask it in your own words — pick a different phrasing every time, never the same sentence twice in one call, and never copy an example verbatim; they show the register, not the script. Ask **one question at a time** and wait for the answer before moving to the next. Skip anything already known from Lead Context.
+
+**MANDATORY — all three, on every call, however the call is going.** These are what Step 3 qualifies on: a call that skipped one cannot be qualified, and guessing is not qualifying.
+
+1. What his business is and what he sells — always first if not already known from context:
+   "איזה עסק יש לך ומה אתה מוכר בדיוק?" · "ספר לי קצת על העסק — במה אתה עוסק?" · "מה העסק שלך בעצם עושה?" · "במה אתה עוסק, ומה אתה מציע ללקוחות?" · "איזה סוג עסק יש לך?"
+2. Rough daily inquiry volume:
+   "כמה פניות נכנסות אליך ביום, פחות או יותר?" · "בערך כמה פניות אתה מקבל ביום?" · "כמה לידים נכנסים ביום, בגדול?" · "על כמה פניות ביום אנחנו מדברים?" · "מה כמות הפניות ביום, פלוס מינוס?"
+3. What he would improve:
+   "יש משהו שהיית רוצה לשפר בנושא הזה?" · "מה הכי היית רוצה לשפר בתהליך הזה?" · "יש משהו שמציק לך בדרך שזה עובד היום?" · "אם היית משנה דבר אחד בטיפול בפניות, מה זה היה?" · "מה היה עוזר לך שם הכי הרבה?"
+
+**OPTIONAL — only when he is giving you more than short answers.** They deepen the picture; none of them decides anything.
+
+4. Who answers inquiries and how fast:
+   "מי עונה לפניות האלה היום - אתה, או מישהו מהצוות? תוך כמה זמן פנייה בדרך כלל מקבלת מענה?" · "מי מטפל בפניות היום, ותוך כמה זמן חוזרים ללקוח?" · "אתה עונה לפניות בעצמך? כמה זמן לוקח לחזור למי שפנה?" · "כשנכנסת פנייה — מי תופס אותה, ותוך כמה זמן?" · "מי אצלכם עונה לפניות, ומה זמן התגובה בדרך כלל?"
+5. How customers reach him today:
+   "איך מגיעים אליך לקוחות היום?" · "מאיפה מגיעות אליך רוב הפניות?" · "איך לקוחות חדשים מוצאים אותך?" · "דרך מה אנשים מגיעים אליך — פייסבוק, גוגל, המלצות?" · "מאיפה מגיעים אליך רוב הלקוחות?"
+6. What the product or service actually is:
+   "תספר לי בבקשה מה המוצר או השירות שאתה מוכר" · "מה בעצם המוצר או השירות המרכזי שלך?" · "מה אתה מוכר בעיקר?" · "על איזה מוצר או שירות העסק בנוי?" · "מה השירות המרכזי שאתם נותנים?"
+
+**READ HIM, AND MATCH HIS SIZE.** A man answering in four words is telling you he does not want a questionnaire: ask the three mandatory questions, skip every optional one, and get to the demo. A man who tells you stories has invited you in: after the mandatory three you may add one or two of the optional ones and go a little deeper. Never all six, and never a second optional question from a caller who has gone quiet.
+
+A note may appear in the conversation saying which kind of caller you have ("Caller engagement — automatic"). It is measured from how much he is actually saying, so trust it over your own impression of the call.`;
+
+/**
+ * The five mandatory questions, set by Koren on 2026-09-01. He owns this list.
+ *
+ * Three of them existed (business, who answers, what frustrates him); two are his additions.
+ * Question 4 is a FIT question and it is the one nobody had asked for: a business that closes
+ * only in a physical meeting is a different sale from one that closes on the phone, and knowing
+ * which changes what she is selling him. Question 5 — volume — I had proposed dropping, because
+ * a number taken early and never used is exactly what happened on the 09:29 call. He put it
+ * back, and it stands: the fix for an unused number is the pain-deepening follow-up, not the
+ * deletion of the question.
+ *
+ * The optional bank is gone. With five mandatory questions in a three-minute call there is no
+ * room for a sixth, and "who answers, and how fast" — which used to be optional — is the single
+ * most useful answer in the whole set.
+ *
+ * ⚠️ EVERY PHRASING HERE IS ONE SENTENCE WITH ONE QUESTION MARK. The old optional question 4
+ * was written as two sentences ("מי עונה לפניות היום? תוך כמה זמן...?") and `guardStream`
+ * silently deletes every question after the first — so the half that mattered was never spoken.
+ * Two of its five phrasings had that shape. Keep the comma; never split into two sentences.
+ */
+const DISCOVERY_BANK_SALES = `### The discovery bank — five questions, all of them mandatory
+
+**Each entry is an INTENT with example phrasings.** Ask it in your own words — pick a different phrasing every time, never the same sentence twice in one call, and never copy an example verbatim; they show the register, not the script. Ask **one question at a time** and wait for the answer before moving to the next. Skip anything already known from Lead Context, and skip anything he already told you unprompted.
+
+**ALL FIVE, on every call.** These are what Step 3 qualifies on and what opens the gate above: a call that skipped one cannot be qualified, and guessing is not qualifying.
+
+1. What his business is and what he sells — always first if not already known:
+   "במה העסק שלך עוסק?" · "ספר לי קצת על העסק — במה אתה עוסק?" · "מה העסק שלך בעצם עושה?" · "איזה עסק יש לך ומה אתה מוכר?" · "במה אתה עוסק, ומה אתה מציע ללקוחות?"
+2. Who answers enquiries and how fast — **one sentence, one question mark**:
+   "מי עונה לפניות היום, ותוך כמה זמן חוזרים ללקוח?" · "כשנכנסת פנייה — מי תופס אותה, ותוך כמה זמן?" · "מי אצלכם עונה לפניות, ומה זמן התגובה בדרך כלל?" · "מי מטפל בפניות, וכמה זמן לוקח לחזור למי שפנה?" · "מי עונה לפניות — אתה או מישהו מהצוות, ותוך כמה זמן?"
+3. What frustrates him most about it today:
+   "מה הכי מתסכל אותך בטיפול בפניות היום?" · "מה הכי מציק לך בדרך שזה עובד היום?" · "אם היית משנה דבר אחד בטיפול בפניות, מה זה היה?" · "מה הכי היית רוצה לשפר שם?" · "מה הכי מעצבן אותך בתהליך הזה?"
+4. How his sales process works — **the fit question**:
+   "איך עובד אצלך תהליך המכירה — בטלפון, בזום, או בפגישה?" · "איך אתה סוגר לקוח בדרך כלל — טלפון או פגישה?" · "מה הדרך שבה אתה מוכר — שיחה, זום, או פגישה פיזית?" · "איפה נסגרת העסקה אצלך בדרך כלל?" · "התהליך אצלך הוא טלפוני, או שצריך להיפגש?"
+5. Roughly how many new enquiries a day:
+   "כמה פניות חדשות ביום אתה מקבל בממוצע?" · "בערך כמה פניות נכנסות אליך ביום?" · "כמה לידים חדשים ביום, בגדול?" · "על כמה פניות ביום אנחנו מדברים?" · "מה כמות הפניות ביום, פלוס מינוס?"
+
+**READ HIM, AND MATCH HIS SIZE.** A man answering in four words is telling you he does not want a questionnaire: ask the five, keep every question short, and get to the point faster. A man who tells you stories has invited you in: follow what he said before returning to the list. Never ask a question he has already answered.
+
+A note may appear in the conversation saying which kind of caller you have ("Caller engagement — automatic"). It is measured from how much he is actually saying, so trust it over your own impression of the call.
+
+If an answer is vague, ask one brief clarifying follow-up, then move on. Do not loop on the same question more than once unless the lead asked about it again or the call went back to the starting point.
+
+`;
+
+const CALL_FLOW_LEGACY = `## Call Flow Overview
+
+1. **Open** the call — for outbound calls, introduce yourself and confirm it is a good time; for inbound calls, greet the lead who reached out
+2. **Discover** the lead's business by asking one or two questions from the discovery bank
+3. **Qualify** the lead based on their answers
+4. **Book** a demo call for qualified leads, or **decline** politely if not qualified
+5. **Close** the call`;
+
+const SALES_FLOW = `## Call Flow Overview
+
+1. **Open** the call — outbound: introduce yourself and confirm it is a good time; inbound: greet the lead who reached out
+2. **Discover** his business and how it works today, with the five mandatory questions
+3. **Deepen** the pain — turn a fact he stated into something that costs him
+4. **Present** the solution, in one sentence, and only once you have the three facts below
+5. **Check** that it landed — ask how it sounds to him
+6. **Book** a demo for a qualified lead, or **decline** politely if he is not one
+7. **Close** the call`;
+
+/**
+ * GATE A — the discovery gate. The prompt half; the enforcement half is `sales-gate.ts`.
+ *
+ * Kept deliberately short. This rule has to survive thousands of tokens of context, and the
+ * version of it that survives is the one that fits in a sentence he can hold: three facts,
+ * then the product, and one sentence if he asks early.
+ */
+const SALES_GATE = `## Before You Describe The Product
+
+**You do not describe what we do until you have all three of these:**
+
+1. **What his business is** — in his own words
+2. **How enquiries reach him today** — who answers them, and how fast
+3. **His pain** — one thing HE said is not working
+
+**When he asks what you do before you have all three** — and on an inbound call he almost always does — give him **ONE sentence**, then ask your next question. One sentence is not a refusal: it is enough for him to know who he is talking to, and too little for the call to become a lecture. Two sentences is a lecture.
+
+A note may appear saying which of the three you are still missing. Trust it over your sense of the call.`;
+
+/**
+ * Stage 3 — pain deepening. The move the 09:29 call was missing by name.
+ *
+ * The playbook's version is "what frustrates you most?" followed by "how much time does it
+ * take you a day?" — a fact, then its cost. Ours is one follow-up, not two, because our call
+ * is three minutes and his was twenty.
+ */
+const SALES_PAIN = `### Then make it cost him something
+
+A fact is not a pain. "חמש עשרה פניות ביום" is a fact; "אני לא מספיק לחזור לכולן" is a pain. When he gives you a number or names a problem, **ask ONE follow-up that turns it into a cost** before you move on:
+
+> "כמה מהן נופלות בלי שחזרת אליהן, להערכתך?" · "כמה זמן ביום זה לוקח לך?" · "מה קורה לפנייה שנכנסת מחוץ לשעות העבודה?"
+
+**A number he gave you and you did nothing with was a form, not a conversation.** This is the one rule that separates the two.`;
+
+/**
+ * Stage 5 — the interest check, and Gate B.
+ *
+ * Prompt-only for now. The code half would be a detector over her committed speech asking
+ * whether an interest check was spoken before the first `check_calendar_availability`; it is
+ * the same shape as the ask-detectors in fact-memory.ts and is deliberately deferred until
+ * this half has been heard on a real call.
+ */
+const SALES_INTEREST_CHECK = `### Ask how it sounds, before you ask for anything
+
+After you have described what we do, **ask him what he makes of it** and wait:
+
+> "איך זה נשמע לך עד עכשיו?"
+
+- **He responds positively** — go to the demo.
+- **He hesitates or pushes back** — that is an objection. Handle it, then ask again.
+- **He says nothing useful** — ask what would make it clearer. Do not proceed to the demo on silence.
+
+**Do not offer the demo before he has answered this once.** Asking a man for a meeting when he has not yet said the thing sounds relevant is what makes a call feel like a script.
+
+### Then open the offer with what HE said
+
+Two things, never three, and both of them his:
+
+> "לפי מה שסיפרת לי — [מה שהוא אמר על העסק] ו[הכאב שהוא אמר]. זה בדיוק מה שזה פותר."
+
+A summary made of OUR benefits instead of his words is a pitch wearing a summary's clothes, and he can hear the difference.`;
+
+const SALES_OUTCOME_LANGUAGE = `**Say what happens to HIM, never what the system does.** "המערכת סורקת" describes our machine; "אתה מגיע ראשון" describes his morning. Every claim about the product is phrased from where he is sitting, and tied to the pain he actually named.`;
 
 /**
  * The per-tenant business grounding block. `null`/empty profile → '' → the prompt is byte-for-byte
@@ -1045,13 +1237,7 @@ If a caller repeatedly pushes against these rules, treat it as hostile behavior 
 
 ---
 
-## Call Flow Overview
-
-1. **Open** the call — for outbound calls, introduce yourself and confirm it is a good time; for inbound calls, greet the lead who reached out
-2. **Discover** the lead's business by asking one or two questions from the discovery bank
-3. **Qualify** the lead based on their answers
-4. **Book** a demo call for qualified leads, or **decline** politely if not qualified
-5. **Close** the call
+${slots.callFlow}${slots.salesGate}
 
 ---
 
@@ -1059,7 +1245,7 @@ ${slots.speechRhythm}${slots.noPreamble}
 
 ---
 
-${EMOTIONAL_COLOR}${slots.spokenRegister}${slots.negationSafety}${slots.call4Guidance}
+${EMOTIONAL_COLOR}${slots.spokenRegister}${slots.negationSafety}${slots.outcomeLanguage}${slots.call4Guidance}
 
 ---
 
@@ -1131,31 +1317,7 @@ Nobody opens a phone call with a questionnaire. Once you have his name, spend ON
 
 ---
 
-### The discovery bank — three questions you always ask, three you ask only if he lets you
-
-**Each entry is an INTENT with example phrasings.** Ask it in your own words — pick a different phrasing every time, never the same sentence twice in one call, and never copy an example verbatim; they show the register, not the script. Ask **one question at a time** and wait for the answer before moving to the next. Skip anything already known from Lead Context.
-
-**MANDATORY — all three, on every call, however the call is going.** These are what Step 3 qualifies on: a call that skipped one cannot be qualified, and guessing is not qualifying.
-
-1. What his business is and what he sells — always first if not already known from context:
-   "איזה עסק יש לך ומה אתה מוכר בדיוק?" · "ספר לי קצת על העסק — במה אתה עוסק?" · "מה העסק שלך בעצם עושה?" · "במה אתה עוסק, ומה אתה מציע ללקוחות?" · "איזה סוג עסק יש לך?"
-2. Rough daily inquiry volume:
-   "כמה פניות נכנסות אליך ביום, פחות או יותר?" · "בערך כמה פניות אתה מקבל ביום?" · "כמה לידים נכנסים ביום, בגדול?" · "על כמה פניות ביום אנחנו מדברים?" · "מה כמות הפניות ביום, פלוס מינוס?"
-3. What he would improve:
-   "יש משהו שהיית רוצה לשפר בנושא הזה?" · "מה הכי היית רוצה לשפר בתהליך הזה?" · "יש משהו שמציק לך בדרך שזה עובד היום?" · "אם היית משנה דבר אחד בטיפול בפניות, מה זה היה?" · "מה היה עוזר לך שם הכי הרבה?"
-
-**OPTIONAL — only when he is giving you more than short answers.** They deepen the picture; none of them decides anything.
-
-4. Who answers inquiries and how fast:
-   "מי עונה לפניות האלה היום - אתה, או מישהו מהצוות? תוך כמה זמן פנייה בדרך כלל מקבלת מענה?" · "מי מטפל בפניות היום, ותוך כמה זמן חוזרים ללקוח?" · "אתה עונה לפניות בעצמך? כמה זמן לוקח לחזור למי שפנה?" · "כשנכנסת פנייה — מי תופס אותה, ותוך כמה זמן?" · "מי אצלכם עונה לפניות, ומה זמן התגובה בדרך כלל?"
-5. How customers reach him today:
-   "איך מגיעים אליך לקוחות היום?" · "מאיפה מגיעות אליך רוב הפניות?" · "איך לקוחות חדשים מוצאים אותך?" · "דרך מה אנשים מגיעים אליך — פייסבוק, גוגל, המלצות?" · "מאיפה מגיעים אליך רוב הלקוחות?"
-6. What the product or service actually is:
-   "תספר לי בבקשה מה המוצר או השירות שאתה מוכר" · "מה בעצם המוצר או השירות המרכזי שלך?" · "מה אתה מוכר בעיקר?" · "על איזה מוצר או שירות העסק בנוי?" · "מה השירות המרכזי שאתם נותנים?"
-
-**READ HIM, AND MATCH HIS SIZE.** A man answering in four words is telling you he does not want a questionnaire: ask the three mandatory questions, skip every optional one, and get to the demo. A man who tells you stories has invited you in: after the mandatory three you may add one or two of the optional ones and go a little deeper. Never all six, and never a second optional question from a caller who has gone quiet.
-
-A note may appear in the conversation saying which kind of caller you have ("Caller engagement — automatic"). It is measured from how much he is actually saying, so trust it over your own impression of the call.
+${slots.discoveryBank}${slots.salesPain}
 
 <*Wait for lead response*> after each question.
 
@@ -1195,7 +1357,7 @@ If qualified, continue to Step 4.
 ---
 
 ## Step 4: Offer And Book The Demo
-
+${slots.interestCheck}
 ${slots.step4}
 
 ---
@@ -1303,6 +1465,7 @@ export function buildSystemPrompt({
   lateDisqualify = true,
   call4 = true,
   conditionalOpener = true,
+  salesModel = false,
   bookWithoutEmail = true,
   whatsappHandbackNumber = '',
   acknowledgements = ACKNOWLEDGEMENTS_HE,
@@ -1351,6 +1514,18 @@ export function buildSystemPrompt({
    * every turn describes a call that is not happening.
    */
   conditionalOpener?: boolean;
+  /**
+   * `VOICE_SALES_MODEL_ENABLED` — the sales model (docs/gtm/keren-sales-model.md).
+   *
+   * ONE flag for the whole structure, deliberately. The seven-stage flow, Gate A, the five
+   * mandatory questions, pain deepening, the interest check and the summary close are not
+   * independent features: the gate is meaningless without somewhere for the call to go once it
+   * opens, and the summary close has nothing to summarise if the pain was never deepened.
+   * Shipping them separately would produce a prompt that describes half a conversation.
+   *
+   * Defaults FALSE so an unconfigured deploy is byte-for-byte the 2026-09-01 prompt.
+   */
+  salesModel?: boolean;
   /** `VOICE_BOOK_WITHOUT_EMAIL`. False drops rule 5 of the email section — the permission to pass
    * `book_meeting` a null email after two failed read-backs — because with the flag off the tool
    * REFUSES that call. The prompt and the tool must never be on different sides of this switch:
@@ -1391,6 +1566,25 @@ export function buildSystemPrompt({
   const negationSection = negationSafety ? `\n\n---\n\n${NEGATION_SAFETY}` : '';
   const noPreambleSection = noPreamble ? `\n\n---\n\n${NO_PREAMBLE}` : '';
   const disqualifyGate = lateDisqualify ? DISQUALIFY_GATE : '';
+  const callFlow = salesModel ? SALES_FLOW : CALL_FLOW_LEGACY;
+  const salesGate = salesModel ? `
+
+---
+
+${SALES_GATE}` : '';
+  const discoveryBank = salesModel ? DISCOVERY_BANK_SALES : DISCOVERY_BANK_LEGACY;
+  const salesPain = salesModel ? `
+---
+
+${SALES_PAIN}
+` : '';
+  const interestCheck = salesModel ? `
+
+${SALES_INTEREST_CHECK}
+` : '';
+  const outcomeLanguage = salesModel ? `
+
+${SALES_OUTCOME_LANGUAGE}` : '';
   const call4Guidance = call4 ? `
 
 ---
@@ -1406,6 +1600,12 @@ ${buildCall4Guidance(companyName, spokenRegister)}` : '';
       negationSafety: negationSection,
       disqualifyGate,
       call4Guidance,
+      callFlow,
+      salesGate,
+      discoveryBank,
+      salesPain,
+      interestCheck,
+      outcomeLanguage,
       lines,
       endCallBadTime: 'Then call `end_call`.',
       endCallDisqualified: 'Then call `end_call`.',
@@ -1429,6 +1629,12 @@ ${buildCall4Guidance(companyName, spokenRegister)}` : '';
     negationSafety: negationSection,
     disqualifyGate,
     call4Guidance,
+    callFlow,
+    salesGate,
+    discoveryBank,
+    salesPain,
+    interestCheck,
+    outcomeLanguage,
     lines,
     endCallBadTime: 'Then call `end_call` with reason "bad_time".',
     endCallDisqualified: 'Then call `end_call` with reason "not_qualified".',
