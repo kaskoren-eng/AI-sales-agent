@@ -106,6 +106,24 @@ export function chooseTurnOpener(input: {
    * Koren, 2026-08-31: *"לא סתם להגיד 'טוב, הבנתי' על כל דבר."*
    */
   callerShared?: boolean;
+  /**
+   * Does this turn actually need the time a receipt buys? Koren's twelfth conclusion, 2026-09-01:
+   * *"make that rule weakened … better to instruct the agent to use it on every long thinking turn
+   * or a complex answer."*
+   *
+   * True (the default, and what a missing signal means) → the receipt is spoken, exactly as it was.
+   * False → this step opens with NOTHING and she simply answers. See `callerTurnNeedsThinkingTime`
+   * in engagement.ts for the predicate and for the replay of the 19:54 call that set its threshold.
+   *
+   * It sits AFTER the tool and dictation branches on purpose. Both of those are decisions Koren
+   * judged by ear (round 7's hesitation pair, round 11's nod bank) and neither is about frequency:
+   * a step behind a tool call is already silent-or-hesitation, and mid-dictation the nod is the
+   * right sound however short his turn was.
+   *
+   * `VOICE_ACK_ONLY_WHEN_NEEDED=false` makes the agent pass `true` always, which restores the
+   * every-turn receipt exactly.
+   */
+  needsThinkingTime?: boolean;
   /** The call's filler budget — `ThinkingFillerLedger.offer()`. Returns null when spent. */
   offerFiller: () => string | null;
 }): TurnOpener {
@@ -151,6 +169,18 @@ export function chooseTurnOpener(input: {
     const random = input.random ?? Math.random;
     return { kind: 'nod', word: free[Math.floor(random() * free.length)] ?? free[0]! };
   }
+  // KOREN'S CONCLUSION 12 — the receipt is for a turn that needs one, not for every turn.
+  //
+  // Last of the branches, so it can never take a step away from the two he judged by ear. Silence
+  // is the module's standing safe answer ("it is the extra word that made her sound like a machine,
+  // never the missing one"), and here it is also the FAST answer: on a turn whose reply is one
+  // short line there is no thinking to cover, and the receipt only delayed the line.
+  //
+  // The deck is deliberately NOT spent on a silent step. A word handed out and not spoken would
+  // bend the ledger's flat distribution against the turns that do get one, and `#last` would then
+  // block a sound the caller never heard.
+  if (input.needsThinkingTime === false) return { kind: 'silent' };
+
   return {
     kind: 'ack',
     word: input.nextAck({ earned: input.callerShared === true, avoid }),

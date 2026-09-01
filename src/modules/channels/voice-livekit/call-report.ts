@@ -283,6 +283,36 @@ export interface CallReportJson {
      */
     falseBookingClaims: number;
     /**
+     * Times she asked to hang up on a lead she had decided was not worth the rest of the call, and
+     * the gate refused because the evidence for it was not the caller's own words.
+     *
+     * NOT "should always be zero" — unlike the two above, a non-zero reading here is the mechanism
+     * WORKING, and it is the only number that says how often she reaches for a hang-up she cannot
+     * justify. Zero across many calls means either she has stopped doing it or the gate is dead;
+     * `endCallRefusalReasons` distinguishes the three ways it fires. See end-call-gate.ts.
+     */
+    endCallRefusals: number;
+    /** Which gate condition fired, in first-seen order. Empty on a call with no refused hang-up. */
+    endCallRefusalReasons: string[];
+    /**
+     * Sentences dropped because they were the SECOND question in one reply.
+     *
+     * Koren, 2026-08-31: *"שאלה כפולה באותו המשפט שווה מקור לבעיות, אנחנו צריכים להימנע מזה."* The
+     * prompt has said "one question at a time" since Phase 4 and she asked two in one breath twice
+     * on that call, so this is the enforcement half. A steady non-zero reading means the instruction
+     * is still not landing; zero means either she obeys it or the guard is off.
+     */
+    secondQuestionsDropped: number;
+    /**
+     * Sentences dropped because she was narrating her own configuration to the caller.
+     *
+     * *"אני פשוט מתארת את זה בשפה יומיומית"* · *"אני מדברת ככה כי זה טבעי לי בשיחה"* — both on the
+     * 19:54 call, both in answer to a caller asking why she talks the way she does. Same family as
+     * a spoken tool call, one layer up. Should be zero; a non-zero reading is a prompt leak the
+     * guard caught. See SELF_NARRATION in speech-guard.ts.
+     */
+    selfNarrationDropped: number;
+    /**
      * Share of her replies carrying one of the eight screened everyday words — the Spoken Register
      * quota, measured instead of assumed.
      *
@@ -572,6 +602,29 @@ export class CallReport {
     this.#falseBookingClaims++;
   }
 
+  #endCallRefusals = 0;
+  readonly #endCallRefusalReasons: string[] = [];
+
+  /** The disqualifying-hang-up gate refused one `end_call`. See end-call-gate.ts. */
+  recordEndCallRefusal(code: string): void {
+    this.#endCallRefusals++;
+    if (!this.#endCallRefusalReasons.includes(code)) this.#endCallRefusalReasons.push(code);
+  }
+
+  #secondQuestionsDropped = 0;
+
+  /** One sentence was dropped for being the second question in the same reply. */
+  recordSecondQuestionDropped(): void {
+    this.#secondQuestionsDropped++;
+  }
+
+  #selfNarrationDropped = 0;
+
+  /** One sentence was dropped for narrating her own instructions/register at the caller. */
+  recordSelfNarrationDropped(): void {
+    this.#selfNarrationDropped++;
+  }
+
   recordMetric(stage: string, m: Record<string, unknown>): void {
     const pick = (k: string): number | undefined =>
       typeof m[k] === 'number' ? Math.round(m[k] as number) : undefined;
@@ -724,6 +777,64 @@ export class CallReport {
   }
 
   /**
+   * The caller's last committed turn, with the two facts a hang-up decision needs about it.
+   *
+   * ADDED FOR THE 260-SECOND HANG-UP (see end-call-gate.ts). The question "did he talk over her?"
+   * was answerable from this object all along — `spokeAtMs` / `spokeUntilMs` are the SDK's own
+   * per-message speaking clock — but nothing asked it, so `end_call` treated a half-second fragment
+   * spoken inside her own sentence exactly like a considered answer.
+   *
+   * `overlappedAgentSpeech` is false when either side lacks speaking metrics. That is the honest
+   * reading: no timestamps means no evidence of an overlap, and a gate that invented one would
+   * refuse every hang-up on console mode, on tests, and on any reply that produced no audio.
+   *
+   * `agentTurnUnfinished` is the other half of the same story: at 260s her line ended
+   * `אם זה עדיין מרגיש לךָ לא נכון` — no terminator, because he cut her off mid-conditional. A turn
+   * that never became a question cannot have been answered.
+   */
+  lastCallerTurn(): {
+    text: string;
+    overlappedAgentSpeech: boolean;
+    agentTurnBefore: string | null;
+    agentTurnUnfinished: boolean;
+  } | null {
+    let callerIndex = -1;
+    for (let i = this.#transcript.length - 1; i >= 0; i--) {
+      if (this.#transcript[i]!.role === 'user') {
+        callerIndex = i;
+        break;
+      }
+    }
+    if (callerIndex === -1) return null;
+    const caller = this.#transcript[callerIndex]!;
+
+    let agent: TranscriptLine | null = null;
+    for (let i = callerIndex - 1; i >= 0; i--) {
+      if (this.#transcript[i]!.role === 'assistant') {
+        agent = this.#transcript[i]!;
+        break;
+      }
+    }
+
+    const overlapped =
+      agent !== null &&
+      typeof caller.spokeAtMs === 'number' &&
+      typeof agent.spokeUntilMs === 'number' &&
+      caller.spokeAtMs < agent.spokeUntilMs;
+
+    // A sentence that ends in a terminator finished; anything else was interrupted or trailed off.
+    // Trailing quotes/brackets are stepped over so a quoted line is not read as unfinished.
+    const finished = agent === null || /[.!?…׃]["'׳״)\]]*$/u.test(agent.text.trim());
+
+    return {
+      text: caller.text,
+      overlappedAgentSpeech: overlapped,
+      agentTurnBefore: agent?.text ?? null,
+      agentTurnUnfinished: agent !== null && !finished,
+    };
+  }
+
+  /**
    * Settles `ai_disclosure` at shutdown from what was actually SAID:
    *   found + end_call had to ask for it  → 'at_end'
    *   found without being asked for       → 'during_call'
@@ -829,6 +940,10 @@ export class CallReport {
         toolCallLeaks: this.#toolCallLeaks,
         toolCallLeakReasons: [...this.#toolCallLeakReasons],
         falseBookingClaims: this.#falseBookingClaims,
+        endCallRefusals: this.#endCallRefusals,
+        endCallRefusalReasons: [...this.#endCallRefusalReasons],
+        secondQuestionsDropped: this.#secondQuestionsDropped,
+        selfNarrationDropped: this.#selfNarrationDropped,
         registerTouchPct:
           agentLines.length === 0
             ? null

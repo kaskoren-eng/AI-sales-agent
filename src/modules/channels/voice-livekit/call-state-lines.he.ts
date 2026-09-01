@@ -63,11 +63,41 @@ export const HOLD_CHECKBACK_HE = 'אני כאן, קח את הזמן שאתה צ�
  * STARTER content — expand each play with the wording Keren should actually use. Keep it as a
  * labelled list so she can recognise the objection TYPE and reach for the matching response.
  */
-export function buildObjectionPlaybook(handoffPerson: string = DEFAULT_PERSONA.handoffPerson): string {
+export function buildObjectionPlaybook(
+  handoffPerson: string = DEFAULT_PERSONA.handoffPerson,
+  /**
+   * `VOICE_CALL4_PROMPT_ENABLED` — Koren's `e1` verdict, 2026-08-31 round 13.
+   *
+   * THIS PARAGRAPH AND THAT VERDICT ARE ABOUT THE SAME SENTENCE POSITION, and they disagree unless
+   * somebody states the boundary. The paragraph was written from his round-7 note 9, where he cut
+   * "המחיר זה דבר חשוב" as מתחנף. Then he was played three openings for a caller voicing a FEAR and
+   * chose *"זה חשש הגיוני, ואתה לא היחיד ששואל את זה"* — a sentence in front of the answer, which is
+   * what this paragraph bans.
+   *
+   * Both verdicts are his and both are right. What separates them is what the sentence is ABOUT: a
+   * comment on his topic ("price matters") hands him back his own subject; recognition of his fear
+   * ("you are not the only one who asks that") tells him something he did not know. So the true
+   * form of the rule is a distinction, not a prohibition, and with the flag on this renders it.
+   *
+   * `false` restores the 2026-08-31 paragraph byte for byte — it must move together with the
+   * CALL4_GUIDANCE section, or the prompt carries a rule and its own contradiction.
+   */
+  call4 = true,
+): string {
   // The demo is with a named human for ClickScales and with nobody in particular for a tenant who
   // has not named one. Naming the wrong person is worse than naming none.
   const demo = handoffPerson ? `שיחת הדמו הקצרה עם ${handoffPerson}` : 'שיחת הדמו הקצרה';
-  return `When the lead pushes back, answer with the matching play below and then steer back to the current step. **Go straight to the answer** — no sentence in front of it telling him his concern is important or understandable, and above all no "מחיר זה חשוב" / "תקציב זה חשוב" (Koren heard exactly that on 2026-08-31 and called it מיותר, מתחנף ורובוטי). Handle an objection ONCE; if it genuinely persists after you addressed it, treat it per Step 3 (Qualification).
+  const opening = call4
+    ? `When the lead pushes back, answer with the matching play below and then steer back to the current step.
+
+**Where you START depends on whether he asked a question or expressed a fear, and the two are opposite.**
+
+- He ASKED something ("כמה זה עולה?", "זה מתחבר ל-CRM?") — **Go straight to the answer**. No sentence in front of it telling him his concern is important or understandable, and above all no "מחיר זה חשוב" / "תקציב זה חשוב": he knows, that is why he asked. Koren heard exactly that sentence on 2026-08-31 and called it מיותר, מתחנף ורובוטי.
+- He expressed a WORRY ("אני חושש שזה יבריח לי לקוחות", "נשמע לי שאני מדבר עם רובוט") — **open with ONE sentence that recognises the worry as a reasonable one, then the concrete next step.** His own wording, chosen by ear: "זה חשש הגיוני, ואתה לא היחיד ששואל את זה. בוא אני אראה לךָ בדמו איך זה נשמע בפועל ותחליט בעצמךָ." The difference from the banned form is that this tells him something he did not know — that other people worry about the same thing — where "מחיר זה חשוב" only repeats his own subject back at him.
+
+One sentence, never two, and never both a recognition and a compliment. Handle an objection ONCE; if it genuinely persists after you addressed it, treat it per Step 3 (Qualification).`
+    : `When the lead pushes back, answer with the matching play below and then steer back to the current step. **Go straight to the answer** — no sentence in front of it telling him his concern is important or understandable, and above all no "מחיר זה חשוב" / "תקציב זה חשוב" (Koren heard exactly that on 2026-08-31 and called it מיותר, מתחנף ורובוטי). Handle an objection ONCE; if it genuinely persists after you addressed it, treat it per Step 3 (Qualification).`;
+  return `${opening}
 
 - **מחיר / "יקר לי" / "כמה זה עולה":** אל תמציאי מחיר, ואל תפתחי במשפט על כך שהמחיר חשוב — הוא יודע, בגלל זה הוא שאל. עני ישר: ${demo} היא המקום שבו רואים מה מקבלים ואיך זה מחזיר את ההשקעה. אם יש מידע תמחור ב-Business Context, הסתמכי רק עליו.
 - **אמון / "זה לא באמת יעבוד" / "נשמע רובוטי":** זו התנגדות ה-mindset מ-Step 3. הסבירי פעם אחת שאנחנו בונים סוכנים שנשמעים ומתנהגים כמו בני אדם (ראי ה-FAQ), והציעי שהדמו יראה את זה חי. אם הספקנות נמשכת אחרי שהתייחסת — זה מדד לפסילה.

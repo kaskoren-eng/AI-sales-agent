@@ -686,6 +686,54 @@ const envSchema = z.object({
   //
   // 0 restores the 2026-08-31 behaviour exactly: the nudge fires the moment the SDK says 'away'.
   VOICE_SILENCE_NUDGE_MS: z.coerce.number().int().nonnegative().default(20000),
+  // ── The 2026-08-31 19:54 call, Koren's eleven conclusions ────────────────────────────────────
+  // A disqualifying end_call (not_qualified / not_interested) must rest on the LEAD's own words.
+  // At 260s she was cut off mid-conditional ("אם זה עדיין מרגיש לךָ לא נכון"), the caller's next
+  // half-second — spoken INSIDE her speech window — came back as "כן, מרגיש לך", and she read her
+  // own echo, minus its negation, as a yes and hung up on a lead she had recorded as "hot" 96
+  // seconds earlier. The gate refuses a hang-up built on an overlap, an echo, or an inference, and
+  // makes her ask "שאסגור את זה כרגע?" instead. opt_out is never delayed (legal), and the gate
+  // stops refusing after two so a caller can always get off the phone.
+  // OFF restores the ungated tool exactly. See end-call-gate.ts.
+  VOICE_END_CALL_CONFIRM_ENABLED: envBool(true),
+  // The earned-acknowledgement test reads the turn the model is ANSWERING (chatCtx) instead of the
+  // last COMMITTED turn. With preemptive generation the committed field is one turn behind — which
+  // is why "טוב, הבנתי" landed after four questions on that call, four times out of four.
+  // OFF restores the stale source. See latestCallerText in engagement.ts.
+  VOICE_ACK_EARNED_FROM_CONTEXT: envBool(true),
+  // One question per reply, enforced rather than only instructed: the second question sentence in a
+  // reply is dropped before it is spoken. *"שאלה כפולה באותו המשפט שווה מקור לבעיות."*
+  // OFF: both questions are spoken, as on 2026-08-31. See guardStream's `reply` parameter.
+  VOICE_ONE_QUESTION_ENABLED: envBool(true),
+  // She must never narrate her own instructions, register or delivery to a caller. *"אני פשוט
+  // מתארת את זה בשפה יומיומית"* and *"אני מדברת ככה כי זה טבעי לי בשיחה"* were both paraphrases of
+  // the Spoken Register section, read back to a sales lead who asked why she talks that way. The
+  // sentence is DROPPED, never rewritten — there is nothing to replace it with.
+  // OFF: the sentence is spoken. See SELF_NARRATION in speech-guard.ts.
+  VOICE_SELF_NARRATION_GUARD_ENABLED: envBool(true),
+  // The prompt half of the same eleven: sentence SHAPE over comma chains, the meanings of the
+  // screened slang bank, unambiguous positives for product claims, empathy-first on a stated
+  // concern, discovery that establishes whether there IS a business before asking about it, and a
+  // mandatory question that persists until it is answered.
+  // OFF restores the 2026-08-31 prompt sections exactly. See system-prompt.he.ts.
+  VOICE_CALL4_PROMPT_ENABLED: envBool(true),
+  // KOREN'S TWELFTH CONCLUSION, 2026-09-01: *"make that rule weakened. Every turn can be a bit
+  // problem.. but instead its better to instruct the agent to use it on every long thinking turn or
+  // a complex answer."*
+  //
+  // The short opener at the head of every reply is a LATENCY device — her voice starts only once
+  // the first sentence is complete, so a 2-4 word sentence covers the ~930ms gpt-5.4 spends
+  // thinking. It buys nothing when the reply that follows is one short line, so on those turns it
+  // was pure cost: a receipt the caller did not need, in front of the answer he did. This makes it
+  // CONDITIONAL, in the code that speaks it and in the prompt that describes it, together.
+  //
+  // Replaying the 2026-08-31 19:54 call through the predicate turns 22 receipts into 11, and the
+  // eleven it removes include all three of the stray one-word agent turns ("אוקי." after "אני—",
+  // "בסדר." after a fragment, "בסדר." after his last "כן.").
+  //
+  // OFF restores the every-turn receipt exactly, in both halves. See callerTurnNeedsThinkingTime
+  // in engagement.ts and the Speech Rhythm sections in system-prompt.he.ts.
+  VOICE_ACK_ONLY_WHEN_NEEDED: envBool(true),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),

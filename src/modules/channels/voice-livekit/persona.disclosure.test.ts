@@ -28,13 +28,18 @@ describe('every greeting discloses the agent is an AI', () => {
     expect(hasAiDisclosure(greeting)).toBe(true);
     // Pinned, because this is the first thing every lead hears and it should never change by
     // accident. Changing it deliberately means changing this line and saying so in the commit.
-    expect(greeting).toBe('שלום, מדברת קרן, העוזרת הדיגיטלית של ClickScales. איך אני יכולה לעזור?');
+    //
+    // CHANGED ON 2026-09-01, DELIBERATELY: two commas removed, no word touched. Round-13 card `g1`
+    // played Koren this exact sentence three ways through the 8kHz band — with today's commas,
+    // with none, and with none plus an em-dash instead of the mid-sentence full stop — and he chose
+    // the middle one. See DEFAULT_PERSONA.greeting for the measurement behind it.
+    expect(greeting).toBe('שלום מדברת קרן העוזרת הדיגיטלית של ClickScales. איך אני יכולה לעזור?');
   });
 
   it('a renamed female agent at another company', () => {
     const greeting = buildGreeting(persona({ agentName: 'שרה', companyName: 'אלפא', greeting: '' }));
     expect(hasAiDisclosure(greeting)).toBe(true);
-    expect(greeting).toBe('שלום, מדברת שרה, העוזרת הדיגיטלית של אלפא. איך אני יכולה לעזור?');
+    expect(greeting).toBe('שלום מדברת שרה העוזרת הדיגיטלית של אלפא. איך אני יכולה לעזור?');
   });
 
   it('a MALE agent discloses in masculine Hebrew', () => {
@@ -43,7 +48,7 @@ describe('every greeting discloses the agent is an AI', () => {
     // finding later gets waved away as a known false positive.
     const greeting = buildGreeting(persona({ agentName: 'דניאל', agentGender: 'male', companyName: 'אלפא', greeting: '' }));
     expect(hasAiDisclosure(greeting)).toBe(true);
-    expect(greeting).toBe('שלום, מדבר דניאל, העוזר הדיגיטלי של אלפא. איך אני יכול לעזור?');
+    expect(greeting).toBe('שלום מדבר דניאל העוזר הדיגיטלי של אלפא. איך אני יכול לעזור?');
     // And no feminine leakage in a masculine greeting.
     expect(greeting).not.toMatch(/מדברת|יכולה|הדיגיטלית/u);
   });

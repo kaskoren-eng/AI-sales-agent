@@ -90,6 +90,99 @@ export function callerSharedSubstance(utterance: string | null | undefined): boo
   return wordCount(text) >= SUBSTANCE_MIN_WORDS;
 }
 
+/**
+ * THE TURN SHE IS ACTUALLY ANSWERING — and why `lastUserUtterance` was not it.
+ *
+ * 2026-08-31 19:54. Koren's conclusion 1: *"טוב, הבנתי"* still lands at the wrong moment. It was
+ * spoken five times on a 22-turn call (50s, 118s, 178s, 208s, 270s), and `callerSharedSubstance`
+ * was supposed to have stopped four of them.
+ *
+ * WHAT I ESTABLISHED, from the call report rather than by reasoning about the code. Line up each
+ * claim with the caller turn it followed, and with the turn BEFORE that:
+ *
+ *   50s  "טוב, הבנתי."   after "איך את יודעת שיש לי עסק, למשל?"   (a question → NOT earned)
+ *                        one turn earlier: "לא, תפסת אותי בזמן מעולה."   (5 words → earned)
+ *   118s "הבנתי אותךָ."  after "את יכולה להסביר לי מה אתם עושים?"  (a question → NOT earned)
+ *                        one turn earlier: "יש לי עסק של בניית אתרים."   (5 words → earned)
+ *   208s "טוב, הבנתי."   after "הוא מתקשר ללידים במקומי?"          (a question → NOT earned)
+ *                        one turn earlier: "רגע, רגע. כן. סליחה..."      (7 words → earned)
+ *   270s "הבנתי אותךָ."  after "כן, מרגיש לך."                     (3 words  → NOT earned)
+ *                        one turn earlier: "לא יודע. נשמע לי..."          (long   → earned)
+ *
+ * Four for four, the substance test was reading the PREVIOUS caller turn. The mechanism is
+ * preemptive generation: `llmNode` runs during the end-of-turn wait (17 of 24 drafts were used on
+ * this call), while `agent.lastUserUtterance` is written from `ConversationItemAdded`, which fires
+ * when the turn COMMITS — after the draft has already chosen its opener. The field is one turn
+ * behind on every step where the draft is used, and the existing comment in agent.ts says as much
+ * ("same source and same staleness as midDictation above") without anyone having priced it.
+ *
+ * So the fix is NOT a second suppressor on top of the first. It is to ask the same question of the
+ * right text: `chatCtx` is what the model is answering, so its last user message IS the current
+ * turn, by construction, draft or no draft.
+ *
+ * Shape-tolerant on purpose — this reads an SDK object across a version boundary, and a `textContent`
+ * that becomes a getter, a null, or an array of parts must degrade to "no text" rather than throw
+ * inside the reply path. Returning null makes the opener a plain receipt, which is always true.
+ */
+export function latestCallerText(
+  items: ReadonlyArray<{ role?: unknown; textContent?: unknown }> | null | undefined,
+): string | null {
+  if (!Array.isArray(items)) return null;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i] as { role?: unknown; textContent?: unknown } | undefined;
+    if (!item || item.role !== 'user') continue;
+    const text = item.textContent;
+    return typeof text === 'string' && text.trim() ? text : null;
+  }
+  return null;
+}
+
+/**
+ * DOES THIS TURN NEED A RECEIPT AT ALL — Koren's twelfth conclusion, 2026-09-01.
+ *
+ * His decision, verbatim: *"Yeah, make that rule weakened. Every turn can be a bit problem.. but
+ * instead its better to instruct the agent to use it on every long thinking turn or a complex
+ * answer."*
+ *
+ * The short opener was never a style choice — it is a LATENCY device. Her voice starts only once
+ * the first sentence is complete, so a 2-4 word sentence flushes through `guardStream` at once and
+ * covers the ~930ms gpt-5.4 spends thinking. It buys nothing when the reply that follows is one
+ * short line, because a short reply generates fast anyway: there is no gap to cover, and the receipt
+ * is pure cost. **So this is latency-optimal, not a latency sacrifice** — which is the opposite of
+ * what the Speech Rhythm section used to assert, and the reason his instinct is right on both axes.
+ *
+ * WHICH TURNS. A caller who ASKS something is owed an explanation; a caller who has just told her
+ * twenty words is owed a real response. A man saying "אני קורן." or "כן." or "אוקיי." is owed the
+ * next sentence, not a receipt for the last one.
+ *
+ * THE THRESHOLD IS MEASURED AGAINST THE CALL, not chosen. Replaying the 2026-08-31 19:54 transcript
+ * through this predicate turns 22 receipts into 11, and every one it removes is one that reads badly
+ * in the transcript — including all three of the stray standalone receipts, which were whole
+ * committed agent turns consisting of one word:
+ *
+ *   [156s] "אוקי."   after the caller's turn was the single fragment "אני—"
+ *   [195s] "בסדר."   after "רגע, רגע. כן. סליחה. שנייה. לא הבנתי."
+ *   [272s] "בסדר."   after his last word of the call, "כן."
+ *
+ * and it keeps every receipt that reads well, including the one at 178s that follows twenty words
+ * about how much time he loses. Ten words rather than eleven (`ENGAGED_MIN_WORDS`) because that
+ * constant answers a different question — how talkative the caller is across a window — and the two
+ * would drift into each other if they shared a number.
+ *
+ * NULL IS AN ACK, NOT A SILENCE. A missing caller turn means the classifier could not read the
+ * context, and the safe direction for a degradation is the behaviour that shipped.
+ */
+export const ACK_MIN_SHARE_WORDS = 10;
+
+export function callerTurnNeedsThinkingTime(utterance: string | null | undefined): boolean {
+  if (utterance === null || utterance === undefined) return true;
+  const text = utterance.trim();
+  if (!text) return true;
+  if (QUESTION.test(text)) return true;
+  if (BACKCHANNEL.test(text)) return false;
+  return wordCount(text) >= ACK_MIN_SHARE_WORDS;
+}
+
 export type EngagementLevel = 'terse' | 'neutral' | 'engaged';
 
 /** How many caller turns are averaged. Short enough to follow a call that opens up halfway

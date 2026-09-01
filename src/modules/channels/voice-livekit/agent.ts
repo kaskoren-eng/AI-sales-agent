@@ -52,7 +52,12 @@ import {
   type TurnOpener,
 } from './turn-opener.js';
 import { DICTATION_NODS, isDictationTurn } from './dictation.js';
-import { EngagementTracker, callerSharedSubstance } from './engagement.js';
+import {
+  EngagementTracker,
+  callerSharedSubstance,
+  callerTurnNeedsThinkingTime,
+  latestCallerText,
+} from './engagement.js';
 import { EmailDictation } from './email-dictation.js';
 import { NameDictation } from './name-dictation.js';
 import { bookingNote } from './booking-note.js';
@@ -185,6 +190,12 @@ class ClickScalesAgent extends voice.Agent {
   /** A claim that the meeting was already booked, rewritten before it was spoken. Counted on the
    * call for the same reason a leak is: its absence is the news. See FALSE_BOOKING_WIDE. */
   onFalseBookingClaim: ((spoken: string) => void) | null = null;
+
+  /** The second question in one reply, dropped before it was spoken (Koren's conclusion 6). */
+  onSecondQuestionDropped: ((spoken: string) => void) | null = null;
+
+  /** A sentence narrating her own instructions/register, dropped (Koren's conclusion 8). */
+  onSelfNarrationDropped: ((spoken: string) => void) | null = null;
 
   /**
    * The MODEL's real time-to-first-token, which the SDK's own metric can no longer see.
@@ -424,6 +435,16 @@ class ClickScalesAgent extends voice.Agent {
     // the 2026-08-29 call. The flag is consumed here and re-set below if THIS step also calls a tool.
     const afterToolCall = this.#lastStepCalledTool;
     this.#lastStepCalledTool = false;
+    // The turn the model is ANSWERING, read once and used by both of the 2026-09-01 rules that
+    // depend on it: whether a comprehension claim is earned, and whether this turn needs a receipt
+    // at all (Koren's conclusion 12). Both used to read `lastUserUtterance`, which is one turn
+    // behind whenever a preemptive draft is used — see latestCallerText in engagement.ts.
+    const currentCallerTurn = env.VOICE_ACK_EARNED_FROM_CONTEXT
+      ? latestCallerText(
+          (chatCtx as unknown as { items?: ReadonlyArray<{ role?: unknown; textContent?: unknown }> })
+            .items,
+        )
+      : this.lastUserUtterance;
     const opener = chooseTurnOpener({
       afterToolCall,
       fillersEnabled: env.VOICE_THINKING_FILLER_MS !== 0,
@@ -438,10 +459,24 @@ class ClickScalesAgent extends voice.Agent {
       // switches the whole no-repeat rule off (VOICE_OPENER_NO_REPEAT_ENABLED), restoring the
       // 2026-08-31 behaviour exactly.
       avoidOpener: env.VOICE_OPENER_NO_REPEAT_ENABLED ? this.spokenOpeners.avoid : null,
-      // Did he actually TELL her something? Only then may the receipt claim comprehension. Same
-      // source and same staleness as midDictation above — the committed caller turn.
-      callerShared:
-        env.VOICE_ACK_EARNED_ENABLED && callerSharedSubstance(this.lastUserUtterance),
+      // Did he actually TELL her something? Only then may the receipt claim comprehension.
+      //
+      // READ FROM `chatCtx`, NOT FROM `lastUserUtterance`. The committed-turn field is one turn
+      // BEHIND on every step where a preemptive draft is used (17 of 24 on the 2026-08-31 19:54
+      // call), because llmNode runs during the end-of-turn wait and ConversationItemAdded fires
+      // when the turn commits. That staleness — not the substance test — is why "טוב, הבנתי"
+      // landed after four questions on that call; see latestCallerText in engagement.ts for the
+      // four-for-four reconstruction. `chatCtx` is what the model is answering, so its last user
+      // message is the current turn by construction.
+      //
+      // VOICE_ACK_EARNED_FROM_CONTEXT=false restores the stale source exactly. midDictation above
+      // still reads the committed field and is DELIBERATELY not changed here: the dictation nod is
+      // a behaviour Koren judged by ear on round 11, and this commit does not touch it.
+      callerShared: env.VOICE_ACK_EARNED_ENABLED && callerSharedSubstance(currentCallerTurn),
+      // KOREN'S CONCLUSION 12 — the receipt only on a turn whose reply needs the time it buys.
+      // `true` when the switch is off, which is the every-turn behaviour that shipped.
+      needsThinkingTime:
+        !env.VOICE_ACK_ONLY_WHEN_NEEDED || callerTurnNeedsThinkingTime(currentCallerTurn),
       nextAck: (opts) =>
         this.ackLedger ? this.ackLedger.next(opts) : pickAcknowledgement(this.#lastAck),
       offerFiller: () => this.fillerLedger.offer(),
@@ -644,6 +679,16 @@ class ClickScalesAgent extends voice.Agent {
               possible: this.toolRuntime !== null,
               wide: env.VOICE_BOOKING_CLAIM_GUARD_WIDE,
               onFalseClaim: (spoken) => this.onFalseBookingClaim?.(spoken),
+            },
+            // THE TWO PER-REPLY RULES from the 2026-08-31 19:54 call (conclusions 6 and 8). Both
+            // live at the stream level rather than in guardSpeech because both are facts about the
+            // WHOLE reply: how many questions it asked, and — for the narration guard — nothing,
+            // which is why only its flag passes through here. See guardStream's `reply` parameter.
+            {
+              oneQuestion: env.VOICE_ONE_QUESTION_ENABLED,
+              onSecondQuestion: (spoken) => this.onSecondQuestionDropped?.(spoken),
+              selfNarrationGuard: env.VOICE_SELF_NARRATION_GUARD_ENABLED,
+              onSelfNarration: (spoken) => this.onSelfNarrationDropped?.(spoken),
             },
           ),
           startedAt,
@@ -1558,6 +1603,13 @@ export default defineAgent({
     // same reason a leak is: on the 2026-08-31 16:51 call this was the one defect that reached a
     // person AFTER the call ended, and a number is the only way anybody sees it did not recur.
     agent.onFalseBookingClaim = (spoken) => report.recordFalseBookingClaim(spoken);
+
+    // The second question in one reply, and a sentence describing her own configuration. Both
+    // counted for the same reason as the two above: the caller hears a fluent turn either way, so
+    // without a number nobody would ever know the guard had fired. See the 19:54 call, conclusions
+    // 6 and 8.
+    agent.onSecondQuestionDropped = () => report.recordSecondQuestionDropped();
+    agent.onSelfNarrationDropped = () => report.recordSelfNarrationDropped();
 
     // The model's REAL first-token time. The SDK's own ttft now measures our acknowledgement, so
     // without this the ~840ms GPT actually takes would simply disappear from the report and every
