@@ -26,6 +26,9 @@
     Permissions-Policy = "geolocation=(), microphone=(self), camera=(), interest-cohort=()"
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
 
+# Assets are cached hard, so index.html links them with a ?v=<date> query
+# string (see the <link>/<script> tags). Bump that date on every release or
+# returning visitors keep the previous stylesheet for a year.
 [[headers]]
   for = "/assets/*"
   [headers.values]
