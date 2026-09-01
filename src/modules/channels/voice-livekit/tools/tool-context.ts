@@ -20,6 +20,7 @@ import {
 import type { CallReport, ToolCallLog } from '../call-report.js';
 import type { CallStateMachine } from '../call-state.js';
 import type { FactMemory } from '../fact-memory.js';
+import type { SalesGate } from '../sales-gate.js';
 import { resolveFunctionsEnabled } from '../voice-livekit.service.js';
 
 /**
@@ -140,6 +141,14 @@ export interface ToolRuntimeContext {
    * and with it undefined the tool behaves exactly as it did before fact-memory.ts existed.
    */
   factMemory: FactMemory | undefined;
+  /**
+   * Gate A — the three facts that must exist before she may describe the product.
+   *
+   * Fed from `capture_lead_info` rather than from her speech, deliberately: a fact she claimed and
+   * the tool never recorded is a fact the CRM will not have either, and the gate should agree with
+   * the CRM. `undefined` when VOICE_SALES_MODEL_ENABLED is off. See sales-gate.ts.
+   */
+  salesGate: SalesGate | undefined;
 }
 
 /**
@@ -409,6 +418,7 @@ export async function buildToolRuntime(
      * when VOICE_FACT_MEMORY_ENABLED is off — OPTIONAL here (unlike `callState`) so that omitting
      * it is the same thing as switching it off, which is what every test harness wants. */
     factMemory?: FactMemory | undefined;
+    salesGate?: SalesGate | undefined;
   },
   deps: ToolRuntimeDeps = {},
 ): Promise<ToolRuntimeResult> {
@@ -621,6 +631,7 @@ export async function buildToolRuntime(
         : {}),
       callState: opts.callState,
       factMemory: opts.factMemory,
+      salesGate: opts.salesGate,
     },
   };
 }

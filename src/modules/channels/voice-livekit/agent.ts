@@ -70,6 +70,7 @@ import {
   withFiller,
 } from './speech-guard.js';
 import { PhraseLedger } from './phrase-ledger.js';
+import { SalesGate } from './sales-gate.js';
 import { SpokenSentenceLedger } from './repeat-guard.js';
 import { SlotMemory } from './slot-memory.js';
 import { FactMemory } from './fact-memory.js';
@@ -400,6 +401,17 @@ class ClickScalesAgent extends voice.Agent {
    */
   readonly engagementTracker: EngagementTracker | undefined = env.VOICE_ENGAGEMENT_NOTE_ENABLED
     ? new EngagementTracker()
+    : undefined;
+
+  /**
+   * WHAT SHE HAS DISCOVERED, and therefore whether she may describe the product yet.
+   *
+   * Gate A. `undefined` when VOICE_SALES_MODEL_ENABLED is off — the same flag that decides whether
+   * the prompt carries the rule at all, so the note can never describe a rule she was not given.
+   * See sales-gate.ts.
+   */
+  readonly salesGate: SalesGate | undefined = env.VOICE_SALES_MODEL_ENABLED
+    ? new SalesGate()
     : undefined;
 
   /**
@@ -857,6 +869,11 @@ async function injectCoachNote(agent: ClickScalesAgent): Promise<void> {
   try {
     const phraseNote = env.VOICE_PHRASE_LEDGER_ENABLED ? agent.phraseLedger.note() : null;
     const factNote = agent.factMemory?.note() ?? null;
+    // "You do not yet know his pain — do NOT describe the product." The discovery gate. Placed
+    // with the memory notes because it is a statement about what is known, and read BEFORE the
+    // engagement note so a terse caller is still gated: shortening the call is not permission to
+    // pitch into a vacuum. See sales-gate.ts.
+    const gateNote = agent.salesGate?.note() ?? null;
     // "He is giving you four-word answers — mandatory questions only." Fires on a CHANGE of level,
     // so a consistent caller costs one line for the whole call. See engagement.ts.
     const engagementNote = agent.engagementTracker?.note() ?? null;
@@ -886,7 +903,7 @@ async function injectCoachNote(agent: ClickScalesAgent): Promise<void> {
             offerCallerPhone: env.VOICE_CALLER_PHONE_KNOWN_ENABLED,
           })
         : null;
-    const note = [phraseNote, factNote, slotNote, engagementNote, emailNote, nameNote, bookNote]
+    const note = [phraseNote, factNote, gateNote, slotNote, engagementNote, emailNote, nameNote, bookNote]
       .filter(Boolean)
       .join('\n');
     if (!note || note === agent.lastCoachNote) return;
@@ -1603,6 +1620,10 @@ export default defineAgent({
           // there is no code path that disqualifies, which is why the 79-second sign-off on the
           // 2026-08-31 16:51 call had nothing to intercept it. See DISQUALIFY_GATE.
           lateDisqualify: env.VOICE_LATE_DISQUALIFY_ENABLED,
+          // The sales model — the seven-stage flow, Gate A, the five mandatory questions, pain
+          // deepening, the interest check and the summary close. Same flag as its code half
+          // (sales-gate.ts), so a note about a rule she was never given is impossible.
+          salesModel: env.VOICE_SALES_MODEL_ENABLED,
           // Permission to let the email go and keep the meeting. Same flag as book_meeting's
           // nullable email argument, so she is never told to make a call the tool would refuse.
           bookWithoutEmail: env.VOICE_BOOK_WITHOUT_EMAIL,

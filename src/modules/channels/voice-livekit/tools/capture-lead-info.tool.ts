@@ -43,6 +43,14 @@ export const captureLeadInfoSchema = z.object({
     .describe('Phone number ONLY if the lead gave one different from the number he is calling from'),
   business_type: z.string().nullable().optional().describe("The lead's business, in his own words"),
   pain_point: z.string().nullable().optional().describe('The concrete problem he wants solved'),
+  current_process: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      'How enquiries are handled today — who answers them and how fast, in his own words. ' +
+        'One of the three facts required before describing the product.',
+    ),
   budget: z.string().nullable().optional().describe('Budget indication, verbatim as stated'),
   timeline: z.string().nullable().optional().describe('When he wants to start'),
   qualification: z
@@ -144,6 +152,14 @@ export async function executeCaptureLeadInfo(
   // Qualification facts we DID accept are established too, so the reminder can stop her re-asking
   // for a business she already has (the fact-memory note; see fact-memory.ts).
   if (args.business_type) rt.factMemory?.establish('business', args.business_type);
+
+  // GATE A. The three facts that decide whether she may describe the product yet — read off the
+  // tool rather than off her speech, so the gate and the CRM agree about what was learned.
+  // `current_process` is the field this model added; the other two already existed and were
+  // simply never consulted before a pitch. See sales-gate.ts.
+  if (args.business_type) rt.salesGate?.establish('business');
+  if (args.current_process) rt.salesGate?.establish('process');
+  if (args.pain_point) rt.salesGate?.establish('pain');
 
   // THE LEAD HIMSELF RULED THIS VALUE OUT. Reported before `refused`, and in stronger words,
   // because it is the failure that has now cost two bookings: on 2026-08-31 she read
