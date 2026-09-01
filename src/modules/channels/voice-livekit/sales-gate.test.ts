@@ -155,6 +155,23 @@ describe('the sales model in the prompt', () => {
     expect(buildSystemPrompt({ toolsEnabled: true })).toBe(off);
   });
 
+  it('runs a dialogue rather than an interview, and warms up a closed caller first', () => {
+    expect(on).toContain('Talk With Him, Do Not Interview Him');
+    expect(on).toContain('Answer his question before you ask yours');
+    expect(on).toContain('When he is giving you nothing yet');
+    expect(on).toContain('מה גרם לך להתקשר?');
+    expect(off).not.toContain('Talk With Him, Do Not Interview Him');
+  });
+
+  it('REPLACES the outbound-framed small talk instead of stacking on top of it', () => {
+    // That section is what produced the 09:43 defect — "you have just rung a man who was doing
+    // something else", rendered on every call including the ones he dialled. Keeping it alongside
+    // the direction-aware opening would leave the model arbitrating between two contradictions.
+    expect(off).toContain('Then two sentences of small talk');
+    expect(on).not.toContain('Then two sentences of small talk');
+    expect(on).not.toContain('you have just rung a man who was doing something else');
+  });
+
   it('stays inside the +5% token budget, because every token is latency on every turn', () => {
     // Measured at +4.2% when this shipped. The ceiling is not decoration: the prompt is re-sent
     // on every turn, so a section that grows costs the caller silence on every reply for the
@@ -163,5 +180,49 @@ describe('the sales model in the prompt', () => {
     const growth = on.length / off.length - 1;
     expect(growth).toBeGreaterThan(0);
     expect(growth).toBeLessThan(0.05);
+  });
+});
+
+/**
+ * THE PLACEHOLDER THAT WAS NEVER FILLED IN.
+ *
+ * `{{call_direction}}` is a Retell-era leftover: the old platform substituted dynamic variables,
+ * ours never did. So Step 1 offered two branches and told the model to pick using a literal
+ * string. It picked outbound, and on 2026-09-01 09:43 — a call the lead had dialled — she asked
+ * twice whether she had caught him at a good time. He corrected her twice.
+ */
+describe('call direction', () => {
+  const inbound = buildSystemPrompt({ toolsEnabled: true, outbound: false });
+  const outbound = buildSystemPrompt({ toolsEnabled: true, outbound: true });
+  const unknown = buildSystemPrompt({ toolsEnabled: true });
+
+  it('never asks an inbound caller whether it is a good time — he dialled us', () => {
+    expect(inbound).toContain('HE called YOU');
+    expect(inbound).toContain('do not ask whether you caught him at a good time');
+    expect(inbound).toContain('מה גרם לך להתקשר?');
+    // The outbound apology has no business on a call he placed.
+    expect(inbound).not.toContain('If Outbound');
+  });
+
+  it('keeps the bad-time path on an outbound call, where it is true', () => {
+    expect(outbound).toContain('You called HIM');
+    expect(outbound).toContain('If he confirms it is a good time');
+    expect(outbound).not.toContain('HE called YOU');
+  });
+
+  it('renders ONE branch — the other is gone, not merely unselected', () => {
+    // Outbound is smaller than the two-branch text it replaces. Inbound is a few dozen characters
+    // larger, because it carries a whole opening move ("what made you call?") where the old text
+    // had a single line telling the model to continue. That is a trade worth making: the move it
+    // buys is the highest-value question in an inbound call.
+    expect(outbound.length).toBeLessThan(unknown.length);
+    expect(inbound).not.toContain('### If Outbound');
+    expect(outbound).not.toContain('### If Inbound');
+  });
+
+  it('leaves the placeholder only on the unknown path, which the fixtures pin', () => {
+    expect(unknown).toContain('{{call_direction}}');
+    expect(inbound).not.toContain('{{call_direction}}');
+    expect(outbound).not.toContain('{{call_direction}}');
   });
 });

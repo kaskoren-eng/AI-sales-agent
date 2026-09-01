@@ -1016,6 +1016,12 @@ export default defineAgent({
     // PHASE 4 will use callerPhone to look up the lead in the DB and load their history.
     const participant = await ctx.waitForParticipant();
     const caller = readSipCaller(participant.attributes);
+    // WHICH WAY THIS CALL WENT. Read here rather than at the reflex layer 750 lines down, because
+    // the PROMPT needs it: until 2026-09-01 Step 1 branched on a `{{call_direction}}` placeholder
+    // that nothing ever substituted, so on a call the lead had dialled she asked him twice whether
+    // she had caught him at a good time, and he corrected her twice (09:43). Malformed or absent
+    // metadata means inbound SIP or console — the same assumption the reflex layer makes.
+    const isOutboundCall = readCallDirection(participant.metadata);
     console.log('call_started', JSON.stringify({ room: ctx.room.name, ...caller }));
 
     // Everything we learn about this call, written to call-reports/ when it ends.
@@ -1624,6 +1630,9 @@ export default defineAgent({
           // deepening, the interest check and the summary close. Same flag as its code half
           // (sales-gate.ts), so a note about a rule she was never given is impossible.
           salesModel: env.VOICE_SALES_MODEL_ENABLED,
+          // Real, at last. Renders ONE branch of Step 1 — she no longer greets an inbound caller
+          // as though she had rung him.
+          outbound: isOutboundCall,
           // Permission to let the email go and keep the meeting. Same flag as book_meeting's
           // nullable email argument, so she is never told to make a call the tool would refuse.
           bookWithoutEmail: env.VOICE_BOOK_WITHOUT_EMAIL,
@@ -1767,13 +1776,9 @@ export default defineAgent({
     // Every reaction is a FIXED line via session.say() — no prompt/chatCtx mutation, so preemptive
     // generation is untouched. Silence + barge-in run on every call; voicemail is outbound-only and
     // flag-gated. All three reference the `callState` const and the `runtime`/`session` in scope.
-    let isOutbound = false;
-    try {
-      const meta = participant.metadata ? (JSON.parse(participant.metadata) as { direction?: string }) : null;
-      isOutbound = meta?.direction === 'outbound';
-    } catch {
-      // Malformed/absent metadata = inbound SIP or console — leave isOutbound false.
-    }
+    // Same value the prompt was built from, read once at the top of the call. Two parses of the
+    // same metadata is two chances to disagree about which call this is.
+    const isOutbound = isOutboundCall;
 
     // The whole reflex layer is gated by the kill-switch: when callState is undefined
     // (VOICE_STATE_MACHINE_ENABLED=false) none of these handlers are subscribed, and Keren behaves
@@ -2021,6 +2026,23 @@ export default defineAgent({
     await session.say(buildGreeting(persona), { allowInterruptions: false }).waitForPlayout();
   },
 });
+
+/**
+ * Outbound or inbound, off the participant's metadata.
+ *
+ * Absent, malformed, or anything that is not the literal string `outbound` means INBOUND — the
+ * safe direction, because the inbound opening never claims to have interrupted anybody. A console
+ * or browser session has no metadata and is treated as inbound for the same reason.
+ */
+export function readCallDirection(metadata: string | undefined): boolean {
+  if (!metadata) return false;
+  try {
+    const meta = JSON.parse(metadata) as { direction?: string };
+    return meta?.direction === 'outbound';
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Pulls the caller's details off a SIP participant's attributes.

@@ -696,6 +696,15 @@ interface PromptSlots {
   interestCheck: string;
   /** The "say what happens to HIM" rule, or '' when the flag is off. */
   outcomeLanguage: string;
+  /** Step 1's body — outbound, inbound, or the pre-2026-09-01 both-branches text when the
+   * direction is unknown. See OPEN_INBOUND / OPEN_OUTBOUND / OPEN_LEGACY_UNKNOWN. */
+  openTheCall: string;
+  /** The "talk with him, do not interview him" rule, or '' when the sales model is off. */
+  dialogue: string;
+  /** The warm-up for a caller who is giving nothing yet, or '' when the sales model is off. */
+  warmUp: string;
+  /** The pre-2026-09-01 small-talk section, or '' when the sales model supersedes it. */
+  smallTalk: string;
   /** "Then call \`end_call\`..." lines — with reasons in tools mode, bare in legacy mode. */
   endCallBadTime: string;
   endCallDisqualified: string;
@@ -843,6 +852,161 @@ A note may appear in the conversation saying which kind of caller you have ("Cal
 If an answer is vague, ask one brief clarifying follow-up, then move on. Do not loop on the same question more than once unless the lead asked about it again or the call went back to the starting point.
 
 `;
+
+/**
+ * The small-talk section, and why the sales model REPLACES it rather than adding to it.
+ *
+ * This is the text that produced the defect Koren heard on 2026-09-01 09:43. Read its own words:
+ * *"make it about THIS MOMENT — that you have just rung a man who was doing something else"* and
+ * *"What you actually know when the call connects is that you interrupted him"*. Every phrasing it
+ * offers is an outbound phrasing, and it was rendered on every call. So on a call the lead had
+ * DIALLED, she asked whether she had caught him at a good time — twice, and he corrected her twice.
+ *
+ * The generator was in our own text, which is the third time that has been the answer here (the
+ * receipt ritual, the configuration leak, and now this). With the sales model on, the direction-
+ * aware Step 1 and the warm-up cover what this section was for, and better; keeping both would
+ * leave an outbound instruction sitting underneath an inbound one for the model to arbitrate.
+ *
+ * It stays intact on the flag-off path, byte for byte, because that path is the rollback.
+ */
+const SMALL_TALK_LEGACY = `### Then two sentences of small talk, BEFORE any business question
+
+Nobody opens a phone call with a questionnaire. Once you have his name, spend ONE short exchange on something ordinary, and make it about THIS MOMENT — that you have just rung a man who was doing something else: "תפסתי אותךָ באמצע משהו, או שיש לךָ דקה?" · "תפסתי אותךָ בזמן טוב?" · "יום עמוס אצלךָ היום?" A remark about something he has already SAID works too. Let him answer, react like a person would, and only then turn to business.
+
+**It has to be situational, not a pleasantry.** "איך היה היום שלךָ עד עכשיו?" is the shape to avoid: it is a stock line that would fit any call to anyone, it does not come from anything, and a stranger asking it sounds like a script. What you actually know when the call connects is that you interrupted him — so ask about that. Never open with a compliment about his line of work; that is the preamble you were told to drop, wearing a friendly hat.
+
+**This is not that preamble, and the difference is what you are doing.** A preamble is a comment ON him that leads nowhere — "בניית אתרים זה תחום מעניין" and straight into a question. Small talk is an EXCHANGE: you say something with content of your own, he answers, and you have both spoken.
+
+**One exchange, two sentences at the outside, then business.** Small talk that runs on is its own kind of wasted call.`;
+
+/**
+ * DIALOGUE, NOT A QUESTIONNAIRE — Koren, 2026-09-01, after listening to the 09:43 call.
+ *
+ * *"הוא רץ על אותם שאלות, בלי לעשות איזשהו פינג פונג עם הלקוח."*
+ *
+ * The five mandatory questions made this worse, not better, and that was predictable: a list is
+ * exactly what a model reaches for when it has one. The evidence is in the same call —
+ *
+ *      63s  lead   "שואלת שאלות לא ברורות, כן."     <- he told her she was interrogating him
+ *
+ * — and on the 09:29 call he ended it over the same thing. So the list needs a rule ABOUT the list:
+ * the questions are what she must find out, not the order she must say them in.
+ */
+const SALES_DIALOGUE = `## Talk With Him, Do Not Interview Him
+
+The discovery questions are what you need to FIND OUT — not a running order, and not a form.
+
+**React to his answer before you ask the next thing.** He says he builds websites — ask what kind, or who buys. **One reaction, one follow-up, then move on.** A man who answers three questions in a row with no response to any of them knows he is being processed.
+
+**Answer his question before you ask yours.** Replying to a question with a question is taking a turn, not having a conversation.
+
+**Never ask what he already told you**, even if he told you while answering something else.
+
+**Not every turn is a question.** Sometimes you react; sometimes you say something short of your own and let him pick it up.`;
+
+/**
+ * The caller who gives you nothing — and what to do BEFORE the mandatory five.
+ *
+ * Koren: *"אם הסוכן שם לב שלקוח לא ממש משתף פעולה, או שואל שאלות, או מתעניין, אז הוא צריך לנסות
+ * לפתח אותו בשאלות רגילות שאנשים שואלים אחרים… ואז, אחרי שהוא מבין קצת מי עומד מולו, רק אז להתחיל
+ * בשאלות החובה."*
+ *
+ * The order matters more than the wording. Running a five-question list at a man who has not yet
+ * said anything real is how a call becomes an interrogation, and `engagement.ts` already detects
+ * this caller — it just had nowhere to send her.
+ */
+const SALES_WARM_UP = `### When he is giving you nothing yet
+
+Short answers, no interest, or a wall of questions of his own — **do not start the five on a man like that.** A list aimed at somebody who has not said anything real is an interrogation, and he will end the call.
+
+**Get him talking first:** "מה גרם לך להתקשר?" · "מה עניין אותך לדעת?" · "מה הביא אותך לחפש משהו כזה עכשיו?"
+
+**If he is the one asking, answer him** — one sentence each, then ask something back. A man interrogating you is interested; that is the conversation starting from his end.
+
+**Only once you know roughly who he is and why he called**, go to the five. By then most of them are the natural next thing to ask.`;
+
+/**
+ * STEP 1, AND THE PLACEHOLDER THAT WAS NEVER FILLED IN.
+ *
+ * Until 2026-09-01 this section ended with *"proceed based on call direction
+ * (`{{call_direction}}`)"* and then offered an outbound branch and an inbound branch. Nothing in
+ * the codebase ever substituted `{{call_direction}}` — it is a leftover from the Retell era, whose
+ * platform filled dynamic variables for us. So the model was handed two branches and a literal
+ * `{{call_direction}}` string, and had to guess which call it was on.
+ *
+ * It guessed OUTBOUND, because everything downstream is written that way. Koren, 2026-09-01 09:43,
+ * on a call HE placed to US:
+ *
+ *      14s  KEREN  "אמ. תפסתי אותךָ בזמן טוב?"
+ *      19s  lead   "הפכתי בזמן מצוין, אבל אני התקשרתי."      <- he corrects her
+ *      54s  KEREN  "יום עמוס אצלך היום, או שיש לךָ דקה?"
+ *      58s  lead   "התקשרתי אלייך."                          <- he corrects her again
+ *
+ * She asked twice whether she had caught him at a good time, on a call he had dialled. He told her
+ * twice. The direction was known to the process the whole time — `participant.metadata.direction`
+ * is read 165 lines further down for the voicemail reflex — it just never reached the prompt.
+ *
+ * `outbound` is now a real parameter. `null` means unknown and renders the pre-2026-09-01 text
+ * byte for byte, which is what the golden fixtures pin; a real call always passes true or false
+ * and gets ONE branch, so there is nothing left to guess and the other branch costs no tokens.
+ */
+const OPEN_LEGACY_UNKNOWN = (badTime: string, endCallBadTime: string) => `Your opening line has already been spoken as your very first turn (from the \`{{opening_line}}\` dynamic variable) — do not repeat or re-say a greeting. Wait for the lead's reply, then proceed based on call direction (\`{{call_direction}}\`).
+
+### If Outbound
+
+If the lead says it is **not** a good time, provide a natural variation of:
+
+> "${badTime}"
+
+If the lead gives you a time indication, note it for the post-call analysis so a follow-up task can be created.
+
+<*Wait for lead response*>
+
+> "תודה, נדבר!"
+
+${endCallBadTime} Do not attempt discovery.
+
+If the lead confirms it is a good time, continue to Step 2.
+
+### If Inbound
+
+Continue directly to Step 2.`;
+
+/** Outbound: you rang him. Everything the old section said is true here, and only here. */
+const OPEN_OUTBOUND = (badTime: string, endCallBadTime: string) => `**You called HIM.** Your opening line has already been spoken as your very first turn — do not repeat or re-say a greeting. Wait for his reply.
+
+He was doing something else when the phone rang, so the first thing to settle is whether he can talk at all.
+
+If he says it is **not** a good time, provide a natural variation of:
+
+> "${badTime}"
+
+If he gives you a time indication, note it for the post-call analysis so a follow-up task can be created.
+
+<*Wait for lead response*>
+
+> "תודה, נדבר!"
+
+${endCallBadTime} Do not attempt discovery.
+
+If he confirms it is a good time, continue to Step 2.`;
+
+/**
+ * Inbound: he rang us, and the reason he rang is the most valuable thing in the call.
+ *
+ * Koren's own playbook opens a call with "מה גרם לך להשאיר פרטים?" — the same move, because a man
+ * who reached out has already told you his pain and is only waiting to be asked for it. It also
+ * feeds Gate A directly: this one question routinely answers the pain fact before discovery starts.
+ */
+const OPEN_INBOUND = `**HE called YOU.** Your greeting has already been spoken — do not repeat it, and do not ask whether you caught him at a good time. **He dialled the number; of course it is a good time.** Asking tells him you are reading from something.
+
+**Ask what made him call, and let him talk.** Natural variations:
+
+> "מה גרם לך להתקשר?" · "מה עניין אותך אצלנו?" · "מה הביא אותך אלינו?" · "איך הגעת אלינו?"
+
+His answer is the most valuable sentence in the call — it is usually the pain, given away before you asked for it. **React to what he actually said, ask one follow-up about it, and only then go to Step 2.** If he answered with a question of his own, answer it in one sentence first; a man whose question you skipped will not answer yours.
+
+Continue to Step 2 once you know why he called.`;
 
 const CALL_FLOW_LEGACY = `## Call Flow Overview
 
@@ -1245,7 +1409,7 @@ ${slots.speechRhythm}${slots.noPreamble}
 
 ---
 
-${EMOTIONAL_COLOR}${slots.spokenRegister}${slots.negationSafety}${slots.outcomeLanguage}${slots.call4Guidance}
+${EMOTIONAL_COLOR}${slots.spokenRegister}${slots.negationSafety}${slots.outcomeLanguage}${slots.dialogue}${slots.call4Guidance}
 
 ---
 
@@ -1267,27 +1431,7 @@ If any of these are missing, do not guess — ask for the missing piece naturall
 
 ## Step 1: Open The Call
 
-Your opening line has already been spoken as your very first turn (from the \`{{opening_line}}\` dynamic variable) — do not repeat or re-say a greeting. Wait for the lead's reply, then proceed based on call direction (\`{{call_direction}}\`).
-
-### If Outbound
-
-If the lead says it is **not** a good time, provide a natural variation of:
-
-> "${slots.lines.badTimeApology}"
-
-If the lead gives you a time indication, note it for the post-call analysis so a follow-up task can be created.
-
-<*Wait for lead response*>
-
-> "תודה, נדבר!"
-
-${slots.endCallBadTime} Do not attempt discovery.
-
-If the lead confirms it is a good time, continue to Step 2.
-
-### If Inbound
-
-Continue directly to Step 2.
+${slots.openTheCall}
 
 ---
 
@@ -1305,19 +1449,11 @@ If the lead's name is already known from Lead Context, greet him by it instead o
 ${slots.callMemory}
 ---
 
-### Then two sentences of small talk, BEFORE any business question
-
-Nobody opens a phone call with a questionnaire. Once you have his name, spend ONE short exchange on something ordinary, and make it about THIS MOMENT — that you have just rung a man who was doing something else: "תפסתי אותךָ באמצע משהו, או שיש לךָ דקה?" · "תפסתי אותךָ בזמן טוב?" · "יום עמוס אצלךָ היום?" A remark about something he has already SAID works too. Let him answer, react like a person would, and only then turn to business.
-
-**It has to be situational, not a pleasantry.** "איך היה היום שלךָ עד עכשיו?" is the shape to avoid: it is a stock line that would fit any call to anyone, it does not come from anything, and a stranger asking it sounds like a script. What you actually know when the call connects is that you interrupted him — so ask about that. Never open with a compliment about his line of work; that is the preamble you were told to drop, wearing a friendly hat.
-
-**This is not that preamble, and the difference is what you are doing.** A preamble is a comment ON him that leads nowhere — "בניית אתרים זה תחום מעניין" and straight into a question. Small talk is an EXCHANGE: you say something with content of your own, he answers, and you have both spoken.
-
-**One exchange, two sentences at the outside, then business.** Small talk that runs on is its own kind of wasted call.
+${slots.smallTalk}
 
 ---
 
-${slots.discoveryBank}${slots.salesPain}
+${slots.warmUp}${slots.discoveryBank}${slots.salesPain}
 
 <*Wait for lead response*> after each question.
 
@@ -1466,6 +1602,7 @@ export function buildSystemPrompt({
   call4 = true,
   conditionalOpener = true,
   salesModel = false,
+  outbound = null,
   bookWithoutEmail = true,
   whatsappHandbackNumber = '',
   acknowledgements = ACKNOWLEDGEMENTS_HE,
@@ -1526,6 +1663,16 @@ export function buildSystemPrompt({
    * Defaults FALSE so an unconfigured deploy is byte-for-byte the 2026-09-01 prompt.
    */
   salesModel?: boolean;
+  /**
+   * Which way the call went — `true` outbound, `false` inbound, `null` unknown.
+   *
+   * `null` renders the pre-2026-09-01 Step 1 byte for byte, including the `{{call_direction}}`
+   * placeholder that was never substituted, which is what the golden fixtures pin. Every real call
+   * passes a boolean: the direction sits on `participant.metadata` and was already being read for
+   * the voicemail reflex — it simply never reached the prompt, so she asked a man who had dialled
+   * us whether she had caught him at a good time. Twice, on 2026-09-01 09:43.
+   */
+  outbound?: boolean | null;
   /** `VOICE_BOOK_WITHOUT_EMAIL`. False drops rule 5 of the email section — the permission to pass
    * `book_meeting` a null email after two failed read-backs — because with the flag off the tool
    * REFUSES that call. The prompt and the tool must never be on different sides of this switch:
@@ -1585,12 +1732,27 @@ ${SALES_INTEREST_CHECK}
   const outcomeLanguage = salesModel ? `
 
 ${SALES_OUTCOME_LANGUAGE}` : '';
+  const lines = negationSafety ? LINES_NEGATION_SAFE : LINES_LEGACY;
+  const dialogue = salesModel ? `
+
+---
+
+${SALES_DIALOGUE}` : '';
+  const openTheCall = (endCallBadTime: string): string =>
+    outbound === null
+      ? OPEN_LEGACY_UNKNOWN(lines.badTimeApology, endCallBadTime)
+      : outbound
+        ? OPEN_OUTBOUND(lines.badTimeApology, endCallBadTime)
+        : OPEN_INBOUND;
+  const warmUp = salesModel ? `
+${SALES_WARM_UP}
+` : '';
+  const smallTalk = salesModel ? '' : SMALL_TALK_LEGACY;
   const call4Guidance = call4 ? `
 
 ---
 
 ${buildCall4Guidance(companyName, spokenRegister)}` : '';
-  const lines = negationSafety ? LINES_NEGATION_SAFE : LINES_LEGACY;
   if (!toolsEnabled) {
     return assemble({
       speechRhythm,
@@ -1606,6 +1768,10 @@ ${buildCall4Guidance(companyName, spokenRegister)}` : '';
       salesPain,
       interestCheck,
       outcomeLanguage,
+      dialogue,
+      warmUp,
+      smallTalk,
+      openTheCall: openTheCall('Then call `end_call`.'),
       lines,
       endCallBadTime: 'Then call `end_call`.',
       endCallDisqualified: 'Then call `end_call`.',
@@ -1635,6 +1801,10 @@ ${buildCall4Guidance(companyName, spokenRegister)}` : '';
     salesPain,
     interestCheck,
     outcomeLanguage,
+    dialogue,
+    warmUp,
+    smallTalk,
+    openTheCall: openTheCall('Then call `end_call` with reason "bad_time".'),
     lines,
     endCallBadTime: 'Then call `end_call` with reason "bad_time".',
     endCallDisqualified: 'Then call `end_call` with reason "not_qualified".',
