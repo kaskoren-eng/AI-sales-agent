@@ -17,7 +17,14 @@ Three jobs:
              round's biggest unknown, so the gain is a card variable, not a constant yet.
   measure  — RMS / peak / duration for any clip, so every card prints its numbers.
 
-  python tests/hebrew-tts-niqqud-ab/breath_mix.py harvest dd_smoke.wav
+  python tests/hebrew-tts-niqqud-ab/breath_mix.py harvest dd_breath_src.wav
+
+⚠️ THE SOURCE IS `dd_breath_src.wav`, NOT `dd_smoke.wav`. The 21s DeepDub generation the breath
+candidates came from was originally written over `dd_smoke.wav` — a TRACKED 93KB fixture that
+predates this work — which made a 2MB raw generation look like a modified test asset in every
+`git status` and would have gone into a commit as one. `dd_smoke.wav` is back to its committed
+contents; the generation lives under its own name and is deliberately NOT tracked, because 2MB of
+raw TTS output is not worth the repo when `breaths/` already holds every harvested candidate.
 """
 import os, struct, sys, wave
 
