@@ -1380,6 +1380,12 @@ export default defineAgent({
         report.recordCallStage(snap.final_stage, snap.stage_history);
       }
 
+      // WHAT SHE ENDED UP KNOWING, AND WHAT IT COST. The 2026-09-02 call reached the point of
+      // proposing a time with the discovery gate still shut, and the only way to see which of the
+      // five answers she was actually missing was to read the transcript. `asks` beside `held` is
+      // the pair that says it in one line. See FactMemory.reportSnapshot.
+      if (agent.factMemory) report.recordFacts(agent.factMemory.reportSnapshot());
+
       // STDOUT, not just a file. In LiveKit Cloud the container's filesystem is ephemeral and
       // unreachable — `call-reports/*.json` is written into a box nobody can open. The first cloud
       // call proved it: the agent dutifully logged "call_report_written call-reports/...json" for a

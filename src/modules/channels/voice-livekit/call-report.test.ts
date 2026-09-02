@@ -513,3 +513,45 @@ describe('CallReport — reading a call back', () => {
     expect(newReport().toJson().summary.callStage).toEqual({ final: null, history: [] });
   });
 });
+
+/**
+ * WHAT SHE KNEW, AND WHAT IT COST.
+ *
+ * The 2026-09-02 call reached the point of proposing a time with the discovery gate still shut,
+ * and the only way to see WHICH of the five answers she was missing was to read 45 transcript
+ * lines. `asks` beside `held` says it in one line.
+ */
+describe('CallReport facts', () => {
+  it('is null on a call that ran without fact memory, not an empty object', () => {
+    // Absent and empty are different findings: one call had no memory, the other learned nothing.
+    expect(newReport().toJson().summary.facts).toBeNull();
+  });
+
+  it('reports what she held against what she asked for', () => {
+    const report = newReport();
+    report.recordFacts({
+      held: { name: true, business: 'משלוחים', volume: 'שש-שבע ביום' },
+      answered: ['business', 'volume'],
+      asks: { business: 1, process: 4, volume: 1 },
+    });
+    const f = report.toJson().summary.facts!;
+    // The identity field is a shape, the discovery fields are values — `volume` verbatim is the
+    // signal, and a third copy of his name is a third place to erase on a deletion request.
+    expect(f.held.name).toBe(true);
+    expect(f.held.volume).toBe('שש-שבע ביום');
+    // Asked four times, still not held: the caller heard that question four times and never
+    // answered it. That pair is the defect the ask memory exists to end.
+    expect(f.asks.process).toBe(4);
+    expect(f.held.process).toBeUndefined();
+  });
+
+  it('copies the snapshot rather than aliasing it', () => {
+    // The report outlives the call and is written on every turn; sharing the memory's own objects
+    // would let a later turn rewrite a reading already flushed to disk.
+    const snap = { held: { business: 'א' } as Record<string, string | true>, answered: [], asks: {} };
+    const report = newReport();
+    report.recordFacts(snap);
+    snap.held.business = 'ב';
+    expect(report.toJson().summary.facts!.held.business).toBe('א');
+  });
+});

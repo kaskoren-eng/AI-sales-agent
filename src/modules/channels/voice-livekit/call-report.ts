@@ -446,6 +446,18 @@ export interface CallReportJson {
      */
     callStage: { final: string | null; history: Array<{ stage: string; atMs: number }> };
     /**
+     * The five mandatory answers she ended up holding, and how many times she asked for each.
+     *
+     * `null` on a call that ran without fact memory. Identity fields report `true` rather than a
+     * value; the discovery fields carry theirs. Read `asks` next to `held` — the pair says what
+     * the call cost, where either alone says only where it finished.
+     */
+    facts: {
+      held: Record<string, string | true>;
+      answered: string[];
+      asks: Record<string, number>;
+    } | null;
+    /**
      * Bracketed tokens deleted because they were not an approved pause length.
      *
      * MUST BE ZERO. Non-zero does not mean a caller heard a tag — the net is inside the guard,
@@ -813,6 +825,36 @@ export class CallReport {
    */
   recordCoachNote(bytes: number): void {
     this.#coachNoteBytes.push(bytes);
+  }
+
+  #facts: {
+    held: Record<string, string | true>;
+    answered: string[];
+    asks: Record<string, number>;
+  } | null = null;
+
+  /**
+   * What she ended the call actually knowing, and what it cost her to learn it.
+   *
+   * Read once at shutdown from `FactMemory.reportSnapshot()`. `held` carries values for the five
+   * discovery answers and a bare `true` for the identity fields — the values there are already in
+   * `leads` and in the transcript, and a third copy is a third place to erase on a deletion
+   * request, while for `volume` the value IS the signal.
+   *
+   * READ `asks` AGAINST `held`, because that pair is the whole point. A field she asked for four
+   * times and does not hold is a question the caller heard four times and never answered, which
+   * is the defect the ask-memory exists to end. A field held after one ask is the system working.
+   */
+  recordFacts(snapshot: {
+    held: Record<string, string | true>;
+    answered: string[];
+    asks: Record<string, number>;
+  }): void {
+    this.#facts = {
+      held: { ...snapshot.held },
+      answered: [...snapshot.answered],
+      asks: { ...snapshot.asks },
+    };
   }
 
   #callStage: string | null = null;
@@ -1273,6 +1315,7 @@ export class CallReport {
           samples: [...this.#pauseSamples],
         },
         callStage: { final: this.#callStage, history: [...this.#callStageHistory] },
+        facts: this.#facts ? { ...this.#facts } : null,
         pauseTagsDropped: this.#pauseTagsDropped,
         gateAViolations: this.#gateAViolations,
         gateAOpen: this.#gateAOpen,
