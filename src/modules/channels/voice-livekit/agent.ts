@@ -212,6 +212,8 @@ class ClickScalesAgent extends voice.Agent {
   onGateAViolation: ((spoken: string) => void) | null = null;
 
   /** One sentence carried this many approved `<break>` pauses. See voice-mode.ts. */
+  /** When the first audio frame of a reply left the TTS node, on the CALLER'S clock. */
+  onFirstAudioFrame: ((ms: number) => void) | null = null;
   onPauses: ((count: number, spoken: string) => void) | null = null;
 
   /**
@@ -866,6 +868,7 @@ class ClickScalesAgent extends voice.Agent {
     return timeFirstAudioFrame(
       synthesized as unknown as ReadableStream<AudioFrame>,
       () => this.msSinceUserStopped?.() ?? null,
+      (ms) => this.onFirstAudioFrame?.(ms),
     ) as unknown as NonNullable<Awaited<ReturnType<voice.Agent['ttsNode']>>>;
   }
 }
@@ -879,6 +882,7 @@ class ClickScalesAgent extends voice.Agent {
 function timeFirstAudioFrame(
   frames: ReadableStream<AudioFrame>,
   waited: () => number | null,
+  onFirstFrame?: (ms: number) => void,
 ): ReadableStream<AudioFrame> {
   // EAGER, and that is the entire point. The first version used `pull`, which only advances when
   // the CONSUMER asks — so it timed when LiveKit played the frame, not when Cartesia produced it,
@@ -897,7 +901,14 @@ function timeFirstAudioFrame(
           if (done) break;
           if (!seen) {
             seen = true;
-            console.log(`latency first_audio_frame sinceCallerStopped=${waited() ?? -1}`);
+            const ms = waited() ?? -1;
+            console.log(`latency first_audio_frame sinceCallerStopped=${ms}`);
+            // AND INTO THE REPORT, not only the log. This number has been computed on every turn
+            // since it was written and has never left stdout — so the one question it exists to
+            // answer ("is the audio late, or is it early and something downstream sits on it?")
+            // could not be asked of any past call. Fourth instance in this module of a measurement
+            // that was built and never wired to the report.
+            onFirstFrame?.(ms);
           }
           controller.enqueue(value as AudioFrame);
         }
@@ -1843,6 +1854,11 @@ export default defineAgent({
     // The register each step was spoken in, and the marker that should never have got this far.
     // `modeMarkerLeaks` must read zero: non-zero does not mean a caller heard brackets, it means
     // only the last net stopped them, which is one failure away from audible.
+    // THE NUMBER THAT DECIDES THE INSTANT-ACK QUESTION, and it used to exist only in stdout.
+    // Paired against `model_ttft` and `dead_air` in the same report it finally settles where the
+    // caller's silence goes: a first frame close to dead air means the audio was produced late,
+    // and one far below it means the audio was ready and something downstream held it.
+    agent.onFirstAudioFrame = (ms) => report.recordMetric('first_audio_frame', { durationMs: ms });
     agent.onPauses = (count, spoken) => report.recordPauses(count, spoken);
     agent.onPauseTagDropped = (count) => report.recordPauseTagDropped(count);
     agent.onBracketTagDropped = (count) => report.recordBracketTagDropped(count);
