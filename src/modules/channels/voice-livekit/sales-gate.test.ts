@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { buildSystemPrompt } from './prompts/system-prompt.he.js';
 import { describesProduct, SalesGate } from './sales-gate.js';
@@ -237,5 +239,42 @@ describe('call direction', () => {
     expect(unknown).toContain('{{call_direction}}');
     expect(inbound).not.toContain('{{call_direction}}');
     expect(outbound).not.toContain('{{call_direction}}');
+  });
+});
+
+/**
+ * THE GATE SHIPPED WITHOUT ITS COUNTER, AND RAN A DAY IN PRODUCTION UNMEASURED.
+ *
+ * `observeAgentSpeech` and `gateAViolations` were both written on 2026-09-01, in the same commit
+ * as the gate, and neither was wired: the method had no call site and the report had no field. The
+ * gate deployed that afternoon and every call it handled produced exactly the same evidence as a
+ * gate that was doing nothing.
+ *
+ * A unit test of `observeAgentSpeech` passes in that world — it did pass, six of them. What no
+ * unit test could see is that nobody calls it. So this reads the source, the way
+ * `metering-coverage.test.ts` reads every `insert(leads)` site for the same reason: some defects
+ * are about absence, and absence is invisible from inside the module.
+ */
+describe('the gate is actually wired', () => {
+  const read = (rel: string) =>
+    readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
+
+  it('has a call site for observeAgentSpeech outside its own module', () => {
+    expect(read('./agent.ts')).toContain('salesGate.observeAgentSpeech(');
+  });
+
+  it('reports the violation count, so the rule is falsifiable', () => {
+    const agent = read('./agent.ts');
+    const report = read('./call-report.ts');
+    expect(agent).toContain('report.recordGateAViolation()');
+    expect(report).toContain('gateAViolations: number');
+    expect(report).toContain('gateAViolations: this.#gateAViolations');
+  });
+
+  it('records whether the gate ever opened, which is what makes a zero readable', () => {
+    // gateAViolations: 0 means "she held the line" on a call whose gate opened, and means nothing
+    // at all on a call that never reached a pitch. Without this field the two are the same number.
+    expect(read('./agent.ts')).toContain('report.recordGateAOpen(');
+    expect(read('./call-report.ts')).toContain('gateAOpen: boolean');
   });
 });

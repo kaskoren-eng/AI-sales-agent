@@ -203,6 +203,9 @@ class ClickScalesAgent extends voice.Agent {
   /** A sentence she had already said on this call, suppressed. See repeat-guard.ts. */
   onRepeatedSentenceDropped: ((spoken: string) => void) | null = null;
 
+  /** She described the product before Gate A opened. Counted, never blocked — see sales-gate.ts. */
+  onGateAViolation: ((spoken: string) => void) | null = null;
+
   /** An unbacked "let us stop here", rewritten into the confirmation question. */
   onStopAnnouncementRewritten: ((spoken: string) => void) | null = null;
 
@@ -1339,6 +1342,11 @@ export default defineAgent({
       // ignored — that's an audit finding, not a formality.
       report.resolveAiDisclosure(hasAiDisclosure);
 
+      // Whether the discovery gate ever opened. Read next to gateAViolations: violations with a
+      // shut gate is the defect the gate exists to catch; zero violations with a shut gate is a
+      // call she held the line on and probably one that never got far enough to pitch.
+      if (agent.salesGate) report.recordGateAOpen(agent.salesGate.isOpen);
+
       // STDOUT, not just a file. In LiveKit Cloud the container's filesystem is ephemeral and
       // unreachable — `call-reports/*.json` is written into a box nobody can open. The first cloud
       // call proved it: the agent dutifully logged "call_report_written call-reports/...json" for a
@@ -1534,6 +1542,17 @@ export default defineAgent({
         if (item.textContent) agent.nameDictation?.observeAgentUtterance(item.textContent);
         // Spoken register: is she actually reaching for an everyday word, or only being told to?
         if (item.textContent) agent.registerTracker?.observe(item.textContent);
+        // GATE A, THE HALF THAT WAS MISSING. `observeAgentSpeech` was written on 2026-09-01 with
+        // the gate and never called, so the gate shipped to production with no way to tell whether
+        // it held — the exact failure its own header warns about. Fed from the COMMITTED item, as
+        // the method's doc requires: a sentence the preemptive path generated and threw away was
+        // never heard by anybody, and counting it would inflate the metric in the one direction
+        // that makes it useless.
+        if (item.textContent && agent.salesGate) {
+          const before = agent.salesGate.violations;
+          agent.salesGate.observeAgentSpeech(item.textContent);
+          if (agent.salesGate.violations > before) agent.onGateAViolation?.(item.textContent);
+        }
         // Closes the caller's turn for the engagement window: everything he says before her NEXT
         // reply is one turn, however many items Soniox splits it into. See engagement.ts.
         agent.engagementTracker?.observeAgentTurn();
@@ -1709,6 +1728,11 @@ export default defineAgent({
     agent.onRepeatedSentenceDropped = () => report.recordRepeatedSentenceDropped();
     agent.onStopAnnouncementRewritten = () => report.recordStopAnnouncementRewritten();
     agent.onProductClaimSlangRewritten = () => report.recordProductClaimSlangRewritten();
+
+    // Gate A does not block anything — a guard that silenced a product sentence would leave the
+    // caller listening to a gap. So this counter IS the enforcement's only evidence, and until
+    // 2026-09-02 it did not exist: the gate ran a day in production unmeasured.
+    agent.onGateAViolation = () => report.recordGateAViolation();
 
     // The model's REAL first-token time. The SDK's own ttft now measures our acknowledgement, so
     // without this the ~840ms GPT actually takes would simply disappear from the report and every

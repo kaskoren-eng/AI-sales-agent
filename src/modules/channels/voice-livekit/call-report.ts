@@ -391,6 +391,22 @@ export interface CallReportJson {
      */
     selfNarrationDropped: number;
     /**
+     * How many times she described the product before Gate A had opened.
+     *
+     * The falsifiability half of the sales model, and it shipped a day late: `sales-gate.ts` was
+     * deployed on 2026-09-01 with `observeAgentSpeech` defined and never called, so the gate ran
+     * a full day in production with no way to tell whether it was working. Its own header warns
+     * about exactly this failure — three metrics in this repo have already stayed green through
+     * the defect they existed to catch.
+     *
+     * Non-zero means she pitched before she knew his business, his current process and his pain.
+     * Zero on a call where `gateAOpen` is false means she held the line; zero on a call that never
+     * had the flag on means nothing at all.
+     */
+    gateAViolations: number;
+    /** Whether all three discovery facts were established by the end of the call. */
+    gateAOpen: boolean;
+    /**
      * Share of her replies carrying one of the eight screened everyday words — the Spoken Register
      * quota, measured instead of assumed.
      *
@@ -694,6 +710,19 @@ export class CallReport {
   /** One sentence was dropped for being the second question in the same reply. */
   recordSecondQuestionDropped(): void {
     this.#secondQuestionsDropped++;
+  }
+
+  #gateAViolations = 0;
+  #gateAOpen = false;
+
+  /** One sentence described the product while the discovery gate was still shut. */
+  recordGateAViolation(): void {
+    this.#gateAViolations++;
+  }
+
+  /** The gate's final state, read once at shutdown — not a counter. */
+  recordGateAOpen(open: boolean): void {
+    this.#gateAOpen = open;
   }
 
   #selfNarrationDropped = 0;
@@ -1061,6 +1090,8 @@ export class CallReport {
         endCallRefusalReasons: [...this.#endCallRefusalReasons],
         secondQuestionsDropped: this.#secondQuestionsDropped,
         selfNarrationDropped: this.#selfNarrationDropped,
+        gateAViolations: this.#gateAViolations,
+        gateAOpen: this.#gateAOpen,
         restartedReplies,
         repeatedSentencesDropped: this.#repeatedSentencesDropped,
         stopAnnouncementsRewritten: this.#stopAnnouncementsRewritten,
