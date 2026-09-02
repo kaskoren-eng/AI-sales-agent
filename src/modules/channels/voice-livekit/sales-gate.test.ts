@@ -117,6 +117,17 @@ describe('the sales model in the prompt', () => {
     expect(on).toContain('Say what happens to HIM');
   });
 
+  it('makes her earn the price question before she answers it', () => {
+    // Koren, 2026-09-02, after hearing her dodge it on a live call: *"the price needs to come
+    // after a short question on the business of the client and to be interested a little bit on
+    // what is the amount of leads or how his business really works. And then she can talk about
+    // the prices shortly."* The old rule was a two-ASK ladder — make him ask twice before he gets
+    // a number — and that is not what he described. One question, then the answer.
+    expect(on).toContain('When he asks the price');
+    expect(on).toContain('ask one short question about his business first');
+    expect(off).not.toContain('When he asks the price');
+  });
+
   it('asks the two questions Koren added and owns', () => {
     expect(on).toContain('איך עובד אצלך תהליך המכירה');
     expect(on).toContain('כמה פניות חדשות ביום אתה מקבל בממוצע?');
@@ -187,8 +198,10 @@ describe('the sales model in the prompt', () => {
   });
 
   it('stays inside the +5% token budget, because every token is latency on every turn', () => {
-    // +4.97% as of 2026-09-02 (the advantage-weaving rule). This is now AT the wall: the next
-    // addition must be paid for by a deletion. The ceiling is not decoration: the prompt is re-sent
+    // +4.98% as of 2026-09-02. AT the wall, and the price rule that landed last was paid for by
+    // compressing the gate's own justification rather than by raising this number — which is the
+    // discipline working: the sentence it deleted was explaining a rule the rule already states.
+    // The ceiling is not decoration: the prompt is re-sent
     // on every turn, so a section that grows costs the caller silence on every reply for the
     // life of the call. If this fails, the fix is to delete something — Phase 7 W7 names the
     // candidates — not to raise the number.

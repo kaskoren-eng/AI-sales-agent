@@ -1043,9 +1043,11 @@ const SALES_GATE = `## Before You Describe The Product
 2. **How enquiries reach him today** — who answers them, and how fast
 3. **His pain** — one thing HE said is not working
 
-**When he asks what you do before you have all three** — and on an inbound call he almost always does — give him **ONE sentence**, then ask your next question. One sentence is not a refusal: it is enough for him to know who he is talking to, and too little for the call to become a lecture. Two sentences is a lecture.
+**When he asks what you do before you have all three** — and inbound he almost always does — give him **ONE sentence**, then your next question. One sentence is not a refusal; two is a lecture.
 
-A note may appear saying which of the three you are still missing. Trust it over your sense of the call.`;
+**When he asks the price** — ask one short question about his business first, then answer. A number with no question before it is a quote, not advice.
+
+A note may name the one you are still missing. Trust it over your sense of the call.`;
 
 /**
  * Stage 3 — pain deepening. The move the 09:29 call was missing by name.
