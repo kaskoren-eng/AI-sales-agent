@@ -230,7 +230,14 @@ function ttsCandidates(env: Env): TtsCandidate[] {
   {
     // NEW since our notes were written: known-issues §2 says "there is no sonic-4", which is true —
     // but sonic-3.5 has appeared.
-    name: 'cartesia/sonic-3.5',
+    //
+    // THE NAME MUST SAY `(via inference)`. It did not until 2026-09-02, and on that run the table
+    // showed `cartesia/sonic-3.5` at 334ms and `cartesia/sonic-3.5 (direct)` at 1239ms — the same
+    // provider and the same model, 3.7x apart, with nothing on either row to say they came down
+    // different wires. A reader reasonably concluded the LIVE baseline was broken, and the LIVE
+    // baseline is what every other row's delta is measured against. The gap is the LiveKit
+    // gateway hop (see the ⚠ block at the top); the rows were never comparable.
+    name: 'cartesia/sonic-3.5 (via inference)',
     build: (env) =>
       new inference.TTS({
         model: 'cartesia/sonic-3.5',

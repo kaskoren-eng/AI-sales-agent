@@ -261,6 +261,10 @@ const envSchema = z.object({
   // The REALTIME model is the point — it is the ~125ms path. Keep realtime on; the streaming socket
   // (asyncStreamText -> asyncStreamRecvAudio) is what delivers first audio fast.
   DEEPDUB_MODEL: z.string().default('dd-etts-3.2'),
+  // MEASURED 2026-09-02 on `bench:tts`: realtime on 590ms, off 894ms — the flag is worth 304ms of
+  // first audio. It defaults on, so nothing is broken; recorded here because this is a
+  // latency-CRITICAL default and not a preference, and turning it off to try something costs a
+  // third of the TTS budget.
   DEEPDUB_REALTIME: envBool(true),
   DEEPDUB_LOCALE: z.string().default('he-IL'),
   // EU endpoint: the agent deploys to eu-central, so the EU region is both correct and lower-latency.

@@ -12,6 +12,7 @@ import {
   parseEngineFlags,
   reframe,
 } from './tts-engine.js';
+import type { EngineOverride } from './tts-engine.js';
 import type { PipelineSnapshot } from '../pipeline-observer.js';
 import type { Env } from '../../../../config/env.js';
 
@@ -245,5 +246,38 @@ describe('no tool in testing/ may build its own Cartesia', () => {
     expect(src).toMatch(/import \{ buildTTS \} from '\.\.\/agent\.config\.js'/u);
     // A re-implemented provider switch here is the drift this file exists to prevent.
     expect(src).not.toMatch(/new DeepdubTTS/u);
+  });
+});
+
+describe('engineEnv — unknown override keys', () => {
+  // Regression for 2026-09-02: a verification script wrote `{ engine: 'deepdub' }` instead of
+  // `{ provider: 'deepdub' }`. tsx strips types without checking them, so the key vanished, both
+  // arms ran on Cartesia, and the run read as a successful two-engine comparison. The audio looks
+  // and sounds fine when this happens — which is exactly why it must throw.
+  it('throws on a key EngineOverride does not have, rather than dropping it', () => {
+    const env = baseEnv;
+    expect(() => engineEnv(env, { engine: 'deepdub' } as unknown as EngineOverride)).toThrow(
+      /unknown key\(s\): engine/,
+    );
+  });
+
+  it('names the valid keys, so the typo is fixable from the message alone', () => {
+    const env = baseEnv;
+    expect(() => engineEnv(env, { modle: 'sonic-3.5' } as unknown as EngineOverride)).toThrow(
+      /provider, model, voice, route, env/,
+    );
+  });
+
+  it('still accepts every key the type declares', () => {
+    const env = baseEnv;
+    expect(() =>
+      engineEnv(env, {
+        provider: 'deepdub',
+        model: 'dd-etts-3.2',
+        voice: 'vp',
+        route: 'cartesia',
+        env: { DEEPDUB_REALTIME: false },
+      }),
+    ).not.toThrow();
   });
 });

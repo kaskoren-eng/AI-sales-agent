@@ -100,8 +100,37 @@ function slugify(s: string): string {
  * so overriding the env is the only way to reach it that cannot fall out of step with what the
  * agent does on a real call.
  */
+/** The only keys `EngineOverride` has. Kept beside the type so adding a field breaks the check. */
+const OVERRIDE_KEYS: ReadonlyArray<keyof EngineOverride> = ['provider', 'model', 'voice', 'route', 'env'];
+
+/**
+ * Reject a key `EngineOverride` does not have, at RUNTIME.
+ *
+ * TypeScript already rejects an excess property — but every probe in `tests/hebrew-tts-niqqud-ab/`
+ * and every bench arm runs under `tsx`, which STRIPS types without checking them. On 2026-09-02 a
+ * verification script passed `{ engine: 'deepdub' }` where the field is `provider`; the key was
+ * silently dropped, both arms ran on Cartesia, and the output was two rows that looked like a
+ * successful two-engine comparison. It was caught only because a reader noticed the DeepDub row
+ * claimed Cartesia's model. Nothing about a silent drop is visible in the audio, and the clip is
+ * what gets judged — so a typo here must be an error, not a default.
+ */
+function assertKnownOverrideKeys(override: EngineOverride): void {
+  const unknown = Object.keys(override).filter(
+    (k) => !(OVERRIDE_KEYS as readonly string[]).includes(k),
+  );
+  if (unknown.length > 0) {
+    throw new Error(
+      `EngineOverride got unknown key(s): ${unknown.join(', ')}. ` +
+        `Valid keys are ${OVERRIDE_KEYS.join(', ')}. ` +
+        `(Did you mean 'provider'? Under tsx a wrong key is dropped silently and every arm runs ` +
+        `on the configured engine, which looks like a successful comparison and is not one.)`,
+    );
+  }
+}
+
 export function engineEnv(env: Env, override?: EngineOverride): Env {
   if (!override) return env;
+  assertKnownOverrideKeys(override);
   const provider = override.provider ?? env.VOICE_TTS_PROVIDER;
   let next: Env = { ...env, VOICE_TTS_PROVIDER: provider };
   if (override.route) next = { ...next, VOICE_TTS_ROUTE: override.route };
