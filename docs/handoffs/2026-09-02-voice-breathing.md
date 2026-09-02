@@ -266,3 +266,30 @@ before an instance. Note: **round/probe 26 is taken** (probe26_laughter_deepdub.
 **next free: 27.** Also on main since: the harness follows VOICE_TTS_PROVIDER (`f963c61`),
 synth.py has a dd backend via tts_worker.ts (`5cd1aa9`). bench:tts on f963c61 verified by 3d
 (dd realtime 590ms · cartesia LIVE direct 1239ms — matches this session's 1236ms bench).
+
+## CLOUD VERIFICATION CALL — DONE (17:43 local, Koren's own call, 328s)
+
+Window opened on Koren's direct word ("פתח לי את החלון של השיחה", 17:16, this session; confirmed
+by him in 63's window — the relay rule held, cost ~4 minutes, worked as designed). 63 flipped the
+secret (single-owner protocol intact); this session pulled the report from `lk agent logs`
+(archived: `call-reports/2026-09-02T14-43-16.172Z-cloud.json`).
+
+**The flip verifiably took:** config.ttsModel `deepdub/dd-etts-3.2`, ttsLabel `deepdub.TTS`
+(correct even on the deployed d7920ad build — only the configured-keys block still prints
+CARTESIA_MODEL beside it, the known cosmetic).
+
+**THE number: cloud TTS TTFB median 283ms** vs Cartesia production baseline 223-259ms — parity
+(+24-60ms). The local 403-466ms was laptop RTT, as predicted. Latency is NOT a cost of the flip;
+checklist item 5 CLOSED.
+
+Full funnel on the first real DeepDub call: 20 turns, opening→…→closing→terminal, book_meeting +
+send_whatsapp_confirmation + end_call all fired — a booking end-to-end. 0 cutOffs, 0 leaks,
+0 false claims, prompt cache 94%. EOU 351ms · LLM TTFT 1054ms · worst 1688ms · deadAir median
+644ms (p90 tail = the 5485ms booking gap, 3295ms of it tool time, engine-agnostic).
+repeatedPhrase 8 / repeatedOpener 4 — phrase-ledger-era code not on the deployed build.
+
+**Koren's ear: "נשמע שיפור משמעותי."** Keep-or-revert put to him in-chat; 63 executes his word.
+Laughter/persona explicitly PARKED by Koren ("תתמקד כרגע בנשימות"); his ear also overruled
+probe26 — written "חחח" did NOT sound like a real laugh to him on the test ("דיפדאב לא מתרגם
+חחח לצחוק אמיתי"), measurement and listener disagree, recorded here so the probe never stands
+alone. Also his verdict: "הא, הא" is a BAD laugh.
