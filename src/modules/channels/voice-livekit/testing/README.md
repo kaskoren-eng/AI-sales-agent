@@ -11,6 +11,32 @@ one **cannot** prove before you quote it.
 | 4 · A/B, N variants | `npm run voice:ab:call -- <variants.json>` | N calls | ~75s per variant | A vs B, same script, side by side, with proof each variant ran |
 | 5 · **talk to it yourself** | `npm run voice:session` | 1 call, as long as you talk | seconds to start | everything a script cannot: does it *feel* right, does it interrupt you, can you get a word in |
 
+## Before you run any of them: which question is this, and can the instrument see it?
+
+Twice in one week a measurement here survived its own arithmetic and died on Koren's ear, and both
+times the instrument was working correctly — it simply could not see the thing that mattered.
+
+- **Round 15.** The Soniox round-trip returned the identical string for all five `נוח` candidates.
+  Not a failure: Hebrew is written without vowels, so `נוֹחַ` and `נַח` ARE the same three letters.
+  The transcriber cannot see a difference a listener hears in the first syllable.
+- **Round 16.** The duration table said speed 0.78 buys +13.7% over 0.90, and it does. Koren could
+  not tell them apart, and on the transition card chose the clip with no rate change at all. The
+  table measured a real thing that turned out not to be the thing that decides.
+
+So state, before the round is built: **what can this instrument answer, and what can only he?**
+
+| The question is about… | The instrument | What it cannot do |
+|---|---|---|
+| a WORD coming out wrong | Soniox round-trip (`roundtripNN.ts`) | see anything Hebrew spelling does not encode — vowels, gender on ל"ה verbs, stress |
+| a TAG being read aloud instead of honoured | the same round-trip | say whether the resulting silence sounds like a beat or a dropout |
+| a PAUSE existing at all | `pause_probe.py`, clip duration | say whether it is the right length, or in the right place |
+| a DELIVERY sounding human | **his ear, on a listening page** | be replaced by any of the above |
+
+And one arithmetic rule that comes out of the same week: **a single clip is not evidence of a
+duration.** Cartesia's take-to-take variation on one Hebrew sentence is ~1.1×, so a lone clip that
+looks 8% faster is inside the noise. Four takes and a median, or do not quote the number
+(`phase-4-known-issues.md` §9 has the tables).
+
 Nothing here needs a deploy and nothing here places a phone call.
 
 ---

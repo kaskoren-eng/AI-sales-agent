@@ -423,3 +423,36 @@ describe('CallReport speech pace', () => {
     expect(report.toJson().summary.speechPace.samples).toBe(0);
   });
 });
+
+/**
+ * WHAT THE ADVICE COSTS. "Outside the ±5% system-prompt ceiling" is not "free" — it is unmeasured,
+ * and the note grows as a call goes on because every tracker appends to it.
+ */
+describe('CallReport coach note', () => {
+  it('is empty on a call that never injected one', () => {
+    expect(newReport().toJson().summary.coachNote).toEqual({
+      turns: 0,
+      medianBytes: null,
+      maxBytes: null,
+      growth: null,
+    });
+  });
+
+  it('reports the median, the worst turn, and how much it grew across the call', () => {
+    const report = newReport();
+    for (const b of [100, 200, 400]) report.recordCoachNote(b);
+    const note = report.toJson().summary.coachNote;
+    expect(note.turns).toBe(3);
+    expect(note.medianBytes).toBe(200);
+    expect(note.maxBytes).toBe(400);
+    // Growth is last/first, not max/min: the question is whether the note is compounding over the
+    // call, not whether one turn happened to be heavy.
+    expect(note.growth).toBe(4);
+  });
+
+  it('reports no growth from a single turn rather than inventing one', () => {
+    const report = newReport();
+    report.recordCoachNote(120);
+    expect(report.toJson().summary.coachNote.growth).toBeNull();
+  });
+});

@@ -495,6 +495,20 @@ export interface CallReportJson {
      * Cancelled syntheses are excluded — a preemptive draft the caller never heard is not pace.
      * `audioDurationMs` (audio produced), never `durationMs` (synthesis wall time).
      */
+    /**
+     * What the per-turn coach note costs, in UTF-8 bytes.
+     *
+     * `growth` is last/first: the note is cumulative by design — every tracker appends to it — so
+     * a call whose last note is several times its first is a call paying more for advice on every
+     * turn than it did at the start. Read `max` against the system prompt's own size (~55KB) to
+     * see whether it has become a material share of the prompt or is still noise.
+     */
+    coachNote: {
+      turns: number;
+      medianBytes: number | null;
+      maxBytes: number | null;
+      growth: number | null;
+    };
     speechPace: {
       samples: number;
       medianMsPerChar: number | null;
@@ -758,6 +772,21 @@ export class CallReport {
   /** One sentence was dropped for being the second question in the same reply. */
   recordSecondQuestionDropped(): void {
     this.#secondQuestionsDropped++;
+  }
+
+  #coachNoteBytes: number[] = [];
+
+  /**
+   * The size of one coach note, in UTF-8 bytes, as it was injected.
+   *
+   * "Outside the ±5% system-prompt ceiling" is not "free" — it is unmeasured. The note is a tail
+   * system item, so it never moves the cache prefix, but it IS re-sent on every turn like
+   * everything else, and it GROWS: fact memory, the phrase ledger, the gate and the engagement
+   * tracker each add lines as a call goes on. Nobody has ever counted what turn 30 of a long call
+   * is carrying. This is that count, so the question becomes a decision instead of a shrug.
+   */
+  recordCoachNote(bytes: number): void {
+    this.#coachNoteBytes.push(bytes);
   }
 
   #voiceModeTurns: Record<string, number> = { confident: 0, hesitant: 0, empathetic: 0 };
@@ -1084,6 +1113,17 @@ export class CallReport {
     const totalCached = this.#metrics.reduce((n, m) => n + (m.promptCachedTokens ?? 0), 0);
     const promptCacheHitPct = totalIn > 0 ? Math.round((totalCached / totalIn) * 100) : null;
 
+    const noteBytes = this.#coachNoteBytes;
+    const coachNote = {
+      turns: noteBytes.length,
+      medianBytes: noteBytes.length > 0 ? Math.round(median(noteBytes) ?? 0) : null,
+      maxBytes: noteBytes.length > 0 ? Math.max(...noteBytes) : null,
+      growth:
+        noteBytes.length > 1 && noteBytes[0]! > 0
+          ? Math.round((noteBytes[noteBytes.length - 1]! / noteBytes[0]!) * 100) / 100
+          : null,
+    };
+
     // SPEECH PACE — see `speechPace` in the summary type for why this exists at all.
     // A synthesis with no characters or no audio is not a sample; a cancelled one is a sample of
     // something nobody heard. Both are excluded rather than counted as zero.
@@ -1208,6 +1248,7 @@ export class CallReport {
                 (agentLines.filter((line) => hasRegisterTouch(line)).length / agentLines.length) * 100,
               ),
         promptCacheHitPct,
+        coachNote,
         speechPace,
         draftsDiscarded,
         // try/catch, because a counter must never be the reason a call's record is lost — the
