@@ -1172,7 +1172,9 @@ export default defineAgent({
     // state machine, and shared with the tool runtime for the same reason: capture_lead_info is
     // where a name gets set, and this is what decides whether an offered name may REPLACE one the
     // lead already gave. `undefined` runs the pre-fact-memory behaviour exactly. See fact-memory.ts.
-    const factMemory = env.VOICE_FACT_MEMORY_ENABLED ? new FactMemory() : undefined;
+    const factMemory = env.VOICE_FACT_MEMORY_ENABLED
+      ? new FactMemory({ intentAsks: env.VOICE_ASK_INTENT_ENABLED })
+      : undefined;
 
     // THE EMAIL HE IS SPELLING (VOICE_EMAIL_DICTATION_ENABLED). One per call, attached to the agent
     // below once it exists. It holds the letters across the turns the endpointer shreds his answer
@@ -1600,6 +1602,13 @@ export default defineAgent({
         // NAME DICTATION: the same two jobs for a Hebrew name — stitch the letters he is spelling
         // across the turns the endpointer cuts it into, and catch the moment he says the name she
         // read back is wrong. See name-dictation.ts.
+        // CALL MEMORY, THE OTHER HALF: did his turn ANSWER the question she just asked?
+        //
+        // Without this the ask counter cannot tell a re-ask from a follow-up, and the difference is
+        // the whole complaint. On 2026-09-01 at 343s she asked "וכמה מהר אתם חוזרים בדרך כלל?" four
+        // seconds after he answered — that is her going deeper, which is the behaviour Koren wants
+        // more of, and it must not be counted against her. See fact-memory.ts ASK_INTENTS point 3.
+        if (item.textContent) agent.factMemory?.observeCallerUtterance(item.textContent);
         if (item.textContent && agent.nameDictation) {
           const wrongName = agent.nameDictation.observeCallerUtterance(item.textContent);
           if (wrongName) {

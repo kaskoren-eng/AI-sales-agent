@@ -500,6 +500,16 @@ const envSchema = z.object({
   // correction from the lead. Default ON. Set false to restore the 2026-08-29 behaviour, where a
   // garbled turn ("טל, אוזן") could rename a lead who had already introduced himself.
   VOICE_FACT_MEMORY_ENABLED: envBool(true),
+  // Kill-switch for counting her discovery questions BY INTENT rather than by literal phrasing
+  // (fact-memory.ts, 2026-09-02). On the 14:56 call of 2026-09-01 she asked what his business is
+  // five times and the counter saw three, and she asked who answers his enquiries four times and
+  // the counter saw zero — there was no such field. ON: the four remaining mandatory discovery
+  // questions (process / frustration / closing / volume) get an ask memory, her improvised
+  // phrasings are matched by keyword co-occurrence over QUESTION SENTENCES ONLY, and a question
+  // asked after the lead has actually answered is treated as going deeper rather than as a
+  // re-ask. Default ON: OFF is the state that produced the defect, and OFF restores it exactly.
+  // Inert when VOICE_FACT_MEMORY_ENABLED is false (there is no memory to count into).
+  VOICE_ASK_INTENT_ENABLED: envBool(true),
   // Kill-switch for the spoken-register nudge (register-tracker.ts, 2026-08-30). The Spoken
   // Register section asks for an everyday word every second or third reply; on the 2026-08-29 call
   // it produced two in eight turns and Koren perceived none. ON appends a turn-boundary reminder
