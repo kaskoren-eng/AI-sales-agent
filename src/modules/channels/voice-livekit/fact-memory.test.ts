@@ -289,3 +289,44 @@ describe('FactMemory — a value the lead ruled out', () => {
     expect(m.note()).toBeNull();
   });
 });
+
+describe('reportSnapshot — what survives the call, and what deliberately does not', () => {
+  it('reports identity as SHAPE and discovery as VALUE', () => {
+    const m = new FactMemory();
+    m.establish('name', 'קורן שטרית');
+    m.establish('phone', '0509788845');
+    m.establish('business', 'משלוחים');
+    m.establish('volume', 'בערך חמישה עשר');
+    const snap = m.reportSnapshot();
+    // The name and the number are already in `leads` and in the transcript. A third copy is a
+    // third place to erase them from.
+    expect(snap.held.name).toBe(true);
+    expect(snap.held.phone).toBe(true);
+    // The hedge IS the signal here — "בערך חמישה עשר" is not 15, and losing the hedge loses what
+    // makes reading it back sound like listening.
+    expect(snap.held.business).toBe('משלוחים');
+    expect(snap.held.volume).toBe('בערך חמישה עשר');
+  });
+
+  it('carries the ask counts, so the report says what the facts COST', () => {
+    const m = new FactMemory();
+    m.observeAgentUtterance('במה אתה עוסק?', 1000);
+    m.observeAgentUtterance('אז מה העסק שלךָ עושה בפועל?', 2000);
+    const snap = m.reportSnapshot();
+    expect(snap.asks.business).toBe(2);
+    // A field never asked for does not appear at all — an absent key and a zero mean the same
+    // thing, and the smaller object is the one that survives being read at 3am.
+    expect(snap.asks.email).toBeUndefined();
+  });
+
+  it('held and answered can disagree, and that disagreement is the finding', () => {
+    // He answered out loud; `capture_lead_info` was never called. On the 2026-09-02 10:53 call
+    // that was true for the WHOLE call — 275 seconds, one tool call, and it was the calendar.
+    const m = new FactMemory();
+    m.observeAgentUtterance('במה אתה עוסק?', 1000);
+    m.observeCallerUtterance('יש לי עסק של משלוחים');
+    const snap = m.reportSnapshot();
+    expect(snap.answered).toContain('business');
+    expect(snap.held.business).toBeUndefined();
+  });
+});

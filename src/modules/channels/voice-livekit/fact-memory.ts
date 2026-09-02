@@ -453,6 +453,55 @@ export class FactMemory {
   }
 
   /**
+   * WHAT SHE ENDED THE CALL HOLDING, AND WHAT IT COST HER TO GET IT — for the call report.
+   *
+   * ── Why this exists at all ────────────────────────────────────────────────────────────────
+   *
+   * An audit on 2026-09-02 found six runtime state holders with zero references in
+   * `call-report.ts`: this class among them. Everything it learns is true for the length of one
+   * call and then gone, so the only way to answer "did she ever get his pain?" has been to read
+   * the transcript by hand. On the 2026-09-02 10:53 call that mattered: `capture_lead_info` was
+   * never called once in 275 seconds, so the DB says nothing either, and the answer existed
+   * nowhere but in this object while the process was alive.
+   *
+   * ── Why it is NOT `snapshot()` ────────────────────────────────────────────────────────────
+   *
+   * Two deliberate differences, and both are the point:
+   *
+   * 1. **Identity fields report their SHAPE, not their value.** Whether she ended holding a name,
+   *    a phone and an email is the signal; the values are already in `leads` and in the
+   *    transcript, and a third copy is a third place PII has to be erased from when someone
+   *    exercises a deletion request — `DELETE /calls/:id` already has to reason about what it
+   *    removes. The five DISCOVERY fields keep their values, because there the value IS the
+   *    signal: `volume` is stored verbatim precisely so "בערך חמישה עשר" survives as the hedge he
+   *    said rather than the number we inferred.
+   *
+   * 2. **It carries the ask counts.** "She held business and process, and asked four times for
+   *    pain without getting it" is a sentence the transcript takes ten minutes to produce and
+   *    this answers instantly. Without the counts the snapshot says where she ended up but not
+   *    what it cost, and the cost is the entire subject of the ask-memory work.
+   *
+   * `answered` is read off the CALLER's turns and `held` off `capture_lead_info`, so the two
+   * disagreeing is itself a finding — it means he told her something the model never recorded.
+   */
+  reportSnapshot(): {
+    held: Partial<Record<FactField, string | true>>;
+    answered: FactField[];
+    asks: Partial<Record<FactField, number>>;
+  } {
+    const held: Partial<Record<FactField, string | true>> = {};
+    for (const [field, value] of this.#known) {
+      held[field] = (IDENTITY_FIELDS as readonly FactField[]).includes(field) ? true : value;
+    }
+    const asks: Partial<Record<FactField, number>> = {};
+    for (const field of FACT_FIELDS) {
+      const count = this.asks(field);
+      if (count > 0) asks[field] = count;
+    }
+    return { held, answered: [...this.#answered], asks };
+  }
+
+  /**
    * The lead said this value is WRONG. It may never be saved or spoken again on this call.
    *
    * Fed by `email-dictation.ts`, which is what notices a read-back being contradicted. Kept here
