@@ -293,3 +293,19 @@ Laughter/persona explicitly PARKED by Koren ("תתמקד כרגע בנשימות
 probe26 — written "חחח" did NOT sound like a real laugh to him on the test ("דיפדאב לא מתרגם
 חחח לצחוק אמיתי"), measurement and listener disagree, recorded here so the probe never stands
 alone. Also his verdict: "הא, הא" is a BAD laugh.
+
+## THE DECISION, FINAL (Koren, ~23:40, in 63's window): DEEPDUB STAYS — NO REVERT
+
+"דיפדאב הרבה יותר טוב בהכל מאשר קרטסיה... יותר זורמת, יותר מהירה, ויודע לדבר עברית הרבה יותר
+טוב." The breathing feature this workstream was opened for is now simply what production sounds
+like. 63 is flipping the env default (`VOICE_TTS_PROVIDER` cartesia→deepdub in env.ts /
+.env.example / .env.agent, announced, no objection from this session) so one `--secrets-file`
+REPLACE can't silently undo the decision; missing DEEPDUB_API_KEY now fails loudly by design.
+
+The instrument note worth keeping: he said it feels FASTER while TTS TTFB is +50ms (281 vs 231ms
+over 15 real calls) — the resolution is speaking RATE, 14.8 vs 13.6 chars/sec (~9%). Ear and
+measurement agree once "when she starts" and "how fast she talks" are separated.
+
+Open, 63's lane: DeepDub's real price (unverified — adapter comment, not an invoice); the lost
+0.9 speed lever → one listen on a bad line / older caller. This workstream (breathing) is CLOSED:
+delivered natively by the engine, verified on a real booked call, decision durable in env.
