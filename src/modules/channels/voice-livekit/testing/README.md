@@ -31,6 +31,7 @@ So state, before the round is built: **what can this instrument answer, and what
 | a TAG being read aloud instead of honoured | the same round-trip | say whether the resulting silence sounds like a beat or a dropout |
 | a PAUSE existing at all | `pause_probe.py`, clip duration | say whether it is the right length, or in the right place |
 | a DELIVERY sounding human | **his ear, on a listening page** | be replaced by any of the above |
+| WHEN a sound starts, relative to the model | `call-reports/*.json` — but read the pairing note below | say *why* it starts there; that needs timing inside `ttsNode`, which nobody has built |
 
 And one arithmetic rule that comes out of the same week: **a single clip is not evidence of a
 duration.** Cartesia's take-to-take variation on one Hebrew sentence is ~1.1×, so a lone clip that
@@ -212,6 +213,33 @@ Gate 5 is the only one that is proof rather than inference.
   exactly as any web call does. That was true before this change too; it is not new, but it is real.
 * **First turn of a run is slow.** A freshly started worker's first reply carries cold-start cost
   (Silero, DB probe, first LLM connection). Compare turn 2 onward, or discard turn 1.
+
+### Reading turn timing out of a call report: two ways to answer a different question
+
+Measured 2026-09-02, on the question of whether the instant acknowledgement actually arrives ahead
+of the model. It does not — 391 paired turns across 18 reports put her first audio a median of
+**+668ms AFTER** the first token, with only **7.7%** of turns starting before it. (An independent
+run over 51 reports got +542ms and 15%: different samples, same conclusion.)
+
+Getting there took two wrong pairings, and **both flatter the result** — anyone re-running this
+will reach for the same two shortcuts, so they are written down rather than re-discovered:
+
+1. **`model_ttft.atMs` IS the first-token moment. Do not add `durationMs` to it.** `recordMetric`
+   stamps `atMs = Date.now() - startedAt` at the instant it is called, and `onModelFirstToken`
+   fires when the token arrives; `durationMs` is the retrospective TTFT. Adding them double-counts
+   a whole second. That error alone reports "median −50ms, 52.9% of turns early" — it manufactures
+   the exact effect under test.
+2. **Do not pair on `spokeAtMs >= model_ttft.atMs`.** An early receipt is *by definition* spoken
+   before the first token, so that filter deletes the thing being measured and leaves you
+   describing the turns where nothing happened early.
+
+**Pair on the turn, not on either endpoint.** Anchor each turn at its `eou_metrics` stamp: first
+token = the first `model_ttft` after that EOU, first audio = the first assistant `spokeAtMs` after
+the same EOU, and require both to fall before the NEXT EOU so a turn cannot borrow its neighbour's
+audio. That answers the question asked.
+
+What the report still cannot tell you is **where the time goes** — only that the receipt is not
+early. `ttsNode` is uninstrumented; closing it properly means timing inside it.
 
 ## Files
 

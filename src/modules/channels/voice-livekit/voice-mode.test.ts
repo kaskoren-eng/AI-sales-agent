@@ -166,6 +166,12 @@ describe('the prompt half', () => {
   });
 
   it('costs under 2% of the prompt, which is re-sent on every turn', () => {
+    // ⚠️ THIS MEASURES THE SECTION'S SHARE OF THE PROMPT, NOT THE PROMPT'S SIZE. `on` and `off`
+    // differ only by this section, so the ratio is S / off — which means text added ANYWHERE ELSE
+    // makes `off` bigger and this number go DOWN. The ceiling loosens as the prompt grows, which
+    // is backwards, and the prompt outside this branch is budgeted by nothing at all. Do not call
+    // it "the prompt budget". It is kept because forcing a deletion is what it is actually for,
+    // and because no measurement yet says total prompt length is what hurts.
     const growth = on.length / off.length - 1;
     expect(growth).toBeGreaterThan(0);
     expect(growth).toBeLessThan(0.02);
