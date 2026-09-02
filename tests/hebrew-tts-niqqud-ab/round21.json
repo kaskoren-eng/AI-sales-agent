@@ -33,7 +33,7 @@
           "label": "בלי נשימה — מה שהיא עושה היום",
           "file": "r21_b1_A_phone.wav",
           "ms": 5680,
-          "studio": "r20_m5_A.wav"
+          "studio": "r21_m5_A.wav"
         },
         {
           "key": "B",
@@ -69,7 +69,7 @@
           "label": "בלי נשימה",
           "file": "r21_b2_A_phone.wav",
           "ms": 2560,
-          "studio": "r20_em_plain.wav"
+          "studio": "r21_em_plain.wav"
         },
         {
           "key": "B",
@@ -120,7 +120,7 @@
           "label": "בלי נשימה",
           "file": "r21_b4_A_phone.wav",
           "ms": 1840,
-          "studio": "r20_cf_plain.wav"
+          "studio": "r21_cf_plain.wav"
         },
         {
           "key": "B",
@@ -142,7 +142,7 @@
           "label": "בלי נשימה",
           "file": "r21_b5_A_phone.wav",
           "ms": 5680,
-          "studio": "r20_m5_A.wav"
+          "studio": "r21_m5_A.wav"
         },
         {
           "key": "B",

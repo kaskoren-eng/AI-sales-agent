@@ -1,17 +1,11 @@
 """
 Round 21 — does she breathe, and does it help? The first breath audio ever put in front of an ear.
 
-WHY 21 AND NOT 20: two sessions built a round 20 into this one flat directory on the same
-afternoon. The other one is `מספר`/`דמו` pronunciation, Koren has already returned verdicts on it
-(`m1: C m2: C m3: C d1: B d2: C`), and three comments in `speech-guard.ts` cite those verdicts by
-round number — so renumbering THAT one would make the audit trail lie about which page produced
-which decision. This had no verdicts attached yet, so it moved — the whole breath line with it:
-the tag probe (`probe21_tags.py`, `probe21_onset.py`, `roundtrip21.ts`) and every clip it made or
-consumes (`r21_m5_*`, `r21_m6_*`, `r21_em_plain`, `r21_cf_plain`, `r21_filler`). `r20_` now means
-the pronunciation page and nothing else.
-
-Claim a round number in `docs/handoffs/` before you generate into this directory. A shared prefix
-in a flat directory has no other defence.
+(This round was born as round 20 and renumbered the same afternoon: the other voice session took
+the number for the מספר/דמו pronunciation round while this one was being built — two sessions,
+one untracked directory, no claims table for round numbers. Every artifact here is r21_*; the
+probe files are probe21_*/roundtrip21.ts for the same reason. The r21_m5_*/r21_m6_* clips are the
+tag PROBE's output — m5/m6 = sonic-3.5/3.6, unrelated to round 20's m1-m3 cards.)
 
 THE TAG ROUTE DIED FIRST, and this round exists because of how it died. probe21_tags.py +
 roundtrip21.ts (2026-09-02) re-dated round 4's verdict on both current snapshots: every
@@ -35,7 +29,9 @@ TWO BREATH SOURCES PER QUESTION, because neither can be trusted alone yet:
 
 THE GAIN IS THE CARD VARIABLE. A phone breath lives just above the noise floor; -18dB vs -24dB
 relative to her speech RMS is the difference between "she breathed" and nothing at all — nobody
-knows which side of the line the 8kHz band puts them on, so b1 carries the ladder.
+knows which side of the line the 8kHz band puts them on, so b1 carries the ladder. Measured after
+the fact: at phone band the -24dB breath peaks at 4.8% of clip peak, -18dB at 9.6%, -12dB at
+19.1%, against a 2.0% silent-head floor — audible, quiet, and graded as intended.
 
   b0  the breaths solo — an instrument card: veto a source before judging its placements.
   b1  inhale BEFORE the long pricing reply (the round-18 `pr` sentence) — dd/-18, dd/-24, synth/-18.
@@ -46,6 +42,9 @@ knows which side of the line the 8kHz band puts them on, so b1 carries the ladde
   b5  ⚠️ NEGATIVE: the same inhale at -12dB — the panting ceiling. Expected wrong.
 
 PHONE BAND ONLY, like round 18: the 8kHz clip decides, and the page goes on his phone.
+
+Roundtrip evidence (probe21-heard.json): the mixed breaths are NOT transcribed as words — b1/b4
+come back word-identical to baseline, b3's filler reads as "אממ." either way.
 
   python tests/hebrew-tts-niqqud-ab/round21.py
 """
@@ -61,15 +60,11 @@ PHONE_RATE = 8000
 DD = "breaths/dd_19030ms_140ms.wav"
 SYNTH = "breaths/synth_inhale_320ms.wav"
 
-# Base clips, all sonic-3.5 at production speed/volume, synthesized earlier today:
+# Base clips, all sonic-3.5 at production speed/volume (0.9/1.4), synthesized 2026-09-02:
 LONG = "r21_m5_A.wav"        # המחיר נקבע לפי כמה שיחות... כמה פניות נכנסות אליךָ בחודש?
 EM = "r21_em_plain.wav"      # אני מבינה. זה באמת מתסכל.   (seam: gap 820-1240ms)
 CF = "r21_cf_plain.wav"      # בטח, אני רושמת את זה.
 FILLER = "r21_filler.wav"    # אֶממ...
-
-LONG_TXT = "המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?"
-EM_TXT = "אני מבינה. זה באמת מתסכל."
-CF_TXT = "בטח, אני רושמת את זה."
 
 
 def compose(paths_and_silences, out_path):
@@ -89,7 +84,7 @@ def compose(paths_and_silences, out_path):
 
 
 def to_phone(src, dst):
-    """8kHz box-average — same crude low-pass as rounds 16-19 and the repo's toPhoneRate."""
+    """8kHz box-average — same crude low-pass as rounds 16-20 and the repo's toPhoneRate."""
     with wave.open(os.path.join(HERE, src), "rb") as w:
         ch, rate, n = w.getnchannels(), w.getframerate(), w.getnframes()
         pcm = list(struct.unpack(f"<{n * ch}h", w.readframes(n)))
@@ -113,7 +108,6 @@ def to_phone(src, dst):
 def main():
     os.chdir(HERE)
 
-    # b0 — the raw sources, solo, normalised enough to hear. Straight copies at phone band.
     # b1 — inhale before the long reply.
     splice(LONG, DD, 0, -18, "r21_b1_B.wav")
     splice(LONG, DD, 0, -24, "r21_b1_C.wav")
@@ -128,6 +122,10 @@ def main():
     compose([(FILLER, 0), (None, 400), (LONG, 0)], "r21_b3_A.wav")
     splice(FILLER, DD, 10 ** 9, -18, "r21_tmp_filler_breath.wav")
     compose([("r21_tmp_filler_breath.wav", 0), (None, 250), (LONG, 0)], "r21_b3_B.wav")
+    # b4 — NEGATIVE: inhale before the short confirmation.
+    splice(CF, DD, 0, -18, "r21_b4_B.wav")
+    # b5 — NEGATIVE: the panting ceiling.
+    splice(LONG, DD, 0, -12, "r21_b5_B.wav")
 
     # b0 solo clips — boosted to audition level. The raw candidates sit 18-24dB under speech by
     # nature; unboosted they are nearly inaudible at phone band and the card would judge silence.
@@ -135,10 +133,6 @@ def main():
         pcm, rate = read_wav(os.path.join(HERE, src))
         peak = max(abs(s) for s in pcm) or 1
         write_wav(os.path.join(HERE, dst), [s * (16000 / peak) for s in pcm], rate)
-    # b4 — NEGATIVE: inhale before the short confirmation.
-    splice(CF, DD, 0, -18, "r21_b4_B.wav")
-    # b5 — NEGATIVE: the panting ceiling.
-    splice(LONG, DD, 0, -12, "r21_b5_B.wav")
 
     cards = [
         ("b0", "0 · הנשימות עצמן — כרטיס מכשיר", None,
@@ -187,7 +181,7 @@ def main():
                 ms = round(w.getnframes() / w.getframerate() * 1000)
             entry["variants"].append({"key": key, "label": label, "file": phone, "ms": ms,
                                       "studio": src})
-            print(f"{cid}_{key}: {label} -> {phone} ({ms}ms)")
+            print(f"{cid}_{key}: -> {phone} ({ms}ms)")
         manifest["cards"].append(entry)
 
     if os.path.exists(os.path.join(HERE, "r21_tmp_filler_breath.wav")):

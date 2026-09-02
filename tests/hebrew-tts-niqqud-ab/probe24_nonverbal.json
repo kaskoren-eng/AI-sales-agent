@@ -1,0 +1,29 @@
+{
+  "what": "Round 24, non-verbal half — breath/laughter tags on DeepDub dd-etts-3.2 through the production adapter (dd_probe24.ts). The break-markup half is 3d's probe24.json / probe24_break_deepdub.ts. Same afternoon, same verdict class: DeepDub READS markup it does not understand.",
+  "sentence": "המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+  "noise_floor_ms": "4 baseline reps 5034-5458 (spread 424ms, dd_floor24.ts); probe baseline A was 5802 — total observed variance ~770ms, so every negative delta below is noise, not a rendering",
+  "results": [
+    { "key": "A", "label": "plain (baseline)", "file": "r24_A.wav", "ms": 5802, "delta_ms": 0,
+      "heard": "המחיר נקבע לפי כמה שיחות הסוכן/מנהל בשבילך, כמה פניות נכנסות אליך בחודש, ו.",
+      "verdict": "baseline" },
+    { "key": "B", "label": "[breath] prefix", "file": "r24_B.wav", "ms": 5678, "delta_ms": -124,
+      "heard": "ברף המחיר נקבע לפי כמה שיחות הסוכן/מנהל בשבילך. כמה פניות נכנסות אליך בחודש?",
+      "verdict": "SPOKEN — read aloud as ברף" },
+    { "key": "C", "label": "[breathes] prefix", "file": "r24_C.wav", "ms": 5802, "delta_ms": 0,
+      "heard": "ברית והמחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילך, כמה פניות נכנסות אליך בחודש,",
+      "verdict": "SPOKEN — read aloud as ברית" },
+    { "key": "D", "label": "[sigh] prefix", "file": "r24_D.wav", "ms": 5290, "delta_ms": -512,
+      "heard": "המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילך, כמה פניות נכנסות אליך בחודש, ו.",
+      "verdict": "inert — swallowed; delta inside noise floor" },
+    { "key": "E", "label": "[laughter] prefix", "file": "r24_E.wav", "ms": 5034, "delta_ms": -768,
+      "heard": "המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילך. כמה פניות נכנסות אליך בחודש?",
+      "verdict": "inert — swallowed; NO laugh rendered (unlike Cartesia, where [laughter] renders חח)" },
+    { "key": "F", "label": "(breathes) prefix", "file": "r24_F.wav", "ms": 6228, "delta_ms": 426,
+      "heard": "בריבס. המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילך. כמה פניות נכנסות אליך בחודש?",
+      "verdict": "SPOKEN — read aloud as בריבס (same failure as Cartesia)" },
+    { "key": "G", "label": "[breathing] mid-reply", "file": "r24_G.wav", "ms": 5503, "delta_ms": -299,
+      "heard": "המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילך, כמה פניות נכנסות אליך בחודש,",
+      "verdict": "inert — swallowed; delta inside noise floor" }
+  ],
+  "conclusion": "DeepDub has NO working non-verbal tag. Three of seven tag spellings are READ ALOUD (ברף/ברית/בריבס) — a worse failure mode than Cartesia's silent swallow, and consistent with 3d's finding that <break> markup is read aloud too. Breathing on DeepDub is NATIVE-ONLY (which is what Koren approved 5/5 in round 22). Pre-flip requirement: a SQUARE_TAG net in speech-guard so a stray LLM bracket token never reaches an engine that speaks it. Instrument note: every transcript above is non-empty and coherent (baselines match sent text), so the Int16Array/Buffer trap 3d hit does not apply to this batch — dd_probe24.ts builds the Int16Array view explicitly."
+}

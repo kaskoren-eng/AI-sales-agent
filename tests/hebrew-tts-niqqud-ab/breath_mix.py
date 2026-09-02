@@ -1,7 +1,8 @@
 """
-Round 20 — breath harvesting and mixing, in numbers a TS mixer can copy verbatim.
+Round 21 — breath harvesting and mixing, in numbers a TS mixer can copy verbatim.
+(Born as round 20; renumbered when the other voice session took 20 for מספר/דמו — see round21.py.)
 
-The tag probe (probe20_tags.py + roundtrip20.ts, 2026-09-02) closed the tag route: of every
+The tag probe (probe21_tags.py + roundtrip21.ts, 2026-09-02) closed the tag route: of every
 English non-verbal tag tried on Hebrew, only `[laughter]` renders (as a real "חח" laugh, both
 sonic-3.5 and 3.6); every breath-shaped tag is inert, and the parenthesized form is READ ALOUD
 ("ברידס"). So a breath must be AUDIO WE SUPPLY, mixed into her stream — and this file is the
@@ -75,7 +76,7 @@ def harvest(path, out_prefix="bcand"):
     """Cut every low-level, non-silent stretch of 120-700ms that sits between speech.
 
     'Low-level' is 2%-20% of the clip's peak frame — under 2% is line silence, over 20% is a word.
-    The bounds are the same ones probe20_onset.py used to find the rendered laugh, so a candidate
+    The bounds are the same ones probe21_onset.py used to find the rendered laugh, so a candidate
     here is the same kind of object that analysis called 'low-level sound'.
     """
     pcm, rate = read_wav(os.path.join(HERE, path))
