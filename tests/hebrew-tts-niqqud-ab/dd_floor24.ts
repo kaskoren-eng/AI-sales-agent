@@ -18,6 +18,14 @@ async function main(): Promise<void> {
   initializeLogger({ pretty: false, level: 'warn' });
   const env = loadEnv();
   const engine = new DeepdubTTS(deepdubOptions(env));
+  // THE ENGINE THE PROBE BUILT IS THE ENGINE THE FILE NAMES — asserted, not assumed. Three
+  // broken instruments returned the comfortable answer today (a Buffer fed as Int16Array, an
+  // EngineOverride key that silently vanished, a bench row nobody knew was the gateway); this
+  // line makes the fourth impossible: a probe that is not actually on DeepDub refuses to run.
+  if (!engine.model.startsWith('dd-')) {
+    throw new Error(`probe built ${engine.model} — not the DeepDub engine this file names`);
+  }
+
 
   async function synth(text: string): Promise<number> {
     const stream = engine.stream();
