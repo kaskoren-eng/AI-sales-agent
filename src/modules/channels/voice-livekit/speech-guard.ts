@@ -1630,9 +1630,28 @@ export async function* withFiller(
     leadIn?: string | null;
     /** Called only when the hesitation actually reaches the TTS. */
     onUsed?: () => void;
+    /**
+     * WHAT TO SAY WHEN THE STEP TURNS OUT TO BE A TOOL CALL — Koren's round-19 f1 verdict.
+     *
+     * Returns a hesitation to speak BEHIND the acknowledgement on a step that produced no model
+     * words, or null to keep the 2026-08-29 behaviour (say nothing more). See the `buffer.length
+     * === 0` block below for why this is not the orphan bug wearing a new hat.
+     *
+     * A SUPPLIER, not a word: it is only called once the step is known to be words-less, so a
+     * hesitation is drawn from the call's budget only when it is about to be spoken. `onUsed` is
+     * NOT called for it — the supplier owns its own accounting, because the ledger's `commit` and
+     * the pairing check both live where the env and the opener do.
+     */
+    onEmpty?: () => string | null;
   } = {},
 ): AsyncIterable<string> {
   if (!filler) {
+    // The tool-call pair still applies with no ARMED filler: `onEmpty` draws its own. Falling
+    // straight through here is what made f1 card A the only reachable behaviour.
+    if (opts.onEmpty && opts.leadIn) {
+      yield* pairFillerOnEmptyStep(text, opts.leadIn, opts.onEmpty);
+      return;
+    }
     yield* text;
     return;
   }
@@ -1685,10 +1704,34 @@ export async function* withFiller(
     buffer += next.value;
   }
 
-  // NO REAL WORDS = NO HESITATION. This is the tool-call step: the acknowledgement (if any) has
-  // been spoken, the model wrote nothing else, and the next sentence is one tool round-trip and a
-  // whole new inference away. A hesitation here is the orphaned word from the 2026-08-29 call.
-  if (buffer.length === 0) return;
+  // NO REAL WORDS — THE TOOL-CALL STEP. The acknowledgement (if any) has been spoken, the model
+  // wrote nothing else, and the next sentence is one tool round-trip and a whole new inference
+  // away.
+  //
+  // ── WHY THIS USED TO RETURN, AND WHY IT NO LONGER ALWAYS DOES (round 19, 2026-09-02) ────────
+  //
+  // The rule was written for the 2026-08-29 call, where a hesitation ALONE was left hanging in
+  // front of a five-second hole: "אהה." … 5.4s … "אוקיי. כמה פניות…". That is still the bug, and
+  // an orphaned hesitation with nothing in front of it is still refused.
+  //
+  // But Koren listened to this exact position on round-19 card `f1` — the 10:53 call's 221s turn,
+  // where `check_calendar_availability` ran and the caller heard `"אמ."` and then 1.45s of nothing
+  // — and picked **B, `"אמ. רֶגַע..."`**, over the bare receipt (A) and over silence (C). So on a
+  // step that already spoke a RECEIPT, the hesitation behind it is not an orphan: it is the second
+  // half of one breath, the pair `mayPairInOneBreath` has permitted since round 7, and it is what
+  // he asked for.
+  //
+  // It is also the only lever on the wait he objected to. That hole is a tool round-trip plus a
+  // second inference — measured at 1452ms on his own turn and a median of 1779ms across 81 such
+  // turns in 51 call reports — and nothing can make it shorter. What the pair does is fill 880ms
+  // of it with sound (measured off his own clips: `r19_f1_A_head` 560ms, `r19_f1_B_head` 1440ms),
+  // which lands the remaining wait at ~570ms on that turn against his stated target of ~500ms.
+  if (buffer.length === 0) {
+    if (!leadIn || !opts.onEmpty) return;
+    const behind = opts.onEmpty();
+    if (behind) yield `${behind} `;
+    return;
+  }
 
   const firstWord = buffer.split(wordBoundary)[0] ?? '';
   const collides = firstWord.length > 0 && normalizeFillerWord(firstWord) === fillerWord;
@@ -1714,4 +1757,47 @@ function normalizeFillerWord(s: string): string {
     .replace(/[֑-ׇ]/gu, '') // niqqud / cantillation
     .replace(/[\s.,!?…׃]+/gu, '')
     .toLowerCase();
+}
+
+/**
+ * The receipt has gone out, the step called a tool, and nothing else was written.
+ *
+ * The same behaviour as `withFiller`'s `buffer.length === 0` branch, for the case where no filler
+ * was ARMED at all. That case is the common one: the think-timer arms a hesitation N ms into
+ * 'thinking', and on a tool-calling step there is no guarantee it has fired before ttsNode reads
+ * `pendingFiller`. Making the pair depend on that race is what would have made Koren's f1 verdict
+ * land intermittently — so the supplier is consulted at the moment the step is KNOWN to be
+ * words-less, which needs no timer and cannot race.
+ */
+async function* pairFillerOnEmptyStep(
+  text: AsyncIterable<string>,
+  leadIn: string,
+  onEmpty: () => string | null,
+): AsyncIterable<string> {
+  const compact = (s: string) => s.replace(/\s+/gu, '');
+  const leadInKey = compact(leadIn);
+  const iterator = text[Symbol.asyncIterator]();
+  let sawBeyondLeadIn = false;
+  let first = true;
+  for (;;) {
+    const next = await iterator.next();
+    if (next.done) break;
+    const chunk = String(next.value);
+    yield chunk;
+    if (first) {
+      first = false;
+      // Anything in the FIRST chunk beyond our own injection is already the model talking.
+      if (leadInKey.length > 0 && compact(chunk).startsWith(leadInKey)) {
+        if (compact(chunk).length > leadInKey.length) sawBeyondLeadIn = true;
+        continue;
+      }
+      sawBeyondLeadIn = true;
+      continue;
+    }
+    if (compact(chunk).length > 0) sawBeyondLeadIn = true;
+  }
+  if (first) return; // nothing was said at all — not even the receipt
+  if (sawBeyondLeadIn) return; // the model wrote words; this is an ordinary reply, not a tool step
+  const behind = onEmpty();
+  if (behind) yield `${behind} `;
 }

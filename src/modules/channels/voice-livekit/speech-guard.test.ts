@@ -1201,3 +1201,72 @@ describe('מספר and דמו — the round-20 winners, and the contexts that de
     );
   });
 });
+
+/**
+ * ROUND 19 CARD f1, 2026-09-02 — what the caller hears while a tool runs.
+ *
+ * The 10:53 production call, 221s: `check_calendar_availability` ran, and he heard `"אמ."` (884ms
+ * of audio, from the transcript's own spokeAtMs/spokeUntilMs) and then 1452ms of nothing before
+ * "יש מחר פנוי מתשע בבוקר…". Card f1 put that (A) against `"אמ. רֶגַע..."` (B) and against pure
+ * silence (C). **He chose B**, with a note that the wait after it should be about a third of the
+ * 1.6s on the clip.
+ *
+ * The hole itself is a tool round-trip plus a whole second inference and cannot be shortened. What
+ * the pair does is fill 880ms of it with sound — measured off his own clips, `r19_f1_A_head` 560ms
+ * against `r19_f1_B_head` 1440ms.
+ */
+describe('withFiller — the pair that covers a tool round-trip (round 19, f1)', () => {
+  const chunks = async function* (...c: string[]) { for (const x of c) yield x; };
+  const drain = async (it: AsyncIterable<string>) => { const o: string[] = []; for await (const x of it) o.push(x); return o.join(''); };
+
+  it('speaks the hesitation BEHIND the receipt when the step produced no words', async () => {
+    const out = await drain(
+      withFiller(null, chunks('אמ. '), { leadIn: 'אמ. ', onEmpty: () => 'רֶגַע...' }),
+    );
+    expect(out).toBe('אמ. רֶגַע... ');
+  });
+
+  it('does the same when a filler was ALSO armed — one sound behind the receipt, not two', async () => {
+    let used = false;
+    const out = await drain(
+      withFiller('אֶממ...', chunks('אמ. '), {
+        leadIn: 'אמ. ',
+        onUsed: () => (used = true),
+        onEmpty: () => 'רֶגַע...',
+      }),
+    );
+    expect(out).toBe('אמ. רֶגַע... ');
+    // The ARMED filler is not the one spoken, so it is not charged. `onEmpty` owns its own ledger
+    // accounting — see the supplier in agent.ts.
+    expect(used).toBe(false);
+  });
+
+  it('still refuses to orphan a hesitation with nothing in front of it', async () => {
+    // The 2026-08-29 bug is untouched: no receipt was spoken, so there is nothing for a hesitation
+    // to be the second half of, and a lone word before a five-second hole is the defect.
+    expect(await drain(withFiller(null, chunks(), { onEmpty: () => 'רֶגַע...' }))).toBe('');
+    expect(await drain(withFiller('אֶממ...', chunks(), { onEmpty: () => 'רֶגַע...' }))).toBe('');
+  });
+
+  it('adds nothing when the step DID produce words — that is an ordinary reply', async () => {
+    expect(
+      await drain(
+        withFiller(null, chunks('אמ. ', 'יש מחר פנוי מתשע.'), {
+          leadIn: 'אמ. ',
+          onEmpty: () => 'רֶגַע...',
+        }),
+      ),
+    ).toBe('אמ. יש מחר פנוי מתשע.');
+  });
+
+  it('adds nothing when the supplier declines — a spent budget, or a pair that may not share a breath', async () => {
+    expect(
+      await drain(withFiller(null, chunks('אמ. '), { leadIn: 'אמ. ', onEmpty: () => null })),
+    ).toBe('אמ. ');
+  });
+
+  it('without the supplier the 2026-08-29 behaviour is byte-identical — the kill-switch path', async () => {
+    expect(await drain(withFiller(null, chunks('אמ. '), { leadIn: 'אמ. ' }))).toBe('אמ. ');
+    expect(await drain(withFiller('אֶממ...', chunks('אמ. '), { leadIn: 'אמ. ' }))).toBe('אמ. ');
+  });
+});

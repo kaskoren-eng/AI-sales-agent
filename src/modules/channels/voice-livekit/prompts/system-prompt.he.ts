@@ -136,7 +136,7 @@ const buildSpeechRhythmAckInjected = (bank: readonly string[]): string => `## Sp
 
 A brief acknowledgment (${bank.map((a) => `"${a}"`).join(', ')}) is ALREADY spoken in your voice the moment the caller stops talking. You do not write it, and you must not add a second one.
 
-**Do NOT begin your reply with an acknowledgment, a reaction, or a filler word.** Not "בסדר", not "מעולה", not "בטח", not "כן", not "הבנתי", not "אהה", not "טוב", not "בשמחה", not "נשמע טוב", not "שאלה טובה". The caller has already heard one; a second in the same breath is what makes you sound like a machine.
+**Do NOT begin your reply with an acknowledgment, a reaction, or a filler word.** Not "בסדר", not "מעולה", not "בטח", not "הבנתי", not "אהה", not "טוב", not "בשמחה", not "נשמע טוב", not "שאלה טובה". The caller has already heard one; a second in the same breath is what makes you sound like a machine. The one exception is "כן" used as an ANSWER — when he asked something whose answer is yes, begin "כן.." and go straight on.
 
 Begin with the SUBSTANCE — the answer itself, or the next question — and keep that first sentence SHORT, under about eight words, ending in a period. This is not a style preference: your voice starts speaking only after your first sentence is COMPLETE, so a long first sentence is dead air on the caller's ear.`;
 
@@ -146,9 +146,11 @@ const buildSpeechRhythmAckInjectedConditional = (
   bank: readonly string[],
 ): string => `## Speech Rhythm — a SHORT first sentence, and NEVER an acknowledgment
 
-**On a turn where your answer is going to be LONG or COMPLEX:** A brief acknowledgment (${bank.map((a) => `"${a}"`).join(', ')}) is spoken in your voice the moment the caller stops talking. You do not write it, you do not choose it, and you must not add a second one. **On a turn whose answer is one short line, nothing is spoken for you** — the caller hears your answer and nothing in front of it, which is the point. You cannot tell which kind of turn you are on, and you do not need to: the rule below is the same either way.
+**On a turn where your answer is going to be LONG or COMPLEX:** A brief acknowledgment (${bank.map((a) => `"${a}"`).join(', ')}) is spoken in your voice the moment the caller stops talking. You do not write it, you do not choose it, and you must not add a second one. On other turns nothing is spoken for you at all.
 
-**Do NOT begin your reply with an acknowledgment, a reaction, or a filler word.** Not "בסדר", not "מעולה", not "בטח", not "כן", not "הבנתי", not "אהה", not "טוב", not "בשמחה", not "נשמע טוב", not "שאלה טובה". Either one has already been spoken for you, or the moment did not call for one at all; a word of yours in that position is a second receipt or an unwanted first.
+**Do NOT begin your reply with an acknowledgment, a reaction, or a filler word.** Not "בסדר", not "מעולה", not "בטח", not "הבנתי", not "אהה", not "טוב", not "בשמחה", not "נשמע טוב", not "שאלה טובה". One has already been spoken for you, or the moment called for none.
+
+**"כן" is the one exception, and only as an ANSWER.** When the answer to his question is yes, or he asked for something you agree to, open "כן.." and go straight on: "כן.. זה מספר שהלקוחות מתקשרים אליו". Never "כן" when the answer is not yes. When you are moving the call on with nothing to agree to, open "אז": "אז נוח לך מחר, או שעדיף יום אחר?".
 
 Begin with the SUBSTANCE — the answer itself, or the next question — and keep that first sentence SHORT, under about eight words, ending in a period. This is not a style preference: your voice starts speaking only after your first sentence is COMPLETE, so a long first sentence is dead air on the caller's ear.`;
 
@@ -340,7 +342,7 @@ export const REGISTER_VOCABULARY = [...SPOKEN_REGISTER_SLANG, ...EMOTIONAL_COLOR
  */
 function slangPlacement(instantAck: boolean): string {
   return instantAck
-    ? `**WHERE it goes, and why yours keep going missing:** your reply must not OPEN with a reaction word — the Speech Rhythm rule above forbids exactly that — so a slang word placed first is a rule you cannot follow. Put it INSIDE the sentence: in the middle, or at the end. Never as the first word. ("מעולה" counts only when it is not the opener.)`
+    ? `**WHERE it goes, and why yours keep going missing:** your reply must not OPEN with a reaction word — the Speech Rhythm rule above forbids exactly that — so a slang word placed first is a rule you cannot follow. Put it INSIDE the sentence: in the middle, or at the end. Never as the first word. ("מעולה" counts only when it is not the opener.) **Never inside a sentence that offers a time:** not "יש לי, סבבה, אחת עשרה פנויה". Say the slot plainly, then ask, in two sentences: "יש לי אחת עשרה פנויה. מתאים לך?"`
     : `**WHERE it goes:** your short opening sentence is a natural home for one of these — and so is the middle or the end of a sentence. Anywhere but inside the facts.`;
 }
 

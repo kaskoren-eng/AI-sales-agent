@@ -3,6 +3,8 @@ import {
   ENGAGEMENT_WINDOW,
   EngagementTracker,
   callerSharedSubstance,
+  callerTurnAwaitsAnswer,
+  callerTurnNeedsThinkingTime,
   wordCount,
 } from './engagement.js';
 
@@ -175,5 +177,37 @@ describe('EngagementTracker — how much is he giving her?', () => {
     t.observeCaller('כן.');
     expect(t.turns).toBe(1);
     expect(t.averageWords).toBe(3);
+  });
+});
+
+describe('callerTurnAwaitsAnswer — round 19, the receipt goes when he ASKED', () => {
+  it('is true for the three caller turns Koren judged on the 10:53 call', () => {
+    // Verbatim from call-reports/2026-09-02T07-53-15-264Z.json — the turns that produced cards
+    // o1, o2 and o3. All three got "בסדר." in front of the answer, and he rejected all three.
+    expect(
+      callerTurnAwaitsAnswer('זה ממש עובד שיש.  לה.  הסוכן הזה קו טלפון ומתקשרים אליו? הוא.'),
+    ).toBe(true);
+    expect(callerTurnAwaitsAnswer('פיזורים של עבודות?  למה...  שלי?')).toBe(true);
+    expect(callerTurnAwaitsAnswer('מתי הזמן נוח?')).toBe(true);
+  });
+
+  it('is false when he is telling her something, so the receipt stays', () => {
+    expect(callerTurnAwaitsAnswer('אני, יש לי עסק של משלוחים.')).toBe(false);
+    expect(callerTurnAwaitsAnswer('לא יודע. מוקד. רוצה שייכנסו אליו עוד שיחות.')).toBe(false);
+  });
+
+  it('a turn it cannot read keeps the receipt — the safe direction is the old behaviour', () => {
+    expect(callerTurnAwaitsAnswer(null)).toBe(false);
+    expect(callerTurnAwaitsAnswer(undefined)).toBe(false);
+    expect(callerTurnAwaitsAnswer('   ')).toBe(false);
+  });
+
+  it('disagrees with callerTurnNeedsThinkingTime on a question, which is the whole point', () => {
+    // Conclusion 12 votes TRUE on a question ("a caller who ASKS is owed an explanation, and the
+    // receipt covers the wait"). Round 19 overrides that clause, three cards out of three. If this
+    // ever agrees, one of the two predicates has been quietly rewritten.
+    const q = 'מתי הזמן נוח?';
+    expect(callerTurnNeedsThinkingTime(q)).toBe(true);
+    expect(callerTurnAwaitsAnswer(q)).toBe(true);
   });
 });

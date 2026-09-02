@@ -301,3 +301,59 @@ export class EngagementTracker {
     );
   }
 }
+
+/**
+ * IS THE CALLER WAITING FOR AN ANSWER — Koren's round-19 verdict, 2026-09-02.
+ *
+ * Four cards on `tests/hebrew-tts-niqqud-ab/index-round19.html`, every sentence lifted from the
+ * 10:53 production call, `A` always being what she actually said. Three of them are openers, and
+ * all three follow a caller QUESTION. He rejected our receipt on all three:
+ *
+ *   o1  "בסדר. כן. זה מספר שהלקוחות מתקשרים אליו…"   → **B** "כן.. זה מספר שהלקוחות…"
+ *   o2  "בסדר. אם יש אצלך מערכת ניהול משלוחים…"       → **B** "כן.. אם יש אצלך…"
+ *   o3  "בסדר. נוֹחַ לךָ מחר, או שעדיף יום אחר?"        → **D** "אז נוֹחַ לךָ מחר…"
+ *
+ * In his words: *"הייתי רוצה שהסוכן ישיב 'כן..' כשהלקוח מבקש משהו או אומר משהו והסוכן מסכים איתו,
+ * אם הוא אומר ישר בסדר או אוקיי זה לא נשמע הגיוני."*
+ *
+ * ⚠️ THIS IS NOT "PUT כן BACK IN THE DECK". `"כן."` was a member of ACKNOWLEDGEMENTS_HE until
+ * 2026-08-29, when Koren asked *"מה המצב, קרן?"* and the call answered *"כן."* — a machine
+ * mishearing a greeting. The bank's membership rule is that every member must still be a RECEIPT
+ * after a question, and `"כן."` means *yes*. Worse than the greeting case: the receipt is committed
+ * before the model has written a word, so a deck that could say `"כן"` would COMMIT TO AGREEING
+ * with a question we cannot yet answer — a caller asking "יש לכם ניסיון עם חברות הובלה?" would
+ * hear *yes* before anything decided whether the answer was yes. That is a lie with a latency
+ * budget, and it is strictly worse than the defect it replaced.
+ *
+ * So the verdict is read as its contrapositive: **when the answer IS the agreement, do not put a
+ * receipt in front of it.** We cannot know the answer, but we can see the question — and on a turn
+ * where he asked one, the first thing he is owed is the answer's own first word, which the model
+ * writes. `"כן.."`, `"אז"`, `"בטח"` all come from her, in the same breath as the substance, and
+ * none of them can commit to an agreement she has not made.
+ *
+ * ── WHAT IT COSTS, MEASURED RATHER THAN ASSUMED ──────────────────────────────────────────────
+ *
+ * The stated price of dropping a receipt is the ~620ms it buys before the model's first token.
+ * Across 449 assistant turns in 51 call reports, **her first audio starts a median of +542ms AFTER
+ * the model's first-token stamp**, and only 15% of turns start before it. `dead_air` minus the same
+ * turn's `model_ttft` has a median of +622ms — i.e. dead air tracks the model, plus TTS first byte.
+ * The receipt is not arriving early in production. Whatever is holding it (a separate defect, not
+ * fixed here — see the handoff), the measured cost of removing it on this class of turn is the
+ * WORD, not the second.
+ *
+ * ── AND IT PARTLY REVERSES CONCLUSION 12, DELIBERATELY ───────────────────────────────────────
+ *
+ * `callerTurnNeedsThinkingTime` returns TRUE on a question, on the reasoning that "a caller who
+ * ASKS something is owed an explanation" and the receipt covers the wait. The measurement above
+ * says the receipt does not cover the wait, and Koren's ear says it does not belong there, three
+ * times out of three. That clause is what this predicate overrides. It is a big change by volume —
+ * across the 56-report corpus, 35% of her turns follow a question and 139 of the 255 receipts she
+ * spoke (55%) sit on one — so it is behind its own switch, `VOICE_ACK_SKIP_ON_QUESTION`.
+ *
+ * NULL IS NOT A QUESTION. A turn the classifier could not read keeps the receipt, which is the
+ * behaviour that shipped: the safe direction for a degradation is the old one.
+ */
+export function callerTurnAwaitsAnswer(utterance: string | null | undefined): boolean {
+  if (!utterance) return false;
+  return QUESTION.test(utterance.trim());
+}

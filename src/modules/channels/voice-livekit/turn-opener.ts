@@ -124,6 +124,30 @@ export function chooseTurnOpener(input: {
    * every-turn receipt exactly.
    */
   needsThinkingTime?: boolean;
+  /**
+   * Did the caller just ASK something? Koren's round-19 verdict, 2026-09-02.
+   *
+   * True → this step opens with NOTHING, and the first sound the caller hears is the model's own
+   * first word. That word is the one he chose in three cards out of three: `"כן.."` when the answer
+   * to his question is yes (o1=B, o2=B), `"אז"` when she is moving the call on with nothing to
+   * agree to (o3=D). All three are words SHE writes, in the same breath as the substance.
+   *
+   * WHY THE RECEIPT CANNOT SIMPLY BECOME `"כן.."`. It is committed before the model has written a
+   * word, so a deck able to say `"כן"` would agree with a question nothing has answered yet — the
+   * 2026-08-29 `"מה המצב, קרן?"` → `"כן."` defect with a worse failure mode. See
+   * `callerTurnAwaitsAnswer` in engagement.ts for the full reading of the verdict and for the
+   * measurement that prices this branch at a word rather than at ~620ms.
+   *
+   * ORDERED WITH `needsThinkingTime`, NOT BEFORE THE TWO HE JUDGED BY EAR. Same position and same
+   * reason: a step behind a tool call is already silent-or-hesitation, and mid-dictation the nod is
+   * the right sound whatever he was saying. Both of those are verdicts of his, and this is not
+   * allowed to take a step away from them.
+   *
+   * `VOICE_ACK_SKIP_ON_QUESTION=false` makes the agent pass `false` always, which restores the
+   * 2026-09-01 behaviour exactly — a receipt on a question turn, which is what
+   * `callerTurnNeedsThinkingTime` still votes for.
+   */
+  callerAsked?: boolean;
   /** The call's filler budget — `ThinkingFillerLedger.offer()`. Returns null when spent. */
   offerFiller: () => string | null;
 }): TurnOpener {
@@ -180,6 +204,15 @@ export function chooseTurnOpener(input: {
   // bend the ledger's flat distribution against the turns that do get one, and `#last` would then
   // block a sound the caller never heard.
   if (input.needsThinkingTime === false) return { kind: 'silent' };
+
+  // KOREN'S ROUND-19 VERDICT — he asked a question, so what he is owed is the answer, and the
+  // answer's own first word is the receipt. Nothing of ours goes in front of it. See `callerAsked`
+  // above, and `callerTurnAwaitsAnswer` in engagement.ts for why the receipt cannot just BE "כן..".
+  //
+  // The deck is not spent here, for the same reason it is not spent on the branch above: a word
+  // handed out and never spoken would bend the ledger's flat distribution and would block a sound
+  // the caller never heard.
+  if (input.callerAsked === true) return { kind: 'silent' };
 
   return {
     kind: 'ack',

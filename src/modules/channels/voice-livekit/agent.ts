@@ -48,6 +48,7 @@ import { SpokenOpenerTracker, observeFirstOpener } from './spoken-openers.js';
 import {
   allowsArmedFiller,
   chooseTurnOpener,
+  mayPairInOneBreath,
   chunkCallsTool,
   type TurnOpener,
 } from './turn-opener.js';
@@ -56,6 +57,7 @@ import { DICTATION_NODS, isDictationTurn } from './dictation.js';
 import {
   EngagementTracker,
   callerSharedSubstance,
+  callerTurnAwaitsAnswer,
   callerTurnNeedsThinkingTime,
   latestCallerText,
 } from './engagement.js';
@@ -544,6 +546,12 @@ class ClickScalesAgent extends voice.Agent {
       // `true` when the switch is off, which is the every-turn behaviour that shipped.
       needsThinkingTime:
         !env.VOICE_ACK_ONLY_WHEN_NEEDED || callerTurnNeedsThinkingTime(currentCallerTurn),
+      // KOREN'S ROUND-19 VERDICT — he asked a question, so the first sound is her ANSWER's own
+      // first word ("כן..", "אז"), not a receipt in front of it. Read from the same
+      // `currentCallerTurn` as the two rules above, for the same reason: `lastUserUtterance` is one
+      // turn behind whenever a preemptive draft is used. See callerTurnAwaitsAnswer in
+      // engagement.ts — including why the receipt cannot simply become "כן.." instead.
+      callerAsked: env.VOICE_ACK_SKIP_ON_QUESTION && callerTurnAwaitsAnswer(currentCallerTurn),
       nextAck: (opts) =>
         this.ackLedger ? this.ackLedger.next(opts) : pickAcknowledgement(this.#lastAck),
       offerFiller: () => this.fillerLedger.offer(),
@@ -714,6 +722,41 @@ class ClickScalesAgent extends voice.Agent {
                     })}`,
                   );
                 },
+                // ── KOREN'S ROUND-19 f1 VERDICT — the pair that covers a tool round-trip ───────
+                //
+                // Called only once the step is KNOWN to have produced no model words, i.e. it was
+                // a tool call and the caller is about to sit through the hole. He heard that exact
+                // position (10:53 call, 221s, `check_calendar_availability`) as card `f1` and
+                // chose **B, "אמ. רֶגַע..."** over the bare "אמ." he actually got and over silence.
+                //
+                // NOT the armed `pendingFiller`, and deliberately so: that one is armed by the
+                // think-timer VOICE_THINKING_FILLER_MS ms into 'thinking', and whether it beats
+                // ttsNode's read on a tool-calling step is a race nobody has instrumented. Drawing
+                // it HERE needs no timer and cannot lose that race. It is drawn from the same
+                // ledger, so the call still cannot spend more than its three.
+                //
+                // The pairing rule is the same one every other two-sound breath goes through — a
+                // receipt then a hesitation is one breath, two hesitations are the stutter, and a
+                // shared stem ("אמ." + "אֶממ...") is refused however the categories fall.
+                onEmpty:
+                  !env.VOICE_TOOL_FILLER_PAIR_ENABLED || !ack || !env.VOICE_FILLER_PAIRING_ENABLED
+                    ? undefined
+                    : () => {
+                        const behind = this.fillerLedger.offer();
+                        if (!behind || !mayPairInOneBreath(ack, behind)) return null;
+                        this.fillerLedger.commit(behind);
+                        this.spokenOpeners.record(behind);
+                        console.log(
+                          `thinking_filler ${JSON.stringify({
+                            filler: behind,
+                            n: this.fillerLedger.used.length,
+                            max: MAX_FILLERS_PER_CALL,
+                            reason: 'tool_step_pair',
+                            spoken: true,
+                          })}`,
+                        );
+                        return behind;
+                      },
               },
             ),
             // Read PER SENTENCE: book_meeting can succeed mid-reply, and the very next sentence

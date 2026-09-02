@@ -761,6 +761,43 @@ const envSchema = z.object({
   // OFF restores the every-turn receipt exactly, in both halves. See callerTurnNeedsThinkingTime
   // in engagement.ts and the Speech Rhythm sections in system-prompt.he.ts.
   VOICE_ACK_ONLY_WHEN_NEEDED: envBool(true),
+  // KOREN'S ROUND-19 VERDICT, 2026-09-02 — when he ASKED, answer him; do not receipt him first.
+  //
+  // Three opener cards on index-round19.html, every sentence lifted from the 10:53 production call,
+  // all three following a caller question, and he rejected our receipt on all three: o1=B
+  // ("כן.. זה מספר שהלקוחות…" over "בסדר. כן. זה מספר…"), o2=B, o3=D ("אז נוֹחַ לךָ מחר…" over
+  // "בסדר. נוֹחַ לךָ מחר…"). *"אם הוא אומר ישר בסדר או אוקיי זה לא נשמע הגיוני."*
+  //
+  // ON = the step opens with NOTHING and the model's own first word is the first sound. That word
+  // is his: "כן.." when the answer is yes, "אז" when she is moving the call on. The receipt CANNOT
+  // simply become "כן.." — it is committed before the model has written anything, so it would agree
+  // with a question nothing has answered yet. See callerTurnAwaitsAnswer in engagement.ts.
+  //
+  // BIG BY VOLUME AND MEASURED AS SUCH: 35% of her turns in the 56-report corpus follow a question,
+  // and 139 of the 255 receipts she actually spoke (55%) sit on one. The stated price is the ~620ms
+  // the receipt buys — but across 449 turns in 51 reports her first audio starts a MEDIAN OF +542ms
+  // AFTER the model's first-token stamp, so it is not buying that today.
+  //
+  // OFF restores the 2026-09-01 behaviour exactly: callerTurnNeedsThinkingTime votes TRUE on a
+  // question, and the receipt is spoken.
+  VOICE_ACK_SKIP_ON_QUESTION: envBool(true),
+  // KOREN'S ROUND-19 f1 VERDICT — what covers a tool round-trip.
+  //
+  // On the 10:53 call at 221s `check_calendar_availability` ran, and the caller heard "אמ." and
+  // then 1452ms of nothing before the answer. Card f1 put that against "אמ. רֶגַע..." and against
+  // silence; he chose the PAIR, with a note that the wait after it should be about a third of the
+  // 1.6s on the clip.
+  //
+  // ON = on a step that spoke a receipt and then produced no model words (a tool call), a
+  // hesitation is spoken BEHIND the receipt — drawn at that moment from the same three-per-call
+  // ledger, and only if `mayPairInOneBreath` permits the pair. It cannot make the hole shorter;
+  // it fills 880ms of it with sound (measured off his own clips), which lands the remaining wait at
+  // ~570ms on that turn.
+  //
+  // OFF restores the 2026-08-29 rule: no model words, no hesitation. See withFiller in
+  // speech-guard.ts, and note that VOICE_FILLER_PAIRING_ENABLED=false disables this too — it is
+  // strictly coarser and remains an exact rollback of pairing as a whole.
+  VOICE_TOOL_FILLER_PAIR_ENABLED: envBool(true),
   // ── The 2026-09-01 09:29 call, seven defects in one batch ────────────────────────────────────
   // ONE SENTENCE, NOT TWICE. At 205/209/212s she began the same reply three times, each attempt
   // cut off by the caller's next interjection after 0.3-0.6s of audio; at 462/468s she apologised

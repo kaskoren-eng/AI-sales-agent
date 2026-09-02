@@ -366,3 +366,61 @@ describe('round 13 — the five listening verdicts and the six behavioural notes
     );
   });
 });
+
+/**
+ * ROUND 19, 2026-09-02 — the first half-second of her turn.
+ *
+ * Five cards, every sentence lifted from the 10:53 production call
+ * (`call-reports/2026-09-02T07-53-15-264Z.json`), `A` always being what she actually said. Four of
+ * them are about the opening word and they are one mechanism, not four:
+ *
+ *   o1 = **B**  "כן.. זה מספר שהלקוחות…"      over  "בסדר. כן. זה מספר…"
+ *   o2 = **B**  "כן.. אם יש אצלך מערכת…"       over  "בסדר. אם יש אצלך…"
+ *   o3 = **D**  "אז נוֹחַ לךָ מחר…"             over  "בסדר. נוֹחַ לךָ מחר…"
+ *   o4 = **C**  "יש לי אחת עשרה פנויה. מתאים לךָ?"  over  "יש לי, סבבה, אחת עשרה פנויה — זה מתאים לךָ?"
+ *
+ * *"הייתי רוצה שהסוכן ישיב 'כן..' כשהלקוח מבקש משהו או אומר משהו והסוכן מסכים איתו, אם הוא אומר
+ * ישר בסדר או אוקיי זה לא נשמע הגיוני."*
+ *
+ * ⚠️ THE TRAP THIS DOES NOT WALK INTO. `"כן."` was a member of ACKNOWLEDGEMENTS_HE and was removed
+ * on 2026-08-29 — Koren asked *"מה המצב, קרן?"* and the call answered *"כן."*. It is NOT going back
+ * in the deck: the deck is committed before the model has written a word, so a deck that could say
+ * "כן" would agree with a question nothing has answered yet. The verdict is implemented as its
+ * contrapositive — on a question turn the injected receipt is SUPPRESSED
+ * (`VOICE_ACK_SKIP_ON_QUESTION`, `callerTurnAwaitsAnswer`) and the model writes the "כן.." itself,
+ * where it is the answer rather than a receipt. This file pins the prompt half.
+ */
+describe('round 19 — the opening word', () => {
+  // The live shape: VOICE_INSTANT_ACK on and the receipt conditional (VOICE_ACK_ONLY_WHEN_NEEDED).
+  const LIVE = buildSystemPrompt({
+    toolsEnabled: true,
+    instantAck: true,
+    conditionalOpener: true,
+    spokenRegister: true,
+  });
+
+  it('tells her to answer "כן.." when the answer is yes, with his own sentence as the example', () => {
+    expect(LIVE).toContain('open "כן.." and go straight on');
+    expect(LIVE).toContain('כן.. זה מספר שהלקוחות מתקשרים אליו');
+  });
+
+  it('and forbids it when the answer is NOT yes — the half that keeps it an answer', () => {
+    // Without this the rule reads as "open with כן", which is the 2026-08-29 defect with a prompt
+    // instead of a deck behind it.
+    expect(LIVE).toContain('Never "כן" when the answer is not yes');
+  });
+
+  it('tells her to open "אז" when she is moving the call on — o3=D', () => {
+    expect(LIVE).toContain('open "אז"');
+    expect(LIVE).toContain('אז נוח לך מחר, או שעדיף יום אחר?');
+  });
+
+  it('keeps every OTHER opener banned — the exception is one word, not an amnesty', () => {
+    expect(LIVE).toContain('Not "בסדר", not "מעולה", not "בטח", not "הבנתי"');
+  });
+
+  it('keeps slang out of a sentence that offers a time — o4=C', () => {
+    expect(LIVE).toContain('Never inside a sentence that offers a time');
+    expect(LIVE).toContain('יש לי אחת עשרה פנויה. מתאים לך?');
+  });
+});

@@ -399,3 +399,66 @@ describe('chunkCallsTool — the signal that a step is not a reply', () => {
     expect(chunkCallsTool(undefined)).toBe(false);
   });
 });
+
+/**
+ * ROUND 19, 2026-09-02 — when he ASKED, the answer's own first word is the opening sound.
+ *
+ * Three cards, all three following a caller question, and he rejected our receipt on all three:
+ * o1=B ("כן.. זה מספר…"), o2=B, o3=D ("אז נוֹחַ לךָ מחר…"). See callerTurnAwaitsAnswer in
+ * engagement.ts for why the receipt cannot simply BE "כן.." instead.
+ */
+describe('chooseTurnOpener — the caller asked a question', () => {
+  const anyFiller = () => THINKING_FILLERS_HE[0]!;
+  const never = () => {
+    throw new Error('the deck must not be spent on a step that says nothing');
+  };
+
+  it('says nothing, and does not spend the deck doing it', () => {
+    expect(
+      chooseTurnOpener({
+        afterToolCall: false,
+        fillersEnabled: true,
+        callerAsked: true,
+        nextAck: never,
+        offerFiller: anyFiller,
+      }),
+    ).toEqual({ kind: 'silent' });
+  });
+
+  it('is OFF by default — a missing signal is the receipt that shipped', () => {
+    const opener = chooseTurnOpener({
+      afterToolCall: false,
+      fillersEnabled: true,
+      nextAck: () => 'בסדר.',
+      offerFiller: anyFiller,
+    });
+    expect(opener).toEqual({ kind: 'ack', word: 'בסדר.' });
+  });
+
+  it('never takes a step away from the two branches he judged by ear', () => {
+    // A step behind a tool call is a hesitation whatever the caller's turn was, and mid-dictation
+    // the nod holds the floor open however he phrased it. Both are round-7 / round-11 verdicts and
+    // this rule is not allowed to reach past them.
+    expect(
+      chooseTurnOpener({
+        afterToolCall: true,
+        fillersEnabled: true,
+        callerAsked: true,
+        nextAck: never,
+        offerFiller: anyFiller,
+      }),
+    ).toEqual({ kind: 'hesitation', word: THINKING_FILLERS_HE[0] });
+
+    const nod = chooseTurnOpener({
+      afterToolCall: false,
+      fillersEnabled: true,
+      callerAsked: true,
+      midDictation: true,
+      nods: DICTATION_NODS,
+      random: () => 0,
+      nextAck: never,
+      offerFiller: anyFiller,
+    });
+    expect(nod.kind).toBe('nod');
+  });
+});
