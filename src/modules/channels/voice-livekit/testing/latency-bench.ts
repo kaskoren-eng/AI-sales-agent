@@ -10,7 +10,12 @@
  *
  *   end-of-turn   ~400ms   deciding he finished          (Soniox endpoint, delay 1000ms)
  *   LLM ttft      ~974ms   GPT thinking                  (the dominant term — and irreducible)
- *   TTS ttfb      ~217ms   Cartesia starting to speak    (sonic-3.5)
+ *   TTS ttfb      ~217ms   the voice starting to speak   (Cartesia sonic-3.5, measured in prod)
+ *
+ * SINCE 2026-09-02 THE TTS ARM FOLLOWS `VOICE_TTS_PROVIDER` rather than assuming Cartesia, and it
+ * carries a DeepDub arm alongside the Cartesia ones. The row matching the configured engine is
+ * marked `(LIVE)` and is the baseline every delta is measured against — so flipping the provider
+ * moves the baseline instead of silently ranking everything against an engine we stopped using.
  *
  * RE-MEASURED 2026-08-16, and the conclusion changed. The old note here said preemptive generation
  * hid the LLM and preemptive TTS hid Cartesia. Neither survives contact with Soniox (known-issues
@@ -28,10 +33,9 @@
  * hearing her at the first frame, and that is the number he feels.
  */
 import { inference, initializeLogger, llm as llmBase, tts as ttsBase } from '@livekit/agents';
-import * as cartesia from '@livekit/agents-plugin-cartesia';
 import * as openai from '@livekit/agents-plugin-openai';
 import { loadEnv } from '../../../../config/env.js';
-import { cartesiaOptions } from './speech.js';
+import { HarnessVoice, describeEngine, type EngineOverride } from './tts-engine.js';
 import { SYSTEM_PROMPT_HE } from '../prompts/system-prompt.he.js';
 import { guardStream } from '../speech-guard.js';
 import { toPhoneWav, toStudioWav } from './wav.js';
@@ -123,6 +127,33 @@ interface TtsCandidate {
   build: (env: Env) => ttsBase.TTS;
   /** Set when the model is known to be dubious on Hebrew — listen to the WAV before believing it. */
   note?: string;
+  /**
+   * `VOICE_TTS_PROVIDER` value this row exercises, when it is one of ours. Two jobs: it marks the
+   * row that matches the CONFIGURED engine as the baseline, and it decides whether the row honours
+   * VOICE_TTS_SPEED / VOICE_TTS_VOLUME.
+   */
+  provider?: EngineOverride['provider'];
+  /** Whether the row was actually sent our speed/volume, so the table can say so per row. */
+  honoursSpeedVolume?: boolean;
+  /** Returns a reason to SKIP (missing credential, etc.), or null to run it. */
+  skipIf?: (env: Env) => string | null;
+}
+
+/**
+ * `close()` where a row owns a real engine — otherwise the row leaks its sockets.
+ *
+ * Cartesia's plugin opens a websocket per `stream()` and forgets it; DeepDub holds a POOL of two
+ * for the life of the instance. Seven rows × a live pool each is how a bench ends by hanging on
+ * exit instead of printing its ranking.
+ */
+const closers: Array<() => Promise<void>> = [];
+
+function harnessRow(env: Env, override: EngineOverride): ttsBase.TTS {
+  const voice = new HarnessVoice(env, override);
+  closers.push(() => voice.close());
+  // The bench drives the raw stream itself (it needs per-frame timing), so it wants the TTS, not
+  // the wrapper. `HarnessVoice` exists to own the lifetime and the label.
+  return voice.tts;
 }
 
 /**
@@ -134,12 +165,55 @@ interface TtsCandidate {
 const EL_VOICE_FEMALE = 'XB0fDUnXU5powFXDhCwa'; // Charlotte — female, multilingual
 const EL_VOICE_ALT = '9BWtsMINqrJLrRacOk9x'; // Aria — female, multilingual
 
-const TTS_CANDIDATES: TtsCandidate[] = [
+/**
+ * The rows, built against the env so they name the models actually configured.
+ *
+ * THE BASELINE IS NO LONGER HARD-CODED TO CARTESIA. It is whichever row matches
+ * `VOICE_TTS_PROVIDER`, marked `(LIVE)` at print time. Hard-coding it was fine while Cartesia was
+ * the only thing we shipped, and would have quietly made the bench rank every engine against a
+ * baseline we had stopped using the moment the provider flipped.
+ *
+ * DeepDub is an ARM, not a replacement: both engines stay on the table because putting them head
+ * to head is the entire purpose of this command.
+ */
+function ttsCandidates(env: Env): TtsCandidate[] {
+  const deepdubMissing = (e: Env): string | null =>
+    !e.DEEPDUB_API_KEY
+      ? 'DEEPDUB_API_KEY not set'
+      : !e.DEEPDUB_VOICE_PROMPT_ID
+        ? 'DEEPDUB_VOICE_PROMPT_ID not set'
+        : null;
+
+  return [
   {
-    // THE BASELINE — our live config, direct to Cartesia with our own key. Every other row is only
-    // meaningful relative to this one.
-    name: 'cartesia/sonic-3 (LIVE, direct)',
-    build: (env) => new cartesia.TTS(cartesiaOptions(env)),
+    // Direct to Cartesia with our own key — the shipped Cartesia path.
+    name: `cartesia/${env.CARTESIA_MODEL} (direct)`,
+    provider: 'cartesia',
+    honoursSpeedVolume: true,
+    build: (e) => harnessRow(e, { provider: 'cartesia', route: 'cartesia' }),
+  },
+  {
+    // DeepDub on the REALTIME model — the path the adapter is built around, and the one that beat
+    // Cartesia 5/5 on Koren's ear in round 22.
+    //
+    // ⚠ THE ABSOLUTE NUMBERS HERE ARE THIS LAPTOP'S, NOT PRODUCTION'S. Measured 2026-09-02 on a
+    // fair local harness: DeepDub warm median TTFB 466ms against Cartesia's 1236ms — while the
+    // same day's production call reports put Cartesia at 223-259ms. Local absolutes are dominated
+    // by this machine's round-trip to the vendor. Read the RANKING; never quote the number.
+    name: `deepdub/${env.DEEPDUB_MODEL} (realtime)`,
+    provider: 'deepdub',
+    honoursSpeedVolume: false,
+    skipIf: deepdubMissing,
+    build: (e) => harnessRow(e, { provider: 'deepdub', env: { DEEPDUB_REALTIME: true } }),
+  },
+  {
+    // The same engine with realtime OFF, purely to price the flag. If this is not materially
+    // slower, the flag is not buying what its comment claims.
+    name: `deepdub/${env.DEEPDUB_MODEL} (realtime OFF)`,
+    provider: 'deepdub',
+    honoursSpeedVolume: false,
+    skipIf: deepdubMissing,
+    build: (e) => harnessRow(e, { provider: 'deepdub', env: { DEEPDUB_REALTIME: false } }),
   },
   {
     // Same model through LiveKit's gateway. Included ONLY to price the extra hop: if this is much
@@ -204,7 +278,8 @@ const TTS_CANDIDATES: TtsCandidate[] = [
       }),
     note: 'quality-first model — expect it to be slower',
   },
-];
+  ];
+}
 
 // ---------------------------------------------------------------------------------------------
 // LLM candidates. Measured on the REAL system prompt and a REAL Hebrew turn, because ttft depends
@@ -247,12 +322,38 @@ const LLM_CANDIDATES: LlmCandidate[] = [
 
 async function benchTts(env: Env): Promise<void> {
   await mkdir(OUT_DIR, { recursive: true });
+  const live = describeEngine(env);
   console.log(`TTS — time to FIRST AUDIO on a real Hebrew reply (${RUNS} runs each, median)\n`);
   console.log(`  "${HEBREW_LINE}"\n`);
+  console.log(`  configured engine (VOICE_TTS_PROVIDER): ${live.label} — marked (LIVE) below\n`);
+  console.log(
+    `  speed/volume: VOICE_TTS_SPEED=${env.VOICE_TTS_SPEED} VOICE_TTS_VOLUME=${env.VOICE_TTS_VOLUME}\n` +
+      `  reach CARTESIA rows ONLY. DeepDub and ElevenLabs are sent neither, so their rows are at\n` +
+      `  the engine's own rate and level — a difference that is NOT a difference in those knobs.\n`,
+  );
 
-  const results: Array<{ name: string; ttfb: number | null; note?: string; err?: string }> = [];
+  const results: Array<{
+    name: string;
+    ttfb: number | null;
+    note?: string;
+    err?: string;
+    skipped?: string;
+    isLive?: boolean;
+  }> = [];
 
-  for (const c of TTS_CANDIDATES) {
+  for (const c of ttsCandidates(env)) {
+    const isLive = c.provider !== undefined && c.provider === live.provider;
+    const displayName = `${c.name}${isLive ? ' (LIVE)' : ''}`;
+
+    const skip = c.skipIf?.(env) ?? null;
+    if (skip) {
+      // A SKIPPED ROW IS NOT A SLOW ROW. Printing it as a failure would read as "DeepDub is
+      // broken" when the truth is "this laptop has no DeepDub key".
+      results.push({ name: displayName, ttfb: null, skipped: skip, isLive });
+      console.log(`  ${displayName.padEnd(38)} skipped — ${skip}`);
+      continue;
+    }
+
     const samples: number[] = [];
     let frames: AudioFrame[] = [];
     let err: string | undefined;
@@ -302,32 +403,51 @@ async function benchTts(env: Env): Promise<void> {
     }
 
     const ttfb = median(samples);
-    results.push({ name: c.name, ttfb, note: c.note, err });
+    results.push({ name: displayName, ttfb, note: c.note, err, isLive });
 
     if (frames.length > 0) {
       // Judge the voice on the PHONE band, never on studio audio — an 8kHz line strips the
       // frequencies that carry Hebrew consonants, and a voice that is lovely in a browser can be
       // unintelligible on a call. That is not hypothetical; it is what happened to us.
-      const safe = c.name.replace(/[^a-z0-9.]+/gi, '_');
+      //
+      // The candidate NAME is the filename, and every name starts with its provider — so a WAV
+      // found later in voice-samples/bench/ still says which engine made it.
+      const safe = displayName.replace(/[^a-z0-9.]+/gi, '_');
       await writeFile(`${OUT_DIR}/${safe}-phone.wav`, toPhoneWav(frames));
       await writeFile(`${OUT_DIR}/${safe}-studio.wav`, toStudioWav(frames));
     }
 
+    // The speed/volume column, per row, because the alternative is a reader assuming the levers
+    // applied everywhere and concluding they do nothing.
+    const levers =
+      c.honoursSpeedVolume === undefined
+        ? ''
+        : c.honoursSpeedVolume
+          ? `   [speed/volume applied]`
+          : `   [speed/volume IGNORED by this engine]`;
     console.log(
-      `  ${c.name.padEnd(38)} ${err ? `FAILED — ${err}` : `${String(ttfb).padStart(4)}ms`}` +
-        `${c.note ? `   (${c.note})` : ''}`,
+      `  ${displayName.padEnd(38)} ${err ? `FAILED — ${err}` : `${String(ttfb).padStart(4)}ms`}` +
+        `${levers}${c.note ? `   (${c.note})` : ''}`,
     );
   }
 
-  const baseline = results.find((r) => r.name.includes('LIVE'))?.ttfb;
+  // The baseline is the CONFIGURED engine, whatever that is today — not a hard-coded Cartesia row.
+  const baseline = results.find((r) => r.isLive && r.ttfb !== null)?.ttfb;
   console.log('\n  --- ranked (working models only) ---');
-  for (const r of results.filter((r) => !r.err && r.ttfb !== null).sort((a, b) => a.ttfb! - b.ttfb!)) {
+  for (const r of results.filter((r) => !r.err && !r.skipped && r.ttfb !== null).sort((a, b) => a.ttfb! - b.ttfb!)) {
     const delta = baseline ? r.ttfb! - baseline : 0;
     const tag = !baseline || delta === 0 ? '' : delta < 0 ? `  ${delta}ms FASTER` : `  +${delta}ms slower`;
     console.log(`  ${String(r.ttfb).padStart(4)}ms  ${r.name}${tag}`);
   }
+  if (!baseline) {
+    console.log(`  (no baseline: no row for the configured engine ${live.label} produced audio)`);
+  }
   console.log(`\n  Samples in ${OUT_DIR}/ — LISTEN TO THE -phone.wav FILES BEFORE CHOOSING.`);
   console.log('  A fast voice that is unintelligible down a phone line is not a win.');
+  console.log(
+    '  And these are LOCAL absolutes from this laptop — production TTS TTFB on the same day was\n' +
+      '  223-259ms against numbers four to five times that here. Rank with them; never quote them.',
+  );
 }
 
 async function benchLlm(env: Env): Promise<void> {
@@ -562,11 +682,18 @@ async function main(): Promise<void> {
   initializeLogger({ pretty: false, level: 'error' });
 
   const what = process.argv[2] ?? 'all';
-  if (what === 'tts' || what === 'all') await benchTts(env);
-  if (what === 'all') console.log(`\n${'='.repeat(90)}\n`);
-  if (what === 'llm' || what === 'all') await benchLlm(env);
-  if (what === 'path') await benchPath(env);
-  if (what === 'tier') await benchTier(env);
+  try {
+    if (what === 'tts' || what === 'all') await benchTts(env);
+    if (what === 'all') console.log(`\n${'='.repeat(90)}\n`);
+    if (what === 'llm' || what === 'all') await benchLlm(env);
+    if (what === 'path') await benchPath(env);
+    if (what === 'tier') await benchTier(env);
+  } finally {
+    // Every engine this run leased, released. DeepDub holds a two-socket pool per instance and
+    // nothing else will close it — an unclosed pool keeps the event loop alive and the bench ends
+    // by hanging after it has already printed its answer.
+    for (const close of closers) await close();
+  }
 }
 
 main().catch((err) => {

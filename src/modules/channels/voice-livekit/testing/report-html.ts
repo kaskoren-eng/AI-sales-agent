@@ -18,6 +18,10 @@ import type { PipelineSnapshot } from '../pipeline-observer.js';
 import { encodeWav, toPhoneRate } from './wav.js';
 import { CAPTURE_RATE, type CallResult } from './synthetic-caller.js';
 import { alignTranscript } from './transcript-align.js';
+import { engineFromPipeline, engineSlug } from './tts-engine.js';
+
+/** What the page says when the call report could not confirm which engine spoke. */
+const UNVERIFIED = 'engine UNVERIFIED (no call report)';
 
 const PHONE_RATE = 8_000;
 
@@ -60,6 +64,17 @@ export interface VariantRun {
   key: string;
   /** `lk.agent.name` of the worker that actually answered — the anti-"was this even my code" check. */
   agentName: string | null;
+  /**
+   * THE ENGINE THAT SPOKE HER HALF, read back off the agent's own call report. Null = the report
+   * was not found, so it is UNVERIFIED and the page must say so rather than assume Cartesia.
+   *
+   * Rounds on this project have already been judged on Cartesia audio during the week we decided
+   * to leave Cartesia. A clip whose engine is not on its face is a verdict waiting to be
+   * misattributed, so this ends up in the filename, on the card, and in the pasteable summary.
+   */
+  agentEngine: string | null;
+  /** The engine the SYNTHETIC CALLER spoke with — the other voice in every exchange clip. */
+  callerEngine: string | null;
   /** Whole call, both voices, 8kHz — the one to judge. */
   callWav: string | null;
   /** Whole call at 24kHz. */
@@ -101,9 +116,18 @@ export async function writeRunArtifacts(args: {
   call: CallResult;
   /** The agent's own words, already aligned to turns by `alignTranscript`. */
   transcript: { greeting: string | null; replies: Array<string | null> };
+  /**
+   * The agent's OWN pipeline snapshot, purely so the clips can name the engine that made them.
+   * Absent/null → the files are stamped `engine-unverified`, which is the honest label for audio
+   * whose engine nothing has confirmed.
+   */
+  pipeline?: PipelineSnapshot | null;
 }): Promise<VariantRun> {
   const { dir, key, call, transcript } = args;
   await mkdir(dir, { recursive: true });
+
+  const agentEngine = engineFromPipeline(args.pipeline ?? null);
+  const stamp = engineSlug(agentEngine);
 
   const write = async (name: string, pcm: Int16Array): Promise<string | null> => {
     if (pcm.length === 0) return null;
@@ -117,12 +141,15 @@ export async function writeRunArtifacts(args: {
     phoneName ? phoneName.replace(/_phone\.wav$/u, '.wav') : null;
 
   const greetingSaid = transcript.greeting;
-  const greetingWav = await write(`call_${key}_greeting.wav`, call.greetingPcm);
-  const callWav = await write(`call_${key}_full.wav`, call.mixedPcm);
+  // EVERY FILENAME CARRIES THE ENGINE. These WAVs outlive the page they were written for — they
+  // get copied into chats, re-listened to weeks later, and compared against clips from other
+  // rounds. The engine has to travel with the audio, not sit only in the HTML beside it.
+  const greetingWav = await write(`call_${key}_${stamp}_greeting.wav`, call.greetingPcm);
+  const callWav = await write(`call_${key}_${stamp}_full.wav`, call.mixedPcm);
 
   const turns: TurnRow[] = [];
   for (const [i, turn] of call.turns.entries()) {
-    const base = `${pad(i + 1)}_${key}`;
+    const base = `${pad(i + 1)}_${key}_${stamp}`;
     const phone = await write(`${base}.wav`, turn.agentPcm);
     const exchange = await write(
       `${base}_exchange.wav`,
@@ -143,6 +170,8 @@ export async function writeRunArtifacts(args: {
   return {
     key,
     agentName: call.agentName,
+    agentEngine,
+    callerEngine: call.callerEngine.label,
     callWav,
     callStudioWav: studioOf(callWav),
     greetingWav,
@@ -151,6 +180,49 @@ export async function writeRunArtifacts(args: {
     turns,
     ...(call.error ? { error: call.error } : {}),
   };
+}
+
+/**
+ * The run's own machine-readable record, written beside the page.
+ *
+ * The HTML is for a human; this is for everything else — a later script, a diff between two runs,
+ * or a reader asking six weeks from now "which engine made THIS file". Every clip is listed with
+ * the engine that produced it, so the answer never depends on remembering.
+ */
+export async function writeManifest(args: {
+  dir: string;
+  scenarioName: string;
+  generatedAt: string;
+  runs: VariantRun[];
+  variants: VariantSummary[];
+  warnings: string[];
+}): Promise<string> {
+  const byKey = new Map(args.variants.map((v) => [v.key, v]));
+  const manifest = {
+    generatedAt: args.generatedAt,
+    scenario: args.scenarioName,
+    warnings: args.warnings,
+    variants: args.runs.map((run) => ({
+      key: run.key,
+      label: byKey.get(run.key)?.label ?? null,
+      overrides: byKey.get(run.key)?.overrides ?? {},
+      answeredBy: run.agentName,
+      /** What SHE spoke with. null = not confirmed by a call report; do not assume. */
+      agentEngine: run.agentEngine,
+      /** What the fake caller spoke with — the other voice in every `_exchange` clip. */
+      callerEngine: run.callerEngine,
+      clips: [
+        run.callWav,
+        run.callStudioWav,
+        run.greetingWav,
+        run.greetingStudioWav,
+        ...run.turns.flatMap((t) => [t.exchangeWav, t.phoneWav, t.studioWav]),
+      ].filter((c): c is string => Boolean(c)),
+    })),
+  };
+  const path = join(args.dir, 'manifest.json');
+  await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`);
+  return path;
 }
 
 /**
@@ -267,6 +339,14 @@ export function renderPage(input: PageInput): string {
   // the value you need in order to know what the change was measured against.
   const comparedKeys = [...new Set(input.variants.flatMap((v) => Object.keys(v.overrides)))].sort();
 
+  // One line naming every engine on the page, so the header answers "what am I listening to"
+  // before anyone scrolls to a column.
+  const enginesLine = esc(
+    input.runs
+      .map((r) => `${r.key}: ${r.agentEngine ?? UNVERIFIED} (caller: ${r.callerEngine ?? 'unknown'})`)
+      .join('  ·  ') || 'no runs',
+  );
+
   // THE WHOLE CALL, FIRST. Judging a conversation from isolated replies does not work; this is the
   // only player on the page that lets you hear the thing end to end, so it goes above everything.
   const fullCalls = input.variants
@@ -274,6 +354,8 @@ export function renderPage(input: PageInput): string {
       const run = runByKey.get(v.key);
       return `<div class="col">
         <div class="vhead"><span class="vkey">${esc(v.key)}</span><span class="vlabel">${esc(v.label)}</span></div>
+        <div class="engine">🔊 ${esc(run?.agentEngine ?? UNVERIFIED)}</div>
+        <div class="meas">קול הלקוח המלאכותי: ${esc(run?.callerEngine ?? 'unknown')}</div>
         ${run?.error ? `<div class="meas none">${esc(run.error)}</div>` : ''}
         ${
           run?.callWav
@@ -313,9 +395,11 @@ export function renderPage(input: PageInput): string {
         : 'אין דוח שיחה — לא אומת';
       return `<div class="col">
         <div class="vhead"><span class="vkey">${esc(v.key)}</span><span class="vlabel">${esc(v.label)}</span></div>
+        <div class="engine">🔊 ${esc(run?.agentEngine ?? UNVERIFIED)}</div>
         <div class="meas">asked for: ${esc(overrides.map(([k, val]) => `${k}=${val}`).join(' · ') || '(baseline — .env as-is)')}</div>
         <div class="meas">agent reported: ${esc(resolved)}</div>
         <div class="meas">answered by: ${esc(run?.agentName ?? 'unknown')}</div>
+        <div class="meas">caller voice: ${esc(run?.callerEngine ?? 'unknown')}</div>
       </div>`;
     })
     .join('');
@@ -356,7 +440,8 @@ export function renderPage(input: PageInput): string {
           .join('');
         return `<div class="col">
           <div class="vhead"><span class="vkey">${esc(v.key)}</span><span class="vlabel">${esc(v.label)}</span>
-            <span class="tag">${esc(ms(turn.deadAirMs))}</span></div>
+            <span class="tag">${esc(ms(turn.deadAirMs))}</span>
+            <span class="engine inline">🔊 ${esc(runByKey.get(v.key)?.agentEngine ?? UNVERIFIED)}</span></div>
           <div class="he" dir="rtl">${esc(turn.agentSaid ?? '(הטקסט לא נמצא בדוח השיחה)')}</div>
           ${primary}
           <div class="meas">שקט לפני התשובה ${esc(ms(turn.deadAirMs))} · דיברה ${turn.agentSpokeMs}ms${flags.length ? ` · <span class="none">${esc(flags.join(', '))}</span>` : ''}</div>
@@ -414,6 +499,12 @@ export function renderPage(input: PageInput): string {
   .vkey { font-family:monospace; font-weight:700; color:var(--acc); font-size:16px; }
   .vlabel { font-size:13px; color:var(--dim); }
   .lbl { font-size:13px; color:var(--dim); display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
+  /* The engine that made the audio in this column. Deliberately loud: a clip judged against the
+     wrong engine is worse than a clip not judged at all. */
+  .engine { font-family:monospace; font-size:12px; color:#cbd5e1; background:#1d2430;
+            border:1px solid var(--line); border-radius:6px; padding:3px 8px; margin:4px 0;
+            display:inline-block; direction:ltr; }
+  .engine.inline { margin:0; padding:2px 6px; font-size:11px; }
   .none { color:#e0a0a0; }
   .he { font-size:18px; margin-bottom:8px; line-height:1.5; }
   .meas { font-family:monospace; font-size:12px; color:var(--dim); margin:6px 0; word-break:break-word; }
@@ -441,6 +532,9 @@ export function renderPage(input: PageInput): string {
     ה־jitter buffer של המאזין. להשוות בעזרתו A מול B — אבל לעולם לא לצטט אותו כזמן התגובה של המוצר.
     הזמן האמיתי נמדד מהשיחה עצמה (<code>latency eou/llm/tts</code> בדוח השיחה).<br>
     לשפוט לפי הנגן הראשי בכל עמודה — הוא 8kHz, כמו טלפון. גרסת האולפן היא לעיון בלבד.</div>
+  <div class="warn"><b>המנוע שהשמיע כל עמודה כתוב עליה, וגם על שם הקובץ.</b>
+    כל פסק דין כאן תקף רק למנוע שכתוב בעמודה — קליפ של מנוע אחד לא מעיד על מנוע אחר.
+    <div class="meas">${enginesLine}</div></div>
   ${warnings}
 </header>
 <main>
@@ -473,8 +567,15 @@ document.querySelectorAll('input').forEach(el => {
   });
 });
 document.getElementById('btn').addEventListener('click', () => {
+  // THE ENGINE GOES INTO THE PASTED VERDICT. This textarea is what gets copied into a chat and
+  // acted on days later; a verdict that does not name the engine is the exact artefact that gets
+  // re-applied to a different one.
   const lines = [${JSON.stringify(input.title)}, ${JSON.stringify(
     input.variants.map((v) => `${v.key} = ${v.label}`).join(' | '),
+  )}, ${JSON.stringify(
+    input.runs
+      .map((r) => `${r.key} engine: ${r.agentEngine ?? UNVERIFIED} · caller: ${r.callerEngine ?? 'unknown'}`)
+      .join(' | '),
   )}, ''];
   document.querySelectorAll('.card').forEach(card => {
     const id = card.dataset.id;

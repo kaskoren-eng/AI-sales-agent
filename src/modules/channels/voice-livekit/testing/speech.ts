@@ -1,6 +1,4 @@
-import { initializeLogger, tts as ttsBase } from '@livekit/agents';
-import * as cartesia from '@livekit/agents-plugin-cartesia';
-import type { AudioFrame } from '@livekit/rtc-node';
+import { initializeLogger } from '@livekit/agents';
 import type { Env } from '../../../../config/env.js';
 
 let loggerReady = false;
@@ -76,33 +74,15 @@ export function cartesiaOptions(env: Env): {
 const MODELS_ACCEPTING_LANGUAGE = new Set(['sonic-3.5', 'sonic-3', 'sonic-2', 'sonic', 'sonic-lite']);
 
 /**
- * Synthesizes Hebrew speech for the *synthetic caller* — i.e. this is the fake human, not the
- * agent. Reuses the same Cartesia voice the agent speaks with, which is imperfect (the agent
- * hears its own voice back) but keeps the harness dependency-free.
+ * `synthesizeHebrew` MOVED to ./tts-engine.ts on 2026-09-02, and it is not a tidy-up.
  *
- * Uses the websocket `stream()` path, NOT `synthesize()`. The REST path returns zero frames for
- * Hebrew on sonic-3 ("AudioByteStream: incomplete frame during flush") — the websocket path is
- * the one the live agent uses and is proven to work.
+ * It used to construct a Cartesia TTS by hand right here, which made every local
+ * tool speak Cartesia no matter what `VOICE_TTS_PROVIDER` said. With the move to DeepDub that
+ * would have meant a harness measuring an engine we no longer ship, silently. The replacement
+ * resolves the engine through production's own `buildTTS()`.
+ *
+ * This file stays deliberately small and deliberately Cartesia-shaped: it is the CARTESIA options
+ * and the logger, and it is imported by `agent.config.ts` — so it must not import `tts-engine.ts`
+ * back (that would be a cycle through agent.config).
  */
-export async function synthesizeHebrew(env: Env, text: string): Promise<AudioFrame[]> {
-  ensureLogger();
 
-  const tts = new cartesia.TTS(cartesiaOptions(env));
-
-  const stream = tts.stream();
-  stream.pushText(text);
-  stream.flush();
-  stream.endInput();
-
-  const frames: AudioFrame[] = [];
-  for await (const ev of stream) {
-    if (ev === ttsBase.SynthesizeStream.END_OF_STREAM) break;
-    frames.push(ev.frame);
-  }
-  stream.close();
-
-  if (frames.length === 0) {
-    throw new Error(`Cartesia returned no audio for: ${text.slice(0, 40)}`);
-  }
-  return frames;
-}

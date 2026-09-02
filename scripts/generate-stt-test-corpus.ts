@@ -50,7 +50,12 @@ import {
   resamplePcm,
   trimSilence,
 } from '../src/modules/channels/voice-livekit/testing/wav.js';
-import { synthesizeHebrew } from '../src/modules/channels/voice-livekit/testing/speech.js';
+// Moved out of testing/speech.ts on 2026-09-02: the harness now resolves its engine through
+// VOICE_TTS_PROVIDER rather than always speaking Cartesia. NOTE FOR THIS SCRIPT: the corpus under
+// tests/hebrew-stt-corpus/ was generated on Cartesia, so REGENERATING it on a different engine
+// changes the audio every STT WER number in this project was measured against. Regenerate
+// deliberately, or not at all.
+import { synthesizeHebrew } from '../src/modules/channels/voice-livekit/testing/tts-engine.js';
 import { CORPUS, referenceTranscript } from '../tests/hebrew-stt-corpus/corpus.js';
 import type { Env } from '../src/config/env.js';
 

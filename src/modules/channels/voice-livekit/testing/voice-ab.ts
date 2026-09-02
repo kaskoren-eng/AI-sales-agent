@@ -1,9 +1,8 @@
 /**
  * Voice A/B for Hebrew, judged the way the caller actually hears it.
  *
- * Synthesizes the same Hebrew line with each configured Cartesia voice and writes TWO files per
- * voice:
- *   *-studio.wav — the raw 24kHz Cartesia output (what a browser demo sounds like)
+ * Synthesizes the same Hebrew line with every configured voice and writes TWO files per voice:
+ *   *-studio.wav — the raw engine output (what a browser demo sounds like)
  *   *-phone.wav  — the same audio band-limited and resampled to 8kHz (what a PHONE sounds like)
  *
  * Judge on the -phone files. A phone call is 8kHz narrowband end to end — the mobile leg is
@@ -12,108 +11,110 @@
  * differ wildly on that. Choosing a voice on studio audio is how you end up with a call the
  * customer can't follow.
  *
- * Usage: npm run voice:ab
+ * THE ENGINE FOLLOWS `VOICE_TTS_PROVIDER`, and every filename carries it. Until 2026-09-02 this
+ * script hard-coded Cartesia, which was invisible right up until the day production stopped being
+ * Cartesia — at which point it would have gone on producing Cartesia clips for a DeepDub agent
+ * with nothing on the file or the console to say so.
+ *
+ * Usage:
+ *   npm run voice:ab                          the configured engine
+ *   npm run voice:ab -- sonic-3.5             a different model on the configured engine
+ *   npm run voice:ab -- --engine=deepdub      the other engine, to compare
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { AudioFrame } from '@livekit/rtc-node';
 import { loadEnv } from '../../../../config/env.js';
-import { synthesizeHebrew } from './speech.js';
+import { HarnessVoice, describeEngine, engineBanner, parseEngineFlags } from './tts-engine.js';
+import { concatFrames, toPhoneWav, toStudioWav } from './wav.js';
 
 const env = loadEnv();
 
 // NOTE: loadEnv() runs dotenv with { override: true }, so .env WINS over the shell environment.
-// `CARTESIA_MODEL=sonic-turbo npm run voice:ab` therefore does nothing. Take the model as an
-// argument instead: `npm run voice:ab -- sonic-turbo`.
-const model = process.argv[2] ?? env.CARTESIA_MODEL;
+// `CARTESIA_MODEL=sonic-turbo npm run voice:ab` therefore does nothing. Take everything as an
+// ARGUMENT instead: `npm run voice:ab -- sonic-turbo`, `npm run voice:ab -- --engine=deepdub`.
+const argv = process.argv.slice(2);
+const flags = parseEngineFlags(argv);
+const positional = argv.filter((a) => !a.startsWith('--'));
+const modelArg = positional[0];
+const override = { ...flags, ...(modelArg ? { model: modelArg } : {}) };
 
 /** Deliberately contains the sounds Hebrew narrowband mangles: sibilants, gutturals, numbers. */
 const LINE =
   'שלום, הגעת ל-ClickScales. אשמח לקבוע לך שיחת היכרות ביום שלישי בשעה שתיים עשרה וחצי. מה שם המשפחה שלך?';
 
 const OUT_DIR = 'voice-samples';
-const PHONE_RATE = 8_000;
-
-function concat(frames: AudioFrame[]): { pcm: Int16Array; rate: number } {
-  const rate = frames[0]!.sampleRate;
-  const total = frames.reduce((n, f) => n + f.samplesPerChannel, 0);
-  const pcm = new Int16Array(total);
-  let off = 0;
-  for (const f of frames) {
-    pcm.set(f.data, off);
-    off += f.samplesPerChannel;
-  }
-  return { pcm, rate };
-}
 
 /**
- * Downsample to 8kHz the way a phone line does it: average over each source window, which acts as
- * a crude low-pass. Plain decimation would alias and make every voice sound equally bad — which
- * would quietly invalidate the whole comparison.
+ * The voices to compare.
+ *
+ * A LIST OF VOICE IDS IS A CARTESIA-SHAPED IDEA. `CARTESIA_VOICE_ID_{PRIMARY,SECONDARY,TERTIARY}`
+ * exist because Cartesia's catalogue was the thing being shopped. DeepDub and ElevenLabs each
+ * carry ONE configured voice here, so on those engines this script degrades to "render the
+ * configured voice at 8kHz" — still the useful half — and says so rather than pretending to be a
+ * comparison. To compare voices on those engines, pass `--voice=<id>` per run.
  */
-function toPhone(pcm: Int16Array, srcRate: number): Int16Array {
-  const ratio = srcRate / PHONE_RATE;
-  const outLen = Math.floor(pcm.length / ratio);
-  const out = new Int16Array(outLen);
-  for (let i = 0; i < outLen; i++) {
-    const start = Math.floor(i * ratio);
-    const end = Math.min(Math.floor((i + 1) * ratio), pcm.length);
-    let sum = 0;
-    for (let j = start; j < end; j++) sum += pcm[j]!;
-    out[i] = Math.round(sum / Math.max(1, end - start));
-  }
-  return out;
-}
-
-function wav(pcm: Int16Array, rate: number): Buffer {
-  const data = Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength);
-  const header = Buffer.alloc(44);
-  header.write('RIFF', 0);
-  header.writeUInt32LE(36 + data.length, 4);
-  header.write('WAVE', 8);
-  header.write('fmt ', 12);
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20); // PCM
-  header.writeUInt16LE(1, 22); // mono
-  header.writeUInt32LE(rate, 24);
-  header.writeUInt32LE(rate * 2, 28);
-  header.writeUInt16LE(2, 32);
-  header.writeUInt16LE(16, 34);
-  header.write('data', 36);
-  header.writeUInt32LE(data.length, 40);
-  return Buffer.concat([header, data]);
-}
-
-const voices = [
-  { label: 'primary', id: env.CARTESIA_VOICE_ID_PRIMARY },
-  { label: 'secondary', id: env.CARTESIA_VOICE_ID_SECONDARY },
-  { label: 'tertiary', id: env.CARTESIA_VOICE_ID_TERTIARY },
-].filter((v): v is { label: string; id: string } => Boolean(v.id));
+const base = describeEngine(env, override);
+const voices =
+  base.provider === 'cartesia'
+    ? ([
+        { label: 'primary', id: env.CARTESIA_VOICE_ID_PRIMARY },
+        { label: 'secondary', id: env.CARTESIA_VOICE_ID_SECONDARY },
+        { label: 'tertiary', id: env.CARTESIA_VOICE_ID_TERTIARY },
+      ] as Array<{ label: string; id: string | undefined }>).filter(
+        (v): v is { label: string; id: string } => Boolean(v.id),
+      )
+    : base.voice
+      ? [{ label: 'configured', id: base.voice }]
+      : [];
 
 if (voices.length === 0) {
-  console.error('No CARTESIA_VOICE_ID_* set in .env');
+  console.error(
+    base.provider === 'cartesia'
+      ? 'No CARTESIA_VOICE_ID_* set in .env'
+      : `No voice configured for ${base.provider} — set ` +
+          `${base.provider === 'deepdub' ? 'DEEPDUB_VOICE_PROMPT_ID' : 'ELEVENLABS_VOICE_ID'}, ` +
+          `or pass --voice=<id>.`,
+  );
   process.exit(1);
 }
 
 await mkdir(OUT_DIR, { recursive: true });
-console.log(`Synthesizing ${voices.length} voice(s) with model ${model}\n`);
+console.log(engineBanner(base));
+console.log(`\nSynthesizing ${voices.length} voice(s)\n`);
+if (voices.length === 1 && base.provider !== 'cartesia') {
+  console.log(
+    `  (one voice only — a voice LIST is a Cartesia concept. Re-run with --voice=<id> to compare\n` +
+      `   another ${base.provider} voice against this one.)\n`,
+  );
+}
 
 for (const v of voices) {
+  const voice = new HarnessVoice(env, { ...override, voice: v.id });
   const t0 = Date.now();
-  const frames = await synthesizeHebrew({ ...env, CARTESIA_MODEL: model, CARTESIA_VOICE_ID_PRIMARY: v.id }, LINE);
-  const { pcm, rate } = concat(frames);
+  try {
+    const frames = await voice.say(LINE);
+    const { pcm, rate } = concatFrames(frames);
 
-  const studioPath = join(OUT_DIR, `${v.label}-${model}-studio.wav`);
-  const phonePath = join(OUT_DIR, `${v.label}-${model}-phone.wav`);
-  await writeFile(studioPath, wav(pcm, rate));
-  await writeFile(phonePath, wav(toPhone(pcm, rate), PHONE_RATE));
+    // THE ENGINE IS IN THE FILENAME. A WAV that outlives its console output — and they all do,
+    // they sit in voice-samples/ for weeks — has to say what made it, or a later listen credits
+    // the wrong engine with what it hears.
+    const stem = `${v.label}-${voice.engine.slug}`;
+    const studioPath = join(OUT_DIR, `${stem}-studio.wav`);
+    const phonePath = join(OUT_DIR, `${stem}-phone.wav`);
+    await writeFile(studioPath, toStudioWav(frames));
+    await writeFile(phonePath, toPhoneWav(frames));
 
-  console.log(
-    `${v.label.padEnd(10)} ${((pcm.length / rate)).toFixed(1)}s audio, synth ${Date.now() - t0}ms`,
-  );
-  console.log(`  phone (JUDGE THIS): ${phonePath}`);
-  console.log(`  studio            : ${studioPath}`);
+    console.log(
+      `${v.label.padEnd(10)} ${(pcm.length / rate).toFixed(1)}s audio @${rate}Hz, synth ${Date.now() - t0}ms` +
+        `   [${voice.engine.label}]`,
+    );
+    console.log(`  phone (JUDGE THIS): ${phonePath}`);
+    console.log(`  studio            : ${studioPath}`);
+  } finally {
+    await voice.close();
+  }
 }
 
 console.log('\nListen to the -phone files. That is what the caller hears.');
+if (base.leverNote) console.log(`⚠ ${base.leverNote}`);
 process.exit(0);

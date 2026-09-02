@@ -140,6 +140,12 @@ const PIPELINE_KEYS = [
   'VOICE_TTS_PROVIDER',
   'VOICE_TTS_ROUTE',
   'CARTESIA_MODEL',
+  // ADDED 2026-09-02. `CARTESIA_MODEL` was the only TTS model on this list, so a call served by
+  // DeepDub or ElevenLabs wrote a report that named the provider and then named CARTESIA's model
+  // beside it — and the listening harness, which reads the engine back out of this snapshot to
+  // stamp it on every clip, could say "deepdub/" and nothing more. Neither key is a credential.
+  'DEEPDUB_MODEL',
+  'ELEVENLABS_MODEL',
   'VOICE_TTS_SPEED',
   'VOICE_TTS_VOLUME',
   'VOICE_LANGUAGE',

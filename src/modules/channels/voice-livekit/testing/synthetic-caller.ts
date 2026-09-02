@@ -12,7 +12,7 @@ import {
 import { RoomAgentDispatch, RoomConfiguration } from '@livekit/protocol';
 import { AccessToken } from 'livekit-server-sdk';
 import type { Env } from '../../../../config/env.js';
-import { synthesizeHebrew } from './speech.js';
+import { HarnessVoice, type EngineDescriptor, type EngineOverride } from './tts-engine.js';
 import { concatFrames, trimSilenceWithOffset } from './wav.js';
 
 /** Everything in this harness lives at one rate so caller and agent audio can be mixed directly. */
@@ -81,6 +81,15 @@ export interface CallResult {
    * mush and should not be trusted by ear. See `Mixer.stats`.
    */
   mixStats?: { segments: number; overlappingSegments: number; overlapMs: number };
+  /**
+   * The engine THIS CALLER spoke with — i.e. the voice of the fake human, not of the agent.
+   *
+   * Two different engines can appear on one page: the caller's half of an exchange clip comes from
+   * here, and the agent's half comes from whatever the worker resolved (read back off the call
+   * report by `engineFromPipeline`). Recording both is the only way a reader can tell which voice
+   * they are judging.
+   */
+  callerEngine: EngineDescriptor;
   /** Agent never joined, wrong agent answered, agent never spoke, etc. */
   error?: string;
 }
@@ -129,12 +138,21 @@ export interface SyntheticCallerOptions {
   expectAgentName?: string;
   /** Keep the audio. Off = the old timing-only behaviour, and no memory held per call. */
   captureAudio?: boolean;
+  /**
+   * Which engine the FAKE HUMAN speaks with. Defaults to `VOICE_TTS_PROVIDER`, i.e. the same
+   * engine the agent uses — which keeps the harness honest about the audio the agent hears back.
+   *
+   * Override it only when the caller's voice is itself the variable (e.g. deliberately giving the
+   * agent an unfamiliar timbre to talk to). It does NOT change what the AGENT speaks with: that is
+   * the worker's own env, and on the A/B runner it comes from the variant's overlay.
+   */
+  engine?: EngineOverride;
 }
 
 /**
  * A fake Hebrew-speaking caller.
  *
- * Joins a LiveKit room, publishes Cartesia-synthesized Hebrew as if it were a microphone, listens
+ * Joins a LiveKit room, publishes synthesized Hebrew as if it were a microphone, listens
  * to the agent's audio track to measure how long the agent takes to respond, and (since
  * 2026-08-30) KEEPS THE AUDIO so a human can judge by ear what the timings cannot see.
  *
@@ -146,7 +164,9 @@ export interface SyntheticCallerOptions {
  *  - The caller speaks in one clean burst with no hesitation, "אה", or mid-sentence pause.
  *    Real Hebrew speakers do all three, and those are exactly what break endpointing. So this
  *    measures the BEST case for end-of-turn, not the average one.
- *  - The caller uses the same Cartesia voice as the agent, so the agent hears its own timbre.
+ *  - The caller uses the same ENGINE as the agent by default (whatever `VOICE_TTS_PROVIDER` says),
+ *    so the agent hears its own timbre back. `opts.engine` overrides it; `result.callerEngine`
+ *    records what it actually was, so no clip on a page is anonymous.
  *  - It cannot judge whether the Hebrew sounds natural. Only a human can do that — which is what
  *    the recorded audio and the HTML report are for.
  */
@@ -165,13 +185,28 @@ export class SyntheticCaller {
     const dispatchName = this.opts.agentName ?? '';
     const expectName = this.opts.expectAgentName ?? dispatchName;
 
-    // Synthesize everything up front so Cartesia latency never pollutes the measurement.
-    const speech = await Promise.all(
-      utterances.map(async (text) => {
-        const frames = await synthesizeHebrew(this.env, text);
-        return { text, frames, pcm: capture ? concatFrames(frames).pcm : EMPTY };
-      }),
-    );
+    // Synthesize everything up front so TTS latency never pollutes the measurement.
+    //
+    // ONE voice held open for all of it, and every clip resampled to CAPTURE_RATE. Both matter
+    // after the engine became configurable: a fresh engine per line would pay a websocket
+    // handshake per line, and engines do not agree on an output rate — Cartesia hands back 24kHz,
+    // DeepDub 48kHz, and this `AudioSource` is 24kHz. Publishing 48k frames into it does not
+    // error; the caller simply comes out at the wrong rate, which reads as a broken AGENT.
+    //
+    // Sequential rather than Promise.all: this is pre-call setup where wall-clock does not matter,
+    // and DeepDub routes concurrent generations across a two-socket pool that there is no reason
+    // to stress for a second saved before the call even starts.
+    const voice = new HarnessVoice(this.env, this.opts.engine);
+    const callerEngine = voice.engine;
+    const speech: Array<{ text: string; frames: AudioFrame[]; pcm: Int16Array }> = [];
+    try {
+      for (const text of utterances) {
+        const frames = await voice.say(text, { rate: CAPTURE_RATE });
+        speech.push({ text, frames, pcm: capture ? concatFrames(frames).pcm : EMPTY });
+      }
+    } finally {
+      await voice.close();
+    }
 
     const identity = this.opts.identity ?? 'synthetic-caller';
     const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity });
@@ -281,6 +316,7 @@ export class SyntheticCaller {
       greetingPcm: EMPTY,
       mixedPcm: capture ? mixer.render() : EMPTY,
       mixStats: mixer.stats(),
+      callerEngine,
       error,
     });
 
@@ -376,6 +412,7 @@ export class SyntheticCaller {
         greetingPcm,
         mixedPcm: capture ? mixer.render() : EMPTY,
         mixStats: mixer.stats(),
+        callerEngine,
       };
     } finally {
       await room.disconnect();

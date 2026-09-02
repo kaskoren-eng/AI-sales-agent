@@ -35,10 +35,12 @@ import { ensureLogger } from './speech.js';
 import {
   findCallReport,
   renderPage,
+  writeManifest,
   writeRunArtifacts,
   type VariantRun,
   type VariantSummary,
 } from './report-html.js';
+import { describeEngine, engineBanner } from './tts-engine.js';
 import {
   assertPipelinesDiffer,
   assertVariantsDiffer,
@@ -101,6 +103,12 @@ const stamp = new Date().toISOString().replace(/[:.]/gu, '-');
 const outDir = resolve(OUT_ROOT, `${stamp}-${scenario.name}`);
 await mkdir(outDir, { recursive: true });
 
+// The CALLER's engine, stated up front. It is this process's env; the AGENT's is the worker's, and
+// is read back per variant off its own call report — a variant may legitimately override
+// VOICE_TTS_PROVIDER, and on that run the two are supposed to differ.
+console.log(engineBanner(describeEngine(env)));
+console.log('  ↑ that is the SYNTHETIC CALLER. What SHE speaks with is reported per variant below.');
+
 const warnings: string[] = [];
 const runs: VariantRun[] = [];
 const summaries: VariantSummary[] = [];
@@ -149,6 +157,11 @@ for (const variant of variants) {
       key: variant.key,
       call,
       transcript: { greeting: report?.agentGreeting ?? null, replies: report?.agentReplies ?? [] },
+      // The engine is taken from the AGENT's own report, never from this process's env: the reply
+      // audio came out of a separate worker under this variant's overlay, and a variant is
+      // perfectly entitled to override VOICE_TTS_PROVIDER. Assuming our env here would put the
+      // wrong engine on the clip in exactly the run where the engine was the variable.
+      pipeline: report?.pipeline ?? null,
     });
     runs.push(run);
     summaries.push({
@@ -158,6 +171,7 @@ for (const variant of variants) {
       pipeline: report?.pipeline ?? null,
     });
 
+    console.log(`  she spoke with: ${run.agentEngine ?? 'UNVERIFIED — no call report'}`);
     console.log(
       `  agent joined after ${call.agentJoinedMs ?? '—'}ms` +
         (call.mixStats
@@ -176,6 +190,15 @@ for (const variant of variants) {
 // ── Gate 5: the agent itself reported different configuration per variant ───────────────────
 warnings.push(...assertPipelinesDiffer(summaries, keys));
 
+// A run whose engine could not be confirmed can still be listened to — it just cannot be QUOTED,
+// because nothing establishes which voice made the audio. Say so at the top of the page.
+for (const run of runs.filter((r) => r.agentEngine === null)) {
+  warnings.push(
+    `variant ${run.key}: the TTS ENGINE that spoke is UNVERIFIED — no call report to read it from. ` +
+      `Do not attribute this clip to any engine.`,
+  );
+}
+
 const html = renderPage({
   title: `A/B · ${scenario.name} · ${variants.map((v) => v.key).join(' vs ')}`,
   scenarioName: scenario.name,
@@ -187,8 +210,17 @@ const html = renderPage({
 });
 const pagePath = resolve(outDir, 'index.html');
 await writeFile(pagePath, html);
+const manifestPath = await writeManifest({
+  dir: outDir,
+  scenarioName: scenario.name,
+  generatedAt: new Date().toISOString(),
+  runs,
+  variants: summaries,
+  warnings,
+});
 
 console.log(`\n${'─'.repeat(70)}`);
+console.log(`  manifest (which engine made which clip): ${manifestPath}`);
 for (const w of warnings) console.log(`  ⚠ ${w}`);
 console.log(`\nOPEN THIS AND LISTEN:\n  ${pagePath}\n`);
 

@@ -203,6 +203,46 @@ Gate 5 is the only one that is proof rather than inference.
 
 ---
 
+## Which engine did this clip come from?
+
+Since 2026-09-02 the harness resolves its TTS the way production does — through
+`VOICE_TTS_PROVIDER` — instead of hard-coding Cartesia. Flip the provider and every tool here
+follows, with no code change:
+
+| Tool | Engine it speaks with |
+|---|---|
+| `voice:ab`, `voice:clarity` | `VOICE_TTS_PROVIDER`, or `--engine=` |
+| `voice:test`, `voice:ab:call` (the synthetic CALLER's voice) | `VOICE_TTS_PROVIDER` |
+| `voice:test`, `voice:ab:call` (HER voice — the reply audio) | the worker's own env / the variant's overlay, **read back off the call report** |
+| `bench:tts` | every arm, on purpose — Cartesia direct, Cartesia via the gateway, DeepDub realtime on and off, ElevenLabs. The row matching `VOICE_TTS_PROVIDER` is marked `(LIVE)` and is the baseline |
+
+**Every clip carries its engine in the filename** (`01_A_deepdub_dd-etts-3.2_exchange.wav`), on the
+card, in the header line, in `manifest.json`, and in the text the **צור סיכום** button emits. That
+is not decoration: rounds on this project were judged on Cartesia audio during the same week we
+decided to leave Cartesia, and a clip whose engine is not on its face is a verdict waiting to be
+re-applied to the wrong voice. When no call report can be matched, the label is
+`engine-unverified` and the page says so — **listen to it if you like, do not attribute it**.
+
+### `VOICE_TTS_SPEED` and `VOICE_TTS_VOLUME` are Cartesia's, and only Cartesia's
+
+They are intelligibility levers for the 8kHz band, not cosmetics — but our DeepDub adapter sends
+neither, and the ElevenLabs path does not carry them. So:
+
+* every tool prints whether the configured engine honoured them, and the A/B page renders it;
+* `bench:tts` marks each row `[speed/volume applied]` or `[speed/volume IGNORED by this engine]`;
+* `voice:clarity` **refuses to run its four-setting comparison on an engine that ignores them** —
+  four identical clips presented as an A/B is the same manufactured answer the variant gates exist
+  to prevent. It renders one labelled reference clip instead; `--anyway` forces all four, and
+  `--engine=cartesia` runs the levers on the engine that has them.
+
+There is no DeepDub equivalent to invent here. If DeepDub ever exposes a rate or gain control, it
+belongs in the adapter first and in `describeEngine`'s `honoursSpeedVolume` second.
+
+`<break time="…"/>` is the same story and is already handled: `pausesSupported()` gates it, DeepDub
+SPEAKS the tag aloud (known-issues §18), and `describeEngine` surfaces it as `supportsPauseTags`.
+
+---
+
 ## Read this before trusting a number
 
 ### The broken instrument returns the comfortable answer
@@ -246,7 +286,10 @@ built —
   handles a real human, use tier 5 and be one.
 * **It cannot judge whether the Hebrew sounds natural.** Only a human can — which is why the page
   exists. Listen to the `_phone` clips, not the studio ones.
-* **The caller uses the same Cartesia voice as the agent**, so the agent hears its own timbre back.
+* **The caller uses the same ENGINE as the agent** by default — whatever `VOICE_TTS_PROVIDER` says
+  — so the agent hears its own timbre back. Both engines are named on the page and in
+  `manifest.json`, because on an A/B run where a variant overrides the provider they legitimately
+  differ, and the exchange clip then contains two different voices.
 * **Runs hit the real database.** These calls write `call_learnings`, conversations and usage rows
   exactly as any web call does. That was true before this change too; it is not new, but it is real.
 * **First turn of a run is slow.** A freshly started worker's first reply carries cold-start cost
@@ -286,7 +329,8 @@ early. `ttsNode` is uninstrumented; closing it properly means timing inside it.
 | `dev-dispatch.ts` | Which dispatch pool the worker joins, and which agent answers a browser session. The production-safety fix. |
 | `local-session.ts` | Tier 5: a localhost page you talk to the local agent from. Serves `local-session-page.ts`. |
 | `env-overlay.ts` | How an A/B variant reaches the agent past `.env`'s dotenv override. |
-| `speech.ts` | Cartesia Hebrew TTS → audio frames. Websocket `stream()`; REST returns zero frames for Hebrew on sonic-3. |
+| `tts-engine.ts` | **The one place the harness builds a TTS.** Follows `VOICE_TTS_PROVIDER` via production's own `buildTTS()`; `--engine=` overrides it; every clip gets labelled from it. |
+| `speech.ts` | Cartesia options + the plugin logger. Imported by `agent.config.ts`, so it must never import `tts-engine.ts` back. |
 | `synthetic-caller.ts` | Joins the room, publishes audio, times the reply, **records both sides**. |
 | `scenarios.ts` | The scripted Hebrew conversations. |
 | `run-scenarios.ts` | Tier 3: runner + console report + HTML page. |

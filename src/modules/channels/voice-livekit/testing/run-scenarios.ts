@@ -23,7 +23,8 @@ import { SCENARIOS, type Scenario, getScenario } from './scenarios.js';
 import { SyntheticCaller, type CallResult } from './synthetic-caller.js';
 import { ensureLogger } from './speech.js';
 import { DEFAULT_DISPATCH_ESCAPE, DEV_AGENT_NAME, DEV_AGENT_NAME_VAR } from './dev-dispatch.js';
-import { findCallReport, renderPage, writeRunArtifacts } from './report-html.js';
+import { findCallReport, renderPage, writeManifest, writeRunArtifacts } from './report-html.js';
+import { describeEngine, engineBanner } from './tts-engine.js';
 
 // rtc-node chatters at debug level about unhandled text streams; keep the report readable.
 process.env.LOG_LEVEL ??= 'error';
@@ -43,6 +44,13 @@ const agentName =
 
 const stamp = new Date().toISOString().replace(/[:.]/gu, '-');
 const outRoot = resolve('voice-test-runs', stamp);
+
+const callerEngine = describeEngine(env);
+process.stdout.write(`${engineBanner(callerEngine)}\n`);
+process.stdout.write(
+  '  ↑ the SYNTHETIC CALLER. What SHE speaks with comes from the worker in terminal 1 and is\n' +
+    '    read back off its call report — printed per scenario, and stamped on every WAV.\n',
+);
 
 const caller = new SyntheticCaller(env, { agentName, captureAudio: true });
 const results: Array<{ scenario: Scenario; result: CallResult }> = [];
@@ -106,7 +114,9 @@ for (const scenario of scenarios) {
       key: 'A',
       call: result,
       transcript: { greeting: report?.agentGreeting ?? null, replies: report?.agentReplies ?? [] },
+      pipeline: report?.pipeline ?? null,
     });
+    process.stdout.write(`  she spoke with: ${run.agentEngine ?? 'UNVERIFIED — no call report'}\n`);
     const page = renderPage({
       title: `${scenario.name} · ${stamp}`,
       scenarioName: scenario.name,
@@ -123,13 +133,29 @@ for (const scenario of scenarios) {
       warnings: report
         ? []
         : [
-            `no call report matched room ${room} — the transcript column is empty and the ` +
-              `resolved pipeline is unknown for this run.`,
+            `no call report matched room ${room} — the transcript column is empty, the resolved ` +
+              `pipeline is unknown, and the TTS ENGINE that spoke is UNVERIFIED. Listen to it if ` +
+              `you like; do not attribute it to an engine.`,
           ],
       generatedAt: new Date().toISOString(),
     });
     const pagePath = resolve(dir, 'index.html');
     await writeFile(pagePath, page);
+    await writeManifest({
+      dir,
+      scenarioName: scenario.name,
+      generatedAt: new Date().toISOString(),
+      runs: [run],
+      variants: [
+        {
+          key: 'A',
+          label: 'the config this worker is running',
+          overrides: {},
+          pipeline: report?.pipeline ?? null,
+        },
+      ],
+      warnings: [],
+    });
     pages.push(pagePath);
     process.stdout.write(`  → ${pagePath}\n`);
   } catch (err) {
@@ -146,6 +172,7 @@ for (const scenario of scenarios) {
         greetingStartedMs: null,
         greetingPcm: new Int16Array(0),
         mixedPcm: new Int16Array(0),
+        callerEngine,
         error: (err as Error).message,
       },
     });
