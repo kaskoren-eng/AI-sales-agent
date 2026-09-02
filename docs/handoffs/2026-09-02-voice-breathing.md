@@ -181,3 +181,88 @@ unneeded / harmful / retune). Known dead-lookahead: the filler rows scoped to a 
   a controlled laugh, the machinery is proven and the guard (`SQUARE_TAG` net) should ship first
   regardless — today a stray `[laughter]` from the model would reach Cartesia unvalidated and
   actually laugh.
+
+## Round-23 verdicts (Koren, 14:26 — via session 63) + unblocked state
+
+```
+sl (שלךָ+מִסְפָּר): both_ok   nh (נוֹחַ): a_only   ld (לִידִים): a_only   dm (דמו): a_only   fl: both_ok
+```
+
+Three of five pointing rows SURVIVE on DeepDub — the null hypothesis (delete everything) was
+wrong; his ear says dd still needs נוֹחַ/לִידִים/דמו pointed. The two both_ok rows are deletion
+CANDIDATES only (sl bundled two words; gender randomness needs round 25). Fix-table changes are
+63's. Cloud DeepDub secrets uploaded 14:25 (VOICE_TTS_PROVIDER still unset — prod stays Cartesia
+deliberately). Bracket net passed 63's gate on main @ 94f0593 (test:ci 127 files / 1857 passed).
+Koren's new instruction (via 63): full Cartesia→DeepDub feature migration — 63 building the
+inventory, my lane's parts incoming. Next from me: local latency A/B + verification call.
+
+## TTS latency A/B — the fair one (scripts/tts-latency-ab.ts, 14:45)
+
+Same machine, same LiveKit tts.TTS interface, back to back — the aggregate TTFB comparison the
+flip checklist asked for. **CORRECTS my earlier framing**: "dd 336-502ms vs Cartesia ~217ms"
+compared a local dd number against a production Cartesia bench — unfair. Apples to apples:
+
+```
+DeepDub realtime:TRUE   warm median TTFB  466ms   p95  696ms   cold  793ms    rtf 2.7x
+DeepDub realtime:false  warm median TTFB  768ms   p95 1026ms   cold 1179ms   rtf 2.5x
+Cartesia                warm median TTFB 1236ms   p95 1869ms   cold 1290ms   rtf 2.0x
+```
+
+**DeepDub realtime is ~770ms FASTER than Cartesia from this machine.** Absolute numbers carry
+this machine's RTT (production runs from LiveKit Cloud eu-central and will be lower for both);
+the RANKING and the cold/warm gap carry over. The adapter already sets realtime: true. Latency is
+NOT a blocker for the flip — it may be an improvement; the verification call gives the production
+absolutes.
+
+## Local verification call — DONE (14:46, synthetic natural_flow, full pipeline)
+
+Worker: keren-dev (explicit dispatch — verified in its own log; the 2026-08-30 fix means it CANNOT
+take a real call). Provider flipped via VOICE_TEST_OVERLAY (the .env-wins dotenv trap — shell env
+does nothing). Call report PROVES the path: ttsModel deepdub/dd-etts-3.2, ttsLabel deepdub.TTS,
+VOICE_TTS_PROVIDER=deepdub source=env.
+
+Numbers (report medians): **tts ttfb 403ms** (17 segments, 324-589) vs Cartesia production
+baseline 223-259ms · EOU 321ms · model ttft 943ms · worst case 1667ms · dead-air median 779ms
+p90 1614ms (harness figures run high — transport+jitter; comparison only). Quality: 8/8 turns
+answered, 0 cut-offs, 0 toolCallLeaks, 0 falseBookingClaims, **bracketTagsDropped 0**,
+pauseTagsDropped 0, prompt cache 89%. Preemptive TTS worked (6 drafts discarded cleanly).
+
+Caveats for the FLIP decision: this is local-machine RTT (the cloud number needs a cloud call);
+no speed/volume compensation exists on dd (the 8kHz intelligibility levers are Cartesia-only —
+63s inventory) — Koren must listen for consonants on the verification page. Listening page:
+index-dd-verification.html (artifact, phone-band, greeting + 8 exchanges + full call).
+
+**Cloud-number mechanism (63, 14:51):** `VOICE_TTS_PROVIDER` is env-read at worker boot and
+`lk agent update-secrets` restarts the agent — so the cloud TTFB needs one merged secret, one
+real call, one revert; no deploy. The window exposes real inbound leads to dd, so it is short,
+announced, and Koren's call. **The cloud secret set — including this switch — is 63's alone;
+this session does not touch it** (agreed 14:51).
+
+## The waits Koren heard — decomposed (natural_flow, same machine, both engines, 14:46+14:55)
+
+| metric | DeepDub | Cartesia (same harness) |
+|---|---|---|
+| tts ttfb median | **403ms** | 522ms |
+| deadAir median / p90 | **779 / 1614ms** | 1155 / 5877ms |
+| agentGap median (mid-reply) | **1279ms** | 2576ms |
+| model ttft median | 943ms | 1252ms |
+| worst case | **1667ms** | 2002ms |
+
+**The long waits are NOT a DeepDub regression — Cartesia shows them worse on the identical
+instrument.** Anatomy: (a) harness inflation ~1-1.5s (documented, both engines); (b) model TTFT
+~1s — the known LLM floor, engine-agnostic; (c) mid-reply agent gaps exist on BOTH engines and
+are LLM-re-generation-bound, not TTS-bound. The engine switch IMPROVES every latency number.
+
+Two levers if Koren wants the waits treated (his call): (1) the dd-adapter sentence seam —
+generate() awaits sequentially, so each sentence of a long reply pays ~400ms TTFB; a bounded
+prefetch (depth 1; SOCKET_POOL_SIZE=2 already supports concurrent generates on separate sockets)
+hides it entirely. (2) the production-feel answer is the CLOUD call — local harness numbers
+never were the product latency.
+
+**Probe-integrity asserts (15:25, `3516bc7`):** all four of this session's dd probes now refuse
+to run if the engine they built is not DeepDub — complementary to `02f2192` which covered the
+other two (probe24_break, probe26_laughter). Fourth broken-instrument class of the day, closed
+before an instance. Note: **round/probe 26 is taken** (probe26_laughter_deepdub.ts on main) —
+**next free: 27.** Also on main since: the harness follows VOICE_TTS_PROVIDER (`f963c61`),
+synth.py has a dd backend via tts_worker.ts (`5cd1aa9`). bench:tts on f963c61 verified by 3d
+(dd realtime 590ms · cartesia LIVE direct 1239ms — matches this session's 1236ms bench).
