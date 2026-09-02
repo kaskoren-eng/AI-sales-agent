@@ -1,147 +1,146 @@
 /**
  * SHE SOUNDS THE SAME AT MINUTE SIX AS SHE DID AT SECOND FOUR.
  *
- * Koren, 2026-09-02: *"השיחה כרגע מתבצעת שהסוכן מדבר באותו מקצב ואותו טון דיבור... אם הסוכן הוא
- * קצת יותר בטוח במה שהוא אומר אז המקצב שלו יהיה יותר אחיד ויותר קצבי, לעומת זאת אם הוא מהסס או
- * חושב על משהו שהוא נשאל והוא צריך לבדוק, אז התשובה שלו תהיה קצת יותר מהוססת והקצב שלו ירד."*
+ * Koren, 2026-09-02: *"אם הסוכן הוא קצת יותר בטוח במה שהוא אומר אז המקצב שלו יהיה יותר אחיד ויותר
+ * קצבי, לעומת זאת אם הוא מהסס או חושב על משהו שהוא נשאל והוא צריך לבדוק, אז התשובה שלו תהיה קצת
+ * יותר מהוססת."*
  *
- * Nothing in the system varies how she sounds inside a call. `VOICE_TTS_SPEED` is read once when
- * the TTS is constructed (`testing/speech.ts` → `agent.config.ts`) and never moves again. What
- * varies today is only which WORD opens a turn (`turn-opener.ts`), never the delivery.
+ * ── THE RATE LEVER IS DEAD, AND IT WAS MY IDEA ────────────────────────────────────────────────
  *
- * ── Two layers, two clocks, and the split is forced by the plugin ─────────────────────────────
+ * The first version of this file shipped a speed multiplier: the hesitant register slowed Cartesia
+ * from 0.90 to 0.78, a figure taken from a duration table (`phase-4-known-issues.md` §9) showing
+ * +13.7%. Round 16 put it in front of Koren:
  *
- * Cartesia's `speed` is fixed per `SynthesizeStream`, and the stream is created inside `ttsNode`
- * BEFORE the model has emitted a token (`agent.ts` → `voice.Agent.default.ttsNode`, and
- * `@livekit/agents-plugin-cartesia/dist/tts.js` builds its request packet once, above the token
- * loop). Waiting for the first token before returning the stream would put the LLM's ~930ms in
- * front of the instant acknowledgement, i.e. in front of the caller's silence. That is the one
- * budget on this project that is not negotiable.
+ *   sp: -   *"נשמעים אותו דבר למעט אופציה D שאיטית מדי"* — 0.90 / 0.84 / 0.78 are
+ *           indistinguishable to him. Only 0.72 was audible, and it was wrong.
+ *   tr: A   Asked directly whether a rate change BETWEEN turns sounds like a person slowing down,
+ *           he chose the clip with no rate change at all.
  *
- * So:
+ * The table was correct and it measured the wrong thing. There is no speed handling in this file
+ * any more, and `VOICE_HESITANT_SPEED_FACTOR` is gone rather than set to 1: a knob that does
+ * nothing is worse than an absent one, because the next person will tune it.
  *
- *   TEXT  — the filler word, the punctuation, the sentence length. The model writes it, it lands
- *           on the very next sentence, and it is the STRONGER lever of the two.
- *   RATE  — `speed`. Certain-from-code modes (a tool call just ran) apply on the same turn;
- *           a mode the model declared applies from the next inference step of that turn.
+ * ── WHAT WON: THE PAUSE, AND THREE DIFFERENT LENGTHS OF IT ────────────────────────────────────
  *
- * The research says that ordering is right, not merely convenient. Kirkland et al., Interspeech
- * 2022, measured filled-pause location, speech rate and f0 separately against perceived
- * confidence: most confident = no filler + low f0 + fast rate; least confident = a MEDIAL filled
- * pause + high f0 + slow rate — and *insertion of the filled pause had the strongest influence*,
- * with rate and pitch as finer controls on top. We cannot touch pitch at all on Cartesia. The
- * strongest lever is therefore the one the model already controls by writing, and it is already
- * built here (`prompts/thinking-fillers.he.ts`, every spelling passed by ear).
+ * `<break time="…"/>` is honoured on Hebrew sonic-3.5, is NOT read aloud (round-16 and round-17
+ * round-trips: the tag variants come back word for word identical to the punctuation ones), and
+ * its duration scales with the request. It had been sitting unshipped in known-issues §16 for a
+ * month for want of an ear.
  *
- * ── Why these speeds and not rounder ones ─────────────────────────────────────────────────────
+ * His verdicts, and each one is a different card:
  *
- * Measured 2026-09-02 against Cartesia directly, sonic-3.5 over the websocket path at the
- * production volume, four takes per setting (the table is in `phase-4-known-issues.md` §9):
+ *   bk: B   0.25s — before the answer, on a turn where she is genuinely checking something.
+ *           *"רגע <break time="0.25s"/> אני בודקת את היומן."*
+ *   ah: E   0.15s — after a filler, MID-sentence, on a question that deserves thought.
+ *           *"אז, אֶה <break time="0.15s"/> זה תלוי בכמה שיחות…"*
+ *   eb: B   0.35s — after the acknowledgement, before the thing that costs him.
+ *           *"אני מבינה <break time="0.35s"/> זה באמת מתסכל."*
  *
- *   1.00 → 4000ms   (−3.8% vs 0.90, i.e. BELOW the noise floor)
- *   0.90 → 4160ms   production today
- *   0.84 → 4720ms   +13.5%, against a 1.11× take-to-take noise band — marginal
- *   0.75 → 5360ms   +28.8%, unambiguous
+ * Three lengths, three positions, each won its own card against the alternatives. The right pause
+ * is not one number — it depends on where it sits. Nothing else is permitted, because nothing else
+ * has been heard.
  *
- * Two consequences, both of which overrode what I would have picked by taste:
+ * ── NO MARKERS ANY MORE ───────────────────────────────────────────────────────────────────────
  *
- * 1. **There is no faster mode.** 1.00 and 0.90 differ by less than the engine's own variation, so
- *    a "confident = quicker" setting would be a knob that does nothing, and the 8kHz
- *    intelligibility argument (`env.ts` VOICE_TTS_SPEED) says do not try anyway. Confident is
- *    production speed, unchanged.
- * 2. **Empathetic gets no speed of its own.** Anything in 0.85–1.00 is inside the noise. Slowing
- *    an empathetic line to 0.86 would have looked like a feature and been inaudible. The
- *    empathetic beat is bought with PUNCTUATION instead — an ellipsis is worth 0.25–0.5s and
- *    survives streaming, where a comma is worth ~0.18s and often vanishes (known-issues §16).
+ * The first version had the model declare its register with `[[H]]` / `[[E]]`, stripped before
+ * synthesis. That existed to carry a mode across to the rate, and the rate is gone. Now the model
+ * declares by WRITING THE PAUSE, which is the same act as producing it — so the marker, the
+ * two-stage stripper and the whole `modeMarkerLeaks` risk class disappear with it. The thing that
+ * could have been read out to a lead no longer exists.
  *
- * That leaves two speeds and three registers, and saying so plainly is better than shipping a
- * third number that cannot be heard.
+ * What is left to guard is the tag itself: a MALFORMED tag is the one that gets spoken, so this
+ * file validates against a whitelist and deletes anything else.
  */
 
-/** The three registers. `confident` is the default and carries no marker. */
-export const VOICE_MODES = ['confident', 'hesitant', 'empathetic'] as const;
-export type VoiceMode = (typeof VOICE_MODES)[number];
+/** The three pause lengths Koren's ear chose, and nothing else. Seconds, as Cartesia writes them. */
+export const PAUSE_SECONDS = ['0.15', '0.25', '0.35'] as const;
+export type PauseSeconds = (typeof PAUSE_SECONDS)[number];
 
-/**
- * Cartesia's hard range. **Out of range is not an error** — Cartesia returns an EMPTY audio
- * stream with a DEBUG log and the agent simply goes silent at the caller (`env.ts`
- * VOICE_TTS_SPEED). The clamp is not politeness; it is the thing standing between a typo and a
- * dead call.
- */
-export const SPEED_MIN = 0.6;
-export const SPEED_MAX = 1.5;
-
-export function clampSpeed(speed: number): number {
-  if (!Number.isFinite(speed)) return 1;
-  return Math.min(SPEED_MAX, Math.max(SPEED_MIN, speed));
+/** The canonical tag for one of the approved lengths. */
+export function pauseTag(seconds: PauseSeconds): string {
+  return `<break time="${seconds}s"/>`;
 }
 
 /**
- * Speed per mode, as a delta applied to whatever the call's base speed is.
+ * A well-formed tag carrying an APPROVED duration.
  *
- * A MULTIPLIER rather than an absolute number, because the base is a per-tenant setting
- * (`PersonaTts.speed` → `resolveVoiceProfile`) and an absolute 0.78 would silently overwrite a
- * tenant who had been tuned to something else. 0.87 × 0.90 ≈ 0.78, which is the reading from the
- * table above; on a tenant at 1.0 the same multiplier lands on 0.87.
+ * Deliberately strict about the duration and deliberately loose about the whitespace: the model
+ * writes `<break time="0.25s" />` as readily as `<break time="0.25s"/>`, and both are the same
+ * instruction to Cartesia. A duration we have never heard is not a smaller mistake than a typo —
+ * `phase-4-known-issues.md` §16 recorded the tag as unverified for a month precisely because a
+ * silently-ignored tag would be READ ALOUD, and the only lengths anyone has listened to are these
+ * three.
  */
-function speedFactor(mode: VoiceMode, hesitantFactor: number): number {
-  return mode === 'hesitant' ? hesitantFactor : 1;
-}
+const APPROVED_SECONDS = /^<break\s+time="(0\.15|0\.25|0\.35)s"\s*\/?>$/iu;
 
-export function speedFor(mode: VoiceMode, baseSpeed: number, hesitantFactor: number): number {
-  return clampSpeed(Math.round(baseSpeed * speedFactor(mode, hesitantFactor) * 100) / 100);
+/**
+ * ANY angle-bracketed token at all — the net.
+ *
+ * Wider than the tag it protects, on the same principle the old marker net used: a bracketed token
+ * in her speech has no legitimate meaning, and a bracketed token at a caller does. `<break
+ * time="1.5s"/>`, `<pause>`, `<emotion value="calm"/>` and a half-written `<break time=` all go.
+ *
+ * THE CLOSING `>` IS OPTIONAL, and that is the case that matters most. A truncated `<break time=`
+ * has no closing bracket, so a pattern that demanded one would leave the single most dangerous
+ * variant on the wire: Cartesia cannot honour what it cannot parse, and what it cannot parse it
+ * speaks. The first version of this pattern required the `>` and a test caught it.
+ *
+ * It must START with an ASCII letter, and that is what stops it eating Hebrew — `פחות מ<אלף שקלים`
+ * keeps its bracket and its sentence. Bounded length and no newline for the same reason.
+ */
+const ANY_TAG = /<[A-Za-z][^<>\n]{0,40}>?/gu;
+
+/**
+ * Normalise the pauses in one sentence.
+ *
+ * Returns the text Cartesia should receive, how many approved pauses it carries, and whether
+ * anything had to be deleted. `dropped` must read zero on a call: it does not mean a caller heard
+ * a tag — the net runs inside the guard, upstream of synthesis — but it means the model wrote
+ * something we have never listened to, which is one guard away from audible.
+ *
+ * `enabled: false` deletes every tag, including the approved ones. That is what makes the kill
+ * switch total: with the feature off she is not asked for pauses, so a tag is the model doing
+ * something nobody sanctioned and it does not reach the voice.
+ */
+export function normalisePauses(
+  text: string,
+  opts: { enabled: boolean } = { enabled: true },
+): { text: string; pauses: number; dropped: number } {
+  if (!text.includes('<')) return { text, pauses: 0, dropped: 0 };
+
+  let pauses = 0;
+  let dropped = 0;
+
+  // ONE PASS over every angle-bracketed token, deciding each one on the spot. The earlier version
+  // ran the approved pattern first and the net second, which meant an approved tag had to survive
+  // being taken apart and put back together — three regexes where one decision will do.
+  const out = text.replace(ANY_TAG, (token) => {
+    const approved = opts.enabled ? APPROVED_SECONDS.exec(token) : null;
+    APPROVED_SECONDS.lastIndex = 0;
+    if (approved) {
+      pauses += 1;
+      // Canonical spelling, not the model's: its spacing varies, and one shape in the audio path
+      // is one shape to reason about.
+      return pauseTag(approved[1] as PauseSeconds);
+    }
+    dropped += 1;
+    return '';
+  });
+
+  return {
+    text: out.replace(/[ \t]{2,}/gu, ' ').trim(),
+    pauses,
+    dropped,
+  };
 }
 
 /**
- * THE MARKER, AND THE FACT THAT IT CAN BE SPOKEN.
+ * Does this sentence carry a pause we approved?
  *
- * Koren chose that the model declares its own state rather than the code inferring it. The cost of
- * that choice is exactly one failure mode: a marker the guard misses is a marker Cartesia reads
- * out to a lead. This repo has the scar already — an unscreened `חח` came out as the letter khet,
- * and `אוו` vanished; whatever `[[H]]` would sound like in Hebrew, nobody wants to find out on a
- * customer's call.
- *
- * So the marker is stripped in `guardSpeech`, FIRST, before the tool-call scrub — and the pattern
- * is deliberately wider than the markers it is meant to match. `[[anything short]]` goes, whether
- * or not it is a mode we know, whether or not it is spelled correctly. A stray double bracket in
- * her speech has no legitimate meaning; a stray double bracket at a caller does.
- *
- * The narrow pattern (`MODE_MARKER`) reads the mode. The wide one (`ANY_MARKER`) is the net.
+ * Read by the call report so `pauseTurns` can be compared against the transcript: the pause is
+ * supposed to land on a turn where thinking is plausible, and the only way to know whether it did
+ * is to see which turns had one.
  */
-const MODE_MARKER = /^\s*\[\[\s*(H|E|C)\s*\]\]\s*/iu;
-const ANY_MARKER = /\[\[[^\]\n]{0,24}\]\]/gu;
-
-const MARKER_TO_MODE: Record<string, VoiceMode> = {
-  h: 'hesitant',
-  e: 'empathetic',
-  c: 'confident',
-};
-
-/**
- * Reads a leading mode marker off a sentence and removes it.
- *
- * `mode` is null when there was no marker — which is the common case and means `confident`. The
- * caller distinguishes "she declared confident" from "she declared nothing" only if it wants to;
- * both behave the same.
- */
-export function readModeMarker(text: string): { mode: VoiceMode | null; text: string } {
-  const m = MODE_MARKER.exec(text);
-  if (!m) return { mode: null, text };
-  const mode = MARKER_TO_MODE[m[1]!.toLowerCase()] ?? null;
-  return { mode, text: text.slice(m[0].length) };
-}
-
-/**
- * The safety net: remove ANY double-bracketed token, anywhere in the sentence.
- *
- * Returns `leaked` when it had to remove something the narrow reader had already been given a
- * chance at — i.e. a marker that was malformed, mid-sentence, or repeated. That is counted on the
- * call report (`modeMarkerLeaks`) and it must be zero. A non-zero reading does not mean a caller
- * heard anything; it means the narrow path missed and only the net saved it, which is one failure
- * away from being audible.
- */
-export function stripStrayMarkers(text: string): { text: string; leaked: boolean } {
-  if (!text.includes('[[')) return { text, leaked: false };
-  const cleaned = text.replace(ANY_MARKER, '').replace(/\s{2,}/gu, ' ').trim();
-  return { text: cleaned, leaked: cleaned !== text.trim() };
+export function hasPause(text: string): boolean {
+  return PAUSE_SECONDS.some((s) => text.includes(pauseTag(s)));
 }

@@ -3,132 +3,126 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { buildSystemPrompt } from './prompts/system-prompt.he.js';
 import { guardSpeech } from './speech-guard.js';
-import { clampSpeed, readModeMarker, speedFor, stripStrayMarkers } from './voice-mode.js';
+import { hasPause, normalisePauses, pauseTag, PAUSE_SECONDS } from './voice-mode.js';
 
 /**
- * THE THREE REGISTERS, AND THE ONE WAY THIS FEATURE CAN HURT A CALLER.
+ * THE PAUSE, AND THE ONE WAY IT CAN HURT A CALLER.
  *
- * Koren chose that the MODEL declares its own register rather than the code inferring it. That
- * choice has exactly one failure mode and it is loud: a marker the guard misses is a marker
- * Cartesia reads out to a lead. So most of this file is about the stripping, not about the speeds.
+ * The first version of this feature changed Cartesia's SPEED, and round 16 killed it: Koren cannot
+ * hear 0.90 from 0.78, and on the transition card he chose the clip with no rate change at all. The
+ * duration table that justified it was correct and measured the wrong thing.
+ *
+ * `<break time="…"/>` replaced it, at three lengths that each won a card. The risk moved with the
+ * mechanism: a tag Cartesia does NOT recognise is one it reads out loud, so most of this file is
+ * about which tags are allowed through and what happens to the rest.
  */
-describe('readModeMarker', () => {
-  it('reads the two registers she can declare, and removes the marker', () => {
-    expect(readModeMarker('[[H]]רֶגַע... אני בודקת.')).toEqual({
-      mode: 'hesitant',
-      text: 'רֶגַע... אני בודקת.',
-    });
-    expect(readModeMarker('[[E]] כן... זה באמת שואב.')).toEqual({
-      mode: 'empathetic',
-      text: 'כן... זה באמת שואב.',
-    });
+describe('normalisePauses', () => {
+  it('lets through the three lengths that were actually heard', () => {
+    for (const s of PAUSE_SECONDS) {
+      const r = normalisePauses(`רגע ${pauseTag(s)} אני בודקת.`);
+      expect(r.pauses).toBe(1);
+      expect(r.dropped).toBe(0);
+      expect(r.text).toContain(pauseTag(s));
+    }
   });
 
-  it('accepts the sloppy spellings a model actually produces', () => {
-    // Lower case, inner spaces, leading whitespace. None of these are worth a missed declaration,
-    // and every one of them is worth a caller not hearing brackets.
-    expect(readModeMarker('  [[ h ]] טוב.').mode).toBe('hesitant');
-    expect(readModeMarker('[[e]] כן.').mode).toBe('empathetic');
+  it('deletes a duration nobody has ever listened to', () => {
+    // Not a smaller mistake than a typo. known-issues §16 kept the tag unshipped for a month
+    // precisely because a length Cartesia silently ignores would be READ ALOUD, and the only
+    // lengths anyone has heard are the three above.
+    const r = normalisePauses('רגע <break time="1.5s"/> אני בודקת.');
+    expect(r.pauses).toBe(0);
+    expect(r.dropped).toBe(1);
+    expect(r.text).toBe('רגע אני בודקת.');
   });
 
-  it('leaves an unmarked reply exactly as it was — the common case', () => {
-    const plain = 'בטח. אנחנו עובדים עם עסקים בדיוק כמו שלך.';
-    expect(readModeMarker(plain)).toEqual({ mode: null, text: plain });
+  it('deletes any other tag the model invents', () => {
+    for (const bad of ['<pause>', '<emotion value="calm"/>', '<break>', '<break time=']) {
+      const r = normalisePauses(`טוב ${bad} בסדר.`);
+      expect(r.text).not.toContain('<');
+      expect(r.dropped).toBeGreaterThan(0);
+    }
   });
 
-  it('does not read a marker that is not at the start', () => {
-    // Mid-sentence is malformed, not a declaration. The wide net below takes it away instead.
-    expect(readModeMarker('טוב [[H]] אני בודקת.').mode).toBeNull();
-  });
-});
-
-describe('stripStrayMarkers — the net', () => {
-  it('removes a marker the narrow reader was never going to catch', () => {
-    const out = stripStrayMarkers('טוב [[H]] אני בודקת.');
-    expect(out.text).toBe('טוב אני בודקת.');
-    expect(out.leaked).toBe(true);
+  it('accepts the spacing the model actually writes, and normalises it', () => {
+    const r = normalisePauses('רגע <break  time="0.25s" /> אני בודקת.');
+    expect(r.pauses).toBe(1);
+    expect(r.text).toContain('<break time="0.25s"/>');
   });
 
-  it('removes a marker we do not recognise, and one that is misspelled', () => {
-    // The net is deliberately wider than the vocabulary: an unknown mode is still brackets, and
-    // brackets at a caller have no acceptable version.
-    expect(stripStrayMarkers('[[X]] טוב.').text).toBe('טוב.');
-    expect(stripStrayMarkers('[[hesitant]] טוב.').text).toBe('טוב.');
-    expect(stripStrayMarkers('טוב. [[H]][[E]] בסדר.').text).toBe('טוב. בסדר.');
+  it('does not swallow a sentence that merely contains an angle bracket', () => {
+    // Bounded length, no newline. `<` is not a character she speaks, but a runaway pattern that
+    // ate the rest of the reply would be a far louder defect than a stray bracket.
+    const long = 'זה עולה פחות מ<' + 'א'.repeat(60) + ' שקלים.';
+    const r = normalisePauses(long);
+    expect(r.text).toContain('שקלים');
+    expect(r.dropped).toBe(0);
   });
 
-  it('leaves ordinary speech untouched and reports no leak', () => {
+  it('costs nothing on the sentence that has no tag, which is almost all of them', () => {
     const plain = 'אנחנו דואגים שכל פנייה תקבל שיחה תוך דקה.';
-    expect(stripStrayMarkers(plain)).toEqual({ text: plain, leaked: false });
+    expect(normalisePauses(plain)).toEqual({ text: plain, pauses: 0, dropped: 0 });
   });
 
-  it('does not eat a runaway bracket that swallows the whole sentence', () => {
-    // An unclosed `[[` is not a marker. Bounded length and no newline in the pattern means a
-    // sentence that merely CONTAINS brackets cannot be deleted wholesale.
-    const s = '[[ this is not a marker, it is a very long run of text with no closing bracket';
-    expect(stripStrayMarkers(s).text).toBe(s.trim());
-    expect(stripStrayMarkers(s).leaked).toBe(false);
-  });
-});
-
-describe('speed', () => {
-  it('slows only the hesitant register, because the others cannot be heard', () => {
-    // Measured 2026-09-02 (known-issues §9): 1.00 and 0.90 differ by under 4%, less than the
-    // engine's own take-to-take noise. A "confident = faster" setting would be a knob that does
-    // nothing, and an empathetic 0.86 would be a feature nobody could hear.
-    expect(speedFor('confident', 0.9, 0.87)).toBe(0.9);
-    expect(speedFor('empathetic', 0.9, 0.87)).toBe(0.9);
-    expect(speedFor('hesitant', 0.9, 0.87)).toBe(0.78);
+  it('DELETES approved tags too when the feature is off', () => {
+    // The kill switch is total by design. With the flag down she is never asked for a pause, so a
+    // tag is the model doing something nobody sanctioned — skipping the stage would send it on.
+    const r = normalisePauses(`רגע ${pauseTag('0.25')} אני בודקת.`, { enabled: false });
+    expect(r.text).toBe('רגע אני בודקת.');
+    expect(r.pauses).toBe(0);
+    expect(r.dropped).toBe(1);
   });
 
-  it('multiplies the tenant base rather than overwriting it', () => {
-    // A tenant tuned to 1.0 keeps their tuning and slows down relative to it.
-    expect(speedFor('hesitant', 1, 0.87)).toBe(0.87);
-    expect(speedFor('confident', 1.2, 0.87)).toBe(1.2);
-  });
-
-  it('clamps, because out of range is SILENCE and not an error', () => {
-    // Cartesia returns an EMPTY audio stream with a DEBUG log for a speed outside 0.6..1.5. The
-    // agent does not throw; it stops making sound at a live caller. See env.ts VOICE_TTS_SPEED.
-    expect(clampSpeed(0.2)).toBe(0.6);
-    expect(clampSpeed(9)).toBe(1.5);
-    expect(clampSpeed(Number.NaN)).toBe(1);
-    expect(speedFor('hesitant', 0.62, 0.5)).toBe(0.6);
+  it('hasPause sees an approved pause and not an invented one', () => {
+    expect(hasPause(`רגע ${pauseTag('0.15')} אני בודקת.`)).toBe(true);
+    expect(hasPause('רגע <break time="2s"/> אני בודקת.')).toBe(false);
   });
 });
 
-describe('the guard strips the marker before anything is spoken', () => {
-  it('reads the register and hands on speech with no bracket in it', () => {
-    const r = guardSpeech('[[H]] רגע, אני בודקת את היומן.', { voiceModes: true });
-    expect(r.declaredMode).toBe('hesitant');
-    expect(r.text).not.toContain('[');
-    expect(r.modeMarkerLeaked).toBeFalsy();
+describe('the guard', () => {
+  it('passes an approved pause through to Cartesia untouched', () => {
+    const r = guardSpeech(`רגע ${pauseTag('0.25')} אני בודקת את היומן.`, { voiceModes: true });
+    expect(r.text).toContain(pauseTag('0.25'));
+    expect(r.pauses).toBe(1);
+    expect(r.pauseTagsDropped).toBe(0);
   });
 
-  it('counts a marker that only the net caught', () => {
-    const r = guardSpeech('טוב [[H]] אני בודקת.', { voiceModes: true });
-    expect(r.modeMarkerLeaked).toBe(true);
-    expect(r.text).not.toContain('[');
+  it('counts and removes one the model invented', () => {
+    const r = guardSpeech('רגע <break time="3s"/> אני בודקת.', { voiceModes: true });
+    expect(r.text).not.toContain('<');
+    expect(r.pauseTagsDropped).toBe(1);
   });
 
-  it('keeps the declaration even when the sentence itself is dropped', () => {
-    // A marker written on a sentence the self-narration guard then deletes was still a
-    // declaration, and the rest of the reply should be delivered in the register she asked for.
-    const r = guardSpeech('[[H]] אני מדברת ככה כי זה טבעי לי בשיחה.', {
-      voiceModes: true,
-      selfNarrationGuard: true,
-    });
-    expect(r.silent).toBe(true);
-    expect(r.declaredMode).toBe('hesitant');
+  it('strips every tag when the feature is off', () => {
+    const r = guardSpeech(`רגע ${pauseTag('0.25')} אני בודקת.`, {});
+    expect(r.text).not.toContain('<');
+    expect(r.pauses).toBe(0);
   });
 
-  it('does not touch brackets when the feature is off', () => {
-    // The OFF path must be the pre-feature guard exactly. With the flag off the model is never
-    // asked for a marker, so anything bracket-shaped is the model doing something else entirely
-    // and this guard has no business rewriting it.
-    const r = guardSpeech('[[H]] רגע, אני בודקת.', {});
-    expect(r.declaredMode).toBeUndefined();
-    expect(r.text).toContain('[[H]]');
+  it('KEEPS THE FILLER POINTED when the pause is a tag and not an ellipsis', () => {
+    // The first guarded render of round 17's winning sentence came out as bare `אה`: the niqqud is
+    // stripped by the guard and re-applied by PRONUNCIATION_FIXES, whose rows were scoped to a
+    // FOLLOWING ELLIPSIS — and the ellipsis had just been replaced by a tag. Bare `אה` is the
+    // spelling Koren rejected on round 10 (card f2, verdict D), so the tag would have silently
+    // undone an earlier verdict.
+    const r = guardSpeech(`אז, אֶה ${pauseTag('0.15')} זה תלוי בכמות השיחות.`, { voiceModes: true });
+    expect(r.text).toContain('אֶה');
+  });
+
+  it('still leaves the bare dictation nod unpointed', () => {
+    // The scope was WIDENED, not removed. DICTATION_NOD is a bare `אה` with no pause after it and
+    // has no verdict — round 10 card n1, he rejected all four spellings — so pointing it here
+    // would be deciding it on his behalf.
+    const r = guardSpeech('אה אה.', { voiceModes: true });
+    expect(r.text).not.toContain('אֶה');
+  });
+
+  it('does not treat a pause as a tool-call leak', () => {
+    // The pause stage runs BEFORE the leak scrub for exactly this reason: a tag is not a payload,
+    // and counting it as one would put a false reading into the metric that means the model
+    // malfunctioned.
+    const r = guardSpeech(`רגע ${pauseTag('0.25')} אני בודקת.`, { voiceModes: true });
+    expect(r.leakReasons ?? []).toEqual([]);
   });
 });
 
@@ -136,24 +130,37 @@ describe('the prompt half', () => {
   const on = buildSystemPrompt({ toolsEnabled: true, voiceModes: true });
   const off = buildSystemPrompt({ toolsEnabled: true });
 
-  it('teaches the three registers and asks for the marker', () => {
-    expect(on).toContain('How You Sound When You Are Sure, And When You Are Not');
-    expect(on).toContain('[[H]]');
-    expect(on).toContain('[[E]]');
-    expect(on).toContain('NO MARKER');
+  it('teaches the three lengths in the three places that won their cards', () => {
+    expect(on).toContain('When You Pause, And When You Do Not');
+    expect(on).toContain('0.15s');
+    expect(on).toContain('0.25s');
+    expect(on).toContain('0.35s');
+  });
+
+  it('says where it does NOT belong, which is the half he was specific about', () => {
+    // Round 17 card `wh`: he chose A (a pricing question) and B (a real calendar check) and
+    // rejected C (a simple confirmation) and D (the greeting). *"צריך לשזור את זה נכון כדי שייכנס
+    // במשפטים שנכון והגיוני שהיא תחשוב בהם ולא בדברים פשוטים או בכל משפט."*
+    expect(on).toContain('NOT on a confirmation');
+    expect(on).toContain('NOT on every reply');
+    expect(on).toContain('not in consecutive replies');
+  });
+
+  it('offers no speed and no marker, because both were replaced by the pause', () => {
+    // Scoped to the section: "speed" appears elsewhere in the prompt for unrelated reasons, and an
+    // assertion over the whole thing was testing the rest of the file rather than this feature.
+    const section = on.slice(on.indexOf('## When You Pause'), on.indexOf('## When You Pause') + 1400);
+    expect(section).not.toContain('speed');
+    expect(on).not.toContain('[[H]]');
   });
 
   it('is a real kill-switch: OFF is the prompt that shipped without it', () => {
-    expect(off).not.toContain('[[H]]');
-    expect(off).not.toContain('How You Sound When You Are Sure');
+    expect(off).not.toContain('When You Pause');
+    expect(off).not.toContain('break time');
     expect(buildSystemPrompt({ toolsEnabled: true, voiceModes: false })).toBe(off);
   });
 
   it('costs under 2% of the prompt, which is re-sent on every turn', () => {
-    // 1.53% as written. The first draft was 2.32% and was cut in half before it shipped — this is
-    // not inside the sales model's ±5% ceiling (different flag) but it is still text the caller
-    // pays for in silence on every reply of every call, and a behaviour feature does not get a
-    // free pass because its budget is a fresh one.
     const growth = on.length / off.length - 1;
     expect(growth).toBeGreaterThan(0);
     expect(growth).toBeLessThan(0.02);
@@ -161,25 +168,32 @@ describe('the prompt half', () => {
 });
 
 /**
- * THE WIRING, read out of the source — same reason as the Gate A tests next door.
+ * THE WIRING, read out of the source.
  *
- * This feature has three halves behind one flag (prompt, stripper, rate). Any two of them without
- * the third is a defect, and the worst pairing has Cartesia reading double brackets at a lead.
- * Unit tests of each half pass in a world where they were never connected.
+ * Three separate producers in this repo have been built and never called — `observeAgentSpeech`,
+ * `gateAViolations`, `registerTracker.note()` — so a unit test that passes in a world where
+ * nobody invokes the thing is not enough on its own. The supervisor is building a structural
+ * reachability test; until it lands these stay, because a brittle test that catches the bug beats
+ * no test that catches it.
  */
-describe('all three halves move on one flag', () => {
+describe('both halves move on one flag', () => {
   const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 
-  it('gates the prompt section, the stripper and the rate on VOICE_VOICE_MODES_ENABLED', () => {
-    const agent = read('./agent.ts');
-    expect(agent).toContain('voiceModes: env.VOICE_VOICE_MODES_ENABLED');
-    expect(agent).toContain('if (env.VOICE_VOICE_MODES_ENABLED)');
-    expect(agent).toContain('updateOptions?.(');
+  it('gates the prompt section and the validator on VOICE_VOICE_MODES_ENABLED', () => {
+    expect(read('./agent.ts')).toContain('voiceModes: env.VOICE_VOICE_MODES_ENABLED');
   });
 
-  it('reports the registers and the leak counter', () => {
-    expect(read('./agent.ts')).toContain('report.recordVoiceMode(');
-    expect(read('./agent.ts')).toContain('report.recordModeMarkerLeak()');
-    expect(read('./call-report.ts')).toContain('modeMarkerLeaks: number');
+  it('reports the pauses and the tags that had to be deleted', () => {
+    const agent = read('./agent.ts');
+    expect(agent).toContain('report.recordPauses(');
+    expect(agent).toContain('report.recordPauseTagDropped(');
+    expect(read('./call-report.ts')).toContain('pauseTagsDropped: number');
+  });
+
+  it('has no speed handling left anywhere in the feature', () => {
+    // Round 16 killed it. `VOICE_HESITANT_SPEED_FACTOR` was removed rather than set to 1, because
+    // a knob that does nothing is worse than an absent one — the next person would tune it.
+    expect(read('./voice-mode.ts')).not.toContain('updateOptions');
+    expect(read('./agent.ts')).not.toContain('VOICE_HESITANT_SPEED_FACTOR');
   });
 });

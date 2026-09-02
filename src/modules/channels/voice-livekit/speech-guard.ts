@@ -7,7 +7,7 @@ import {
 } from './repeat-guard.js';
 import { normalizeSpokenNumbers } from './speech-numbers.he.js';
 import { hasLeakMarker, scrubToolCallLeak } from './toolcall-leak.js';
-import { readModeMarker, stripStrayMarkers, type VoiceMode } from './voice-mode.js';
+import { normalisePauses } from './voice-mode.js';
 
 /**
  * The last thing between the LLM and the caller's ear.
@@ -197,9 +197,15 @@ const PRONUNCIATION_FIXES: Array<[RegExp, string]> = [
   //   - DICTATION_NOD is "אה אה." and has NO verdict yet (round-10 card n1: he rejected all four
   //     spellings). A bare `אה` → `אֶה` rule would repoint the nod on his behalf. It must not.
   // `…` is matched as well as "..." because the model writes both and either one is a hesitation.
-  [/(?<![֐-׿])אממ(?=\.{3}|…)/gu, 'אֶממ'],
-  [/(?<![֐-׿])רגע(?=\.{3}|…)/gu, 'רֶגַע'],
-  [/(?<![֐-׿])אה(?=\.{3}|…)/gu, 'אֶה'],
+  // 2026-09-02: the lookahead now also accepts a following `<break>` tag. Round 17 replaced the
+  // ellipsis with a tag as the hesitation's pause (`ah: E`), and the FIRST guarded render of that
+  // sentence came out as bare `אה` — the niqqud stripped and never re-applied, because the pause
+  // it was scoped to was no longer an ellipsis. Bare `אה` is the spelling Koren rejected on round
+  // 10 (card f2, verdict D). The scope is widened, not removed: DICTATION_NOD is still a bare
+  // `אה` with no pause after it and must stay unpointed.
+  [/(?<![֐-׿])אממ(?=\.{3}|…|\s*<break)/gu, 'אֶממ'],
+  [/(?<![֐-׿])רגע(?=\.{3}|…|\s*<break)/gu, 'רֶגַע'],
+  [/(?<![֐-׿])אה(?=\.{3}|…|\s*<break)/gu, 'אֶה'],
 ];
 
 /** Applies the gender-neutral pronunciation dictionary. Speech-only, like the gender fix. */
@@ -834,18 +840,17 @@ export async function* guardStream(
     /** Called once per product claim whose slang was swapped for `מעולה`. */
     onProductClaimSlang?: (spoken: string) => void;
     /**
-     * VOICE_VOICE_MODES_ENABLED. Threaded through to guardSpeech, and reported back below.
+     * VOICE_VOICE_MODES_ENABLED. Threaded through to guardSpeech.
      *
-     * PER REPLY like the two rules above, and for a stronger reason: the marker is written once,
-     * on the first sentence. Every later sentence of the same reply inherits it, and a second
-     * marker mid-reply is a malformed declaration rather than a change of mind — the mode is a
-     * property of the turn, not of the sentence. See voice-mode.ts.
+     * FALSE does not mean "skip this stage" — it means DELETE every tag. She is only asked to
+     * write pauses when the flag is up, so with it down a tag is the model doing something nobody
+     * sanctioned, and an unrecognised tag is one Cartesia reads out loud. See voice-mode.ts.
      */
     voiceModes?: boolean;
-    /** Called once, with the mode she declared for this reply. Not called when she declared none. */
-    onModeDeclared?: (mode: VoiceMode) => void;
-    /** Called once per sentence that reached the wide net still carrying a marker. Must be zero. */
-    onModeMarkerLeak?: (spoken: string) => void;
+    /** Called once per sentence that carried approved pauses, with how many. */
+    onPauses?: (count: number, spoken: string) => void;
+    /** Called once per sentence a non-approved bracketed token was deleted from. Must be zero. */
+    onPauseTagDropped?: (count: number, spoken: string) => void;
   } = {},
   /**
    * THE ANTI-REPETITION GUARD (2026-09-01). Call-level state, so it arrives as a ledger rather than
@@ -884,8 +889,6 @@ export async function* guardStream(
    * `emittedSomething` is true before the first suppression can even happen.
    */
   let emittedSomething = false;
-  /** The mode declared on this reply's first sentence, reported once and not again. */
-  let modeReported = false;
   /** The last sentence the repeat guard took away, as a one-slot array: a `let` narrowed to
    * `never` here, because every assignment happens inside the `flush` closure below and control
    * flow analysis cannot see it. */
@@ -914,16 +917,11 @@ export async function* guardStream(
       productClaimSlangGuard: reply.productClaimSlangGuard !== false,
       voiceModes: reply.voiceModes === true,
     });
-    // BEFORE the silent/empty return below, and before the one-question and repeat guards. A
-    // marker written on a sentence that is then dropped whole was still a declaration, and the
-    // rest of the reply is delivered in the mode she asked for. Reported once per reply: a
-    // second marker mid-reply is malformed, not a change of mind.
-    if (guarded.declaredMode && !modeReported) {
-      modeReported = true;
-      reply.onModeDeclared?.(guarded.declaredMode);
-      console.log(`voice_mode ${JSON.stringify({ mode: guarded.declaredMode })}`);
-    }
-    if (guarded.modeMarkerLeaked) reply.onModeMarkerLeak?.(chunk.trim());
+    // BEFORE the silent/empty return below: a tag deleted from a sentence that is then dropped
+    // whole was still the model writing something we never sanctioned, and the counter exists to
+    // say so. The pause count is reported on the sentence that actually reaches the wire.
+    if (guarded.pauses) reply.onPauses?.(guarded.pauses, guarded.text);
+    if (guarded.pauseTagsDropped) reply.onPauseTagDropped?.(guarded.pauseTagsDropped, chunk.trim());
     if (guarded.selfNarrationDropped) reply.onSelfNarration?.(chunk.trim());
     if (guarded.bookingClaimRewritten) booking.onFalseClaim?.(guarded.text);
     if (guarded.stopAnnouncementRewritten) reply.onStopAnnouncement?.(chunk.trim());
@@ -1263,21 +1261,16 @@ export interface GuardResult {
    * the call report as `productClaimSlangRewritten`.
    */
   productClaimSlangRewritten?: boolean;
+  /** How many approved `<break>` pauses this sentence carries. See voice-mode.ts. */
+  pauses?: number;
   /**
-   * The mode she declared for this reply, read off a leading `[[H]]` / `[[E]]` marker.
+   * Angle-bracketed tokens deleted because they were not an approved pause.
    *
-   * `undefined` when the feature is off or no marker was written — both mean `confident`. See
-   * voice-mode.ts for why the model declares this rather than the code inferring it.
+   * Counted as `pauseTagsDropped` and it must be zero. Non-zero does not mean a caller heard a
+   * tag — the net runs here, upstream of synthesis — but it means the model wrote a duration or a
+   * tag nobody has ever listened to, and a silently-ignored tag is READ ALOUD.
    */
-  declaredMode?: VoiceMode | null;
-  /**
-   * A double-bracketed token survived the narrow reader and only the wide net caught it.
-   *
-   * Counted as `modeMarkerLeaks` and it must be zero. Non-zero does not mean a caller heard
-   * anything — it means the sentence reached the last guard still carrying a marker, which is one
-   * failure away from Cartesia reading brackets out loud to a lead.
-   */
-  modeMarkerLeaked?: boolean;
+  pauseTagsDropped?: number;
 }
 
 /**
@@ -1365,27 +1358,26 @@ export function guardSpeech(
   let bookingClaimRewritten = false;
   let stopAnnouncementRewritten = false;
   let productClaimSlangRewritten = false;
-  let declaredMode: VoiceMode | null | undefined;
-  let modeMarkerLeaked = false;
+  let pauses = 0;
+  let pauseTagsDropped = 0;
 
-  // BEFORE THE TOOL-CALL SCRUB, because a marker is not a leak and must not be counted as one —
+  // BEFORE THE TOOL-CALL SCRUB, because a pause tag is not a leak and must not be counted as one —
   // and because every stage below reads the sentence's FIRST characters (the greeting strip, the
-  // question test, the opener echo). A `[[H]]` sitting in front of them would make each of those
-  // read a sentence that does not start where they think it starts.
+  // question test, the opener echo). A tag sitting in front of them would make each of those read
+  // a sentence that does not start where they think it starts.
   //
-  // The narrow read first, then the wide net. The net is what makes the model-declares-its-own-
-  // state design safe: whatever the model writes, no double bracket leaves this function. See
-  // voice-mode.ts.
-  if (opts.voiceModes) {
-    const read = readModeMarker(out);
-    declaredMode = read.mode;
-    out = read.text;
-    const stray = stripStrayMarkers(out);
-    if (stray.leaked) {
-      modeMarkerLeaked = true;
-      interventions.push('removed a stray mode marker before it was spoken');
-      out = stray.text;
+  // RUNS UNCONDITIONALLY, unlike every other optional stage here, and that is deliberate: with the
+  // feature OFF this DELETES every tag rather than skipping. She is not asked for pauses when the
+  // flag is down, so a tag is the model doing something nobody sanctioned, and a tag Cartesia
+  // does not recognise is one it reads out loud. See voice-mode.ts.
+  {
+    const p = normalisePauses(out, { enabled: opts.voiceModes === true });
+    pauses = p.pauses;
+    pauseTagsDropped = p.dropped;
+    if (p.dropped > 0) {
+      interventions.push(`removed ${p.dropped} bracketed token(s) that were not an approved pause`);
     }
+    out = p.text;
   }
 
   // FIRST, BEFORE EVERYTHING. A payload must not reach the booking rewrite (which would scan it),
@@ -1402,7 +1394,7 @@ export function guardSpeech(
       // Nothing human survived. Reported as silence rather than as an empty utterance — the
       // reply-level `notifyIfSilent` → `onSilentReply` path then speaks HOLD_CHECKBACK_HE, so a
       // scrubbed reply never becomes dead air.
-      if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen, declaredMode, modeMarkerLeaked };
+      if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen, pauses, pauseTagsDropped };
     }
   }
 
@@ -1411,7 +1403,7 @@ export function guardSpeech(
     out = out.replace(NO_RESPONSE, '').trim();
     // If that was the WHOLE reply, she is meant to stay silent — which is the correct behaviour when
     // a caller says "רגע" or "שנייה". Saying nothing is the point.
-    if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen, declaredMode, modeMarkerLeaked };
+    if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen, pauses, pauseTagsDropped };
   }
 
   // SHE IS EXPLAINING HER OWN INSTRUCTIONS TO A SALES LEAD. Dropped whole — see SELF_NARRATION.
@@ -1428,8 +1420,8 @@ export function guardSpeech(
       leakReasons,
       leakOpen,
       selfNarrationDropped: true,
-      declaredMode,
-      modeMarkerLeaked,
+      pauses,
+      pauseTagsDropped,
     };
   }
 
@@ -1479,7 +1471,7 @@ export function guardSpeech(
     if (introless !== out) {
       interventions.push('removed a repeat greeting (she has already introduced herself)');
       out = introless;
-      if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen, declaredMode, modeMarkerLeaked };
+      if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen, pauses, pauseTagsDropped };
     }
   }
 
@@ -1540,8 +1532,8 @@ export function guardSpeech(
       leakReasons,
       leakOpen,
       bookingClaimRewritten,
-      declaredMode,
-      modeMarkerLeaked,
+      pauses,
+      pauseTagsDropped,
     };
   }
 
@@ -1554,8 +1546,8 @@ export function guardSpeech(
     bookingClaimRewritten,
     stopAnnouncementRewritten,
     productClaimSlangRewritten,
-    declaredMode,
-    modeMarkerLeaked,
+    pauses,
+    pauseTagsDropped,
   };
 }
 

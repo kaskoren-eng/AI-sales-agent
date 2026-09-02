@@ -410,24 +410,26 @@ export interface CallReportJson {
      * had the flag on means nothing at all.
      */
     /**
-     * How many inference steps ran in each delivery register.
+     * Approved `<break>` pauses that were spoken, and how many sentences carried them.
      *
-     * Read it against the transcript, not on its own: `hesitant` should cluster on the steps that
-     * follow a calendar or booking tool call, and `empathetic` on the turns right after he named
-     * something that costs him. All-confident on a call with tool calls means the feature is off
-     * or the flag never reached the worker; all-hesitant means the model is marking everything and
-     * the register has stopped meaning anything.
+     * Read the pair, not either alone. The pause is meant to land where thinking is plausible —
+     * a hard question, or a real check — and NOT on a confirmation or a greeting (round 17, card
+     * `wh`: Koren chose A and B, the pricing question and the calendar check, and rejected the
+     * simple confirmation and the greeting). `sentences` climbing toward the number of agent turns
+     * means she is pausing on everything, which is the failure the budget exists to prevent: a
+     * hesitation on every sentence is not thoughtfulness, it is a tic. Compare against the
+     * transcript to see WHERE they landed; the count alone cannot tell you.
      */
-    voiceModeTurns: Record<string, number>;
+    pauses: { total: number; sentences: number };
     /**
-     * `[[...]]` markers that survived the narrow reader and were caught only by the wide net.
+     * Bracketed tokens deleted because they were not an approved pause length.
      *
-     * MUST BE ZERO. Non-zero does not mean a caller heard brackets — the net is inside the guard,
-     * upstream of Cartesia. It means the sentence reached the last line of defence still carrying
-     * a marker, which is one failure away from audible, and this repo has already had `חח` read
-     * out as the letter khet. Treat any non-zero reading as a defect, not as the guard working.
+     * MUST BE ZERO. Non-zero does not mean a caller heard a tag — the net is inside the guard,
+     * upstream of Cartesia. It means the model wrote a duration or a tag nobody has ever listened
+     * to, and a tag Cartesia does not recognise is one it READS OUT LOUD. Only 0.15s, 0.25s and
+     * 0.35s have been heard; treat any non-zero reading as a defect, not as the guard working.
      */
-    modeMarkerLeaks: number;
+    pauseTagsDropped: number;
     gateAViolations: number;
     /** Whether all three discovery facts were established by the end of the call. */
     gateAOpen: boolean;
@@ -789,17 +791,19 @@ export class CallReport {
     this.#coachNoteBytes.push(bytes);
   }
 
-  #voiceModeTurns: Record<string, number> = { confident: 0, hesitant: 0, empathetic: 0 };
-  #modeMarkerLeaks = 0;
+  #pauses = 0;
+  #pauseSentences = 0;
+  #pauseTagsDropped = 0;
 
-  /** One inference step was synthesized in this register. See voice-mode.ts. */
-  recordVoiceMode(mode: string): void {
-    this.#voiceModeTurns[mode] = (this.#voiceModeTurns[mode] ?? 0) + 1;
+  /** One sentence carried this many approved `<break>` pauses. See voice-mode.ts. */
+  recordPauses(count: number): void {
+    this.#pauses += count;
+    this.#pauseSentences += 1;
   }
 
-  /** A `[[...]]` marker reached the wide net still intact. Must be zero. */
-  recordModeMarkerLeak(): void {
-    this.#modeMarkerLeaks++;
+  /** Bracketed tokens deleted for not being an approved pause. Must be zero. */
+  recordPauseTagDropped(count: number): void {
+    this.#pauseTagsDropped += count;
   }
 
   #gateAViolations = 0;
@@ -1219,8 +1223,8 @@ export class CallReport {
         endCallRefusalReasons: [...this.#endCallRefusalReasons],
         secondQuestionsDropped: this.#secondQuestionsDropped,
         selfNarrationDropped: this.#selfNarrationDropped,
-        voiceModeTurns: { ...this.#voiceModeTurns },
-        modeMarkerLeaks: this.#modeMarkerLeaks,
+        pauses: { total: this.#pauses, sentences: this.#pauseSentences },
+        pauseTagsDropped: this.#pauseTagsDropped,
         gateAViolations: this.#gateAViolations,
         gateAOpen: this.#gateAOpen,
         restartedReplies,

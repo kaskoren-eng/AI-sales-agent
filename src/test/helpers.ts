@@ -139,7 +139,6 @@ export async function buildTestApp(
     VOICE_STOP_ANNOUNCE_GUARD_ENABLED: true,
     VOICE_PRODUCT_CLAIM_SLANG_GUARD: true,
     VOICE_VOICE_MODES_ENABLED: false,
-    VOICE_HESITANT_SPEED_FACTOR: 0.87,
     ...opts.envOverrides,
   };
 

@@ -180,7 +180,6 @@ const SWITCH_KEYS = [
   // cannot see in the report, so an unobserved flag cannot be A/B'd at all.
   'VOICE_SALES_MODEL_ENABLED',
   'VOICE_VOICE_MODES_ENABLED',
-  'VOICE_HESITANT_SPEED_FACTOR',
   'SHADOW_STT_ENABLED',
 ] as const satisfies readonly (keyof Env)[];
 
