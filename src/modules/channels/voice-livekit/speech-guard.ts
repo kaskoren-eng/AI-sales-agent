@@ -146,6 +146,15 @@ const SECOND_PERSON_FEMININE: Array<[RegExp, string]> = [
  * same way (listening page win + Soniox round-trip) before it lands. Same lookaround rules as the
  * gender tables.
  */
+/**
+ * "Any amount of niqqud, including none" — for patterns that must survive `forceAddressGender`.
+ *
+ * That pass runs immediately before `applyPronunciationFixes`, so a rule looking AHEAD at the next
+ * word sees `לךָ`, not `לך`. A plain-letter lookahead would then match in every test written with
+ * unpointed strings and never once on a real call, which is the worst shape a bug can have.
+ */
+const NIQ = '[֑-ׇ]*';
+
 const PRONUNCIATION_FIXES: Array<[RegExp, string]> = [
   // לוודא: the final-aleph vowel gets dropped ("levad"). One tsere on the ד restores "levadé".
   // Round-3 winner (vd1+vd2 = C) over the לוודה respelling; round-trips as לוודא. 2026-08-26.
@@ -157,6 +166,48 @@ const PRONUNCIATION_FIXES: Array<[RegExp, string]> = [
   [/(?<![֐-׿])((?:ו|ש|וש|כש|וכש)?אני(?:\s+לא)?)\s+רוצה(?![֐-׿])/gu, '$1 רוצָה'],
   [/(?<![֐-׿])((?:ו|ש|וש|כש|וכש)?היא(?:\s+לא)?)\s+רוצה(?![֐-׿])/gu, '$1 רוצָה'],
   [/(?<![֐-׿])((?:ו|ש|וש|כש|וכש)?הוא(?:\s+לא)?)\s+רוצה(?![֐-׿])/gu, '$1 רוצֶה'],
+  // ── `מספר` IS TWO WORDS, AND `דמו` IS A WORD WE DID NOT MEAN (round 20, 2026-09-02) ───────
+  //
+  //     מִסְפָּר   mispar    a number          <- m1=C, m2=C
+  //     מְסַפֵּר   mesaper   he tells          <- m3=C
+  //
+  // Four identical letters, opposite pronunciations, and only the sentence around them decides
+  // which is right. That makes this the first CONDITIONAL row in this table: every other entry is
+  // one spelling → one sound, and this one has to read its neighbours first.
+  //
+  // THE VERB RULE RUNS FIRST AND IS DELIBERATELY NARROW. `מְסַפֵּר` is claimed only when the next
+  // word is a dative pronoun or `על` — "מספר לך", "מספר לי", "מספר על" — which is how the verb is
+  // actually used. Everything else falls through to the number, and that asymmetry is the right
+  // one: 32 agent lines in the whole call corpus contain `מספר` and every sampled one is a NUMBER,
+  // so the noun is the safe default and the verb is the exception that must earn its match. The
+  // pronoun list is spelled out rather than `ל` + anything precisely because "מספר לקוחות" —
+  // a NUMBER of customers — would otherwise be spoken as a man telling customers something.
+  //
+  // NIQQUD-TOLERANT LOOKAHEAD, and it is load-bearing: `forceAddressGender` runs IMMEDIATELY
+  // before this pass, so by the time these patterns see the text `לך` is already `לךָ` or `לָךְ`
+  // and a plain-letter lookahead would silently never match on a real call — passing every test
+  // written with unpointed strings and doing nothing in production.
+  //
+  // ⚠️ HIS EAR CHOSE FULL POINTING HERE, which is a departure from rounds 3 and 15 where minimal
+  // pointing won and full pointing lost. Recorded as the verdict it is, not reconciled into a
+  // theory: this table has always been one winner per word, decided by listening.
+  [
+    new RegExp(
+      `(?<![֐-׿])((?:ו|ש|וש|כש|ה|כ)?)מספר(?=\\s+(?:ל${NIQ}ך|ל${NIQ}י|ל${NIQ}ו|ל${NIQ}ה|` +
+        `ל${NIQ}נ${NIQ}ו|ל${NIQ}ה${NIQ}ם|ל${NIQ}כ${NIQ}ם|ע${NIQ}ל)${NIQ}(?![א-ת]))`,
+      'gu',
+    ),
+    '$1מְסַפֵּר',
+  ],
+  [/(?<![֐-׿])((?:ה|ו|וה|ש|שה|כש|כ|ב|ל|מ)?)מספר(?![֐-׿])/gu, '$1מִסְפָּר'],
+  // דמו: unpointed it can be read `דָּמוֹ` — "his blood" — and it is the word almost every call
+  // ends on ("שיחת דמו עם קורן"). Two rows, not one, because he judged the two positions
+  // separately and they did not agree: prefixed `הדמו` won on the segol alone (d1=B), the bare
+  // word won on segol AND holam (d2=C). That may be a real difference between a word carrying a
+  // prefix and a word standing alone, or it may be one clip of noise; it is cheap either way and
+  // reversible by deleting one row. The prefixed rule runs first or the bare rule would claim it.
+  [/(?<![֐-׿])(ה)דמו(?![֐-׿])/gu, '$1דֶמו'],
+  [/(?<![֐-׿])((?:ו|ש|וש|כש|כ|ב|ל|מ)?)דמו(?![֐-׿])/gu, '$1דֶמוֹ'],
   // ── THE TWO WORDS HE STOPPED A LIVE CALL OVER (round 15, 2026-09-01) ──────────────────────
   //
   // נוח: "no-ach" (comfortable) came out "nach". It is the last word of the sentence that closes

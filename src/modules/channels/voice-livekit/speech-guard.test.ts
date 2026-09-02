@@ -929,8 +929,9 @@ describe('dropAckEcho — the acknowledgement must never be delayed', () => {
  */
 describe('guardSpeech — digits become colloquial Hebrew words (opt-in)', () => {
   it('is OFF by default — legacy callers and the kill-switch keep digit read-out', () => {
-    const t = 'הדמו נקבע ל-10:30 מחר בבוקר.';
-    expect(guardSpeech(t).text).toBe(t);
+    // `הדֶמו` is the round-20 pointing (d1=B) applied by a DIFFERENT pass; what this test is about
+    // is that "10:30" survives as digits when the speller is off, and it still does.
+    expect(guardSpeech('הדמו נקבע ל-10:30 מחר בבוקר.').text).toBe('הדֶמו נקבע ל-10:30 מחר בבוקר.');
   });
 
   it('ON: the complaint sentence — "16:30" is spoken "ארבע וחצי"', () => {
@@ -1018,7 +1019,9 @@ describe('guardSpeech — she introduces herself once', () => {
 
   it('keeps the rest of the sentence when the greeting only opened it', () => {
     const r = guardSpeech('נעים מאוד, בוא נקבע דמו קצר.', { allowIntroduction: false });
-    expect(r.text).toBe('בוא נקבע דמו קצר.');
+    // The assertion here is that only the GREETING was removed. `דֶמוֹ` is the round-20 pointing
+    // (d2=C) arriving from the pronunciation table, and it is left visible on purpose.
+    expect(r.text).toBe('בוא נקבע דֶמוֹ קצר.');
     expect(r.silent).toBe(false);
   });
 
@@ -1147,5 +1150,54 @@ describe('guardStream — the first greeting passes, the second does not', () =>
       await drain(guardStream(chunks('נעים מאוד, קורן. נעים מאוד.'), undefined, undefined, false, () => true))
     ).join('');
     expect(out.match(/נעים מאוד/gu)?.length).toBe(2);
+  });
+});
+
+describe('מספר and דמו — the round-20 winners, and the contexts that decide them', () => {
+  it('defaults to the NUMBER, which is what 32 of 32 sampled agent lines meant (m1/m2=C)', () => {
+    expect(applyPronunciationFixes('מה מספר הטלפון שלך?')).toBe('מה מִסְפָּר הטלפון שלך?');
+    expect(applyPronunciationFixes('זה מספר שהלקוחות מתקשרים אליו.')).toBe(
+      'זה מִסְפָּר שהלקוחות מתקשרים אליו.',
+    );
+    // Prefixed forms are the ones she actually says, and a bare letter lookbehind would block them.
+    expect(applyPronunciationFixes('המספר שלך')).toBe('המִסְפָּר שלך');
+  });
+
+  it('takes the VERB only when the next word is a dative pronoun or על (m3=C)', () => {
+    expect(applyPronunciationFixes('כשלקוח מספר לך מה הוא צריך')).toBe(
+      'כשלקוח מְסַפֵּר לך מה הוא צריך',
+    );
+    expect(applyPronunciationFixes('הוא מספר על העסק שלו')).toBe('הוא מְסַפֵּר על העסק שלו');
+  });
+
+  it('does NOT take the verb for "מספר לקוחות" — a NUMBER of customers', () => {
+    // This is why the pronoun list is spelled out instead of matching ל + anything. Getting this
+    // wrong turns a count into a man telling customers something, on a live call.
+    expect(applyPronunciationFixes('יש לנו מספר לקוחות כאלה')).toBe('יש לנו מִסְפָּר לקוחות כאלה');
+  });
+
+  it('sees the dative pronoun AFTER the gender pass has already pointed it', () => {
+    // forceAddressGender runs first, so on a real call the lookahead meets לךָ and not לך. A
+    // plain-letter lookahead passes every unpointed test and never fires in production.
+    expect(applyPronunciationFixes('כשלקוח מספר לךָ מה הוא צריך')).toBe(
+      'כשלקוח מְסַפֵּר לךָ מה הוא צריך',
+    );
+    expect(applyPronunciationFixes('כשלקוחה מספרת')).toBe('כשלקוחה מספרת');
+  });
+
+  it('points דמו by position, as he judged it — prefixed vs bare (d1=B, d2=C)', () => {
+    expect(applyPronunciationFixes('שיחת הדמו עם קורן')).toBe('שיחת הדֶמו עם קורן');
+    expect(applyPronunciationFixes('אפשר לקבוע דמו קצר')).toBe('אפשר לקבוע דֶמוֹ קצר');
+  });
+
+  it('is idempotent — the guard running twice must not double the marks', () => {
+    const once = applyPronunciationFixes('מה מספר הטלפון? נקבע דמו, והוא מספר לך הכל.');
+    expect(applyPronunciationFixes(once)).toBe(once);
+  });
+
+  it('runs inside the live guard, on the sentence from the 10:53 call', () => {
+    expect(guardSpeech('זה מספר שהלקוחות מתקשרים אליו.').text).toBe(
+      'זה מִסְפָּר שהלקוחות מתקשרים אליו.',
+    );
   });
 });
