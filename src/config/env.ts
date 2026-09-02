@@ -785,6 +785,27 @@ const envSchema = z.object({
   // writing the sentence some other way.
   // OFF restores the 2026-09-01 behaviour. See PRODUCT_CLAIM_SLANG in speech-guard.ts.
   VOICE_PRODUCT_CLAIM_SLANG_GUARD: envBool(true),
+  // SHE SOUNDS THE SAME AT MINUTE SIX AS SHE DID AT SECOND FOUR.
+  //
+  // Koren, 2026-09-02: steadier and more rhythmic when she is sure of what she is saying; slower
+  // and more hesitant when she is thinking or has to go and check something. Three registers —
+  // confident / hesitant / empathetic — declared BY THE MODEL with a leading `[[H]]` / `[[E]]`
+  // marker, which is his choice over the code inferring it.
+  //
+  // ONE FLAG, THREE HALVES, and they must move together or the feature is incoherent: the prompt
+  // section that teaches her the registers and asks for the marker, the guard stage that strips
+  // the marker before it can be spoken, and the `updateOptions({ speed })` call that acts on it.
+  // A prompt asking for a marker whose stripper is off would read brackets out loud to a lead.
+  //
+  // OFF is byte-for-byte the 2026-09-02 prompt and the 2026-09-01 delivery. See voice-mode.ts.
+  VOICE_VOICE_MODES_ENABLED: envBool(false),
+  // How much slower the hesitant register is, as a MULTIPLIER on the call's base speed.
+  //
+  // Measured, not chosen (phase-4-known-issues §9): at the production 0.9, a factor of 0.93 (0.84)
+  // buys +13.5% duration against a 1.11x take-to-take noise band — marginal. 0.87 (0.78) is
+  // comfortably above it, 0.83 (0.75) is +28.8% and unmistakable. Starts at 0.87; the A/B moves it.
+  // Clamped to Cartesia's 0.6..1.5 in code, because out of range is not an error — it is SILENCE.
+  VOICE_HESITANT_SPEED_FACTOR: z.coerce.number().min(0.5).max(1).default(0.87),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),

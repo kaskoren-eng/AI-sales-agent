@@ -409,6 +409,25 @@ export interface CallReportJson {
      * Zero on a call where `gateAOpen` is false means she held the line; zero on a call that never
      * had the flag on means nothing at all.
      */
+    /**
+     * How many inference steps ran in each delivery register.
+     *
+     * Read it against the transcript, not on its own: `hesitant` should cluster on the steps that
+     * follow a calendar or booking tool call, and `empathetic` on the turns right after he named
+     * something that costs him. All-confident on a call with tool calls means the feature is off
+     * or the flag never reached the worker; all-hesitant means the model is marking everything and
+     * the register has stopped meaning anything.
+     */
+    voiceModeTurns: Record<string, number>;
+    /**
+     * `[[...]]` markers that survived the narrow reader and were caught only by the wide net.
+     *
+     * MUST BE ZERO. Non-zero does not mean a caller heard brackets — the net is inside the guard,
+     * upstream of Cartesia. It means the sentence reached the last line of defence still carrying
+     * a marker, which is one failure away from audible, and this repo has already had `חח` read
+     * out as the letter khet. Treat any non-zero reading as a defect, not as the guard working.
+     */
+    modeMarkerLeaks: number;
     gateAViolations: number;
     /** Whether all three discovery facts were established by the end of the call. */
     gateAOpen: boolean;
@@ -739,6 +758,19 @@ export class CallReport {
   /** One sentence was dropped for being the second question in the same reply. */
   recordSecondQuestionDropped(): void {
     this.#secondQuestionsDropped++;
+  }
+
+  #voiceModeTurns: Record<string, number> = { confident: 0, hesitant: 0, empathetic: 0 };
+  #modeMarkerLeaks = 0;
+
+  /** One inference step was synthesized in this register. See voice-mode.ts. */
+  recordVoiceMode(mode: string): void {
+    this.#voiceModeTurns[mode] = (this.#voiceModeTurns[mode] ?? 0) + 1;
+  }
+
+  /** A `[[...]]` marker reached the wide net still intact. Must be zero. */
+  recordModeMarkerLeak(): void {
+    this.#modeMarkerLeaks++;
   }
 
   #gateAViolations = 0;
@@ -1147,6 +1179,8 @@ export class CallReport {
         endCallRefusalReasons: [...this.#endCallRefusalReasons],
         secondQuestionsDropped: this.#secondQuestionsDropped,
         selfNarrationDropped: this.#selfNarrationDropped,
+        voiceModeTurns: { ...this.#voiceModeTurns },
+        modeMarkerLeaks: this.#modeMarkerLeaks,
         gateAViolations: this.#gateAViolations,
         gateAOpen: this.#gateAOpen,
         restartedReplies,

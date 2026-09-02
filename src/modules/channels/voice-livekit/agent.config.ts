@@ -205,6 +205,19 @@ export function resolveVoiceProfile(env: Env, override?: PersonaTts | null): Env
   };
 }
 
+/**
+ * The speech rate this call will actually run at, tenant override included.
+ *
+ * The voice-mode speeds are MULTIPLIERS on this rather than absolute numbers, so a tenant tuned to
+ * something other than the platform default keeps their tuning and simply slows down relative to
+ * it. Reading it here rather than off `env` directly is what makes that true — the override is
+ * applied by rewriting a synthetic Env, and a reader that skipped this would silently use the
+ * platform's speed on a tenant who had chosen their own.
+ */
+export function resolveBaseSpeed(env: Env, override?: PersonaTts | null): number {
+  return resolveVoiceProfile(env, override).VOICE_TTS_SPEED;
+}
+
 /** What the CallReport should call this engine, so latency data names the voice that spoke. */
 export function describeTtsModel(env: Env, override?: PersonaTts | null): string {
   const e = resolveVoiceProfile(env, override);

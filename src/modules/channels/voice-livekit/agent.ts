@@ -18,7 +18,7 @@ import { TelephonyBackgroundVoiceCancellation } from '@livekit/noise-cancellatio
 import { type AudioFrame, RoomEvent, type RemoteAudioTrack, TrackKind } from '@livekit/rtc-node';
 import { loadEnv } from '../../../config/env.js';
 import { callLearnings } from '../../../db/schema/index.js';
-import { buildSessionComponents, buildTTS, describeTtsModel } from './agent.config.js';
+import { buildSessionComponents, buildTTS, describeTtsModel, resolveBaseSpeed } from './agent.config.js';
 import {
   describeDispatch,
   isJobChildProcess,
@@ -51,6 +51,7 @@ import {
   chunkCallsTool,
   type TurnOpener,
 } from './turn-opener.js';
+import { speedFor, type VoiceMode } from './voice-mode.js';
 import { DICTATION_NODS, isDictationTurn } from './dictation.js';
 import {
   EngagementTracker,
@@ -205,6 +206,12 @@ class ClickScalesAgent extends voice.Agent {
 
   /** She described the product before Gate A opened. Counted, never blocked — see sales-gate.ts. */
   onGateAViolation: ((spoken: string) => void) | null = null;
+
+  /** Which register this step was synthesized in, once per step. See voice-mode.ts. */
+  onVoiceMode: ((mode: VoiceMode) => void) | null = null;
+
+  /** A mode marker reached the wide net still intact. Must be zero — see voice-mode.ts. */
+  onModeMarkerLeak: ((spoken: string) => void) | null = null;
 
   /** An unbacked "let us stop here", rewritten into the confirmation question. */
   onStopAnnouncementRewritten: ((spoken: string) => void) | null = null;
@@ -367,6 +374,41 @@ class ClickScalesAgent extends voice.Agent {
   #opener: TurnOpener = { kind: 'silent' };
 
   /**
+   * The delivery register THIS step will be synthesized in. Decided in llmNode, applied in ttsNode.
+   *
+   * Two inputs, in priority order. `afterToolCall` is the certain one — she has just been off
+   * checking a calendar, and the code knows that before a single word is synthesized, so the
+   * slower rate lands on the same turn. Everything else comes from the marker the MODEL declared,
+   * which arrives after this step's stream was already opened and therefore applies from the next
+   * one. See voice-mode.ts for why that split is forced rather than chosen.
+   */
+  #turnMode: VoiceMode = 'confident';
+
+  /**
+   * What she declared with a `[[H]]` / `[[E]]` marker, carried to the next step of the SAME turn.
+   *
+   * Cleared when the caller speaks again: a register is a property of one answer, and a hesitation
+   * declared three turns ago is not a hesitation now. Reset in ConversationItemAdded.
+   */
+  #declaredMode: VoiceMode | null = null;
+
+  /**
+   * The speech rate this call runs at before any register is applied — tenant override included.
+   * Set once at construction; the modes multiply it. See resolveBaseSpeed in agent.config.ts.
+   */
+  baseSpeed = 1;
+
+  /** Reset the declared register. Called when the caller starts a new turn. */
+  clearDeclaredMode(): void {
+    this.#declaredMode = null;
+  }
+
+  /** The register she asked for, from the speech guard. Applies to the next step of this turn. */
+  noteDeclaredMode(mode: VoiceMode): void {
+    this.#declaredMode = mode;
+  }
+
+  /**
    * The head-word of the PREVIOUS reply as the caller heard it — one per call.
    *
    * Koren, 2026-08-31: *"צריך לוודא שהסוכן לא חוזר על אותה מילה כל פעם בתחילת המשפט."* The
@@ -493,6 +535,18 @@ class ClickScalesAgent extends voice.Agent {
             .items,
         )
       : this.lastUserUtterance;
+    // THE REGISTER THIS STEP IS SPOKEN IN, decided here because this is the earliest point that
+    // knows anything and the last point before the synthesis stream is opened.
+    //
+    // `afterToolCall` outranks the declaration and that ordering is the whole reason the feature
+    // works at all on the turn that matters most: she has just come back from checking a calendar,
+    // the code knows it with certainty, and it knows it BEFORE a word is synthesized — so the
+    // slower rate lands on this reply rather than the next one. A marker the model wrote is read
+    // out of a stream that only starts after ttsNode has already opened Cartesia's, so it can only
+    // take effect from the following step. See voice-mode.ts.
+    if (env.VOICE_VOICE_MODES_ENABLED) {
+      this.#turnMode = afterToolCall ? 'hesitant' : (this.#declaredMode ?? 'confident');
+    }
     const opener = chooseTurnOpener({
       afterToolCall,
       fillersEnabled: env.VOICE_THINKING_FILLER_MS !== 0,
@@ -653,6 +707,24 @@ class ClickScalesAgent extends voice.Agent {
     const ack = this.#spokenAck;
     this.#spokenAck = null;
 
+    // THE RATE, applied to the stream created on the very next line and to nothing else.
+    //
+    // Wired HERE for the same reason the tool-call leak guard is: everything that makes a sound
+    // goes through ttsNode, `session.say()` and `RunContext.filler` included — so the reflex lines
+    // and the "שנייה, אני בודקת את היומן" that book_meeting speaks are covered by one call site
+    // rather than five kept in step by hand.
+    //
+    // `updateOptions?.` rather than a cast: the `inference` route does not build a cartesia.TTS at
+    // all, and DeepDub's adapter has no speed control whatsoever. Both must degrade to "the mode
+    // is text only", never to a crash mid-call.
+    if (env.VOICE_VOICE_MODES_ENABLED) {
+      const speed = speedFor(this.#turnMode, this.baseSpeed, env.VOICE_HESITANT_SPEED_FACTOR);
+      (this.tts as { updateOptions?: (o: { speed: number }) => void } | undefined)?.updateOptions?.(
+        { speed },
+      );
+      this.onVoiceMode?.(this.#turnMode);
+    }
+
     const synthesized = await voice.Agent.default.ttsNode(
       this,
       notifyIfSilent(
@@ -749,6 +821,10 @@ class ClickScalesAgent extends voice.Agent {
               onStopAnnouncement: (spoken) => this.onStopAnnouncementRewritten?.(spoken),
               productClaimSlangGuard: env.VOICE_PRODUCT_CLAIM_SLANG_GUARD,
               onProductClaimSlang: (spoken) => this.onProductClaimSlangRewritten?.(spoken),
+              // The register marker: stripped here, read here, and counted here if it survived.
+              voiceModes: env.VOICE_VOICE_MODES_ENABLED,
+              onModeDeclared: (mode) => this.noteDeclaredMode(mode),
+              onModeMarkerLeak: (spoken) => this.onModeMarkerLeak?.(spoken),
             },
             // THE ANTI-REPETITION GUARD. The ledger is the agent's, so it spans the whole call;
             // `lastCallerTurn` is read per sentence so "לא שמעתי" in the turn she is answering
@@ -1485,6 +1561,9 @@ export default defineAgent({
       //     No-op when the advisory layer is disabled (callState undefined).
       if (item?.role === 'user') {
         callState?.onUserTurn();
+        // A register belongs to one answer. A hesitation declared two turns ago is not a hesitation
+        // now, and carrying it forward would leave her permanently slow after one uncertain reply.
+        agent.clearDeclaredMode();
         // The turn her NEXT reply is answering. Read in llmNode to decide whether the opener is a
         // receipt, a nod, or a comprehension claim — see dictation.ts and engagement.ts.
         agent.lastUserUtterance = item.textContent ?? null;
@@ -1649,6 +1728,10 @@ export default defineAgent({
           // deepening, the interest check and the summary close. Same flag as its code half
           // (sales-gate.ts), so a note about a rule she was never given is impossible.
           salesModel: env.VOICE_SALES_MODEL_ENABLED,
+          // The three delivery registers, and the marker she declares them with. Same flag as the
+          // guard stage that strips that marker — a prompt asking for `[[H]]` while the stripper is
+          // off would have Cartesia read double brackets at a lead. See voice-mode.ts.
+          voiceModes: env.VOICE_VOICE_MODES_ENABLED,
           // Real, at last. Renders ONE branch of Step 1 — she no longer greets an inbound caller
           // as though she had rung him.
           outbound: isOutboundCall,
@@ -1684,6 +1767,9 @@ export default defineAgent({
       env.VOICE_INSTANT_ACK,
       factMemory,
     );
+    // What the registers multiply. Read through resolveVoiceProfile rather than off env, so a
+    // tenant tuned to their own rate keeps it and simply slows down RELATIVE to it.
+    agent.baseSpeed = resolveBaseSpeed(env, persona.tts);
     if (persona.tts) {
       // Otherwise the CallReport names the PLATFORM default engine for a call that used a
       // different one — the same mistake the ttsModel comment above was written to prevent, just
@@ -1733,6 +1819,12 @@ export default defineAgent({
     // caller listening to a gap. So this counter IS the enforcement's only evidence, and until
     // 2026-09-02 it did not exist: the gate ran a day in production unmeasured.
     agent.onGateAViolation = () => report.recordGateAViolation();
+
+    // The register each step was spoken in, and the marker that should never have got this far.
+    // `modeMarkerLeaks` must read zero: non-zero does not mean a caller heard brackets, it means
+    // only the last net stopped them, which is one failure away from audible.
+    agent.onVoiceMode = (mode) => report.recordVoiceMode(mode);
+    agent.onModeMarkerLeak = () => report.recordModeMarkerLeak();
 
     // The model's REAL first-token time. The SDK's own ttft now measures our acknowledgement, so
     // without this the ~840ms GPT actually takes would simply disappear from the report and every

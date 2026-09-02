@@ -7,6 +7,7 @@ import {
 } from './repeat-guard.js';
 import { normalizeSpokenNumbers } from './speech-numbers.he.js';
 import { hasLeakMarker, scrubToolCallLeak } from './toolcall-leak.js';
+import { readModeMarker, stripStrayMarkers, type VoiceMode } from './voice-mode.js';
 
 /**
  * The last thing between the LLM and the caller's ear.
@@ -832,6 +833,19 @@ export async function* guardStream(
     productClaimSlangGuard?: boolean;
     /** Called once per product claim whose slang was swapped for `מעולה`. */
     onProductClaimSlang?: (spoken: string) => void;
+    /**
+     * VOICE_VOICE_MODES_ENABLED. Threaded through to guardSpeech, and reported back below.
+     *
+     * PER REPLY like the two rules above, and for a stronger reason: the marker is written once,
+     * on the first sentence. Every later sentence of the same reply inherits it, and a second
+     * marker mid-reply is a malformed declaration rather than a change of mind — the mode is a
+     * property of the turn, not of the sentence. See voice-mode.ts.
+     */
+    voiceModes?: boolean;
+    /** Called once, with the mode she declared for this reply. Not called when she declared none. */
+    onModeDeclared?: (mode: VoiceMode) => void;
+    /** Called once per sentence that reached the wide net still carrying a marker. Must be zero. */
+    onModeMarkerLeak?: (spoken: string) => void;
   } = {},
   /**
    * THE ANTI-REPETITION GUARD (2026-09-01). Call-level state, so it arrives as a ledger rather than
@@ -870,6 +884,8 @@ export async function* guardStream(
    * `emittedSomething` is true before the first suppression can even happen.
    */
   let emittedSomething = false;
+  /** The mode declared on this reply's first sentence, reported once and not again. */
+  let modeReported = false;
   /** The last sentence the repeat guard took away, as a one-slot array: a `let` narrowed to
    * `never` here, because every assignment happens inside the `flush` closure below and control
    * flow analysis cannot see it. */
@@ -896,7 +912,18 @@ export async function* guardStream(
       stopAnnounceGuard: reply.stopAnnounceGuard !== false,
       endingRequested: reply.endingRequested?.() === true,
       productClaimSlangGuard: reply.productClaimSlangGuard !== false,
+      voiceModes: reply.voiceModes === true,
     });
+    // BEFORE the silent/empty return below, and before the one-question and repeat guards. A
+    // marker written on a sentence that is then dropped whole was still a declaration, and the
+    // rest of the reply is delivered in the mode she asked for. Reported once per reply: a
+    // second marker mid-reply is malformed, not a change of mind.
+    if (guarded.declaredMode && !modeReported) {
+      modeReported = true;
+      reply.onModeDeclared?.(guarded.declaredMode);
+      console.log(`voice_mode ${JSON.stringify({ mode: guarded.declaredMode })}`);
+    }
+    if (guarded.modeMarkerLeaked) reply.onModeMarkerLeak?.(chunk.trim());
     if (guarded.selfNarrationDropped) reply.onSelfNarration?.(chunk.trim());
     if (guarded.bookingClaimRewritten) booking.onFalseClaim?.(guarded.text);
     if (guarded.stopAnnouncementRewritten) reply.onStopAnnouncement?.(chunk.trim());
@@ -1236,6 +1263,21 @@ export interface GuardResult {
    * the call report as `productClaimSlangRewritten`.
    */
   productClaimSlangRewritten?: boolean;
+  /**
+   * The mode she declared for this reply, read off a leading `[[H]]` / `[[E]]` marker.
+   *
+   * `undefined` when the feature is off or no marker was written — both mean `confident`. See
+   * voice-mode.ts for why the model declares this rather than the code inferring it.
+   */
+  declaredMode?: VoiceMode | null;
+  /**
+   * A double-bracketed token survived the narrow reader and only the wide net caught it.
+   *
+   * Counted as `modeMarkerLeaks` and it must be zero. Non-zero does not mean a caller heard
+   * anything — it means the sentence reached the last guard still carrying a marker, which is one
+   * failure away from Cartesia reading brackets out loud to a lead.
+   */
+  modeMarkerLeaked?: boolean;
 }
 
 /**
@@ -1307,6 +1349,13 @@ export function guardSpeech(
      * restores the 2026-09-01 behaviour. See PRODUCT_CLAIM_SLANG.
      */
     productClaimSlangGuard?: boolean;
+    /**
+     * VOICE_VOICE_MODES_ENABLED. Default TRUE here, same rule as `toolCallLeakGuard`: the marker
+     * is text the model was told to write, and text the model writes must never reach a caller
+     * just because a call site forgot a flag. With the feature OFF the model is never asked for a
+     * marker, so this costs one `includes('[[')` on a string that will not contain it.
+     */
+    voiceModes?: boolean;
   } = {},
 ): GuardResult {
   const interventions: string[] = [];
@@ -1316,6 +1365,28 @@ export function guardSpeech(
   let bookingClaimRewritten = false;
   let stopAnnouncementRewritten = false;
   let productClaimSlangRewritten = false;
+  let declaredMode: VoiceMode | null | undefined;
+  let modeMarkerLeaked = false;
+
+  // BEFORE THE TOOL-CALL SCRUB, because a marker is not a leak and must not be counted as one —
+  // and because every stage below reads the sentence's FIRST characters (the greeting strip, the
+  // question test, the opener echo). A `[[H]]` sitting in front of them would make each of those
+  // read a sentence that does not start where they think it starts.
+  //
+  // The narrow read first, then the wide net. The net is what makes the model-declares-its-own-
+  // state design safe: whatever the model writes, no double bracket leaves this function. See
+  // voice-mode.ts.
+  if (opts.voiceModes) {
+    const read = readModeMarker(out);
+    declaredMode = read.mode;
+    out = read.text;
+    const stray = stripStrayMarkers(out);
+    if (stray.leaked) {
+      modeMarkerLeaked = true;
+      interventions.push('removed a stray mode marker before it was spoken');
+      out = stray.text;
+    }
+  }
 
   // FIRST, BEFORE EVERYTHING. A payload must not reach the booking rewrite (which would scan it),
   // the number speller (which would read its digits as Hebrew words) or the niqqud strip. It is
@@ -1331,7 +1402,7 @@ export function guardSpeech(
       // Nothing human survived. Reported as silence rather than as an empty utterance — the
       // reply-level `notifyIfSilent` → `onSilentReply` path then speaks HOLD_CHECKBACK_HE, so a
       // scrubbed reply never becomes dead air.
-      if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen };
+      if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen, declaredMode, modeMarkerLeaked };
     }
   }
 
@@ -1340,7 +1411,7 @@ export function guardSpeech(
     out = out.replace(NO_RESPONSE, '').trim();
     // If that was the WHOLE reply, she is meant to stay silent — which is the correct behaviour when
     // a caller says "רגע" or "שנייה". Saying nothing is the point.
-    if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen };
+    if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen, declaredMode, modeMarkerLeaked };
   }
 
   // SHE IS EXPLAINING HER OWN INSTRUCTIONS TO A SALES LEAD. Dropped whole — see SELF_NARRATION.
@@ -1357,6 +1428,8 @@ export function guardSpeech(
       leakReasons,
       leakOpen,
       selfNarrationDropped: true,
+      declaredMode,
+      modeMarkerLeaked,
     };
   }
 
@@ -1406,7 +1479,7 @@ export function guardSpeech(
     if (introless !== out) {
       interventions.push('removed a repeat greeting (she has already introduced herself)');
       out = introless;
-      if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen };
+      if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen, declaredMode, modeMarkerLeaked };
     }
   }
 
@@ -1460,7 +1533,16 @@ export function guardSpeech(
   const spoken = out.replace(/\s{2,}/gu, ' ').trim();
   if (NOTHING_LEFT.test(spoken)) {
     interventions.push(`dropped a sentence with no word in it: ${JSON.stringify(text.slice(0, 20))}`);
-    return { text: '', silent: true, interventions, leakReasons, leakOpen, bookingClaimRewritten };
+    return {
+      text: '',
+      silent: true,
+      interventions,
+      leakReasons,
+      leakOpen,
+      bookingClaimRewritten,
+      declaredMode,
+      modeMarkerLeaked,
+    };
   }
 
   return {
@@ -1472,6 +1554,8 @@ export function guardSpeech(
     bookingClaimRewritten,
     stopAnnouncementRewritten,
     productClaimSlangRewritten,
+    declaredMode,
+    modeMarkerLeaked,
   };
 }
 

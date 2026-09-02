@@ -725,6 +725,8 @@ interface PromptSlots {
   noPreamble: string;
   /** The SPOKEN_REGISTER section (VOICE_SPOKEN_REGISTER_ENABLED), or '' when the flag is off. */
   spokenRegister: string;
+  /** The three delivery registers, or '' when VOICE_VOICE_MODES_ENABLED is off. */
+  voiceModes: string;
   /** The CALL_MEMORY section (VOICE_FACT_MEMORY_ENABLED), or '' when the flag is off. */
   callMemory: string;
   /** The NEGATION_SAFETY section (VOICE_NEGATION_SAFETY), or '' when the flag is off. */
@@ -1088,6 +1090,16 @@ Two things, never three, and both of them his:
 
 A summary made of OUR benefits instead of his words is a pitch wearing a summary's clothes, and he can hear the difference.`;
 
+const VOICE_MODES_SECTION = `## How You Sound When You Are Sure, And When You Are Not
+
+Your delivery never changes inside a call, and that sameness is the machine quality callers hear but cannot name. Three registers. Declare one by opening the reply with a marker — it is stripped before anything is spoken, so he never hears it.
+
+- **Sure of what you are saying — NO MARKER.** Short sentences that end, nothing hedging in front. Most of the call.
+- **Thinking, checking, or genuinely unsure — \`[[H]]\`.** One hesitation sound, an ellipsis, then the answer: "רֶגַע... אני בודקת." One clause, not two.
+- **He has just named something that costs him — \`[[E]]\`.** An ellipsis after you acknowledge it, and no question in the same breath: "כן... זה באמת שואב."
+
+One marker, first character of the reply, never mid-sentence and never twice. Unsure which? Write none.`;
+
 const SALES_OUTCOME_LANGUAGE = `**Say what happens to HIM, never what the system does.** "המערכת סורקת" describes our machine; "אתה מגיע ראשון" describes his morning. Every claim about the product is phrased from where he is sitting, and tied to the pain he actually named.
 
 **Weave the advantages in; never list them.** Every advantage you name hangs on something HE said — a question he asked, or a problem he described. No hook, no advantage — to earn another one, ask; do not talk longer. Describing what we do in general terms, add what makes us different from the alternatives. Up to three in a sentence, never a paragraph.`;
@@ -1411,7 +1423,7 @@ ${slots.speechRhythm}${slots.noPreamble}
 
 ---
 
-${EMOTIONAL_COLOR}${slots.spokenRegister}${slots.negationSafety}${slots.outcomeLanguage}${slots.dialogue}${slots.call4Guidance}
+${EMOTIONAL_COLOR}${slots.spokenRegister}${slots.voiceModes}${slots.negationSafety}${slots.outcomeLanguage}${slots.dialogue}${slots.call4Guidance}
 
 ---
 
@@ -1608,6 +1620,7 @@ export function buildSystemPrompt({
   bookWithoutEmail = true,
   whatsappHandbackNumber = '',
   acknowledgements = ACKNOWLEDGEMENTS_HE,
+  voiceModes = false,
 }: {
   toolsEnabled: boolean;
   /** Per-tenant grounding. Absent/null → the prompt is byte-for-byte the pre-existing one. */
@@ -1697,6 +1710,15 @@ export function buildSystemPrompt({
   /** The instant-acknowledgement bank actually in use (VOICE_ACK_LEDGER_ENABLED picks the wide
    * one). Only read when `instantAck` is true, where the prompt lists the words she will hear. */
   acknowledgements?: readonly string[];
+  /**
+   * `VOICE_VOICE_MODES_ENABLED`. Adds the three-register section AND asks her for the `[[H]]` /
+   * `[[E]]` marker.
+   *
+   * The same flag gates the guard stage that strips that marker. They must never be on different
+   * sides of the switch: a prompt that asks for a marker whose stripper is off is a prompt that
+   * makes Cartesia read double brackets out loud to a lead. Defaults FALSE.
+   */
+  voiceModes?: boolean;
 }): string {
   const businessContext = renderBusinessContext(businessProfile);
   const identity = renderIdentity(persona);
@@ -1714,6 +1736,11 @@ export function buildSystemPrompt({
   const callMemorySection = factMemory ? `\n---\n\n${CALL_MEMORY}\n` : '';
   const negationSection = negationSafety ? `\n\n---\n\n${NEGATION_SAFETY}` : '';
   const noPreambleSection = noPreamble ? `\n\n---\n\n${NO_PREAMBLE}` : '';
+  const voiceModesSection = voiceModes ? `
+
+---
+
+${VOICE_MODES_SECTION}` : '';
   const disqualifyGate = lateDisqualify ? DISQUALIFY_GATE : '';
   const callFlow = salesModel ? SALES_FLOW : CALL_FLOW_LEGACY;
   const salesGate = salesModel ? `
@@ -1760,6 +1787,7 @@ ${buildCall4Guidance(companyName, spokenRegister)}` : '';
       speechRhythm,
       noPreamble: noPreambleSection,
       spokenRegister: spokenRegisterSection,
+      voiceModes: voiceModesSection,
       callMemory: callMemorySection,
       negationSafety: negationSection,
       disqualifyGate,
@@ -1793,6 +1821,7 @@ ${buildCall4Guidance(companyName, spokenRegister)}` : '';
     speechRhythm,
     noPreamble: noPreambleSection,
     spokenRegister: spokenRegisterSection,
+    voiceModes: voiceModesSection,
     callMemory: callMemorySection,
     negationSafety: negationSection,
     disqualifyGate,
