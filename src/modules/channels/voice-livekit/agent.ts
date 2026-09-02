@@ -1371,6 +1371,15 @@ export default defineAgent({
       // call she held the line on and probably one that never got far enough to pitch.
       if (agent.salesGate) report.recordGateAOpen(agent.salesGate.isOpen);
 
+      // HOW FAR THE CALL GOT. `serialize()` has existed since the state machine shipped and
+      // nothing read it, so every post-mortem so far has reconstructed the stage by reading a
+      // transcript. The working memory is deliberately left behind — it holds the lead's name,
+      // and `leads` plus the transcript already have every value in it.
+      if (callState) {
+        const snap = callState.serialize();
+        report.recordCallStage(snap.final_stage, snap.stage_history);
+      }
+
       // STDOUT, not just a file. In LiveKit Cloud the container's filesystem is ephemeral and
       // unreachable — `call-reports/*.json` is written into a box nobody can open. The first cloud
       // call proved it: the agent dutifully logged "call_report_written call-reports/...json" for a
@@ -1777,7 +1786,7 @@ export default defineAgent({
     // The register each step was spoken in, and the marker that should never have got this far.
     // `modeMarkerLeaks` must read zero: non-zero does not mean a caller heard brackets, it means
     // only the last net stopped them, which is one failure away from audible.
-    agent.onPauses = (count) => report.recordPauses(count);
+    agent.onPauses = (count, spoken) => report.recordPauses(count, spoken);
     agent.onPauseTagDropped = (count) => report.recordPauseTagDropped(count);
 
     // The model's REAL first-token time. The SDK's own ttft now measures our acknowledgement, so

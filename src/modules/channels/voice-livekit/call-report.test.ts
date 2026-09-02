@@ -456,3 +456,60 @@ describe('CallReport coach note', () => {
     expect(report.toJson().summary.coachNote.growth).toBeNull();
   });
 });
+
+/**
+ * THE THREE THINGS THE 2026-09-02 LIVE CALL COULD NOT ANSWER.
+ *
+ * It reported `pauses: 2` with no way to say where they landed, a `speechPace.spread` of 3.02x
+ * driven by one three-character utterance, and no record at all of how far the call got. Each of
+ * those is the instrument failing rather than the feature.
+ */
+describe('CallReport — reading a call back', () => {
+  const tts = (charactersCount: number, audioDurationMs: number) => ({
+    ttfbMs: 200,
+    durationMs: 300,
+    audioDurationMs,
+    charactersCount,
+    cancelled: false,
+  });
+
+  it('keeps the opening of each sentence that carried a pause', () => {
+    // A count that cannot be placed answers the easy half of the question. Koren's rule is about
+    // WHERE the pause goes, so the report has to be able to show where it went.
+    const report = newReport();
+    report.recordPauses(1, 'רגע, אני בודקת את היומן.');
+    report.recordPauses(1, 'בטח, אני רושמת את זה.');
+    const p = report.toJson().summary.pauses;
+    expect(p.total).toBe(2);
+    expect(p.samples).toEqual(['רגע, אני בודקת את היומן.', 'בטח, אני רושמת את זה.']);
+  });
+
+  it('ignores an utterance too short for ms-per-character to mean anything', () => {
+    // `אמ.` is three characters and reported 220 ms/char on the live call, against a median of 78.
+    // A short clip is mostly the fixed onset and release either side of the speech.
+    const report = newReport();
+    report.recordMetric('tts', tts(3, 660)); // 220 ms/char — the poisoning sample
+    report.recordMetric('tts', tts(40, 3_200)); // 80 ms/char — a real sentence
+    const pace = report.toJson().summary.speechPace;
+    expect(pace.samples).toBe(1);
+    expect(pace.maxMsPerChar).toBe(80);
+  });
+
+  it('records how far the call got, without copying the lead into a third place', () => {
+    const report = newReport();
+    report.recordCallStage('qualifying', [
+      { stage: 'opening', atMs: 0 },
+      { stage: 'discovery', atMs: 12_000 },
+      { stage: 'qualifying', atMs: 48_000 },
+    ]);
+    const cs = report.toJson().summary.callStage;
+    expect(cs.final).toBe('qualifying');
+    expect(cs.history).toHaveLength(3);
+    // The working memory holds the lead's own name and is deliberately not carried here.
+    expect(JSON.stringify(cs)).not.toContain('working_memory');
+  });
+
+  it('says nothing about the stage on a call that never ran the state machine', () => {
+    expect(newReport().toJson().summary.callStage).toEqual({ final: null, history: [] });
+  });
+});

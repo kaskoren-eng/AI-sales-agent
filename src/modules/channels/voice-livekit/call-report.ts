@@ -27,6 +27,17 @@ import { isRestartOf } from './repeat-guard.js';
  * shape here matches the DB column exactly, so when Phase 4 lands, persistence is a one-line change
  * and nothing downstream has to be rewritten.
  */
+/**
+ * Utterances shorter than this are excluded from `speechPace`.
+ *
+ * The 2026-09-02 live call reported a spread of 3.02x, which reads as an engine tearing itself
+ * apart. Its maximum was 220 ms/char and it came from `אמ.` — three characters. A short clip is
+ * dominated by the fixed onset and release either side of the speech, so ms-per-character is
+ * meaningless there, and one such clip poisons the metric the pacing work is judged by. The
+ * probe that established the real 1.1x noise band used sentences of 24 and 53 characters.
+ */
+const PACE_MIN_CHARS = 12;
+
 export interface TurnMetric {
   /** ms since call start. */
   atMs: number;
@@ -420,7 +431,20 @@ export interface CallReportJson {
      * hesitation on every sentence is not thoughtfulness, it is a tic. Compare against the
      * transcript to see WHERE they landed; the count alone cannot tell you.
      */
-    pauses: { total: number; sentences: number };
+    pauses: { total: number; sentences: number; samples: string[] };
+    /**
+     * How far the call actually got, and when each stage was reached.
+     *
+     * `CallStateMachine.serialize()` has existed since the state machine shipped and nothing ever
+     * read it, so every post-mortem reconstructed the answer by reading a transcript. `final`
+     * against the transcript is the fastest read there is on a call: one that ends in `discovery`
+     * after four minutes did not fail at closing, it failed at asking.
+     *
+     * The working memory is deliberately NOT here. It holds the lead's own name, and the values
+     * are already in `leads` and in the transcript — a third copy is a third place to erase when
+     * someone exercises a deletion request.
+     */
+    callStage: { final: string | null; history: Array<{ stage: string; atMs: number }> };
     /**
      * Bracketed tokens deleted because they were not an approved pause length.
      *
@@ -791,14 +815,34 @@ export class CallReport {
     this.#coachNoteBytes.push(bytes);
   }
 
+  #callStage: string | null = null;
+  #callStageHistory: Array<{ stage: string; atMs: number }> = [];
+
+  /** The conversation state machine's final stage and how it got there. Read once, at shutdown. */
+  recordCallStage(final: string, history: Array<{ stage: string; atMs: number }>): void {
+    this.#callStage = final;
+    this.#callStageHistory = history.map((h) => ({ stage: h.stage, atMs: h.atMs }));
+  }
+
   #pauses = 0;
   #pauseSentences = 0;
   #pauseTagsDropped = 0;
 
-  /** One sentence carried this many approved `<break>` pauses. See voice-mode.ts. */
-  recordPauses(count: number): void {
+  #pauseSamples: string[] = [];
+
+  /**
+   * One sentence carried this many approved `<break>` pauses.
+   *
+   * The OPENING OF THE SENTENCE is kept, and that is the point. The 2026-09-02 live call reported
+   * `pauses: 2` and there was no way to tell whether either of them landed where Koren said they
+   * belong — a real check or a question worth thinking about — or on a confirmation, which the
+   * prompt forbids. A count that cannot be placed answers the easy half of the question and not
+   * the half that decides whether the rule is right. Her own speech, already in the transcript.
+   */
+  recordPauses(count: number, spoken = ''): void {
     this.#pauses += count;
     this.#pauseSentences += 1;
+    if (spoken && this.#pauseSamples.length < 12) this.#pauseSamples.push(spoken.slice(0, 60));
   }
 
   /** Bracketed tokens deleted for not being an approved pause. Must be zero. */
@@ -1135,7 +1179,7 @@ export class CallReport {
       .filter((m) => m.cancelled !== true)
       .map((m) =>
         typeof m.charactersCount === 'number' &&
-        m.charactersCount > 0 &&
+        m.charactersCount >= PACE_MIN_CHARS &&
         typeof m.audioDurationMs === 'number' &&
         m.audioDurationMs > 0
           ? m.audioDurationMs / m.charactersCount
@@ -1223,7 +1267,12 @@ export class CallReport {
         endCallRefusalReasons: [...this.#endCallRefusalReasons],
         secondQuestionsDropped: this.#secondQuestionsDropped,
         selfNarrationDropped: this.#selfNarrationDropped,
-        pauses: { total: this.#pauses, sentences: this.#pauseSentences },
+        pauses: {
+          total: this.#pauses,
+          sentences: this.#pauseSentences,
+          samples: [...this.#pauseSamples],
+        },
+        callStage: { final: this.#callStage, history: [...this.#callStageHistory] },
         pauseTagsDropped: this.#pauseTagsDropped,
         gateAViolations: this.#gateAViolations,
         gateAOpen: this.#gateAOpen,
