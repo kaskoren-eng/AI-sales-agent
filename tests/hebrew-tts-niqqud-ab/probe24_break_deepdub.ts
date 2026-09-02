@@ -74,10 +74,44 @@ function wavHeader(dataLen: number, sampleRate: number): Buffer {
   return h;
 }
 
+/**
+ * THE ENGINE THAT WAS BUILT IS THE ENGINE THIS PROBE CLAIMS TO MEASURE.
+ *
+ * A probe whose whole subject is one provider must not be able to quietly measure another. I hit
+ * exactly this failure on 2026-09-02 in a throwaway harness script — an override key spelled wrong
+ * was silently dropped under `tsx` (which strips types without checking), so two runs that read as
+ * a Cartesia-vs-DeepDub comparison were both Cartesia, and the output looked entirely healthy.
+ * The comfortable answer is the one a broken instrument returns. See `testing/README.md`.
+ */
+function assertDeepdub(engine: DeepdubTTS, env: ReturnType<typeof loadEnv>): void {
+  // The model name is the weaker half — this file constructs `DeepdubTTS` directly, so today it
+  // matches by construction and only catches a future edit that swaps in `buildTTS()` without
+  // setting the provider. The SAMPLE RATE is the half that cannot be faked: DeepDub is natively
+  // 48kHz and Cartesia 24kHz, so a Cartesia engine arriving here is caught by arithmetic rather
+  // than by a label agreeing with itself.
+  const problems: string[] = [];
+  if (engine.model !== env.DEEPDUB_MODEL) {
+    problems.push(`model="${engine.model}" but DEEPDUB_MODEL="${env.DEEPDUB_MODEL}"`);
+  }
+  if (engine.sampleRate !== env.DEEPDUB_SAMPLE_RATE) {
+    problems.push(
+      `sampleRate=${engine.sampleRate} but DEEPDUB_SAMPLE_RATE=${env.DEEPDUB_SAMPLE_RATE} ` +
+        `(Cartesia's 24000 arriving here is exactly the substitution this guard exists for)`,
+    );
+  }
+  if (problems.length > 0) {
+    throw new Error(
+      `this probe measures DeepDub and the engine it built is not one: ${problems.join('; ')}. ` +
+        `Refusing to render a clip that would be labelled deepdub and produced by something else.`,
+    );
+  }
+}
+
 async function main(): Promise<void> {
   initializeLogger({ pretty: false, level: 'warn' });
   const env = loadEnv();
   const engine = new DeepdubTTS(deepdubOptions(env));
+  assertDeepdub(engine, env);
   console.log(`engine=deepdub model=${engine.model} sampleRate=${engine.sampleRate}\n`);
 
   async function synth(text: string): Promise<{ pcm: Buffer; sr: number }> {
