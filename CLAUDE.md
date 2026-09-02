@@ -30,6 +30,20 @@ Multi-channel AI sales agent (WhatsApp, Email, Voice) that qualifies leads and b
   design work (tokens, typography, light/dark theming, i18n/RTL rules, component DoD).
   v3 stays in git history; v5 §12 defines exactly what changed and why the number skips
   ("v4" internally meant the dead cream palette — never reuse it).
+- **The brief is at v5.1 (2026-09-02).** Typography changed: the five-family Latin-first stack
+  (Bricolage Grotesque / Instrument Sans / JetBrains Mono) is dead, replaced by **one family,
+  three scripts — IBM Plex Sans + IBM Plex Sans Hebrew + IBM Plex Mono** (§3), with a required
+  optical weight ladder (§3.0) and the old cross-face calibration gate retired (§3.2). The
+  **official logo shipped** and is specified in §3.5 — circle plus five descending waveform
+  bars; its five blues are the mark's alone and are **never** used as `--accent`.
+  **The palette did not change:** indigo `#2F35C7`, amber `#D9861B`.
+- **The dashboard still runs the dead five-family stack** (`dashboard/src/index.css`).
+  Aligning it to IBM Plex is an OPEN decision for Koren — do not change it unprompted, and do
+  not treat the current dashboard fonts as the brand.
+- **For anything public-facing, `website/assets/styles.css` outranks the brief.** It is the
+  shipped token file; where the two disagree the stylesheet is right and the brief is the bug.
+  The marketing/ad brand kernel lives in the project doc
+  `claude/2026-09-02-claude-design-ad-handoff.md`.
 - Palette is the **cool technical** system derived from the ClickScales landing page —
   flat cool surfaces, indigo accent, mono for data, zero gradients, full light/dark toggle
   (`data-theme` on `<html>`). The cream/glass direction is dead; do not reintroduce it.

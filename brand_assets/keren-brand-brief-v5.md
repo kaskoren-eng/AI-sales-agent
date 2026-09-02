@@ -1,8 +1,8 @@
 # KEREN by ClickScales — Brand & Build Brief
 
-**Version:** 5.0 — cool technical palette + full light/dark theming
+**Version:** 5.1 — one type family (IBM Plex), official logo shipped
 **Status:** Active — single source of truth for all dashboard design work
-**Owner:** Koren (koren@clickscales.com) · **Merged:** 2026-07-29, architect session
+**Owner:** Koren (koren@clickscales.com) · **Merged:** 2026-07-29 · **Revised:** 2026-09-02, architect session
 **Stack (dashboard):** Vite · React 19 · TypeScript · Tailwind CSS 4 · Radix primitives · Lucide-React · Framer Motion · react-i18next
 
 > **Version note — read once, it prevents a real bug.** The previous file
@@ -274,76 +274,94 @@ dark.
 
 ---
 
-## 3. Typography — Latin-first stacks, Hebrew fallback
+## 3. Typography — ONE family, three scripts
 
-Latin leads. Hebrew is the fallback face in the same stack, so a mixed Hebrew/Latin/number
-line resolves correctly character by character with no wrapper elements and no conditional
-classes. This **replaces** the Montserrat/Heebo/Assistant system entirely.
+**Changed in v5.1 (2026-09-01).** The five-family Latin-first system below was replaced on the
+marketing site by a single family covering Latin, Hebrew and mono: **IBM Plex**. Hierarchy
+comes from **weight**, not from a second typeface.
 
 ```css
---font-display: "Bricolage Grotesque", "Rubik", system-ui, sans-serif;
---font-body:    "Instrument Sans", "Assistant", system-ui, sans-serif;
---font-mono:    "JetBrains Mono", "Assistant", ui-monospace, monospace;
+--font-display: "IBM Plex Sans", "IBM Plex Sans Hebrew", system-ui, sans-serif;
+--font-body:    "IBM Plex Sans", "IBM Plex Sans Hebrew", system-ui, sans-serif;
+--font-mono:    "IBM Plex Mono", "IBM Plex Sans Hebrew", ui-monospace, monospace;
 ```
 
-| Role | Latin | Hebrew fallback | Used for |
-|---|---|---|---|
-| Display | Bricolage Grotesque | **Rubik** | page titles, headings, metric values, presence indicator |
-| Body | Instrument Sans | **Assistant** | body, labels, buttons, form fields, everything else |
-| Mono | JetBrains Mono | *Assistant, safety net only* | LTR data — see §3.1 |
+| Role | Face | Used for |
+|---|---|---|
+| Display | IBM Plex Sans + IBM Plex Sans Hebrew | page titles, headings, metric values, presence indicator |
+| Body | the same two faces | body, labels, buttons, form fields, everything else |
+| Mono | IBM Plex Mono | LTR data — see §3.1 |
 
-**Why Rubik behind Bricolage:** geometric with slightly softened terminals, a wide weight
-range, and enough personality to sit beside a characterful display face without looking like a
-system fallback. Heebo is the neutral alternative if Rubik reads too friendly at large sizes.
+**Why one family.** Latin and Hebrew here are drawn by the same design team on the same
+skeleton, so a mixed line — `ליד נכנס ב־21:40` — is drawn by one designer instead of two.
+That removes the entire class of problem the old §3.2 existed to manage: no x-height mismatch
+to normalise, no `size-adjust` descriptors, no self-hosting for optical control, no
+per-direction line-height correction. The calibration gate is retired, not deferred.
 
-**Why Assistant behind Instrument Sans:** humanist, quiet, and already the Hebrew body face in
-the previous brief — existing Hebrew body copy does not change shape in this migration.
+**Alternatives rejected, and why.** Noto Sans Hebrew was the runner-up and carries a genuine
+condensed width axis, which Plex does not; it was rejected because its Latin is deliberately
+neutral to the point of having no voice, and this brand's whole character claim is
+"technical, not generic". Heebo and Assistant were rejected as the two faces every Israeli
+SMB site already uses — they read as a template. Bricolage Grotesque plus Instrument Sans was
+the v5.0 answer and was rejected on the evidence: paired with a Hebrew fallback it produced
+exactly the mixed-line mismatch §3.2 predicted, and the Hebrew read as cheap.
 
 ```
-https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Rubik:wght@500;600;700&family=Assistant:wght@400;600;700&display=swap
+https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@200;300;400;500;600;700&family=IBM+Plex+Sans+Hebrew:wght@200;300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap
 ```
 
-Five families is a real payload. Google Fonts serves Hebrew as a separate `unicode-range`
-subset, so the Hebrew faces only download when Hebrew glyphs actually render — an
-English-default session pays nothing for them. The heavy item is Bricolage Grotesque's
-variable optical-size axis. If LCP suffers, narrow the `opsz` range or drop to static weights
-before touching anything else.
+Three families, not five, and Google Fonts still serves Hebrew as a separate `unicode-range`
+subset, so an English-only session never downloads the Hebrew faces. **Plex maxes out at 700** —
+there is no 800. Any `font-weight: 800` in the codebase is a silent fallback to 700 and should
+be written as 700.
 
-**Casing rules:** uppercase + wide tracking is dead as a display style (it belonged to
-Montserrat). It survives in one place only: mono eyebrow labels and column headers, Latin
-only. It remains **meaningless in Hebrew** — never apply uppercase or tracking to Hebrew
-strings; enforce via `:lang(he)` CSS or the i18n layer, not per-component hacks.
+### 3.0 The optical weight ladder — REQUIRED
+
+Plex's light weights hold their shape at large sizes, which is the point of choosing it. Set
+big type lighter so every level reads with equal visual force:
+
+| Level | Weight | Letter-spacing |
+|---|---|---|
+| h1 / display | **200** | `-0.035em` |
+| h2 | **300** | `-0.03em` |
+| h3 | **600** | `-0.015em` |
+| emphasised span inside a heading | **700**, coloured `--accent` | inherits |
+| numerals inside a heading | **500** | inherits |
+| body | 400 | normal |
+
+Setting an h1 at 600 or 700 is the single fastest way to make this brand look like every other
+SaaS page. Do not do it.
+
+**Casing rules — unchanged.** Uppercase + wide tracking is dead as a display style. It survives
+in one place only: mono eyebrow labels and column headers, Latin only. It remains
+**meaningless in Hebrew** — never apply uppercase or tracking to Hebrew strings; enforce via
+`:lang(he)` CSS or the i18n layer, not per-component hacks.
 
 ### 3.1 The mono rule
 
-There is no good Hebrew monospace. Assistant sits in the mono stack purely as a safety net so
-that stray Hebrew renders in a known face rather than a system default — **never as licence to
-set Hebrew in mono deliberately.** Mono is for LTR data; see §3.3.
+There is no good Hebrew monospace. IBM Plex Sans Hebrew sits in the mono stack purely as a
+safety net so that stray Hebrew renders in a known face rather than a system default —
+**never as licence to set Hebrew in mono deliberately.** Mono is for LTR data; see §3.3.
 
 Tabular figures matter here: apply `font-variant-numeric: tabular-nums` wherever mono carries
 column data, or numbers will not align.
 
-### 3.2 Optical calibration — REQUIRED, not cosmetic
+### 3.2 Optical calibration — RETIRED
 
-Two unrelated typefaces on one line will not match until they are tuned. Hebrew letters have
-no ascenders or descenders on most characters, so at an identical `font-size` Hebrew reads as
-a denser, blockier block against Latin lowercase. Untuned, mixed lines look broken and the
-Hebrew looks heavier than it is.
+This section previously mandated a cross-face calibration ritual (`font-size-adjust`,
+`@font-face` override descriptors, per-direction line-height, and a screenshot artefact before
+sign-off). **One family removed the problem it solved.** Nothing here is required any more.
 
-Do this in order, and stop at the first step that passes:
+The one check that survives, and it is cheap: render a mixed
+`Hebrew + Latin + 12 + 09:41` line at three sizes in both directions and confirm the numerals
+sit on the same baseline as the Hebrew. If they do, the system is calibrated.
 
-1. **`font-size-adjust`** on the body and display stacks. This is precisely the property for
-   normalising x-height across fallback faces. Verify in Chrome, Safari and Firefox.
-2. If that is not enough, **self-host the Hebrew faces** and use the `size-adjust`,
-   `ascent-override` and `descent-override` descriptors in `@font-face`. Google Fonts' hosted
-   CSS cannot be overridden, so self-hosting is the price of precise control.
-3. Adjust `line-height` per direction last. Never renumber the type scale to fix a font
-   mismatch.
-
-**Verification artefact, required before this is signed off:** a screenshot of a heading, a
-body paragraph, a button label, and one mixed `Hebrew + Latin + 12 + 09:41` line, at three
-sizes, in both directions. Attach it to the handoff. Numbers for the adjust values do not
-exist yet — they come out of this test, and must not be guessed.
+**A verification trap worth knowing about.** During the 2026-09-01 font selection, several
+rounds of Hebrew screenshots were taken in an environment that could not reach
+`fonts.googleapis.com`. Every one of them silently rendered in a system fallback, so the
+comparisons measured nothing. If you are evaluating Hebrew type in any sandboxed or offline
+tool, install the real `woff2` files locally and embed them before you trust a single
+screenshot.
 
 ### 3.3 Where mono is used
 
@@ -352,22 +370,52 @@ labels above sections · table column headers · timestamps, durations, dates ·
 figures, token counts, percentages in tables · call IDs, agent IDs, version and status badges
 · keyboard hints.
 
-**Mono is never used for:** **Hebrew text of any kind** — JetBrains Mono has no Hebrew glyphs,
-and Hebrew has no monospace tradition to borrow from · body copy, headings, button labels ·
+**Mono is never used for:** **Hebrew text of any kind** · body copy, headings, button labels ·
 lead names, business names, or any user-entered content.
 
 The Hebrew exclusion is not a compromise. Mono carries *data* in this system, and data is
 digits and Latin. A Hebrew column header sits in `--font-body` while its values sit in
 `--font-mono`; that pairing is correct and intentional.
 
-### 3.4 Type scale — carried over, verify
+### 3.4 Type scale — carried over
 
 The type scale is unchanged: display 56, h1 40, h2 28, h3 20, h4 16, body 15, body-sm 13,
-caption 12. Rubik and Assistant have x-heights close enough to Heebo that the scale should
-transfer. **Verification required before the scale is declared safe:** render a Hebrew
-heading, a Hebrew body paragraph, and a mixed Hebrew/Latin/number line at three sizes in both
-faces, screenshot, and compare optically against the previous output. If line-height needs
-adjusting for Rubik, adjust line-height only — do not renumber the scale.
+caption 12. Apply the §3.0 weight ladder on top of it. Adjust line-height if needed; do not
+renumber the scale.
+
+## 3.5 The logo — SHIPPED 2026-09-01, no longer TBD
+
+The mark is a **circle enclosing five descending waveform bars**. It is the brand's only
+signature graphic device, and everything visual in the system is derived from it.
+
+```svg
+<svg viewBox="0 0 48 48">
+  <circle cx="24" cy="24" r="19.5" fill="none" stroke="#2563EB" stroke-width="3.6"/>
+  <rect x="13.2" y="20" width="3.6" height="8"  rx="1.8" fill="#2563EB"/>
+  <rect x="17.7" y="17" width="3.6" height="14" rx="1.8" fill="#2979EE"/>
+  <rect x="22.2" y="14" width="3.6" height="20" rx="1.8" fill="#2E90F1"/>
+  <rect x="26.7" y="17" width="3.6" height="14" rx="1.8" fill="#33A6F4"/>
+  <rect x="31.2" y="20" width="3.6" height="8"  rx="1.8" fill="#38BDF8"/>
+</svg>
+```
+
+**The five blues, in fixed order:** `#2563EB` `#2979EE` `#2E90F1` `#33A6F4` `#38BDF8`.
+Never reorder them, never add a sixth, never render the mark in a single flat blue.
+
+**Wordmark:** `ClickScales` beside the mark — "Click" at weight 700, "Scales" at 400. Latin
+only; never transliterated to Hebrew.
+
+**These five blues are NOT the accent.** `--accent` is still indigo `#2F35C7` (§1.1) and
+`--data-2` is still amber `#D9861B`. The blues belong to the logo and to graphics derived
+from it (the waveform device, capability icons, the call illustration). A button painted
+`#2563EB` is a bug. This separation is deliberate: the mark stays recognisable precisely
+because its colours appear nowhere else.
+
+**Derived icon system.** The marketing site's capability icons are all built from the
+waveform: bars against a threshold line, two facing waves, a wave resolving into text, a
+wave enclosing the letter א. When new iconography is needed, derive it from the mark rather
+than reaching for a generic icon set — that derivation is what stops the set looking
+AI-generated (§7.1).
 
 ---
 
@@ -544,8 +592,9 @@ own theme system that fights the tokens, anything unmaintained (<6 months since 
 Contrast per the measured law in §1.4 (primary text AAA by construction; secondary AA with no
 shrink margin; `--data-2` never text-on-light). Full keyboard nav. Focus ring `--accent`, 2px,
 offset 2px. Reduced-motion everywhere. LCP < 2.0s on 4G, initial JS < 180kb gz, CLS < 0.05.
-Font payload per §3 — Hebrew subsets load on demand; Bricolage's `opsz` axis is the first
-thing to cut if LCP suffers.
+Font payload per §3 — three families, and Hebrew subsets load on demand, so an English-only
+session never fetches the Hebrew faces. If LCP suffers, drop the weights the ladder (§3.0)
+does not use before touching anything else.
 
 ---
 
@@ -573,12 +622,13 @@ gate (§2.3), not per commit.
 
 | Asset | Spec | Status | Owner |
 |---|---|---|---|
-| ClickScales logo (SVG, mono + color) | for sidebar + login | ⚠️ TBD | Koren |
-| KEREN wordmark / avatar | for Presence chip + empty states | ⚠️ TBD | Koren |
-| **Dark-theme logo twins** | light-on-transparent versions of both marks (§2.2 item 5) | ⚠️ TBD | Koren |
-| Favicon set | 16/32/180/512 | ⚠️ TBD | Koren |
+| ClickScales logo (SVG, colour) | circle + five waveform bars — spec in §3.5 | ✅ **shipped** `website/favicon.svg`, inline in nav + footer | — |
+| Favicon set | svg + ico(16/32) + apple-touch 180 + 192 + 512 + webmanifest | ✅ **shipped** 2026-09-01, `website/` root | — |
+| ClickScales logo (mono / single-colour) | for print, faxes, one-colour contexts | ⚠️ TBD — derive from §3.5 by flattening all bars to `--ink` | Koren |
+| **Dark-theme logo twin** | light-on-transparent wordmark (§2.2 item 5); the mark itself already works on `--night` | ⚠️ TBD | Koren |
+| Agent avatar (generic) | for Presence chip + empty states — must NOT be a named persona, see §0 | ⚠️ TBD | Koren |
 | OG image | 1200×630 | ⚠️ TBD | Koren |
-
+| Call recordings | `booking.mp3`, `price-objection.mp3`, `callback.mp3` for the hero player | ⚠️ **blocking** — `website/assets/audio/` holds only a README; the three rows render "בקרוב" until these land | Koren |
 ---
 
 ## 11. Migration Checklists
@@ -592,12 +642,16 @@ gate (§2.3), not per commit.
 - [ ] Any `danie` string in `dashboard/src/**` (grep and destroy)
 - [ ] `brand_assets/brand_identity` (v2) — add a one-line deprecation header pointing here
 
-### 11.2 Cream → v5 code migration (from the v4 patch §M)
+### 11.2 Type + token migration (cream → v5.0 → v5.1)
 
-1. Add the five-family Google Fonts link from §3; remove Heebo and Montserrat imports. Declare
-   the three stacks as tokens — no component names a typeface directly.
-2. Run the §3.2 calibration test and commit the resulting values plus the screenshot. Do not
-   ship the stacks uncalibrated.
+1. Swap the Google Fonts link for the three-family IBM Plex link in §3; remove the
+   Bricolage/Instrument/JetBrains/Rubik/Assistant import. Declare the three stacks as tokens —
+   no component names a typeface directly. Rewrite every `font-weight: 800` as 700 (Plex has
+   no 800). Grep for hardcoded faces outside the tokens; as of 2026-09-02 the dashboard has
+   two (`pages/CallDetail.tsx` names JetBrains Mono inline, `pages/Styleguide.tsx` labels a
+   row "Heebo").
+2. Apply the §3.0 weight ladder. The old §3.2 calibration gate is retired — one family, no
+   cross-face tuning needed.
 3. Replace the `:root` token block with §1.1. Add the `[data-theme="dark"]` block from §1.2.
 4. Grep the dashboard for raw hex and for old token names (`--glass-*`, `--accent-teal*`,
    `--accent-violet*`, `--bg-page*`, cream values). Every hit becomes a token or a justified
@@ -622,7 +676,8 @@ gate (§2.3), not per commit.
 |---|---|---|
 | v2 ("Danie", midnight) | navy `#0B132B` + cyan `#00F5FF` | dead — read as gaming/dev-tool |
 | v3 file / internal "v4.0" (cream + glass) | cream `#F4EFE6`, glass, teal/violet | **dead — superseded by this file.** Beware: some docs say "v4 tokens" and mean cream |
-| **v5 (this file)** | cool technical, from the ClickScales landing page | **active** |
+| v5.0 | cool technical, from the ClickScales landing page | palette **active**; its typography is dead |
+| **v5.1 (this file)** | unchanged palette + the shipped logo's five blues (§3.5) | **active** |
 
 **v5 supersedes, explicitly** (the previous brief asserted each of these):
 - "There is ONE theme. No dark mode in v1. Do not add a theme toggle." → full light/dark
@@ -633,7 +688,7 @@ gate (§2.3), not per commit.
 - Teal/violet accents and the teal focus ring → indigo `--accent` + amber `--data-2`, §1.1.
 - "Pulsing cyan dot" and glow-based affordances → accent dot, tint wash, no glows, §5.
 - Montserrat/Heebo typography and the uppercase display style → Latin-first stacks with
-  Hebrew fallback, §3.
+  Hebrew fallback, §3 — **itself superseded in v5.1, see below.**
 - Blanket AAA body-text rule → the measured contrast law, §1.4.
 - Hebrew as i18n source and RTL default → English primary, §4 (interface only — §0.1).
 - Radii md-10/xl-20 → 8/14/22/full, §1.1.
@@ -645,5 +700,32 @@ core (§9), Danie migration checklist (§11.1), performance budget (§8).
 
 ---
 
-_This brief governs the dashboard. The marketing site keeps Hebrew-primary copy and gets its
-own brief when that workstream opens — do not build website sections from any deprecated file._
+**v5.1 supersedes v5.0, explicitly** (2026-09-02, after the marketing-site rebuild):
+- Five-family Latin-first type (Bricolage Grotesque / Instrument Sans / JetBrains Mono, with
+  Rubik / Assistant behind them) → **one family, three scripts: IBM Plex**, §3. Hierarchy
+  from weight, not from a second typeface.
+- The §3.2 optical-calibration gate, its `size-adjust` descriptors and its required screenshot
+  artefact → **retired**, §3.2. One family removed the problem.
+- No weight guidance → the **optical weight ladder**, §3.0 (h1 200 / h2 300 / h3 600).
+- Logo "⚠️ TBD" → **shipped and specified**, §3.5, with the five brand blues and the rule that
+  they are not the accent.
+- Asset inventory rewritten against what actually exists, §10.
+
+**Still open, needs Koren's decision — do not guess:** the dashboard is still running the
+v5.0 five-family stack (`dashboard/src/index.css` lines 1, 21-23). The website has moved to
+IBM Plex. Until this is decided the product has two typefaces. The change is cheap because
+every dashboard component already reads `var(--font-display|body|mono)` — it is the import
+line, three token lines, and two hardcoded spots (see §11.2 step 1).
+
+**Unchanged in v5.1, deliberately:** the entire palette (§1) including indigo `--accent`
+`#2F35C7` and amber `--data-2` `#D9861B`, theming (§2), i18n and RTL (§4), signature
+components (§5), iconography rules (§6), anti-AI rules (§7.1), the adoption gate (§7.2),
+contrast law (§1.4), spacing (§1.5), type scale (§3.4), DoD (§9), performance budget (§8).
+
+---
+
+_This brief governs the dashboard. The marketing site's own brand kernel — the ad-creative
+palette, copy bank and hard rules — is `claude/2026-09-02-claude-design-ad-handoff.md`, and
+the shipped `website/assets/styles.css` is the authoritative token file for anything
+public-facing. Where this brief and the shipped stylesheet disagree, **the stylesheet wins**
+and this file is the bug. Do not build website sections from any deprecated file._
