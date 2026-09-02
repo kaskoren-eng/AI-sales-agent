@@ -62,6 +62,7 @@ import {
 import { EmailDictation } from './email-dictation.js';
 import { NameDictation } from './name-dictation.js';
 import { bookingNote } from './booking-note.js';
+import { buildCoachNote } from './coach-note.js';
 import {
   AddressGenderTracker,
   dropAckEcho,
@@ -209,6 +210,16 @@ class ClickScalesAgent extends voice.Agent {
 
   /** One sentence carried this many approved `<break>` pauses. See voice-mode.ts. */
   onPauses: ((count: number, spoken: string) => void) | null = null;
+
+  /**
+   * What the coach note cost this turn, in UTF-8 bytes. See CallReport.recordCoachNote.
+   *
+   * A callback rather than handing `injectCoachNote` the report, for the same reason every other
+   * counter here is one: the function's job is to assemble advice and put it in the context, and
+   * threading a report through it would give it a second job and a second import. Same shape as
+   * `onGateAViolation` immediately above, wired in the same block at the bottom of this file.
+   */
+  onCoachNote: ((bytes: number) => void) | null = null;
 
   /** A bracketed token that was not an approved pause was deleted. Must be zero. */
   onPauseTagDropped: ((count: number, spoken: string) => void) | null = null;
@@ -882,45 +893,44 @@ const COACH_NOTE_ID = 'phrase-ledger-note';
  */
 async function injectCoachNote(agent: ClickScalesAgent): Promise<void> {
   try {
-    const phraseNote = env.VOICE_PHRASE_LEDGER_ENABLED ? agent.phraseLedger.note() : null;
-    const factNote = agent.factMemory?.note() ?? null;
-    // "You do not yet know his pain — do NOT describe the product." The discovery gate. Placed
-    // with the memory notes because it is a statement about what is known, and read BEFORE the
-    // engagement note so a terse caller is still gated: shortening the call is not permission to
-    // pitch into a vacuum. See sales-gate.ts.
-    const gateNote = agent.salesGate?.note() ?? null;
-    // "He is giving you four-word answers — mandatory questions only." Fires on a CHANGE of level,
-    // so a consistent caller costs one line for the whole call. See engagement.ts.
-    const engagementNote = agent.engagementTracker?.note() ?? null;
-    // "He has already told you when." Placed with the other memory notes rather than with the
-    // booking note, because it is about what the CALLER said, not about what the tool needs.
-    const slotNote = agent.slotMemory?.note() ?? null;
-    const emailNote = agent.emailDictation?.note() ?? null;
-    const nameNote = agent.nameDictation?.note() ?? null;
-    // THE ONLY NOTE READ OFF THE TOOL RUNTIME RATHER THAN OFF THE TRANSCRIPT — what is actually
-    // booked, and which of `book_meeting`'s required arguments still have no value. Last in the
-    // list because it is the one that must not be argued with. See booking-note.ts.
+    // ONE registry, which is also the join — see coach-note.ts. There is deliberately no local
+    // array of notes here any more: `registerTracker.note()` had been built on every turn since
+    // 2026-08-30 and left out of that array, so the nudge was inert in production for three days
+    // and the log line said it was running.
     const rt = agent.toolRuntime;
-    const bookNote =
-      env.VOICE_BOOKING_NOTE_ENABLED && rt
-        ? bookingNote({
-            toolsEnabled: true,
-            booked: rt.bookingCompleted,
-            // `check_calendar_availability` sets lastCheckedDurationMinutes on every path; the
-            // stage is the fallback for a call where the advisory state layer is switched off.
-            scheduling:
-              rt.lastCheckedDurationMinutes !== null ||
-              rt.callState?.stage === 'scheduling' ||
-              rt.callState?.stage === 'closing',
-            name: agent.factMemory?.get('name') ?? null,
-            phone: agent.factMemory?.get('phone') ?? null,
-            callerPhone: rt.callerPhone,
-            offerCallerPhone: env.VOICE_CALLER_PHONE_KNOWN_ENABLED,
-          })
-        : null;
-    const note = [phraseNote, factNote, gateNote, slotNote, engagementNote, emailNote, nameNote, bookNote]
-      .filter(Boolean)
-      .join('\n');
+    const note = buildCoachNote({
+      phrase: env.VOICE_PHRASE_LEDGER_ENABLED ? () => agent.phraseLedger.note() : undefined,
+      fact: agent.factMemory ? () => agent.factMemory!.note() : undefined,
+      gate: agent.salesGate ? () => agent.salesGate!.note() : undefined,
+      slot: agent.slotMemory ? () => agent.slotMemory!.note() : undefined,
+      engagement: agent.engagementTracker ? () => agent.engagementTracker!.note() : undefined,
+      email: agent.emailDictation ? () => agent.emailDictation!.note() : undefined,
+      name: agent.nameDictation ? () => agent.nameDictation!.note() : undefined,
+      register: agent.registerTracker ? () => agent.registerTracker!.note() : undefined,
+      booking:
+        env.VOICE_BOOKING_NOTE_ENABLED && rt
+          ? () =>
+              bookingNote({
+                toolsEnabled: true,
+                booked: rt.bookingCompleted,
+                // `check_calendar_availability` sets lastCheckedDurationMinutes on every path; the
+                // stage is the fallback for a call where the advisory state layer is switched off.
+                scheduling:
+                  rt.lastCheckedDurationMinutes !== null ||
+                  rt.callState?.stage === 'scheduling' ||
+                  rt.callState?.stage === 'closing',
+                name: agent.factMemory?.get('name') ?? null,
+                phone: agent.factMemory?.get('phone') ?? null,
+                callerPhone: rt.callerPhone,
+                offerCallerPhone: env.VOICE_CALLER_PHONE_KNOWN_ENABLED,
+              })
+          : undefined,
+    });
+    // BEFORE the early return, and that is the point. An unchanged note is not re-injected, but it
+    // is still SITTING in the context and still re-sent with every turn — so the turn pays for it
+    // whether or not this function touched anything. Counting only the turns that re-injected
+    // would have under-reported the cost by exactly the turns where nothing changed.
+    if (note) agent.onCoachNote?.(Buffer.byteLength(note, 'utf8'));
     if (!note || note === agent.lastCoachNote) return;
     const ctx = agent.chatCtx.copy();
     ctx.items = ctx.items.filter((it) => it.id !== COACH_NOTE_ID);
@@ -1098,7 +1108,9 @@ export default defineAgent({
     // state machine, and shared with the tool runtime for the same reason: capture_lead_info is
     // where a name gets set, and this is what decides whether an offered name may REPLACE one the
     // lead already gave. `undefined` runs the pre-fact-memory behaviour exactly. See fact-memory.ts.
-    const factMemory = env.VOICE_FACT_MEMORY_ENABLED ? new FactMemory() : undefined;
+    const factMemory = env.VOICE_FACT_MEMORY_ENABLED
+      ? new FactMemory({ intentAsks: env.VOICE_ASK_INTENT_ENABLED })
+      : undefined;
 
     // THE EMAIL HE IS SPELLING (VOICE_EMAIL_DICTATION_ENABLED). One per call, attached to the agent
     // below once it exists. It holds the letters across the turns the endpointer shreds his answer
@@ -1523,6 +1535,13 @@ export default defineAgent({
         // NAME DICTATION: the same two jobs for a Hebrew name — stitch the letters he is spelling
         // across the turns the endpointer cuts it into, and catch the moment he says the name she
         // read back is wrong. See name-dictation.ts.
+        // CALL MEMORY, THE OTHER HALF: did his turn ANSWER the question she just asked?
+        //
+        // Without this the ask counter cannot tell a re-ask from a follow-up, and the difference is
+        // the whole complaint. On 2026-09-01 at 343s she asked "וכמה מהר אתם חוזרים בדרך כלל?" four
+        // seconds after he answered — that is her going deeper, which is the behaviour Koren wants
+        // more of, and it must not be counted against her. See fact-memory.ts ASK_INTENTS point 3.
+        if (item.textContent) agent.factMemory?.observeCallerUtterance(item.textContent);
         if (item.textContent && agent.nameDictation) {
           const wrongName = agent.nameDictation.observeCallerUtterance(item.textContent);
           if (wrongName) {
@@ -1749,6 +1768,11 @@ export default defineAgent({
     // caller listening to a gap. So this counter IS the enforcement's only evidence, and until
     // 2026-09-02 it did not exist: the gate ran a day in production unmeasured.
     agent.onGateAViolation = () => report.recordGateAViolation();
+
+    // What the advice costs. The note is a TAIL item so it never moves the prompt-cache prefix,
+    // but it is re-sent every turn and it GROWS — fact memory alone adds a line per established
+    // fact — and nobody had ever counted what turn 30 of a long call is carrying.
+    agent.onCoachNote = (bytes) => report.recordCoachNote(bytes);
 
     // The register each step was spoken in, and the marker that should never have got this far.
     // `modeMarkerLeaks` must read zero: non-zero does not mean a caller heard brackets, it means
