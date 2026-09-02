@@ -571,7 +571,11 @@ Two exceptions, and they are opposite failure modes:
 
 - **`(breathes)` in parentheses is READ ALOUD** — Soniox hears "ברידס". Only the bracketed form is
   swallowed. A stray parenthesis in her text reaches the caller as an English word.
-- **`[laughter]` renders a real "חח" on BOTH models.** So the tag machinery is not broken on
+- **`[laughter]` renders a real "חח" on BOTH models.** *(Round-24 addendum: on DeepDub
+  `[laughter]` does NOT laugh — silently swallowed, probe24_nonverbal.json. The one positive row
+  of the Cartesia tag matrix does not survive the engine change, and `[breath]`/`[breathes]` are
+  READ ALOUD there — "ברף"/"ברית". The square-bracket net in `bracket-net.ts` exists because of
+  both facts.)* So the tag machinery is not broken on
   Hebrew — Cartesia simply trained exactly one non-verbal, and it is the one Koren rejected by ear
   in round 4b.
 

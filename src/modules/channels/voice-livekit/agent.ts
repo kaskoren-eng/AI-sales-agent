@@ -227,6 +227,9 @@ class ClickScalesAgent extends voice.Agent {
   /** A bracketed token that was not an approved pause was deleted. Must be zero. */
   onPauseTagDropped: ((count: number, spoken: string) => void) | null = null;
 
+  /** A SQUARE-bracket token ([laughter], [breath]) was deleted before an engine could speak it. */
+  onBracketTagDropped: ((count: number, spoken: string) => void) | null = null;
+
   /** An unbacked "let us stop here", rewritten into the confirmation question. */
   onStopAnnouncementRewritten: ((spoken: string) => void) | null = null;
 
@@ -818,6 +821,7 @@ class ClickScalesAgent extends voice.Agent {
               voiceModes: env.VOICE_VOICE_MODES_ENABLED && pausesSupported(env.VOICE_TTS_PROVIDER),
               onPauses: (count, spoken) => this.onPauses?.(count, spoken),
               onPauseTagDropped: (count, spoken) => this.onPauseTagDropped?.(count, spoken),
+              onBracketTagDropped: (count, spoken) => this.onBracketTagDropped?.(count, spoken),
             },
             // THE ANTI-REPETITION GUARD. The ledger is the agent's, so it spans the whole call;
             // `lastCallerTurn` is read per sentence so "לא שמעתי" in the turn she is answering
@@ -1841,6 +1845,7 @@ export default defineAgent({
     // only the last net stopped them, which is one failure away from audible.
     agent.onPauses = (count, spoken) => report.recordPauses(count, spoken);
     agent.onPauseTagDropped = (count) => report.recordPauseTagDropped(count);
+    agent.onBracketTagDropped = (count) => report.recordBracketTagDropped(count);
 
     // The model's REAL first-token time. The SDK's own ttft now measures our acknowledgement, so
     // without this the ~840ms GPT actually takes would simply disappear from the report and every

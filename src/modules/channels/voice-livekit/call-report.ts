@@ -466,6 +466,12 @@ export interface CallReportJson {
      * 0.35s have been heard; treat any non-zero reading as a defect, not as the guard working.
      */
     pauseTagsDropped: number;
+    /**
+     * Square-bracket tokens ([laughter], [breath]) deleted by bracket-net.ts. MUST BE ZERO, same
+     * reading as pauseTagsDropped: non-zero means the model invented a stage direction and only
+     * the last net stopped an engine that either LAUGHS it (Cartesia) or SPELLS it (DeepDub).
+     */
+    bracketTagsDropped: number;
     gateAViolations: number;
     /** Whether all three discovery facts were established by the end of the call. */
     gateAOpen: boolean;
@@ -890,6 +896,13 @@ export class CallReport {
   /** Bracketed tokens deleted for not being an approved pause. Must be zero. */
   recordPauseTagDropped(count: number): void {
     this.#pauseTagsDropped += count;
+  }
+
+  #bracketTagsDropped = 0;
+
+  /** Square-bracket stage directions deleted by bracket-net.ts. Must be zero. */
+  recordBracketTagDropped(count: number): void {
+    this.#bracketTagsDropped += count;
   }
 
   #gateAViolations = 0;
@@ -1317,6 +1330,7 @@ export class CallReport {
         callStage: { final: this.#callStage, history: [...this.#callStageHistory] },
         facts: this.#facts ? { ...this.#facts } : null,
         pauseTagsDropped: this.#pauseTagsDropped,
+        bracketTagsDropped: this.#bracketTagsDropped,
         gateAViolations: this.#gateAViolations,
         gateAOpen: this.#gateAOpen,
         restartedReplies,

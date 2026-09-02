@@ -8,6 +8,7 @@ import {
 import { normalizeSpokenNumbers } from './speech-numbers.he.js';
 import { hasLeakMarker, scrubToolCallLeak } from './toolcall-leak.js';
 import { normalisePauses } from './voice-mode.js';
+import { normaliseBrackets } from './bracket-net.js';
 
 /**
  * The last thing between the LLM and the caller's ear.
@@ -902,6 +903,8 @@ export async function* guardStream(
     onPauses?: (count: number, spoken: string) => void;
     /** Called once per sentence a non-approved bracketed token was deleted from. Must be zero. */
     onPauseTagDropped?: (count: number, spoken: string) => void;
+    /** Called once per sentence a SQUARE-bracket token was deleted from (bracket-net.ts). Must be zero. */
+    onBracketTagDropped?: (count: number, spoken: string) => void;
   } = {},
   /**
    * THE ANTI-REPETITION GUARD (2026-09-01). Call-level state, so it arrives as a ledger rather than
@@ -973,6 +976,7 @@ export async function* guardStream(
     // say so. The pause count is reported on the sentence that actually reaches the wire.
     if (guarded.pauses) reply.onPauses?.(guarded.pauses, guarded.text);
     if (guarded.pauseTagsDropped) reply.onPauseTagDropped?.(guarded.pauseTagsDropped, chunk.trim());
+    if (guarded.bracketTagsDropped) reply.onBracketTagDropped?.(guarded.bracketTagsDropped, chunk.trim());
     if (guarded.selfNarrationDropped) reply.onSelfNarration?.(chunk.trim());
     if (guarded.bookingClaimRewritten) booking.onFalseClaim?.(guarded.text);
     if (guarded.stopAnnouncementRewritten) reply.onStopAnnouncement?.(chunk.trim());
@@ -1322,6 +1326,12 @@ export interface GuardResult {
    * tag nobody has ever listened to, and a silently-ignored tag is READ ALOUD.
    */
   pauseTagsDropped?: number;
+  /**
+   * Square-bracket tokens deleted by bracket-net.ts. MUST be zero: non-zero means the model wrote
+   * a stage direction ([laughter], [breath]) and only the last net stopped an engine from
+   * laughing it or spelling it at a caller. Round-24 evidence, both engines.
+   */
+  bracketTagsDropped?: number;
 }
 
 /**
@@ -1411,6 +1421,7 @@ export function guardSpeech(
   let productClaimSlangRewritten = false;
   let pauses = 0;
   let pauseTagsDropped = 0;
+  let bracketTagsDropped = 0;
 
   // BEFORE THE TOOL-CALL SCRUB, because a pause tag is not a leak and must not be counted as one —
   // and because every stage below reads the sentence's FIRST characters (the greeting strip, the
@@ -1448,7 +1459,23 @@ export function guardSpeech(
       // Nothing human survived. Reported as silence rather than as an empty utterance — the
       // reply-level `notifyIfSilent` → `onSilentReply` path then speaks HOLD_CHECKBACK_HE, so a
       // scrubbed reply never becomes dead air.
-      if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen, pauses, pauseTagsDropped };
+      if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen, pauses, pauseTagsDropped, bracketTagsDropped };
+    }
+  }
+
+  // THE SQUARE-BRACKET NET (round 24, 2026-09-02). AFTER the leak scrub, deliberately — a leaked
+  // JSON payload carries [ and ], and a net running ahead of the scrub would chew fragments of a
+  // real payload and corrupt leakReasons. Unconditional like the pause net, for a token shape
+  // that net deliberately does not see: [laughter] LAUGHS on Cartesia and [breath] is READ ALOUD
+  // ("ברף") on DeepDub — measured, both engines, probe21/probe24. Counted apart from pause tags
+  // because the news differs: an angle tag is a bad duration, a square token is the model
+  // inventing a stage direction. Must be zero. See bracket-net.ts.
+  {
+    const b = normaliseBrackets(out);
+    if (b.dropped > 0) {
+      bracketTagsDropped = b.dropped;
+      interventions.push(`removed ${b.dropped} square-bracket token(s) no engine may hear`);
+      out = b.text;
     }
   }
 
@@ -1457,7 +1484,7 @@ export function guardSpeech(
     out = out.replace(NO_RESPONSE, '').trim();
     // If that was the WHOLE reply, she is meant to stay silent — which is the correct behaviour when
     // a caller says "רגע" or "שנייה". Saying nothing is the point.
-    if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen, pauses, pauseTagsDropped };
+    if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen, pauses, pauseTagsDropped, bracketTagsDropped };
   }
 
   // SHE IS EXPLAINING HER OWN INSTRUCTIONS TO A SALES LEAD. Dropped whole — see SELF_NARRATION.
@@ -1476,6 +1503,7 @@ export function guardSpeech(
       selfNarrationDropped: true,
       pauses,
       pauseTagsDropped,
+      bracketTagsDropped,
     };
   }
 
@@ -1525,7 +1553,7 @@ export function guardSpeech(
     if (introless !== out) {
       interventions.push('removed a repeat greeting (she has already introduced herself)');
       out = introless;
-      if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen, pauses, pauseTagsDropped };
+      if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen, pauses, pauseTagsDropped, bracketTagsDropped };
     }
   }
 
@@ -1588,6 +1616,7 @@ export function guardSpeech(
       bookingClaimRewritten,
       pauses,
       pauseTagsDropped,
+      bracketTagsDropped,
     };
   }
 
@@ -1602,6 +1631,7 @@ export function guardSpeech(
     productClaimSlangRewritten,
     pauses,
     pauseTagsDropped,
+    bracketTagsDropped,
   };
 }
 
