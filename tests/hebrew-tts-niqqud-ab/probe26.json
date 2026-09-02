@@ -1,0 +1,57 @@
+{
+  "rows": [
+    {
+      "id": "base1",
+      "note": "baseline",
+      "ms": 1620
+    },
+    {
+      "id": "base2",
+      "note": "baseline",
+      "ms": 1663
+    },
+    {
+      "id": "base3",
+      "note": "baseline",
+      "ms": 1718,
+      "heard": "זאת שאלה טובה, אני אסביר."
+    },
+    {
+      "id": "tag",
+      "note": "Cartesia route, control",
+      "ms": 1450,
+      "heard": "זאת שאלה טובה, אני אסביר."
+    },
+    {
+      "id": "emo1",
+      "note": "emoji, leading",
+      "ms": 1578,
+      "heard": "זאת שאלה טובה, אני אסביר."
+    },
+    {
+      "id": "emo2",
+      "note": "emoji, medial",
+      "ms": 1663,
+      "heard": "זאת שאלה טובה, אני אסביר."
+    },
+    {
+      "id": "heb1",
+      "note": "orthographic laughter",
+      "ms": 2355,
+      "heard": "חחח, זאת שאלה טובה. אני אסביר:"
+    },
+    {
+      "id": "heb2",
+      "note": "orthographic laughter",
+      "ms": 2858,
+      "heard": "הא, הא, זאת שאלה טובה. אני אסביר:"
+    }
+  ],
+  "base": [
+    1620,
+    1663,
+    1718
+  ],
+  "spread": 98,
+  "median": 1663
+}
