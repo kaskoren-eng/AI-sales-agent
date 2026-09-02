@@ -8,6 +8,7 @@ import {
 import { normalizeSpokenNumbers } from './speech-numbers.he.js';
 import { hasLeakMarker, scrubToolCallLeak } from './toolcall-leak.js';
 import { normalisePauses } from './voice-mode.js';
+import { stripWrittenLaughter } from './written-laughter.js';
 import { normaliseBrackets } from './bracket-net.js';
 
 /**
@@ -1422,6 +1423,7 @@ export function guardSpeech(
   let pauses = 0;
   let pauseTagsDropped = 0;
   let bracketTagsDropped = 0;
+  let writtenLaughterDropped = 0;
 
   // BEFORE THE TOOL-CALL SCRUB, because a pause tag is not a leak and must not be counted as one —
   // and because every stage below reads the sentence's FIRST characters (the greeting strip, the
@@ -1476,6 +1478,21 @@ export function guardSpeech(
       bracketTagsDropped = b.dropped;
       interventions.push(`removed ${b.dropped} square-bracket token(s) no engine may hear`);
       out = b.text;
+    }
+  }
+
+  // WRITTEN LAUGHTER (probe 26, 2026-09-02). Right after the bracket net, because it is the same
+  // class of thing — a cue the model writes that no engine performs — and because everything below
+  // reads the sentence's FIRST characters, which `חחח,` would sit in front of. The prompt has
+  // forbidden this in as many words for weeks, WITH the reason; she wrote it in production anyway
+  // on the 07:33 call. Koren's verdict on the probe page was `letters`: she reads them out.
+  {
+    const w = stripWrittenLaughter(out);
+    if (w.dropped > 0) {
+      writtenLaughterDropped = w.dropped;
+      interventions.push(`removed ${w.dropped} written laugh(s) that would be spoken as letters`);
+      out = w.text;
+      if (out === '') return { text: '', silent: true, interventions, leakReasons, leakOpen, pauses, pauseTagsDropped, bracketTagsDropped };
     }
   }
 
