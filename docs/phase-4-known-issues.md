@@ -210,8 +210,48 @@ mid-sentence at a real caller. It is a plausible explanation for replies that "r
 when the prompt caps her at two sentences.
 
 **Mitigated in the corpus** (`scripts/generate-stt-test-corpus.ts` validates every take and rejects
-any with a >500ms internal silence gap). **NOT mitigated on the live path.** Worth measuring: log
-TTS output duration per turn against character count and see how often the ratio is absurd.
+any with a >500ms internal silence gap). **NOT mitigated on the live path.**
+
+### ⚠️ RE-MEASURED 2026-09-02 ON `sonic-3.5`, AND IT DOES NOT REPRODUCE
+
+The measurement this section asked for ("log TTS output duration per turn against character
+count") now exists, as `speechPace` in the call report. Before wiring it, the same probe was run
+directly against Cartesia at the **production** settings (`sonic-3.5`, speed 0.9, volume 1.4, over
+the **websocket streaming path** the agent actually uses), six takes per line:
+
+| line | chars | min ms/char | max ms/char | spread |
+|---|---|---|---|---|
+| `אנחנו דואגים שכל פנייה שנכנסת אליך תקבל שיחה תוך דקה.` | 53 | 75.5 | 84.5 | **1.12×** |
+| `רגע, אני בודקת את היומן.` | 24 | 80.0 | 86.7 | **1.08×** |
+
+**1.1×, not 2.4×.** No take contained a repeat, and none produced a burst pattern. So the figure
+above is either specific to `sonic-3` (this was `sonic-3.5`), to the one-shot `/tts/bytes` route
+(this was the stream), or to speed 1.0 — and whichever it is, **it is not the risk the current
+production path runs.** The old numbers stay on the page because the corpus mitigation was built
+against them and because nobody has isolated which of the three variables it was.
+
+**Do not quote 2.4× as a reason a pacing feature cannot be measured.** It was the reason given in
+the first draft of the voice-modes plan, and it was wrong by a factor of twenty.
+
+### And the lever itself works — measured the same day
+
+`speed` genuinely moves Hebrew duration on `sonic-3.5`, and `TTS.updateOptions({ speed })` between
+syntheses is honoured. Same line, four takes per setting, median:
+
+| speed | median | vs 0.90 | take-to-take noise |
+|---|---|---|---|
+| 1.00 | 4000ms | −3.8% | 1.04× |
+| **0.90** (production) | 4160ms | — | 1.08× |
+| 0.84 | 4720ms | **+13.5%** | 1.11× |
+| 0.75 | 5360ms | **+28.8%** | 1.19× |
+
+Two things to carry from this table:
+
+- **It is not linear at the top.** 1.00 and 0.90 differ by under 4% — less than the noise. There is
+  nothing to win by speeding her up from 0.90, and the 8kHz intelligibility argument says do not.
+- **A hesitant mode needs to go below ~0.80 to be heard.** 0.84 buys 13.5%, which sits barely
+  above a 1.11× noise band on one utterance. 0.75 buys 28.8% and is unambiguous. Pick the setting
+  from this table, not from taste, and then check it by ear.
 
 ---
 

@@ -40,6 +40,12 @@ export interface TurnMetric {
   promptTokens?: number;
   /** LLM only: how many of those came from OpenAI's prompt cache (a fraction of the price). */
   promptCachedTokens?: number;
+  /** TTS only: duration of the AUDIO produced — not `durationMs`, which is synthesis wall time. */
+  audioDurationMs?: number;
+  /** TTS only: how many characters were synthesized. Pairs with audioDurationMs to give pace. */
+  charactersCount?: number;
+  /** TTS only: the SDK's verdict that this synthesis was thrown away. Excluded from pace. */
+  cancelled?: boolean;
 }
 
 /** One line of the conversation, either side of it. */
@@ -454,6 +460,29 @@ export interface CallReportJson {
      * prefill latency are paying for it.
      */
     promptCacheHitPct: number | null;
+    /**
+     * HOW LONG A CHARACTER TAKES TO SAY, across the call — the instrument for any pacing work.
+     *
+     * `phase-4-known-issues.md` §9 recorded that Cartesia's Hebrew output is NOT deterministic:
+     * the same sentence came back at 2.9s / 4.1s / 4.5s / 7.1s across four takes, and one
+     * three-second sentence arrived as 15.3s of five speech bursts. Nobody ever measured that
+     * against text length, so nobody knows how wide the noise is — which means nobody can tell a
+     * deliberate speed change from the engine having a bad turn.
+     *
+     * `spread` is max/min. It is the number to read FIRST when judging any rhythm feature: if the
+     * engine's own variation on one call is 2x, a deliberate 0.90 -> 0.84 change (7%) is not
+     * audible above it and no A/B on a single call can prove otherwise.
+     *
+     * Cancelled syntheses are excluded — a preemptive draft the caller never heard is not pace.
+     * `audioDurationMs` (audio produced), never `durationMs` (synthesis wall time).
+     */
+    speechPace: {
+      samples: number;
+      medianMsPerChar: number | null;
+      minMsPerChar: number | null;
+      maxMsPerChar: number | null;
+      spread: number | null;
+    };
     endOfTurnMedianMs: number | null;
     /**
      * Time to the first chunk out of `llmNode` — WHICH IS NOT THE MODEL when the instant
@@ -766,6 +795,9 @@ export class CallReport {
       durationMs: pick('durationMs'),
       promptTokens: pick('promptTokens'),
       promptCachedTokens: pick('promptCachedTokens'),
+      audioDurationMs: pick('audioDurationMs'),
+      charactersCount: pick('charactersCount'),
+      cancelled: typeof m.cancelled === 'boolean' ? m.cancelled : undefined,
     });
   }
 
@@ -1020,6 +1052,31 @@ export class CallReport {
     const totalCached = this.#metrics.reduce((n, m) => n + (m.promptCachedTokens ?? 0), 0);
     const promptCacheHitPct = totalIn > 0 ? Math.round((totalCached / totalIn) * 100) : null;
 
+    // SPEECH PACE — see `speechPace` in the summary type for why this exists at all.
+    // A synthesis with no characters or no audio is not a sample; a cancelled one is a sample of
+    // something nobody heard. Both are excluded rather than counted as zero.
+    const paceSamples = this.#metrics
+      .filter((m) => m.cancelled !== true)
+      .map((m) =>
+        typeof m.charactersCount === 'number' &&
+        m.charactersCount > 0 &&
+        typeof m.audioDurationMs === 'number' &&
+        m.audioDurationMs > 0
+          ? m.audioDurationMs / m.charactersCount
+          : null,
+      )
+      .filter((v): v is number => v !== null);
+    const round2 = (v: number): number => Math.round(v * 100) / 100;
+    const paceMin = paceSamples.length > 0 ? Math.min(...paceSamples) : null;
+    const paceMax = paceSamples.length > 0 ? Math.max(...paceSamples) : null;
+    const speechPace = {
+      samples: paceSamples.length,
+      medianMsPerChar: paceSamples.length > 0 ? round2(median(paceSamples) ?? 0) : null,
+      minMsPerChar: paceMin === null ? null : round2(paceMin),
+      maxMsPerChar: paceMax === null ? null : round2(paceMax),
+      spread: paceMin !== null && paceMax !== null && paceMin > 0 ? round2(paceMax / paceMin) : null,
+    };
+
     // Two caller turns in a row, within 3s, with no agent reply between them: one sentence that the
     // turn detector cut in half. See `fragmentedTurns` above for why this, and not `cutOffs`, is the
     // signal that matters on a vad-mode call.
@@ -1117,6 +1174,7 @@ export class CallReport {
                 (agentLines.filter((line) => hasRegisterTouch(line)).length / agentLines.length) * 100,
               ),
         promptCacheHitPct,
+        speechPace,
         draftsDiscarded,
         // try/catch, because a counter must never be the reason a call's record is lost — the
         // report is the only durable trace of a call and it is written on every turn.

@@ -360,3 +360,66 @@ describe('CallReport preemptive counters', () => {
     expect(report.toJson().transcript).toEqual([]);
   });
 });
+
+/**
+ * SPEECH PACE — the instrument that has to exist before any rhythm feature can be judged.
+ *
+ * `phase-4-known-issues.md` §9: Cartesia's Hebrew is not deterministic (2.9s / 4.1s / 4.5s / 7.1s
+ * for one sentence across four takes). Nobody had measured that against text length, so nobody
+ * could say whether a deliberate speed change is audible above the engine's own variation. These
+ * tests pin the arithmetic; the number itself comes off real calls.
+ */
+describe('CallReport speech pace', () => {
+  const tts = (charactersCount: number, audioDurationMs: number, cancelled = false) => ({
+    ttfbMs: 200,
+    durationMs: 300,
+    audioDurationMs,
+    charactersCount,
+    cancelled,
+  });
+
+  it('is empty, not zero, on a call that synthesized nothing', () => {
+    const pace = newReport().toJson().summary.speechPace;
+    expect(pace).toEqual({
+      samples: 0,
+      medianMsPerChar: null,
+      minMsPerChar: null,
+      maxMsPerChar: null,
+      spread: null,
+    });
+  });
+
+  it('reports ms per character and the spread between best and worst turn', () => {
+    const report = newReport();
+    report.recordMetric('tts', tts(100, 5_000)); // 50 ms/char
+    report.recordMetric('tts', tts(100, 10_000)); // 100 ms/char
+    report.recordMetric('tts', tts(200, 15_000)); // 75 ms/char
+    const pace = report.toJson().summary.speechPace;
+    expect(pace.samples).toBe(3);
+    expect(pace.medianMsPerChar).toBe(75);
+    expect(pace.minMsPerChar).toBe(50);
+    expect(pace.maxMsPerChar).toBe(100);
+    // The number that decides whether a 7% speed change could ever be heard on one call.
+    expect(pace.spread).toBe(2);
+  });
+
+  it('excludes a synthesis nobody heard', () => {
+    // A preemptive draft the caller's next word invalidated was paid for and thrown away. It is
+    // Cartesia's bill, not the caller's experience, and counting it would widen the spread with
+    // audio that never played.
+    const report = newReport();
+    report.recordMetric('tts', tts(100, 5_000));
+    report.recordMetric('tts', tts(100, 40_000, true));
+    const pace = report.toJson().summary.speechPace;
+    expect(pace.samples).toBe(1);
+    expect(pace.maxMsPerChar).toBe(50);
+  });
+
+  it('ignores a synthesis with no characters or no audio rather than scoring it zero', () => {
+    const report = newReport();
+    report.recordMetric('tts', tts(0, 5_000));
+    report.recordMetric('tts', tts(100, 0));
+    report.recordMetric('llm', { ttftMs: 900 });
+    expect(report.toJson().summary.speechPace.samples).toBe(0);
+  });
+});
