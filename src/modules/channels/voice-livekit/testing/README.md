@@ -205,6 +205,33 @@ Gate 5 is the only one that is proof rather than inference.
 
 ## Read this before trusting a number
 
+### The broken instrument returns the comfortable answer
+
+**Twice on 2026-09-02, a measurement bug produced exactly the result we were hoping for.** Not a
+wild number that announced itself — the plausible, welcome one. Both were caught by disagreeing
+with someone else, not by looking wrong:
+
+- Reading ack timing out of the call reports, adding `durationMs` to a stamp that already *was*
+  the first-token time reported **"median −50ms, 52.9% of turns early"** — i.e. it manufactured the
+  very effect under test. The correct pairing says +668ms and 7.7%.
+- Probing whether DeepDub honours `<break>`, handing a `Buffer` to `toPhoneRate` (which takes an
+  `Int16Array`) resampled bytes as samples, so Soniox heard noise and returned **empty transcripts
+  for every clip** — which reads as "the tag was silently dropped", the harmless outcome. It is
+  not: the engine SPEAKS the tag (known-issues §18).
+
+The shape is the same both times: **the failure mode of the instrument coincided with the answer
+that would have let the work stand.** So before believing a result that lets you keep what you
+built —
+
+1. **Run the instrument against a known answer first.** A clip whose text you already know, a turn
+   whose timing you can read off the transcript by hand. An empty or garbled read is a broken
+   instrument until proven otherwise, never a finding.
+2. **State which outcome is convenient before you look.** If the measurement lands there, that is
+   when to re-derive it, not when to write it down.
+3. **A null result deserves more scrutiny than a positive one**, because "no effect" is what nearly
+   every wiring bug returns.
+
+
 * **These are comparison figures, not product latency.** The harness's dead air runs ~1–1.5s higher
   than the agent's own metrics, because it includes network transport, the receive jitter buffer,
   and a silence gate that skips the quiet fade-in of her first frames. Compare A against B with it.
