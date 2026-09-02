@@ -168,6 +168,19 @@ const SWITCH_KEYS = [
   'VOICE_NEGATION_SAFETY',
   'VOICE_SPOKEN_REGISTER_ENABLED',
   'VOICE_EMAIL_DICTATION_ENABLED',
+  // ADDED 2026-09-02, and both were already live before they were observable.
+  //
+  // `VOICE_SALES_MODEL_ENABLED` shipped to production on 2026-09-01 and was NOT on this list, so
+  // the call report could not say whether the flag had reached the worker. I told Koren the report
+  // would answer that question — "a flag explicitly set is absent from the running-on-defaults
+  // list" — and the flag was simply not in the snapshot at all, which answers nothing.
+  //
+  // `VOICE_VOICE_MODES_ENABLED` and its factor are here from the start for the same reason, plus
+  // one the A/B runner enforces: `assertPipelinesDiffer` refuses to believe a variant whose key it
+  // cannot see in the report, so an unobserved flag cannot be A/B'd at all.
+  'VOICE_SALES_MODEL_ENABLED',
+  'VOICE_VOICE_MODES_ENABLED',
+  'VOICE_HESITANT_SPEED_FACTOR',
   'SHADOW_STT_ENABLED',
 ] as const satisfies readonly (keyof Env)[];
 
