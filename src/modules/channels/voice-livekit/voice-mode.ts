@@ -64,8 +64,14 @@
  * DeepDub is a fully built alternative behind `VOICE_TTS_PROVIDER` and, as of 2026-09-02, won all
  * five cards of a listening round against Cartesia at production knobs — so a provider flip is a
  * live prospect rather than a hypothetical, and this feature must fail closed when it happens
- * instead of being remembered. Nothing here has been heard on DeepDub. If it ever is, this
- * function is where the verdict lands.
+ * instead of being remembered.
+ *
+ * AND IT IS NOT HYPOTHETICAL AT ALL — MEASURED THE SAME DAY (known-issues §18): DeepDub SPEAKS the
+ * tag. Soniox reads back `רגע, break time 00:56, אני בודקת את היומן.` — the engine says "break
+ * time" aloud and invents a number, costing +2.2 to +2.7s of markup in the caller's ear against a
+ * requested 0.15-0.35s. This function is the only thing between that and a live call, so it is
+ * load-bearing rather than defensive. If a future engine ever earns a pause, the verdict lands
+ * here.
  */
 export function pausesSupported(ttsProvider: string): boolean {
   return ttsProvider === 'cartesia';

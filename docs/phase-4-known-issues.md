@@ -588,6 +588,52 @@ variable. Nothing is shipped off a probe.
 
 ---
 
+## 18. DeepDub SPEAKS `<break time="…"/>`. The tag is Cartesia's and does not cross the flip.
+
+**Measured 2026-09-02**, hours after Koren decided to move TTS from Cartesia to DeepDub, on
+`dd-etts-3.2` through our own adapter. The tool's real calendar line, `רגע, אני בודקת את היומן.`,
+plain and then with each approved tag, every tagged clip read back through Soniox:
+
+| take | duration | Soniox heard |
+|---|---|---|
+| baseline ×3 | 1620 / 1620 / 1876ms | `רגע, אני בודקת את היומן.` |
+| `<break time="0.15s"/>` | 4138ms | `רגע, break time 00:56, אני בודקת את היומן.` |
+| `<break time="0.25s"/>` | 3877ms | `רגע, break time 0.26, אני בודקת את היומן.` |
+| `<break time="0.35s"/>` | 4095ms | `רגע, ברייק טיים 0.0%, אני בודקת את היומן.` |
+
+**The caller hears the markup.** Not a longer pause, not a silently dropped tag — the engine reads
+"break time" aloud, in English or transliterated into Hebrew, and invents a number for the
+duration. It costs +2.2 to +2.7 seconds of nonsense in the middle of a sentence, against a
+requested pause of 0.15–0.35s. The baseline spread is 256ms, so the deltas are an order of
+magnitude clear of the noise floor and §9's single-clip rule is satisfied by three baseline takes.
+
+**This is the failure mode `voice-mode.ts` was written to prevent, arriving from the direction
+nobody had checked.** The file always deleted an unapproved DURATION on exactly this reasoning —
+a tag the engine cannot parse is a tag it speaks — but it passed APPROVED tags through without
+asking which engine was listening. `pausesSupported()` (commit `e70f356`) closes that, and this
+section is why it is not merely defensive: **the hazard is real and measured, not hypothetical.**
+
+Consequences:
+
+- **The pause feature is dead on DeepDub**, and dormant rather than removed. Both halves — the
+  prompt section that teaches her to write a pause and the guard stage that validates it — are
+  gated on the engine, so on `VOICE_TTS_PROVIDER=deepdub` `VOICE_VOICE_MODES_ENABLED` does nothing
+  however it is set.
+- **Rounds 17 and 18 do not transfer.** The three lengths and the placement rule ("a pause is the
+  sound of not knowing yet") were verdicts on Cartesia's rendering. If pacing is ever re-earned on
+  DeepDub it needs a different mechanism, then a fresh listening round.
+- **Do not look for a DeepDub equivalent by probing tag syntax.** That is the third re-probe of a
+  dead end this file warns about (§17). If DeepDub exposes pause control it will be a documented
+  request parameter, not markup smuggled through the text.
+
+Evidence and reproduction: `tests/hebrew-tts-niqqud-ab/probe24_break_deepdub.ts`, `probe24.json`,
+`r24_*.wav`. One instrument note worth keeping: the first run returned EMPTY transcripts for every
+clip, which reads as "the tag was silent" and is the comfortable answer. The cause was handing a
+`Buffer` to `toPhoneRate`, which takes an `Int16Array` — so it resampled bytes as samples and
+Soniox heard noise. **An empty transcript is a broken instrument until proven otherwise.**
+
+---
+
 ## Realistic latency budget for Hebrew
 
 Re-measured 2026-08-16 on the live stack (Soniox `stt-rt-v5` → gpt-5.4 `priority`/`effort=none`

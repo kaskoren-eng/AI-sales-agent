@@ -852,10 +852,12 @@ const envSchema = z.object({
   // ⚠️ THIS FLAG IS NOT ENGINE-AGNOSTIC, AND AS OF 2026-09-02 IT IS DORMANT. `<break time="…"/>`
   // is Cartesia SSML, verified on Hebrew sonic-3.5 and nowhere else. Koren decided that day to
   // move TTS to DeepDub, and `pausesSupported()` gates BOTH halves on the engine — so with
-  // `VOICE_TTS_PROVIDER=deepdub` this flag does nothing however it is set, on purpose. Whether
-  // DeepDub honours the tag, ignores it, or READS IT ALOUD is unmeasured; the gate assumes the
-  // worst because the worst is a live-call defect. Re-earning the pause on DeepDub is a listening
-  // round nobody has run.
+  // `VOICE_TTS_PROVIDER=deepdub` this flag does nothing however it is set, on purpose.
+  //
+  // MEASURED, not assumed: DeepDub READS THE TAG ALOUD — Soniox hears "break time 00:56" inside
+  // the sentence, +2.2 to +2.7s of markup spoken at the caller. known-issues §18 has the table.
+  // The gate is load-bearing. Re-earning pacing on DeepDub needs a different mechanism entirely,
+  // not this tag.
   VOICE_VOICE_MODES_ENABLED: envBool(false),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
