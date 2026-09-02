@@ -254,7 +254,21 @@ const envSchema = z.object({
   // 'elevenlabs' selects the official @livekit/agents-plugin-elevenlabs (eleven_flash_v2_5) — added
   // for a real-call A/B against Cartesia on Hebrew voice quality. Same strangler-fig rule: opt-in
   // behind this flag, one env var to revert, Cartesia stays the shipped default until a decision.
-  VOICE_TTS_PROVIDER: z.enum(['cartesia', 'deepdub', 'elevenlabs']).default('cartesia'),
+  // DEEPDUB IS THE DEFAULT SINCE 2026-09-02, by Koren's decision on three real cloud calls:
+  // "דיפדאב הרבה יותר טוב בהכל מאשר קרטסיה... יותר זורמת, יותר מהירה, ויודע לדבר עברית הרבה יותר טוב."
+  //
+  // THE DEFAULT IS THE SAFETY MECHANISM, not a preference. The decision lived ONLY in the cloud
+  // secret set, and `lk agent deploy --secrets-file` REPLACES that set rather than merging into it
+  // — while `.env.agent` did not contain this key at all. So one `agent:deploy --with-secrets`
+  // would have deleted the key, handed the choice back to this line, and returned production to
+  // Cartesia with nothing in the deploy output saying so. That is the 2026-08-16 shape exactly:
+  // the agent spoke `sonic-3` for hours while every file on disk said `sonic-3.5`.
+  //
+  // CONSEQUENCE, INTENDED: with no DEEPDUB_API_KEY, `deepdubOptions()` now THROWS instead of
+  // quietly falling back to Cartesia. A missing key silently shipping the engine he rejected is
+  // plausible output from a broken path — the failure class this repo keeps hitting — and it is
+  // the one place nobody would ever look, because the call still connects and still speaks.
+  VOICE_TTS_PROVIDER: z.enum(['cartesia', 'deepdub', 'elevenlabs']).default('deepdub'),
   // DeepDub (only read when VOICE_TTS_PROVIDER=deepdub). All optional so the app boots without it.
   DEEPDUB_API_KEY: z.string().min(1).optional(),
   DEEPDUB_VOICE_PROMPT_ID: z.string().min(1).optional(),
