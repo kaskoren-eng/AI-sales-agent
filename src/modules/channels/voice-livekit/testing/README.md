@@ -272,6 +272,26 @@ built —
    every wiring bug returns.
 4. **A check whose two sides come from the same source proves nothing.** Assert against a WITNESS —
    something the vendor produced, not something you passed in.
+5. **Agreement between two instruments that share a flaw is not evidence.** Corroboration only
+   counts when the second measurement could have failed differently from the first.
+
+Rule 5 is the same disease as rule 4 in its worst presentation, and it cost a whole day. Two
+sessions independently measured whether the instant acknowledgement arrives ahead of the model, on
+different samples, and got +668ms and +542ms — the receipt appearing to arrive AFTER the model's
+first token. Two independent confirmations of a surprising result felt like strong evidence and
+were the same blind spot twice: **both paired `model_ttft` against `spokeAtMs` from the transcript,
+and the receipt is usually not its own transcript item.** `spokeAtMs` was the model's sentence. The
+effect under test could not appear in either measurement at any sample size.
+
+`first_audio_frame`, taken inside `ttsNode` at the frame itself, put the same question at
+**-321ms median, with audio starting before the model's first token on 54% of turns** — and
+separated the turns cleanly: a receipt that leaves early gives 474ms of caller silence, and no
+early receipt gives 1968ms. The mechanism works and is worth ~1.5s. Two agreeing measurements had
+said it was worth nothing.
+
+**So when two measurements agree, ask what they share before believing them.** Same data source,
+same pairing logic, same author's assumptions — any of those makes the second one a copy rather
+than a witness.
 
 That fourth rule earned itself the same afternoon, on the obvious version of a guard. A DeepDub
 probe that asserts `engine.model === env.DEEPDUB_MODEL` is asserting that the options it just
