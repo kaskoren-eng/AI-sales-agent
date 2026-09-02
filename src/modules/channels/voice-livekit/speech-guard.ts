@@ -1426,7 +1426,10 @@ export function guardSpeech(
     pauses = p.pauses;
     pauseTagsDropped = p.dropped;
     if (p.dropped > 0) {
-      interventions.push(`removed ${p.dropped} bracketed token(s) that were not an approved pause`);
+      // "angle-bracketed" rather than "bracketed": a square-bracket net is landing alongside this
+      // one, and two stages reporting "bracketed token" would make the call report ambiguous about
+      // which net fired.
+      interventions.push(`removed ${p.dropped} angle-bracketed token(s) that were not an approved pause`);
     }
     out = p.text;
   }
