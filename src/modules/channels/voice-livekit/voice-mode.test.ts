@@ -137,13 +137,18 @@ describe('the prompt half', () => {
     expect(on).toContain('0.35s');
   });
 
-  it('says where it does NOT belong, which is the half he was specific about', () => {
-    // Round 17 card `wh`: he chose A (a pricing question) and B (a real calendar check) and
-    // rejected C (a simple confirmation) and D (the greeting). *"צריך לשזור את זה נכון כדי שייכנס
-    // במשפטים שנכון והגיוני שהיא תחשוב בהם ולא בדברים פשוטים או בכל משפט."*
-    expect(on).toContain('NOT on a confirmation');
-    expect(on).toContain('NOT on every reply');
-    expect(on).toContain('not in consecutive replies');
+  it('draws the line at what she already knows, not at how important the sentence is', () => {
+    // ROUND 18 REPLACED THE RULE. Round 17 framed it as "a question that deserves thought", and
+    // round 18 put that framing on the price answer — card `pr` — where Koren chose A, the version
+    // with NO pause. His prose said why: *"אם זה אמירה חד משמעית שהסוכן לא צריך לחשוב בנוגע אליה
+    // אז אין צורך בפאוזות, כי אין הגיון לעצור לחשוב באמצע משפט שידוע מראש."*
+    //
+    // The price question deserves thought and the ANSWER does not — it comes out of her settings.
+    // So the test is not the weight of the question, it is whether she already holds the answer.
+    expect(on).toContain('whether you already know what you are about to say');
+    expect(on).toContain('Never on anything you already hold');
+    expect(on).toContain('a price from your own settings');
+    expect(on).toContain('never two replies running');
   });
 
   it('offers no speed and no marker, because both were replaced by the pause', () => {
