@@ -270,6 +270,24 @@ built —
    when to re-derive it, not when to write it down.
 3. **A null result deserves more scrutiny than a positive one**, because "no effect" is what nearly
    every wiring bug returns.
+4. **A check whose two sides come from the same source proves nothing.** Assert against a WITNESS —
+   something the vendor produced, not something you passed in.
+
+That fourth rule earned itself the same afternoon, on the obvious version of a guard. A DeepDub
+probe that asserts `engine.model === env.DEEPDUB_MODEL` is asserting that the options it just
+handed the constructor came back out of it: the two sides have one source, so the check passes in
+every world including the broken one. The **sample rate** is a witness — DeepDub is natively 48kHz
+and Cartesia 24kHz, that number comes out of the vendor's own audio, and no label can talk it into
+agreeing. It is also the signal that was on screen during the broken run (`sr=24000` on both rows
+of a supposed two-engine comparison) and got read straight past, because the row above it said
+what the reader expected.
+
+**Which is the second half of the same lesson: a label read at the moment of judgement beats a
+caveat read once, months earlier, by someone else.** A `bench:tts` row named `cartesia/sonic-3.5`
+sat 3.7x slower than another row named `cartesia/sonic-3.5`; the file's own warning block already
+said that inference-gateway rows carry an extra hop, and the row name had simply lost its
+`(via inference)` suffix. The information was present and the label defeated it. **So put the
+disambiguating fact IN the name**, never only in a note above the table.
 
 
 * **These are comparison figures, not product latency.** The harness's dead air runs ~1–1.5s higher
