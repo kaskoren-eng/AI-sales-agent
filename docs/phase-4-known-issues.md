@@ -495,6 +495,16 @@ Run the bench before touching the guard. It costs cents and no phone call.
 
 ## 16. Punctuation DOES pause sonic-3.5 — but a comma is the weakest mark you have, and streaming eats it
 
+> ⚠️ **CARTESIA ONLY, AND WE ARE LEAVING CARTESIA.** Koren decided on 2026-09-02 to move TTS to
+> DeepDub. Every number below — the comma's ~0.18s, the `<break>` tag being honoured and not read
+> aloud, the streaming path dropping three of five pauses — is a measurement of `sonic-3.5`. On
+> DeepDub the entire section is unmeasured, and the `<break>` row is the dangerous one: a tag the
+> engine cannot parse is a tag it SPEAKS at a caller. `pausesSupported()` in `voice-mode.ts` gates
+> the pause feature off on any engine but Cartesia for exactly that reason. **Do not carry any
+> figure here across the flip.** The plugin-level facts (the hardcoded `max_buffer_delay_ms: 0`,
+> LiveKit's own `SentenceTokenizer` re-splitting our text) are about the LiveKit TTS layer rather
+> than the vendor, so those survive; nothing about how a mark SOUNDS does.
+
 **Measured 2026-08-30**, after Koren's note on the two production calls that morning: *"השימוש
 בפסיקים ונקודות כדי לעצור באמצע משפט לא עובד כמו שצריך, הזרימה של הדיבור לא מספיק טובה במיוחד
 בתחילת השיחה."*
@@ -539,6 +549,14 @@ that does nothing.
 ---
 
 ## 17. Cartesia has exactly ONE non-verbal on Hebrew, and it is the one Koren banned
+
+> ⚠️ **ANSWERED FOR THE PROVIDER WE ARE LEAVING.** Koren decided later the same day to move TTS to
+> DeepDub. This section stays because it is still true of Cartesia and because "do not re-probe the
+> tags a third time" is exactly the kind of instruction that gets re-litigated — but it is now
+> evidence about a vendor rather than about our stack. **The DeepDub tag matrix is unmeasured.**
+> The conclusion that survives the flip is the architectural one, and it survives for a better
+> reason than measurement: a breath we SPLICE is ours on any engine, which is why the round-21 work
+> was never coupled to Cartesia in the first place.
 
 **Measured 2026-09-02** on both current models (`sonic-3.5` and `sonic-3.6`), because round 4 had
 asked the same question a year of model releases ago and a re-date was cheaper than an assumption.

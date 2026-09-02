@@ -30,8 +30,19 @@ So state, before the round is built: **what can this instrument answer, and what
 | a WORD coming out wrong | Soniox round-trip (`roundtripNN.ts`) | see anything Hebrew spelling does not encode — vowels, gender on ל"ה verbs, stress |
 | a TAG being read aloud instead of honoured | the same round-trip | say whether the resulting silence sounds like a beat or a dropout |
 | a PAUSE existing at all | `pause_probe.py`, clip duration | say whether it is the right length, or in the right place |
+| any of the above **on the engine we actually ship** | nothing, until the harness synthesizes through it | be assumed from a Cartesia clip — see the provider note below |
 | a DELIVERY sounding human | **his ear, on a listening page** | be replaced by any of the above |
 | WHEN a sound starts, relative to the model | `call-reports/*.json` — but read the pairing note below | say *why* it starts there; that needs timing inside `ttsNode`, which nobody has built |
+
+> ⚠️ **EVERY ROW ABOVE IS SCOPED TO THE ENGINE THAT MADE THE CLIP.** Koren decided on 2026-09-02
+> to move TTS from Cartesia to DeepDub. `synth.py` — the synthesizer under every listening round in
+> `tests/hebrew-tts-niqqud-ab/` — talks to Cartesia, so **a round built with it now describes a
+> voice we are leaving**, and its verdicts do not transfer. That is not a flaw in the instrument;
+> it is the instrument answering honestly about the engine it was pointed at. Point it at DeepDub
+> before the next round, and treat every Cartesia-era verdict as unvalidated until re-heard:
+> minimal niqqud, the pointed thinking fillers, number and time speech, and the `<break>` pause
+> lengths. The one thing that does NOT need re-hearing is anything we synthesize ourselves — a
+> spliced breath is our audio on any engine.
 
 And one arithmetic rule that comes out of the same week: **a single clip is not evidence of a
 duration.** Cartesia's take-to-take variation on one Hebrew sentence is ~1.1×, so a lone clip that
