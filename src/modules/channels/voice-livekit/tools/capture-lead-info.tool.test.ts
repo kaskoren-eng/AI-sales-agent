@@ -8,6 +8,21 @@ import {
   type CaptureLeadInfoArgs,
 } from './capture-lead-info.tool.js';
 
+/**
+ * Every string reachable from a drizzle `.set()` payload.
+ *
+ * `JSON.stringify` cannot be used here: the qualification patch travels inside a `sql` template
+ * whose chunks reference the PgTable, which references its columns, which reference the table —
+ * a cycle. This walks it with a seen-set instead, so a test can assert what was actually sent
+ * without reaching into drizzle's internals by name.
+ */
+function collectStrings(value: unknown, seen = new Set<unknown>()): string[] {
+  if (typeof value === 'string') return [value];
+  if (value === null || typeof value !== 'object' || seen.has(value)) return [];
+  seen.add(value);
+  return Object.values(value as Record<string, unknown>).flatMap((v) => collectStrings(v, seen));
+}
+
 function fakeRt(opts: { leadId?: string | null; phoneMatch?: string | null; insertFails?: boolean; callState?: CallStateMachine; factMemory?: FactMemory } = {}) {
   const updates: Record<string, unknown>[] = [];
   const inserts: Record<string, unknown>[] = [];
@@ -221,6 +236,64 @@ describe('capture_lead_info — an established identity is harder to overwrite t
     const { rt } = fakeRt({ leadId: 'lead-1', factMemory: fm });
     await executeCaptureLeadInfo(rt, args({ business_type: 'מכון כושר' }));
     expect(fm.get('business')).toBe('מכון כושר');
+  });
+
+  /**
+   * ALL FIVE MANDATORY ANSWERS, not just the one that had a field.
+   *
+   * Koren set the five mandatory discovery questions on 2026-09-01. `FactField` gained `process`,
+   * `frustration`, `closing` and `volume` — and nothing ever called `establish` for any of them,
+   * while two of them had no tool field to be established FROM. So the memory counted her asks and
+   * never learned she had been answered, which is a memory that can tell her to stop asking but
+   * not why. She asked one of these four times on his 14:56 call.
+   */
+  it('establishes every mandatory answer, including the two that had no field until now', async () => {
+    const fm = new FactMemory();
+    const { rt } = fakeRt({ leadId: 'lead-1', factMemory: fm });
+    await executeCaptureLeadInfo(
+      rt,
+      args({
+        business_type: 'בניית אתרים',
+        current_process: 'אני עונה בעצמי, תוך כמה שעות',
+        pain_point: 'לא מספיק לחזור לכולם',
+        sales_process: 'שיחת זום',
+        daily_volume: 'בערך חמישה עשר',
+      }),
+    );
+    expect(fm.get('business')).toBe('בניית אתרים');
+    expect(fm.get('process')).toBe('אני עונה בעצמי, תוך כמה שעות');
+    expect(fm.get('frustration')).toBe('לא מספיק לחזור לכולם');
+    expect(fm.get('closing')).toBe('שיחת זום');
+    expect(fm.get('volume')).toBe('בערך חמישה עשר');
+  });
+
+  it('persists the three facts that were gated on but never written down', async () => {
+    // `current_process` opened Gate A from the day it was added and was saved nowhere, so the fact
+    // deciding whether she may pitch was invisible to whoever picks the lead up afterwards. The
+    // two new ones would have had the same problem.
+    const { rt, updates } = fakeRt({ leadId: 'lead-1', factMemory: new FactMemory() });
+    await executeCaptureLeadInfo(
+      rt,
+      args({
+        current_process: 'המזכירה עונה עד ארבע',
+        sales_process: 'פגישה פיזית',
+        daily_volume: 'שבע-שמונה',
+      }),
+    );
+    const patch = collectStrings(updates.at(-1) ?? {}).join(' ');
+    expect(patch).toContain('המזכירה עונה עד ארבע');
+    expect(patch).toContain('פגישה פיזית');
+    expect(patch).toContain('שבע-שמונה');
+  });
+
+  it('stores the volume verbatim rather than as a number', async () => {
+    // Rule 1 of the sales model is that a number she was given must be USED, and the number he
+    // said is "בערך חמישה עשר" — not 15. Converting it here would lose the hedge, and the hedge is
+    // what makes "אז בערך חמישה עשר ביום" sound like listening rather than like a database read.
+    const fm = new FactMemory();
+    const { rt } = fakeRt({ leadId: 'lead-1', factMemory: fm });
+    await executeCaptureLeadInfo(rt, args({ daily_volume: 'בערך חמישה עשר' }));
+    expect(fm.get('volume')).toBe('בערך חמישה עשר');
   });
 
   /**

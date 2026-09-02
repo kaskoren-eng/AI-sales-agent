@@ -51,6 +51,29 @@ export const captureLeadInfoSchema = z.object({
       'How enquiries are handled today — who answers them and how fast, in his own words. ' +
         'One of the three facts required before describing the product.',
     ),
+  // KOREN'S MANDATORY QUESTIONS 4 AND 5, which had nowhere to go until now (2026-09-02).
+  //
+  // He set the five mandatory discovery questions himself on 2026-09-01 and the prompt asks all
+  // five, but `capture_lead_info` had a field for only three of them. So the two he ADDED could
+  // be asked, answered, and then forgotten — the ask-memory cannot stop her repeating a question
+  // whose answer it has no field to store, and the CRM never sees the answer either. She asked
+  // one of them four times on his 14:56 call.
+  sales_process: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      'How he closes a sale today — phone call, Zoom, or a physical meeting. Mandatory question 4: ' +
+        'a business that only closes face to face is a different case from one that closes by phone.',
+    ),
+  daily_volume: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      'How many new enquiries he gets in an average day, in his own words. Mandatory question 5. ' +
+        'Store it verbatim ("בערך חמישה עשר") — do not convert it to a number.',
+    ),
   budget: z.string().nullable().optional().describe('Budget indication, verbatim as stated'),
   timeline: z.string().nullable().optional().describe('When he wants to start'),
   qualification: z
@@ -121,6 +144,12 @@ export async function executeCaptureLeadInfo(
   const patch: Record<string, unknown> = {};
   if (args.business_type) patch.business_type = args.business_type;
   if (args.pain_point) patch.pain_point = args.pain_point;
+  // Persisted as well as gated. `current_process` opened Gate A from the day it was added and was
+  // never written anywhere — so the fact that decides whether she may pitch was invisible to the
+  // human who picks the lead up afterwards.
+  if (args.current_process) patch.current_process = args.current_process;
+  if (args.sales_process) patch.sales_process = args.sales_process;
+  if (args.daily_volume) patch.daily_volume = args.daily_volume;
   if (args.budget) patch.budget = args.budget;
   if (args.timeline) patch.timeline = args.timeline;
   if (args.qualification) patch.qualification = args.qualification;
@@ -152,6 +181,14 @@ export async function executeCaptureLeadInfo(
   // Qualification facts we DID accept are established too, so the reminder can stop her re-asking
   // for a business she already has (the fact-memory note; see fact-memory.ts).
   if (args.business_type) rt.factMemory?.establish('business', args.business_type);
+  // The other four mandatory answers, established for the same reason and previously not at all:
+  // `FactField` gained `process`, `frustration`, `closing` and `volume`, and nothing ever called
+  // `establish` for any of them — so the note counted her asks and never learned she had been
+  // answered. A memory that only counts questions tells her to stop asking and cannot tell her why.
+  if (args.current_process) rt.factMemory?.establish('process', args.current_process);
+  if (args.pain_point) rt.factMemory?.establish('frustration', args.pain_point);
+  if (args.sales_process) rt.factMemory?.establish('closing', args.sales_process);
+  if (args.daily_volume) rt.factMemory?.establish('volume', args.daily_volume);
 
   // GATE A. The three facts that decide whether she may describe the product yet — read off the
   // tool rather than off her speech, so the gate and the CRM agree about what was learned.
