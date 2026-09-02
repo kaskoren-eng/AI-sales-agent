@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { buildSystemPrompt } from './prompts/system-prompt.he.js';
 import { guardSpeech } from './speech-guard.js';
-import { hasPause, normalisePauses, pauseTag, PAUSE_SECONDS } from './voice-mode.js';
+import { hasPause, normalisePauses, pausesSupported, pauseTag, PAUSE_SECONDS } from './voice-mode.js';
 
 /**
  * THE PAUSE, AND THE ONE WAY IT CAN HURT A CALLER.
@@ -71,6 +71,17 @@ describe('normalisePauses', () => {
     expect(r.text).toBe('רגע אני בודקת.');
     expect(r.pauses).toBe(0);
     expect(r.dropped).toBe(1);
+  });
+
+  it('knows the pause is Cartesia SSML and nothing else', () => {
+    // The tag was verified on Hebrew sonic-3.5 and nowhere else. An engine that cannot parse it
+    // SPEAKS it — the same failure as an unapproved duration, with a wider mouth. DeepDub took all
+    // five cards of a listening round on 2026-09-02, so a provider flip is live rather than
+    // hypothetical and this must fail closed by construction, not by memory.
+    expect(pausesSupported('cartesia')).toBe(true);
+    for (const other of ['deepdub', 'elevenlabs', '']) {
+      expect(pausesSupported(other)).toBe(false);
+    }
   });
 
   it('hasPause sees an approved pause and not an invented one', () => {
@@ -190,8 +201,18 @@ describe('the prompt half', () => {
 describe('both halves move on one flag', () => {
   const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 
-  it('gates the prompt section and the validator on VOICE_VOICE_MODES_ENABLED', () => {
-    expect(read('./agent.ts')).toContain('voiceModes: env.VOICE_VOICE_MODES_ENABLED');
+  it('gates the prompt section and the validator on the flag AND the engine', () => {
+    // BOTH sites, and the engine check on both. A prompt teaching her to write `<break>` while the
+    // guard strips it is a wasted section; a guard passing the tag to an engine that cannot parse
+    // it is a tag READ ALOUD at a lead. Two occurrences: the guardSpeech options and
+    // buildSystemPrompt's slot.
+    const agent = read('./agent.ts');
+    const gated = agent.split(
+      'env.VOICE_VOICE_MODES_ENABLED && pausesSupported(env.VOICE_TTS_PROVIDER)',
+    ).length - 1;
+    expect(gated).toBe(2);
+    // and no site reads the flag on its own any more
+    expect(agent).not.toMatch(/VOICE_VOICE_MODES_ENABLED(?!\s*&&\s*pausesSupported)/u);
   });
 
   it('reports the pauses and the tags that had to be deleted', () => {

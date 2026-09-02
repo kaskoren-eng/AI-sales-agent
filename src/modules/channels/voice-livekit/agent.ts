@@ -75,6 +75,7 @@ import {
 } from './speech-guard.js';
 import { PhraseLedger } from './phrase-ledger.js';
 import { SalesGate } from './sales-gate.js';
+import { pausesSupported } from './voice-mode.js';
 import { SpokenSentenceLedger } from './repeat-guard.js';
 import { SlotMemory } from './slot-memory.js';
 import { FactMemory } from './fact-memory.js';
@@ -811,8 +812,10 @@ class ClickScalesAgent extends voice.Agent {
               onStopAnnouncement: (spoken) => this.onStopAnnouncementRewritten?.(spoken),
               productClaimSlangGuard: env.VOICE_PRODUCT_CLAIM_SLANG_GUARD,
               onProductClaimSlang: (spoken) => this.onProductClaimSlangRewritten?.(spoken),
-              // The register marker: stripped here, read here, and counted here if it survived.
-              voiceModes: env.VOICE_VOICE_MODES_ENABLED,
+              // The pause tag: validated here, counted here, and DELETED here if it is not one
+              // we have heard. Gated on the engine as well as the flag — the tag is Cartesia
+              // SSML, and an engine that cannot parse it reads it out. See voice-mode.ts.
+              voiceModes: env.VOICE_VOICE_MODES_ENABLED && pausesSupported(env.VOICE_TTS_PROVIDER),
               onPauses: (count, spoken) => this.onPauses?.(count, spoken),
               onPauseTagDropped: (count, spoken) => this.onPauseTagDropped?.(count, spoken),
             },
@@ -1738,10 +1741,11 @@ export default defineAgent({
           // deepening, the interest check and the summary close. Same flag as its code half
           // (sales-gate.ts), so a note about a rule she was never given is impossible.
           salesModel: env.VOICE_SALES_MODEL_ENABLED,
-          // The three delivery registers, and the marker she declares them with. Same flag as the
-          // guard stage that strips that marker — a prompt asking for `[[H]]` while the stripper is
-          // off would have Cartesia read double brackets at a lead. See voice-mode.ts.
-          voiceModes: env.VOICE_VOICE_MODES_ENABLED,
+          // When she pauses and when she does not. Same flag AND same engine check as the guard
+          // stage that validates the tag — a prompt teaching her to write `<break>` while the
+          // engine cannot parse it would have that engine read the tag aloud at a lead. There is
+          // no register marker any more: she declares by writing the pause. See voice-mode.ts.
+          voiceModes: env.VOICE_VOICE_MODES_ENABLED && pausesSupported(env.VOICE_TTS_PROVIDER),
           // Real, at last. Renders ONE branch of Step 1 — she no longer greets an inbound caller
           // as though she had rung him.
           outbound: isOutboundCall,

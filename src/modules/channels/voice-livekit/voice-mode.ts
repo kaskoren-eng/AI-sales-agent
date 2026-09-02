@@ -52,6 +52,25 @@
  * file validates against a whitelist and deletes anything else.
  */
 
+/**
+ * THE PAUSE IS CARTESIA'S SSML, AND ONLY CARTESIA'S.
+ *
+ * `<break time="…"/>` was verified on Hebrew `sonic-3.5` and nowhere else. The whole doctrine of
+ * this file is that a tag the engine does not parse is a tag the engine SPEAKS — that is why an
+ * unapproved DURATION is deleted rather than passed on. An engine that does not recognise the tag
+ * at all is the same failure with a wider mouth: the caller hears "break time zero point two five
+ * s" in the middle of a Hebrew sentence.
+ *
+ * DeepDub is a fully built alternative behind `VOICE_TTS_PROVIDER` and, as of 2026-09-02, won all
+ * five cards of a listening round against Cartesia at production knobs — so a provider flip is a
+ * live prospect rather than a hypothetical, and this feature must fail closed when it happens
+ * instead of being remembered. Nothing here has been heard on DeepDub. If it ever is, this
+ * function is where the verdict lands.
+ */
+export function pausesSupported(ttsProvider: string): boolean {
+  return ttsProvider === 'cartesia';
+}
+
 /** The three pause lengths Koren's ear chose, and nothing else. Seconds, as Cartesia writes them. */
 export const PAUSE_SECONDS = ['0.15', '0.25', '0.35'] as const;
 export type PauseSeconds = (typeof PAUSE_SECONDS)[number];
