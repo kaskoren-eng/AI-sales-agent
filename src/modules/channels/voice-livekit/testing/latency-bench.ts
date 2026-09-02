@@ -50,7 +50,26 @@ const HEBREW_LINE =
 /** What a caller actually says, mid-conversation, to make the LLM benchmark honest. */
 const HEBREW_TURN = 'תגידי, כמה זה עולה ואיך אתם יכולים לעזור לי עם הלידים שלי?';
 
-const RUNS = 3;
+/**
+ * Measurements per arm; the median is reported. `--runs=1` cuts a full run to roughly a third.
+ *
+ * A FLAG AND NOT AN ENV VAR, for the reason every knob in this harness is a flag: `loadEnv()` runs
+ * dotenv with `override: true`, so `RUNS=1 npm run bench:tts` would be a silent no-op.
+ *
+ * Why it exists: with the DeepDub realtime-on and realtime-off arms added, a full run passed the
+ * ten-minute budget a session had allowed for it (2026-09-02) and returned nothing at all — the
+ * arms are sequential, so a timeout costs every row, not the last one. One run per arm is enough
+ * to answer "does this engine produce audio at a sane latency"; three is for RANKING engines
+ * against each other, which is the only thing this bench's absolute numbers are good for anyway
+ * (see the warning above).
+ */
+const RUNS = (() => {
+  const flag = process.argv.find((a) => a.startsWith('--runs='))?.slice('--runs='.length);
+  if (flag === undefined) return 3;
+  const n = Number(flag);
+  if (!Number.isInteger(n) || n < 1) throw new Error(`--runs=${flag} must be a positive integer`);
+  return n;
+})();
 const OUT_DIR = 'voice-samples/bench';
 
 /**
