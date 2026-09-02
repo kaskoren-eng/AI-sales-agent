@@ -1,0 +1,266 @@
+{
+  "sentence": "המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+  "results": [
+    {
+      "model": "sonic-3.5",
+      "key": "A",
+      "label": "plain (baseline)",
+      "text": "המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m5_A.wav",
+      "ms": 5680,
+      "delta_ms": 0
+    },
+    {
+      "model": "sonic-3.5",
+      "key": "B",
+      "label": "[breath] prefix",
+      "text": "[breath] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m5_B.wav",
+      "ms": 5680,
+      "delta_ms": 0
+    },
+    {
+      "model": "sonic-3.5",
+      "key": "C",
+      "label": "[inhales] prefix",
+      "text": "[inhales] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m5_C.wav",
+      "ms": 5520,
+      "delta_ms": -160
+    },
+    {
+      "model": "sonic-3.5",
+      "key": "D",
+      "label": "[breathing] mid-reply",
+      "text": "המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. [breathing] כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m5_D.wav",
+      "ms": 5680,
+      "delta_ms": 0
+    },
+    {
+      "model": "sonic-3.5",
+      "key": "E",
+      "label": "[sigh] prefix",
+      "text": "[sigh] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m5_E.wav",
+      "ms": 5920,
+      "delta_ms": 240
+    },
+    {
+      "model": "sonic-3.5",
+      "key": "F",
+      "label": "(breathes) prefix",
+      "text": "(breathes) המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m5_F.wav",
+      "ms": 6080,
+      "delta_ms": 400
+    },
+    {
+      "model": "sonic-3.6",
+      "key": "A",
+      "label": "plain (baseline)",
+      "text": "המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m6_A.wav",
+      "ms": 6080,
+      "delta_ms": 0
+    },
+    {
+      "model": "sonic-3.6",
+      "key": "B",
+      "label": "[breath] prefix",
+      "text": "[breath] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m6_B.wav",
+      "ms": 5680,
+      "delta_ms": -400
+    },
+    {
+      "model": "sonic-3.6",
+      "key": "C",
+      "label": "[inhales] prefix",
+      "text": "[inhales] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m6_C.wav",
+      "ms": 5760,
+      "delta_ms": -320
+    },
+    {
+      "model": "sonic-3.6",
+      "key": "D",
+      "label": "[breathing] mid-reply",
+      "text": "המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. [breathing] כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m6_D.wav",
+      "ms": 5920,
+      "delta_ms": -160
+    },
+    {
+      "model": "sonic-3.6",
+      "key": "E",
+      "label": "[sigh] prefix",
+      "text": "[sigh] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m6_E.wav",
+      "ms": 6080,
+      "delta_ms": 0
+    },
+    {
+      "model": "sonic-3.6",
+      "key": "F",
+      "label": "(breathes) prefix",
+      "text": "(breathes) המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m6_F.wav",
+      "ms": 6720,
+      "delta_ms": 640
+    },
+    {
+      "model": "sonic-3.5",
+      "key": "L",
+      "label": "[laughter] prefix",
+      "text": "[laughter] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m5_L.wav",
+      "ms": 6320,
+      "delta_ms": null
+    },
+    {
+      "model": "sonic-3.6",
+      "key": "L",
+      "label": "[laughter] prefix",
+      "text": "[laughter] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m6_L.wav",
+      "ms": 6880,
+      "delta_ms": null
+    },
+    {
+      "model": "sonic-3.5",
+      "key": "g",
+      "label": "[laughs] prefix",
+      "text": "[laughs] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m5_g.wav",
+      "ms": 5680,
+      "delta_ms": null
+    },
+    {
+      "model": "sonic-3.5",
+      "key": "h",
+      "label": "[sighs] prefix",
+      "text": "[sighs] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m5_h.wav",
+      "ms": 5440,
+      "delta_ms": null
+    },
+    {
+      "model": "sonic-3.5",
+      "key": "i",
+      "label": "[breathes] prefix",
+      "text": "[breathes] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m5_i.wav",
+      "ms": 5840,
+      "delta_ms": null
+    },
+    {
+      "model": "sonic-3.5",
+      "key": "j",
+      "label": "[exhales] prefix",
+      "text": "[exhales] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m5_j.wav",
+      "ms": 5680,
+      "delta_ms": null
+    },
+    {
+      "model": "sonic-3.5",
+      "key": "k",
+      "label": "[coughs] prefix",
+      "text": "[coughs] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m5_k.wav",
+      "ms": 5680,
+      "delta_ms": null
+    },
+    {
+      "model": "sonic-3.5",
+      "key": "n",
+      "label": "[clears throat] prefix",
+      "text": "[clears throat] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m5_n.wav",
+      "ms": 6240,
+      "delta_ms": null
+    },
+    {
+      "model": "sonic-3.6",
+      "key": "g",
+      "label": "[laughs] prefix",
+      "text": "[laughs] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m6_g.wav",
+      "ms": 5920,
+      "delta_ms": null
+    },
+    {
+      "model": "sonic-3.6",
+      "key": "h",
+      "label": "[sighs] prefix",
+      "text": "[sighs] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m6_h.wav",
+      "ms": 5680,
+      "delta_ms": null
+    },
+    {
+      "model": "sonic-3.6",
+      "key": "i",
+      "label": "[breathes] prefix",
+      "text": "[breathes] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m6_i.wav",
+      "ms": 5840,
+      "delta_ms": null
+    },
+    {
+      "model": "sonic-3.6",
+      "key": "j",
+      "label": "[exhales] prefix",
+      "text": "[exhales] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m6_j.wav",
+      "ms": 5760,
+      "delta_ms": null
+    },
+    {
+      "model": "sonic-3.6",
+      "key": "k",
+      "label": "[coughs] prefix",
+      "text": "[coughs] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m6_k.wav",
+      "ms": 6160,
+      "delta_ms": null
+    },
+    {
+      "model": "sonic-3.6",
+      "key": "n",
+      "label": "[clears throat] prefix",
+      "text": "[clears throat] המחיר נקבע לפי כמה שיחות הסוכן מנהל בשבילךָ. כמה פניות נכנסות אליךָ בחודש?",
+      "file": "r21_m6_n.wav",
+      "ms": 5920,
+      "delta_ms": null
+    },
+    {
+      "model": "mix",
+      "key": "b1B",
+      "label": "dd breath -18dB before long reply",
+      "text": "(mixed clip)",
+      "file": "r21_b1_B_phone.wav",
+      "ms": null,
+      "delta_ms": null
+    },
+    {
+      "model": "mix",
+      "key": "b3B",
+      "label": "dd breath in thinking gap",
+      "text": "(mixed clip)",
+      "file": "r21_b3_B_phone.wav",
+      "ms": null,
+      "delta_ms": null
+    },
+    {
+      "model": "mix",
+      "key": "b4B",
+      "label": "dd breath before short confirmation",
+      "text": "(mixed clip)",
+      "file": "r21_b4_B_phone.wav",
+      "ms": null,
+      "delta_ms": null
+    }
+  ]
+}

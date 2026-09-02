@@ -538,6 +538,38 @@ that does nothing.
 
 ---
 
+## 17. Cartesia has exactly ONE non-verbal on Hebrew, and it is the one Koren banned
+
+**Measured 2026-09-02** on both current models (`sonic-3.5` and `sonic-3.6`), because round 4 had
+asked the same question a year of model releases ago and a re-date was cheaper than an assumption.
+
+Every breath-shaped English tag — `[breath]`, `[inhales]`, `[breathing]`, `[sigh]`, `[sighs]`,
+`[breathes]`, `[exhales]`, `[laughs]`, `[coughs]`, `[clears throat]` — is **inert** on Hebrew:
+duration deltas sit inside the 320–480ms generation-noise floor that §9 measures, the onset
+anatomy is clean (no sound before speech), and the Soniox round-trip comes back identical to the
+untagged baseline. The tag is neither performed nor spoken; it is dropped.
+
+Two exceptions, and they are opposite failure modes:
+
+- **`(breathes)` in parentheses is READ ALOUD** — Soniox hears "ברידס". Only the bracketed form is
+  swallowed. A stray parenthesis in her text reaches the caller as an English word.
+- **`[laughter]` renders a real "חח" on BOTH models.** So the tag machinery is not broken on
+  Hebrew — Cartesia simply trained exactly one non-verbal, and it is the one Koren rejected by ear
+  in round 4b.
+
+**Conclusion, and it is the useful half:** a breath cannot be requested. If she is ever to breathe,
+the breath is **audio we supply**, spliced into the TTS output stream — which is also what
+production would have to do. Round 21 (`tests/hebrew-tts-niqqud-ab/round21.py`) is the first
+listening page that puts spliced breath in front of an ear, with two sources (a breath harvested
+from a DeepDub Hebrew generation, and a synthetic shaped-noise inhale) and gain as the card
+variable. Nothing is shipped off a probe.
+
+**Do not re-probe the tags a third time.** Evidence: `probe21_tags.py` (durations),
+`probe21_onset.py` (onset anatomy, repeats), `roundtrip21.ts` (Soniox), `probe21.json`,
+`probe21-heard.json`.
+
+---
+
 ## Realistic latency budget for Hebrew
 
 Re-measured 2026-08-16 on the live stack (Soniox `stt-rt-v5` → gpt-5.4 `priority`/`effort=none`
