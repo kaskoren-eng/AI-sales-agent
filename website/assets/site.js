@@ -356,4 +356,17 @@
   });
 
   show(1); /* Start leads: it is the entry plan we can actually deliver today */
+
+  /* The confetti fires once, on first sight. A permanently looping party
+     reads as decoration; a single burst reads as an event. */
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if (e.isIntersecting) { box.classList.add('is-live'); io.disconnect(); }
+      });
+    }, { threshold: 0.35 });
+    io.observe(box);
+  } else {
+    box.classList.add('is-live');
+  }
 })();

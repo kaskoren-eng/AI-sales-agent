@@ -969,14 +969,48 @@ em, i, .tl-quote{font-style:normal}
 @keyframes pr-pu{0%{box-shadow:0 0 0 0 rgba(217,48,37,.55)}
   70%{box-shadow:0 0 0 8px rgba(217,48,37,0)} 100%{box-shadow:0 0 0 0 rgba(217,48,37,0)}}
 
-.pr__body{padding:32px 40px 36px; text-align:center}
+.pr__body{padding:32px 40px 36px; text-align:center; position:relative}
+.pr__body::before,.pr__body::after{content:""; position:absolute; width:14px; height:14px;
+  border:1px solid rgba(255,255,255,.16); pointer-events:none}
+.pr__body::before{inset-block-start:18px; inset-inline-start:18px;
+  border-inline-end:0; border-block-end:0}
+.pr__body::after{inset-block-end:18px; inset-inline-end:18px;
+  border-inline-start:0; border-block-start:0}
 
-/* launch ribbon */
-.pr__launch{display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;
-  background:var(--amber-soft); color:var(--amber-text); padding:10px 20px;
-  font-size:14px; font-weight:600}
-.pr__launch span{font-family:var(--mono); font-size:11px; letter-spacing:.12em;
-  background:var(--amber-text); color:#fff; padding:3px 9px; border-radius:5px; direction:ltr}
+/* ---- launch band ------------------------------------------------------
+   The one celebratory surface on the site. Flat indigo (the brand action
+   colour, no gradient), with confetti cut from the logo's own bar shape
+   rather than generic dots — that derivation is what keeps it from
+   reading as a stock party graphic. */
+.pr__launch{position:relative; background:var(--indigo); color:#fff; overflow:hidden;
+  padding:16px 22px; text-align:center}
+.pr__launch__in{position:relative; z-index:2; display:flex; flex-direction:column;
+  align-items:center; gap:5px}
+.pr__seal{display:inline-flex; align-items:center; gap:9px; font-family:var(--mono);
+  font-size:11px; letter-spacing:.16em; direction:ltr;
+  background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.26);
+  padding:5px 13px; border-radius:999px}
+.pr__seal i{width:6px; height:6px; border-radius:50%; background:#38BDF8; display:block}
+.pr__launch h4{font-family:var(--display); font-size:clamp(17px,2.4vw,21px); font-weight:600;
+  letter-spacing:-.02em; margin-block-start:3px}
+.pr__lock{font-size:14.5px; color:rgba(255,255,255,.86); font-weight:300}
+.pr__lock b{font-weight:600; color:#fff}
+
+/* static confetti — fixed seed, so it never looks randomly sprayed */
+.pr__conf{position:absolute; inset:0; z-index:1; pointer-events:none; overflow:hidden}
+.pr__conf i{position:absolute; display:block; border-radius:2px}
+
+/* one-shot burst when the console first scrolls into view */
+.pr__burst{position:absolute; inset:0; z-index:3; pointer-events:none; overflow:hidden}
+.pr__burst i{position:absolute; inset-block-start:-14px; display:block; border-radius:2px;
+  opacity:0}
+.pr.is-live .pr__burst i{animation:pr-fall var(--d,2.6s) cubic-bezier(.25,.6,.4,1) var(--w,0s) both}
+@keyframes pr-fall{
+  0%{opacity:0; transform:translateY(-10px) rotate(0deg)}
+  8%{opacity:1}
+  75%{opacity:1}
+  100%{opacity:0; transform:translateY(var(--y,190px)) translateX(var(--x,0)) rotate(var(--r,420deg))}
+}
 
 /* segmented plan switch — five plans, scrolls rather than wraps on small screens */
 .pr__seg{display:flex; border:1px solid rgba(255,255,255,.16); border-radius:10px;
@@ -990,8 +1024,10 @@ em, i, .tl-quote{font-style:normal}
 
 .pr__kick{font-family:var(--mono); font-size:11px; letter-spacing:.2em; color:#38BDF8;
   unicode-bidi:isolate; min-height:17px}
-.pr__was{color:#8494AC; font-size:15px; margin-block-start:8px; min-height:23px}
-.pr__was s{text-decoration-thickness:1.5px; text-decoration-color:rgba(217,134,27,.85)}
+.pr__was{color:#8494AC; font-size:14.5px; margin-block-start:10px; min-height:22px;
+  font-family:var(--mono); letter-spacing:.02em}
+.pr__was s{text-decoration-thickness:1.5px; text-decoration-color:rgba(56,189,248,.8);
+  color:#A9B6C9}
 .pr__price{font-family:var(--display); font-weight:200; font-size:clamp(56px,10.5vw,124px);
   letter-spacing:-.055em; line-height:.96; white-space:nowrap; margin-block-start:2px}
 .pr__price i{font-style:normal; font-weight:500; color:#38BDF8; font-size:.34em;
@@ -1058,21 +1094,22 @@ em, i, .tl-quote{font-style:normal}
   .pr__body{padding:24px 16px 28px}
   .pr__bar{padding:12px 14px; font-size:10.5px}
   .pr__bar > :nth-child(2){display:none}
-  /* five plans do not fit a phone: scroll them, and fade the leading edge
-     so the cut-off tab reads as "there is more" rather than as a bug */
-  .pr__segwrap{position:relative}
-  .pr__segwrap::before{content:""; position:absolute; inset-block:0; inset-inline-start:0;
-    width:34px; pointer-events:none; z-index:2;
-    background:linear-gradient(to left, transparent, var(--night) 78%)}
-  [dir="ltr"] .pr__segwrap::before{background:linear-gradient(to right, transparent, var(--night) 78%)}
-  .pr__seg{width:100%; overflow-x:auto; border-radius:10px;
-    -webkit-overflow-scrolling:touch; scrollbar-width:none}
-  .pr__seg::-webkit-scrollbar{display:none}
-  .pr__seg button{padding:10px 16px; font-size:13.5px}
+  /* Five plans do not fit one phone row. Scrolling clipped the names at both
+     edges, so they wrap into a 3+2 grid instead: every name fully readable,
+     nothing to discover by swiping. */
+  .pr__seg{display:grid; grid-template-columns:repeat(3,1fr); width:100%; border-radius:12px}
+  .pr__seg button{padding:12px 8px; font-size:13.5px; white-space:normal;
+    border-inline-start:1px solid rgba(255,255,255,.16);
+    border-block-start:1px solid rgba(255,255,255,.16)}
+  .pr__seg button:nth-child(-n+3){border-block-start:0}
+  .pr__seg button:nth-child(3n+1){border-inline-start:0}
+  .pr__launch{padding:14px 16px}
   .pr__facts div{border-inline-start:0; padding:8px 18px}
   .onb__grid{grid-template-columns:1fr}
 }
 @media (prefers-reduced-motion:reduce){
   .pr__wave i, .pr__rec i{animation:none}
   .pr-fade{animation:none}
+  .pr.is-live .pr__burst i{animation:none}
+  .pr__burst{display:none}
 }
