@@ -1131,3 +1131,64 @@ em, i, .tl-quote{font-style:normal}
   .pr.is-live .pr__burst i{animation:none}
   .pr__burst{display:none}
 }
+
+/* ============================================================
+   INTEGRATIONS MARQUEE (2026-09-03)
+   The static 5-column grid said "here is a list". A continuous
+   drift says "this keeps going", which is the actual claim: the
+   agent plugs into whatever stack you already run. Two rows move
+   in opposite directions so the eye never locks onto one tile and
+   the band never reads as a single sliding strip.
+   ============================================================ */
+.mq{position:relative; margin-block-start:44px; background:var(--night);
+  border-radius:var(--r-lg); padding:34px 0 30px; overflow:hidden;
+  box-shadow:0 30px 64px -46px rgba(12,18,38,.65)}
+.mq::after{content:""; position:absolute; inset-block-start:0; inset-inline:0; height:1px;
+  background:linear-gradient(90deg,transparent,rgba(56,189,248,.4),transparent)}
+
+/* the fade is a mask, not two painted overlays, so it survives any background.
+   The row is forced to LTR: in an RTL page the flex track lays out from the
+   right, and translateX(-100%) then pushes it clean off the screen. Pinning
+   the geometry to LTR makes the animation identical in both languages; the
+   cell contents keep dir="auto" so Hebrew names still read correctly. */
+.mq__row{position:relative; display:flex; overflow:hidden; direction:ltr;
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 9%,#000 91%,transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 9%,#000 91%,transparent)}
+.mq__row + .mq__row{margin-block-start:18px}
+.mq__track{display:flex; gap:14px; flex-shrink:0; padding-inline-end:14px;
+  will-change:transform; animation:mq-run var(--mq-dur,58s) linear infinite}
+.mq__row--back .mq__track{animation-direction:reverse}
+@keyframes mq-run{from{transform:translateX(0)} to{transform:translateX(-100%)}}
+.mq:hover .mq__track, .mq:focus-within .mq__track{animation-play-state:paused}
+
+.mq__cell{flex-shrink:0; width:132px; text-align:center; padding:14px 8px 12px;
+  border-radius:16px; border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.035); transition:border-color .22s, background .22s}
+.mq__cell:hover{border-color:rgba(56,189,248,.42); background:rgba(56,189,248,.07)}
+.mq__ico{width:44px; height:44px; margin:0 auto 10px; border-radius:12px;
+  background:rgba(255,255,255,.06); display:flex; align-items:center; justify-content:center}
+.mq__cell b{display:block; font-family:var(--display); font-size:13.5px; font-weight:500;
+  color:#D5DEEA; letter-spacing:-.01em; line-height:1.3}
+.mq__cell u{display:block; text-decoration:none; font-family:var(--mono); font-size:9.5px;
+  letter-spacing:.1em; text-transform:uppercase; color:#6A7A94; margin-block-start:5px}
+.mq__cell--soon .mq__ico{background:transparent; border:1px dashed rgba(255,255,255,.16)}
+.mq__cell--soon b{color:#8494AC}
+
+.mq__foot{margin-block-start:26px; padding-inline:34px; display:flex; gap:14px;
+  align-items:center; justify-content:space-between; flex-wrap:wrap;
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.06em; color:#6A7A94; direction:ltr}
+.mq__foot span{display:flex; align-items:center; gap:8px}
+.mq__foot i{width:6px; height:6px; border-radius:50%; background:#1FA860; display:block}
+
+@media (max-width:900px){
+  .mq{padding:24px 0 22px; border-radius:18px}
+  .mq__cell{width:114px; padding:12px 6px 10px}
+  .mq__ico{width:38px; height:38px; margin-block-end:8px}
+  .mq__cell b{font-size:12.5px}
+  .mq__foot{padding-inline:18px; font-size:10.5px; justify-content:center; text-align:center}
+}
+@media (prefers-reduced-motion:reduce){
+  .mq__track{animation:none}
+  .mq__row{-webkit-mask-image:none; mask-image:none; overflow-x:auto; scrollbar-width:none}
+  .mq__row::-webkit-scrollbar{display:none}
+}
