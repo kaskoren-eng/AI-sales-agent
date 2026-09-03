@@ -1104,15 +1104,15 @@ em, i, .tl-quote{font-style:normal}
   .pr__body{padding:24px 16px 28px}
   .pr__bar{padding:12px 14px; font-size:10.5px}
   .pr__bar > :nth-child(2){display:none}
-  /* Five plans do not fit one phone row. Scrolling clipped the names at both
-     edges, so they wrap into a 3+2 grid instead: every name fully readable,
-     nothing to discover by swiping. */
-  .pr__seg{display:grid; grid-template-columns:repeat(3,1fr); width:100%; border-radius:12px}
-  .pr__seg button{padding:12px 8px; font-size:13.5px; white-space:normal;
-    border-inline-start:1px solid rgba(255,255,255,.16);
-    border-block-start:1px solid rgba(255,255,255,.16)}
-  .pr__seg button:nth-child(-n+3){border-block-start:0}
-  .pr__seg button:nth-child(3n+1){border-inline-start:0}
+  /* Five plans, one phone. A 3-column grid left a visible empty cell on the
+     second row. Wrapped pills have no cells to leave empty: the second row
+     simply centres its two items and the shape reads as deliberate. */
+  .pr__seg{display:flex; flex-wrap:wrap; justify-content:center; gap:8px;
+    border:0; border-radius:0; width:100%; overflow:visible}
+  .pr__seg button{flex:0 0 auto; padding:11px 18px; font-size:13.5px;
+    border:1px solid rgba(255,255,255,.18); border-radius:10px; white-space:nowrap}
+  .pr__seg button + button{border-inline-start:1px solid rgba(255,255,255,.18)}
+  .pr__seg button[data-pop]::after{inset-block-start:5px; inset-inline-end:6px}
   .pr__launch{padding:14px 16px}
   .pr__facts{margin-block-start:24px; padding-block-start:22px}
   .pr__facts div{border-inline-start:0; padding:14px 8px; width:100%;
