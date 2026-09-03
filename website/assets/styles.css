@@ -1140,7 +1140,7 @@ em, i, .tl-quote{font-style:normal}
    in opposite directions so the eye never locks onto one tile and
    the band never reads as a single sliding strip.
    ============================================================ */
-.mq{position:relative; margin-block-start:44px; background:var(--night);
+.mq{position:relative; margin-block-start:var(--sp-head); background:var(--night);
   border-radius:var(--r-lg); padding:34px 0 30px; overflow:hidden;
   box-shadow:0 30px 64px -46px rgba(12,18,38,.65)}
 .mq::after{content:""; position:absolute; inset-block-start:0; inset-inline:0; height:1px;
