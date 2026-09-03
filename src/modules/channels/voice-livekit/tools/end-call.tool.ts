@@ -6,6 +6,7 @@ import { leads } from '../../../../db/schema/index.js';
 import { END_DISCLOSURE_INSTRUCTION, hasAiDisclosure } from '../compliance/ai-disclosure.js';
 import { isDisqualifyingEndReason, judgeEndCall } from '../end-call-gate.js';
 import { phoneSuffix } from './book-meeting.tool.js';
+import { cancelCallbacksForLead } from './callback-store.js';
 import { timedTool, type ToolRuntimeContext } from './tool-context.js';
 
 /**
@@ -88,6 +89,30 @@ export const endCallSchema = z.object({
 export const LEAD_STATUS_OPTED_OUT = 'opted_out';
 
 /**
+ * An opt-out kills any callback we had promised him, on the spot.
+ *
+ * This is the one cancellation hook that is not merely tidy: everywhere else in this system
+ * `opted_out` means "do not contact", and a queued outbound dial is a contact. `callbacks.worker.ts`
+ * step 2 refuses to dial an opted-out lead unconditionally and is the guarantee — this removes the
+ * job so the guarantee is never TESTED, and writes the reason on the row while we still know it.
+ *
+ * Never throws, never awaited for its result. An opt-out is a legal obligation and it must not
+ * fail because Redis is down or a `callbacks` row would not update; the status flip above has
+ * already happened and is what the law is about.
+ *
+ * NOT gated on VOICE_CALLBACK_TOOL: `disconnect.ts` can have written the pending row.
+ *
+ * The lead-CREATED branch below needs no hook — a row that did not exist a moment ago cannot have
+ * a callback pointing at it.
+ */
+async function cancelPendingCallbacksOnOptOut(
+  rt: ToolRuntimeContext,
+  leadId: string,
+): Promise<void> {
+  await cancelCallbacksForLead(rt, leadId, 'cancelled:opted_out');
+}
+
+/**
  * Flips the lead to do-not-call, tenant-scoped on every path. Outbound calls know their lead;
  * inbound callers are matched by phone; an unknown caller gets a minimal lead row created so the
  * opt-out SURVIVES — a DNC request we can't attach to anyone is a legal problem waiting to recur.
@@ -100,6 +125,7 @@ export async function markLeadOptedOut(
       .update(leads)
       .set({ status: LEAD_STATUS_OPTED_OUT, updatedAt: new Date() })
       .where(and(eq(leads.id, rt.leadId), eq(leads.tenantId, rt.tenantId)));
+    await cancelPendingCallbacksOnOptOut(rt, rt.leadId);
     return 'lead_updated';
   }
 
@@ -120,6 +146,7 @@ export async function markLeadOptedOut(
         .update(leads)
         .set({ status: LEAD_STATUS_OPTED_OUT, updatedAt: new Date() })
         .where(and(eq(leads.id, existing[0]!.id), eq(leads.tenantId, rt.tenantId)));
+      await cancelPendingCallbacksOnOptOut(rt, existing[0]!.id);
       return 'lead_updated';
     }
     // NOT BILLABLE (usage-metering: exempt — suppression record). This row exists so we never

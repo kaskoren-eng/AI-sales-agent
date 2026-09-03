@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { scheduledCalls } from '../../../../db/schema/index.js';
 import { resolveReminderSettings } from '../../../scheduling/reminders/reminder-settings.js';
 import { scheduleReminders } from '../../../scheduling/reminders/reminder-scheduler.js';
+import { cancelCallbacksForLead } from './callback-store.js';
 import { grantWhatsappConsentVerbal, upsertLead } from './lead-store.js';
 import {
   BOOKING_BUFFER_MINUTES,
@@ -257,6 +258,19 @@ export async function executeBookMeeting(
 
   rt.bookingCompleted = true; // the speech-guard now lets her say it out loud
   rt.callState?.onToolCall('book_meeting', true); // → closing stage
+
+  // A lead who has just booked must not be rung back to ask when he would like to talk. Placed
+  // AFTER both invariants have passed — the event exists and the DB writes have been attempted —
+  // because cancelling a callback for a booking that then failed would lose both.
+  //
+  // DEFENCE IN DEPTH, NOT THE GUARD: `callbacks.worker.ts` step 3 re-reads `scheduled_calls` at
+  // fire time and cancels the callback itself if the lead has a future meeting. This only makes it
+  // happen NOW, with a reason on the row, and takes one job off a queue that dials phones. It
+  // cannot fail the booking — `cancelCallbacksForLead` never throws (see callback-store.ts).
+  const bookedLeadId = rt.leadId;
+  if (bookedLeadId) {
+    await cancelCallbacksForLead(rt, bookedLeadId, 'cancelled:meeting_booked');
+  }
 
   // She may only claim an email exists if Google actually sent one. Without Domain-Wide
   // Delegation the event is real but the invite is NOT emailed (BookingResult.inviteSent=false)

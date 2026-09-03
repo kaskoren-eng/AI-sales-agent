@@ -106,6 +106,18 @@ export interface ToolRuntimeContext {
    */
   endCallConfirmationAsked?: boolean;
   endCallRefusals?: number;
+  /**
+   * `schedule_callback` has written a callback on this call, and the report should say so.
+   *
+   * NOT a refusal latch, deliberately — and that is a departure from `bookingCompleted` /
+   * `handoffRequested`, which both refuse a second call. A lead who says "עוד שעה" and then
+   * "רגע, עדיף מחר בבוקר" is CORRECTING himself, and a tool that refused the correction would
+   * leave him with a phone ringing at the time he just withdrew. The second call supersedes the
+   * first row instead, which keeps the one-live-callback-per-lead invariant without lying to him.
+   *
+   * Optional, and read as `?? false`, so the eight hand-built test fixtures keep compiling.
+   */
+  callbackScheduled?: boolean;
   endReason: string | null;
   /** Raw tenants.settings loaded at gate time — previously discarded; tools read per-tenant
    * config (templates, reminders, limits) from here without a second DB round trip. */
@@ -118,6 +130,19 @@ export interface ToolRuntimeContext {
   /** BullMQ handle to 'call-analysis' (same Redis connection). Null on Redis failure. Used at call
    * end to enqueue the LiveKit transcript analysis (GPT summary + conversation finalize). */
   callAnalysisQueue: Queue | null;
+  /**
+   * BullMQ handle to 'callbacks' (same Redis connection). Null on Redis failure.
+   *
+   * Two jobs, and the second one matters even with the callback tool switched off: `schedule_callback`
+   * enqueues the delayed dial, and `book_meeting` / `end_call(opt_out)` / `request_human_handoff`
+   * REMOVE a queued dial that has stopped making sense. `disconnect.ts` can write a `callbacks` row
+   * on any call with VOICE_DISCONNECT_TRACKING on, so a pending dial can exist on a tenant that has
+   * never seen the tool — which is exactly why the cancellation hooks are not behind its flag.
+   *
+   * Null degrades the cancellation to the worker's fire-time re-check (state must still be
+   * `pending`), which is the authoritative guard anyway. Nothing here is load-bearing alone.
+   */
+  callbacksQueue: Queue | null;
   /** Set by book_meeting on success; cleared never (one meeting per call). */
   lastBooking: LastBooking | null;
   /**
@@ -179,6 +204,7 @@ export interface ToolRuntimeDeps {
     outboundQueue: Queue;
     remindersQueue: Queue;
     callAnalysisQueue: Queue;
+    callbacksQueue: Queue;
     close: () => Promise<void>;
   };
 }
@@ -558,12 +584,14 @@ export async function buildToolRuntime(
   let outboundQueue: Queue | null = null;
   let remindersQueue: Queue | null = null;
   let callAnalysisQueue: Queue | null = null;
+  let callbacksQueue: Queue | null = null;
   let closeQueues: () => Promise<void> = async () => undefined;
   try {
     const built = (deps.makeQueues ?? defaultMakeQueues)(env);
     outboundQueue = built.outboundQueue;
     remindersQueue = built.remindersQueue;
     callAnalysisQueue = built.callAnalysisQueue;
+    callbacksQueue = built.callbacksQueue;
     closeQueues = built.close;
   } catch (err) {
     console.error('tool_runtime_redis_failed', err instanceof Error ? err.message : String(err));
@@ -602,11 +630,13 @@ export async function buildToolRuntime(
       handoffRequested: false,
       endCallConfirmationAsked: false,
       endCallRefusals: 0,
+      callbackScheduled: false,
       endReason: null,
       settings,
       outboundQueue,
       remindersQueue,
       callAnalysisQueue,
+      callbacksQueue,
       lastBooking: null,
       // Only an OAuth grant can be revoked BY THE CUSTOMER. The platform service account fails for
       // other reasons, and marking it "revoked" would put a reconnect prompt in ClickScales' own
@@ -641,20 +671,26 @@ function defaultMakeQueues(env: Env): {
   outboundQueue: Queue;
   remindersQueue: Queue;
   callAnalysisQueue: Queue;
+  callbacksQueue: Queue;
   close: () => Promise<void>;
 } {
   const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null, lazyConnect: false });
   const outboundQueue = new Queue('outbound-sender', { connection: redis });
   const remindersQueue = new Queue('meeting-reminders', { connection: redis });
   const callAnalysisQueue = new Queue('call-analysis', { connection: redis });
+  // Created on every call, not only when VOICE_CALLBACK_TOOL is on: the CANCELLATION hooks need it
+  // regardless, because `disconnect.ts` can have queued a dial on a tenant that never sees the tool.
+  const callbacksQueue = new Queue('callbacks', { connection: redis });
   return {
     outboundQueue,
     remindersQueue,
     callAnalysisQueue,
+    callbacksQueue,
     close: async () => {
       await outboundQueue.close().catch(() => undefined);
       await remindersQueue.close().catch(() => undefined);
       await callAnalysisQueue.close().catch(() => undefined);
+      await callbacksQueue.close().catch(() => undefined);
       await redis.quit().catch(() => undefined);
     },
   };

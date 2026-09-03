@@ -6,6 +6,7 @@ import { meterLead } from '../../../billing/usage.service.js';
 import { END_DISCLOSURE_INSTRUCTION, hasAiDisclosure } from '../compliance/ai-disclosure.js';
 import type { KnownFacts } from '../call-state.js';
 import { phoneSuffix } from './book-meeting.tool.js';
+import { cancelCallbacksForLead } from './callback-store.js';
 import { resolveHandoffSettings } from './handoff-settings.js';
 import { runEndCallTeardown } from './end-call.tool.js';
 import { notifyOwner } from './owner-notify.js';
@@ -279,6 +280,18 @@ export function requestHumanHandoffTool(rt: ToolRuntimeContext) {
           console.error('handoff_flag_failed', err instanceof Error ? err.message : String(err));
           flagged = { outcome: 'no_identity', leadId: rt.leadId, leadName: null, leadPhone: rt.callerPhone };
         }
+
+        // 1b. A lead handed to a human is the human's now, so any automatic callback we had
+        // promised is cancelled. Two of us ringing the same person about the same thing is worse
+        // than neither — and worse still if the automatic one gets there first and re-opens a
+        // conversation the owner is about to have properly.
+        //
+        // DEFENCE IN DEPTH: this is the one of the four hooks the callback worker does NOT
+        // independently re-check at fire time (it re-checks opt-out and bookings; a handoff leaves
+        // no row it looks at). So it is the hook that actually changes an outcome — which is also
+        // why it still may not throw: `cancelCallbacksForLead` swallows and logs, because a
+        // handoff that failed because Redis was down would lose the lead entirely.
+        await cancelCallbacksForLead(rt, flagged.leadId, 'cancelled:handoff_requested');
 
         // 2. Ping the owner — best-effort, timeboxed, never blocks the handoff line.
         //

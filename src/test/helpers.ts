@@ -144,6 +144,7 @@ export async function buildTestApp(
     VOICE_VOICE_MODES_ENABLED: false,
     VOICE_DISCONNECT_TRACKING: false,
     VOICE_CALLBACK_WORKER: false,
+    VOICE_CALLBACK_TOOL: false,
     ...opts.envOverrides,
   };
 

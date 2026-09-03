@@ -43,6 +43,7 @@ function fakeQueues() {
       outboundQueue: { add: vi.fn() } as never,
       remindersQueue: { add: vi.fn() } as never,
       callAnalysisQueue: { add: vi.fn() } as never,
+      callbacksQueue: { add: vi.fn() } as never,
       close: closeQueues,
     }),
   };

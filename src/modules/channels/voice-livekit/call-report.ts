@@ -467,6 +467,26 @@ export interface CallReportJson {
     disconnectAlertSent: boolean;
     disconnectCallbackId: string | null;
     /**
+     * SHE PROMISED TO RING HIM BACK — `schedule_callback` (VOICE_CALLBACK_TOOL).
+     *
+     * `callbackResolvedIso` is the instant that will ACTUALLY be dialled, after the calling-window
+     * clamp, which is the only instant worth recording: the raw request is in the tool-call args
+     * already, and the two differ precisely when something interesting happened.
+     *
+     * `callbackMoved` is that difference as one boolean, and it is the number to read first. It
+     * means the clamp overrode what the lead asked for, so the tool told her to read back a
+     * DIFFERENT time than the one he said — and whether she actually did is a question only the
+     * transcript, sitting right here, can answer. A run of moved callbacks is also how a badly-set
+     * `callbacks.proactiveWeekday` announces itself.
+     *
+     * false/null on every call where no callback was scheduled, and on every call run with the
+     * flag off — which is not the same thing, and is why the flag's state belongs in any handoff
+     * that quotes these.
+     */
+    callbackScheduled: boolean;
+    callbackResolvedIso: string | null;
+    callbackMoved: boolean;
+    /**
      * The five mandatory answers she ended up holding, and how many times she asked for each.
      *
      * `null` on a call that ran without fact memory. Identity fields report `true` rather than a
@@ -913,6 +933,23 @@ export class CallReport {
   recordDisconnectOutcome(outcome: { alertSent: boolean; callbackId: string | null }): void {
     this.#disconnectAlertSent = outcome.alertSent;
     this.#disconnectCallbackId = outcome.callbackId;
+  }
+
+  #callbackScheduled = false;
+  #callbackResolvedIso: string | null = null;
+  #callbackMoved = false;
+
+  /**
+   * `schedule_callback` wrote a callback row. Records the CLAMPED instant — the one that will be
+   * dialled — and whether the clamp had to move it off what the lead asked for.
+   *
+   * Last write wins, deliberately: a lead who corrects himself ("רגע, עדיף מחר") supersedes the
+   * earlier row, and the report should agree with the database about which callback survives.
+   */
+  recordCallbackScheduled(outcome: { resolvedIso: string; moved: boolean }): void {
+    this.#callbackScheduled = true;
+    this.#callbackResolvedIso = outcome.resolvedIso;
+    this.#callbackMoved = outcome.moved;
   }
 
   #pauses = 0;
@@ -1375,6 +1412,9 @@ export class CallReport {
         hungUpAtStage: this.#hungUpAtStage,
         disconnectAlertSent: this.#disconnectAlertSent,
         disconnectCallbackId: this.#disconnectCallbackId,
+        callbackScheduled: this.#callbackScheduled,
+        callbackResolvedIso: this.#callbackResolvedIso,
+        callbackMoved: this.#callbackMoved,
         facts: this.#facts ? { ...this.#facts } : null,
         pauseTagsDropped: this.#pauseTagsDropped,
         bracketTagsDropped: this.#bracketTagsDropped,

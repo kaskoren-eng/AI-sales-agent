@@ -327,6 +327,7 @@ describe('buildToolRuntime — inbound routing end to end', () => {
         outboundQueue: { add: vi.fn() } as never,
         remindersQueue: { add: vi.fn() } as never,
         callAnalysisQueue: { add: vi.fn() } as never,
+        callbacksQueue: { add: vi.fn() } as never,
         close: vi.fn(async () => undefined),
       }),
     });

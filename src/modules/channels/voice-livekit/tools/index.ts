@@ -4,6 +4,7 @@ import { captureLeadInfoTool } from './capture-lead-info.tool.js';
 import { checkCalendarAvailabilityTool } from './check-calendar-availability.tool.js';
 import { endCallTool } from './end-call.tool.js';
 import { requestHumanHandoffTool } from './request-human-handoff.tool.js';
+import { CALLBACK_TOOL_NAME, scheduleCallbackTool } from './schedule-callback.tool.js';
 import {
   sendEmailConfirmationTool,
   sendWhatsappConfirmationTool,
@@ -29,7 +30,16 @@ import type { ToolRuntimeContext } from './tool-context.js';
  * ever hits the cap, this is the comment to find.
  */
 
-/** Exact tool names the LLM sees — the system prompt's regression tests import this. */
+/**
+ * Exact tool names the LLM sees AND THE PROMPT DESCRIBES — the system prompt's regression tests
+ * import this and assert every entry appears in TOOLS_PROMPT.
+ *
+ * ⚠️ `schedule_callback` IS DELIBERATELY ABSENT. It ships dark behind `VOICE_CALLBACK_TOOL`: the
+ * prompt does not mention it (that is F1.7, and it needs a listening round before any Hebrew about
+ * callbacks reaches a lead's ear), so adding it here would break the lockstep test with no way to
+ * fix it except writing the prompt section this branch is not allowed to write. Its name lives in
+ * `CALLBACK_TOOL_NAME`; move it into this list in the same commit that teaches the prompt about it.
+ */
 export const TOOL_NAMES = [
   'check_calendar_availability',
   'book_meeting',
@@ -42,6 +52,9 @@ export const TOOL_NAMES = [
 
 export type ToolName = (typeof TOOL_NAMES)[number];
 
+/** Re-exported so a caller needs one import for "what tools can this agent have". */
+export { CALLBACK_TOOL_NAME } from './schedule-callback.tool.js';
+
 export function buildAgentTools(rt: ToolRuntimeContext): llm.FunctionTool[] {
   return [
     checkCalendarAvailabilityTool(rt),
@@ -51,5 +64,16 @@ export function buildAgentTools(rt: ToolRuntimeContext): llm.FunctionTool[] {
     sendWhatsappConfirmationTool(rt),
     sendEmailConfirmationTool(rt),
     requestHumanHandoffTool(rt),
+    // THE 8TH TOOL, BEHIND A FLAG — and OFF means it is not in the array at all, so the model is
+    // never shown the name and cannot call it. That is stronger than a handler that refuses (which
+    // still costs prompt tokens, still invites a call, and still has to explain itself in Hebrew),
+    // and it is provable by RUNNING this function rather than by reading it. This repo has shipped
+    // a flag that silently did nothing; the tests for this one emit the OFF path.
+    ...(rt.env.VOICE_CALLBACK_TOOL ? [scheduleCallbackTool(rt)] : []),
   ] as llm.FunctionTool[];
+}
+
+/** What `buildAgentTools` will actually attach for this runtime. Used by the tests and the logs. */
+export function activeToolNames(rt: ToolRuntimeContext): string[] {
+  return [...TOOL_NAMES, ...(rt.env.VOICE_CALLBACK_TOOL ? [CALLBACK_TOOL_NAME] : [])];
 }

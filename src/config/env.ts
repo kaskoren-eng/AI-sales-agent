@@ -901,6 +901,21 @@ const envSchema = z.object({
   // on deliberately, per environment, after the first live callback has been watched end to end.
   // The queue itself is always created; with this off it simply stays empty.
   VOICE_CALLBACK_WORKER: envBool(false),
+  // THE schedule_callback TOOL — the 8th agent tool (2026-09-03). A lead who says "תתקשר אליי עוד
+  // שעה" produced, at best, end_call(reason:'callback_requested') — an enum value with no time in
+  // it and nothing behind it. This gives the agent a way to WRITE that promise down: a structured
+  // intent she cannot do date arithmetic on, resolved and window-clamped by callback-time.ts,
+  // stored in `callbacks`, and queued for the worker above.
+  //
+  // DEFAULT OFF, and OFF means the tool is NOT REGISTERED — the model cannot see it, cannot call
+  // it, and the tool set is byte-for-byte the seven it was. That is stronger than a handler that
+  // refuses, and it is provable by running buildAgentTools().
+  //
+  // It ships DARK on purpose: the system prompt does not mention it (that is F1.7, and it needs a
+  // listening round before any Hebrew about callbacks is spoken to a lead), and no confirmation
+  // message is sent (F1.5). Turning this on without VOICE_CALLBACK_WORKER writes durable rows that
+  // nothing dials — which is the state the whole `callbacks` table was in before the worker landed.
+  VOICE_CALLBACK_TOOL: envBool(false),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),
