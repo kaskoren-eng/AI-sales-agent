@@ -43,6 +43,7 @@
     "agent:logs": "lk agent logs",
     "provision:number": "node scripts/provision-number.mjs",
     "usage:reconcile": "node scripts/reconcile-usage.mjs",
+    "callbacks:reconcile": "node scripts/callbacks-reconcile.mjs",
     "db:drift": "node scripts/check-schema-drift.mjs",
     "rehearse:onboarding": "node scripts/rehearse-onboarding.mjs",
     "verify:tenant": "node scripts/verify-tenant.mjs",

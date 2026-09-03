@@ -68,7 +68,18 @@ export const callbacks = pgTable(
     reason: text('reason'),
     /** The live BullMQ job id, so the callback can be cancelled. Deterministic; see the queue. */
     jobId: varchar('job_id', { length: 120 }),
-    /** answered | no_answer | busy | voicemail | failed */
+    /**
+     * answered | no_answer | busy | voicemail | failed | no_trunk
+     *
+     * `no_trunk` is the callback worker's addition: `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` unset is a
+     * configuration gap, not a lead who did not pick up, and the two must be distinguishable from
+     * the database. That distinction is the whole lesson of the weeks production spent reporting
+     * placed calls while dialling nothing.
+     *
+     * `no_answer` is load-bearing beyond this table: a phone that simply rings out is recorded
+     * NOWHERE else in this system — the reflex-driven `no_answer`/`voicemail` in `call-reflexes.ts`
+     * only fire once a call has CONNECTED.
+     */
     lastOutcome: varchar('last_outcome', { length: 20 }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

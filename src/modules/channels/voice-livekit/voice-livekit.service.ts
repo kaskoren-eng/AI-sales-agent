@@ -200,6 +200,10 @@ export const AGENT_SETTINGS_KEYS = [
   // It carries no secrets (voice ids and names are not credentials), and the caller is the
   // authenticated tenant anyway.
   'agent_persona',
+  // Callback ladder config. On the metadata so the schedule_callback tool can read back a time
+  // inside the tenant's own calling hours without a cold cross-region DB read mid-call. No
+  // secrets: hours and a dial count.
+  'callbacks',
 ] as const;
 
 export function sanitizeSettingsForAgent(settings: unknown): Record<string, unknown> | undefined {

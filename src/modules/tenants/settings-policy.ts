@@ -38,6 +38,7 @@ export const TENANT_WRITABLE_NAMESPACES = [
   'crm_sync', // outcome→status maps for their own CRM
   'reminders', // meeting reminder offsets and quiet hours
   'operating_hours', // when the agent may dial
+  'callbacks', // callback ladder: on/off, how many dials, proactive calling hours
   'ui_locale', // dashboard interface language — NEVER the agent's spoken language
 ] as const;
 
