@@ -665,6 +665,14 @@ export interface CallReportJson {
      * second inference. See latency-anatomy.ts.
      */
     latency: LatencySummary;
+    /**
+     * Background lead writes that failed (VOICE_ASYNC_LEAD_WRITES). Zero on every healthy call.
+     *
+     * Non-zero means facts the lead gave were lost while he heard "saved" — the price of not
+     * making him wait for the database, and the number that decides whether that price is real.
+     * See tools/lead-writes.ts.
+     */
+    leadWriteFailures: number;
   };
   /**
    * THE ACTUAL CONVERSATION — both sides of it.
@@ -974,6 +982,8 @@ export class CallReport {
   recordMetric(stage: string, m: Record<string, unknown>): void {
     const pick = (k: string): number | undefined =>
       typeof m[k] === 'number' ? Math.round(m[k] as number) : undefined;
+    const text = (k: string): string | undefined =>
+      typeof m[k] === 'string' ? (m[k] as string).slice(0, 200) : undefined;
 
     this.#metrics.push({
       atMs: Date.now() - this.#startedAt,
@@ -986,7 +996,14 @@ export class CallReport {
       promptCachedTokens: pick('promptCachedTokens'),
       audioDurationMs: pick('audioDurationMs'),
       charactersCount: pick('charactersCount'),
+      enteredMs: pick('enteredMs'),
       cancelled: typeof m.cancelled === 'boolean' ? m.cancelled : undefined,
+      // STRINGS, and they need their own picker: this method whitelists NUMBERS, so the first
+      // version of `turn_opener` recorded nineteen metrics with `kind: undefined` on both of them.
+      // The field was passed, accepted, and dropped — the same shape as every other measurement in
+      // this module that was built and never reached the report. Caught by reading a real run.
+      kind: text('kind'),
+      reason: text('reason'),
     });
   }
 
@@ -1423,6 +1440,7 @@ export class CallReport {
           samples: this.#deadAir.length,
         },
         latency: summarizeLatency(turnAnatomy),
+        leadWriteFailures: this.#metrics.filter((m) => m.stage === 'lead_write_failed').length,
       },
       transcript: this.#transcript,
       metrics: this.#metrics,

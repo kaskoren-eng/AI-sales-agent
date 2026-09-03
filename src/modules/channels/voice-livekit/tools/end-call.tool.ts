@@ -7,6 +7,7 @@ import { END_DISCLOSURE_INSTRUCTION, hasAiDisclosure } from '../compliance/ai-di
 import { isDisqualifyingEndReason, judgeEndCall } from '../end-call-gate.js';
 import { phoneSuffix } from './book-meeting.tool.js';
 import { timedTool, type ToolRuntimeContext } from './tool-context.js';
+import { settleLeadWrites } from './lead-writes.js';
 
 /**
  * end_call(reason) — hang up gracefully, and remember WHY.
@@ -78,6 +79,9 @@ export const LEAD_STATUS_OPTED_OUT = 'opted_out';
 export async function markLeadOptedOut(
   rt: ToolRuntimeContext,
 ): Promise<'lead_updated' | 'lead_created' | 'no_identity'> {
+  // An opt-out that lands on a lead the background chain has not created yet would create a
+  // SECOND row and mark the wrong one do-not-call. See lead-writes.ts.
+  await settleLeadWrites(rt);
   if (rt.leadId) {
     await rt.db
       .update(leads)

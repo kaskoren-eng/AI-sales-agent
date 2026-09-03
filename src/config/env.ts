@@ -518,6 +518,26 @@ const envSchema = z.object({
   // correction from the lead. Default ON. Set false to restore the 2026-08-29 behaviour, where a
   // garbled turn ("טל, אוזן") could rename a lead who had already introduced himself.
   VOICE_FACT_MEMORY_ENABLED: envBool(true),
+  // Kill-switch for saving a lead's facts WITHOUT the caller waiting for the database
+  // (capture-lead-info.tool.ts, 2026-09-03). `capture_lead_info` runs mid-call and did two
+  // sequential round-trips from the agent in eu-central to Postgres before returning — measured at
+  // 880-1099ms on four production calls, once 3927ms, and every millisecond of it lands inside the
+  // caller's silence because the model cannot write the next sentence until the tool returns. The
+  // per-turn table (latency-anatomy.ts) put a tool turn at 2877ms of dead air against 1479ms for
+  // an ordinary one; this is most of the difference.
+  //
+  // ON: the writes are chained onto a per-call promise, in order, and the tool returns the SAME
+  // string it would have returned anyway — every word of it is decided by the identity guard,
+  // which stays synchronous, so the model cannot observe the difference except in time. The tools
+  // that need the row to exist (book_meeting, end_call, the handoff, the confirmations) await the
+  // chain first, so nothing can race the insert into a duplicate lead.
+  //
+  // The one real cost, stated rather than buried: on a database failure the model is told "Saved"
+  // and the facts are lost, where today it is told they were not saved. Both continue the call —
+  // the current failure string is itself "continue the call normally" — and the ledger is
+  // rebuildable (`npm run usage:reconcile`), so this buys a second of the caller's time against a
+  // worse message on an outage. `false` restores the awaited writes exactly.
+  VOICE_ASYNC_LEAD_WRITES: envBool(true),
   // Kill-switch for counting her discovery questions BY INTENT rather than by literal phrasing
   // (fact-memory.ts, 2026-09-02). On the 14:56 call of 2026-09-01 she asked what his business is
   // five times and the counter saw three, and she asked who answers his enquiries four times and

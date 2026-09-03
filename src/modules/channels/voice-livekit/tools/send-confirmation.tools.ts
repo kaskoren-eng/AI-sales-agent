@@ -88,6 +88,9 @@ export function sendWhatsappConfirmationTool(rt: ToolRuntimeContext) {
     parameters: sendWhatsappConfirmationSchema,
     execute: (_args, _opts) =>
       timedTool(rt, 'send_whatsapp_confirmation', {}, async () => {
+        // No `settleLeadWrites` here on purpose: `requireBooking` throws unless book_meeting has
+        // already run, and book_meeting settles the chain itself. `rt.leadId` is resolved by the
+        // time this line can be reached. See lead-writes.ts.
         const { booking, queue } = requireBooking(rt);
         await timeboxedEnqueue(() =>
           enqueueOutbound(queue, {
