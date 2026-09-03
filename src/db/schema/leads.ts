@@ -34,6 +34,12 @@ export const leads = pgTable('leads', {
   // "urgent since" the dashboard sorts on. Deliberately NOT a status value — a lead can be both
   // `qualified` and urgent.
   handoffRequestedAt: timestamp('handoff_requested_at', { withTimezone: true }),
+  // Denormalised mirror of the earliest PENDING row in `callbacks` — so "who am I calling today"
+  // is answerable without a join, on the dashboard and in a sweeper. NULL = nothing owed.
+  // Deliberately NOT a status value, for the same reason as handoffRequestedAt above: a lead can
+  // be `qualified` AND owed a callback, and LEAD_STATUSES is a state machine with transitions
+  // (`lead-status.ts :: canTransition`) that a scheduling fact has no business entering.
+  nextCallbackAt: timestamp('next_callback_at', { withTimezone: true }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [
@@ -42,4 +48,5 @@ export const leads = pgTable('leads', {
   index('leads_phone_idx').on(table.tenantId, table.phone),
   index('leads_status_idx').on(table.tenantId, table.status),
   index('leads_handoff_idx').on(table.tenantId, table.handoffRequestedAt),
+  index('leads_callback_idx').on(table.tenantId, table.nextCallbackAt),
 ]);
