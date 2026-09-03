@@ -256,3 +256,104 @@
     setPlaying(null, false);
   });
 })();
+
+/* PRICING CONSOLE — one price that morphs when a plan is picked.
+   ------------------------------------------------------------------
+   >>> THE ONLY BLOCK TO EDIT WHEN PRICING CHANGES IS `PLANS` BELOW. <<<
+   Numbers are from docs/gtm/pricing-model.md (approved 2026-09-02) and
+   the launch-pricing brief. `was` is the list price, struck through;
+   `price` is what the customer pays during the launch window. A plan
+   with custom:true renders `price` as a word and hides the ₪ glyph.
+   ------------------------------------------------------------------ */
+(function(){
+  var box = document.querySelector('.pr');
+  if (!box) return;
+  var he = document.documentElement.lang === 'he';
+
+  var PLANS = he ? [
+    { name:'פיילוט',   kick:'PILOT',      was:'799',   price:'649',   min:'500',    calls:'1' },
+    { name:'התחלה',    kick:'START',      was:'1,490', price:'1,190', min:'1,100',  calls:'2' },
+    { name:'צמיחה',    kick:'GROWTH',     was:'2,390', price:'1,990', min:'2,500',  calls:'3' },
+    { name:'סקייל',    kick:'SCALE',      was:'3,990', price:'3,590', min:'5,000',  calls:'4' },
+    { name:'אנטרפרייז', kick:'ENTERPRISE', was:'',      price:'לפי אפיון', min:'5,000+', calls:'4-6', custom:true }
+  ] : [
+    { name:'Pilot',      kick:'PILOT',      was:'799',   price:'649',   min:'500',    calls:'1' },
+    { name:'Start',      kick:'START',      was:'1,490', price:'1,190', min:'1,100',  calls:'2' },
+    { name:'Growth',     kick:'GROWTH',     was:'2,390', price:'1,990', min:'2,500',  calls:'3' },
+    { name:'Scale',      kick:'SCALE',      was:'3,990', price:'3,590', min:'5,000',  calls:'4' },
+    { name:'Enterprise', kick:'ENTERPRISE', was:'',      price:'Custom', min:'5,000+', calls:'4-6', custom:true }
+  ];
+
+  var L = he ? {
+    was:'במקום', per:'לחודש · מחיר השקה', perCustom:'לחודש · תמחור אישי',
+    min:'דקות שיחה בחודש', calls:'שיחות במקביל',
+    setupWas:'דמי הקמה 1,500 ₪', setupNow:'ללא דמי הקמה',
+    setupFine:'במחירי ההשקה, לכל החבילות', setupCustom:'דמי הקמה לפי אפיון'
+  } : {
+    was:'was', per:'per month · launch price', perCustom:'per month · custom pricing',
+    min:'CALL MINUTES / MONTH', calls:'CONCURRENT CALLS',
+    setupWas:'Setup fee 1,500 ₪', setupNow:'No setup fee',
+    setupFine:'at launch pricing, on every plan', setupCustom:'setup fee on scoping'
+  };
+
+  var seg   = box.querySelector('.pr__seg');
+  var kick  = box.querySelector('.pr__kick');
+  var was   = box.querySelector('.pr__was');
+  var price = box.querySelector('.pr__price');
+  var sub   = box.querySelector('.pr__sub');
+  var facts = box.querySelector('.pr__facts');
+  var setup = box.querySelector('.pr__setup');
+  var code  = box.querySelector('.pr__code');
+  var btns  = [];
+
+  PLANS.forEach(function(p, i){
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'tab');
+    b.textContent = p.name;
+    b.addEventListener('click', function(){ show(i); });
+    seg.appendChild(b);
+    btns.push(b);
+  });
+
+  function n(v){ return '<span class="num">' + v + '</span>'; }
+
+  function show(i){
+    var p = PLANS[i];
+    btns.forEach(function(b, k){ b.setAttribute('aria-selected', k === i ? 'true' : 'false'); });
+
+    kick.textContent = p.kick + ' PLAN';
+    was.innerHTML  = p.was ? L.was + ' <s>' + n(p.was) + ' ₪</s>' : '';
+    price.innerHTML = p.custom ? p.price : '<i>₪</i>' + n(p.price);
+    price.classList.toggle('pr__price--word', !!p.custom);
+    sub.textContent = p.custom ? L.perCustom : L.per;
+    facts.innerHTML =
+      '<div><b>' + n(p.min) + '</b><span>' + L.min + '</span></div>' +
+      '<div><b>' + n(p.calls) + '</b><span>' + L.calls + '</span></div>';
+    setup.innerHTML = p.custom
+      ? '<em>' + L.setupCustom + '</em>'
+      : '<s>' + L.setupWas + '</s> <b>' + L.setupNow + '</b> <em>' + L.setupFine + '</em>';
+    if (code) code.textContent = 'PLAN 0' + (i + 1) + ' / 0' + PLANS.length;
+
+    [price, sub, facts, was].forEach(function(el){
+      el.classList.remove('pr-fade'); void el.offsetWidth; el.classList.add('pr-fade');
+    });
+  }
+
+  /* RTL-aware arrow keys, same contract as the site's other tablists */
+  seg.addEventListener('keydown', function(e){
+    var i = btns.indexOf(document.activeElement);
+    if (i < 0) return;
+    var rtl = document.documentElement.dir === 'rtl', next = null;
+    if (e.key === 'ArrowRight') next = rtl ? i - 1 : i + 1;
+    else if (e.key === 'ArrowLeft') next = rtl ? i + 1 : i - 1;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = btns.length - 1;
+    else return;
+    e.preventDefault();
+    next = (next + btns.length) % btns.length;
+    btns[next].focus(); show(next);
+  });
+
+  show(1); /* Start leads: it is the entry plan we can actually deliver today */
+})();
