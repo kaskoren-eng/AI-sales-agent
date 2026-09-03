@@ -5,6 +5,7 @@ import {
   executeCheckAvailability,
   type CheckAvailabilityArgs,
 } from './check-calendar-availability.tool.js';
+import { formatDayHe } from './israel-time.js';
 import type { ToolRuntimeContext } from './tool-context.js';
 
 /** Thursday morning, Israel summer time (IDT, UTC+3). 08:00Z = 11:00 in Tel Aviv. */
@@ -71,6 +72,17 @@ describe('executeCheckAvailability', () => {
     // The offer-a-range instruction + the anti-hallucination rule.
     expect(out).toMatch(/Offer the free RANGE/u);
     expect(out).toContain('VERBATIM');
+  });
+
+  it('tells her to OPEN with the day heading, so the caller hears the date (Koren, 2026-09-03)', async () => {
+    // The day heading has always been in this result; what was missing was any instruction to say
+    // it, and a worked example that contained one. The prompt's booking rule 3 was corrected in the
+    // same commit — this is the other half, and it is the copy closest to the model when it speaks.
+    const { rt } = fakeRt([mk('2026-07-19T07:00:00.000Z')]);
+    const out = await executeCheckAvailability(rt, args(), NOW);
+    expect(out).toMatch(/opening with the DAY HEADING below exactly as written/u);
+    // The example is `formatDayHe`'s own output — the same words the booking confirmation speaks.
+    expect(out).toContain(formatDayHe('2026-07-30T08:00:00.000Z', new Date('2026-07-29T10:00:00Z')));
   });
 
   it('hides slots starting inside the minimum-notice window', async () => {

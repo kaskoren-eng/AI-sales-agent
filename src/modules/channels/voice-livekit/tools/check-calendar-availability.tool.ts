@@ -128,7 +128,9 @@ export async function executeCheckAvailability(
 
   return (
     `Availability for ${duration}-minute demos (Israel time). Offer the free RANGE(s) out loud, ` +
-    `saying hours as colloquial Hebrew words, not digits — e.g. "יש לי פנוי מעשר עד שלוש, איזו שעה ` +
+    `opening with the DAY HEADING below exactly as written — it carries the full date, and a weekday ` +
+    `on its own is the same four words every week — and saying hours as colloquial Hebrew words, not ` +
+    `digits — e.g. "מחר, יום חמישי, 30 ביולי, יש לי פנוי מעשר עד שלוש, איזו שעה ` +
     `מתאימה לך?" — do NOT read out every time. When he ` +
     `names a time, book the MATCHING slot below by passing its slot_datetime to book_meeting VERBATIM. ` +
     `If his time is not listed, tell him the nearest available times. Never invent a time.\n\n` +
