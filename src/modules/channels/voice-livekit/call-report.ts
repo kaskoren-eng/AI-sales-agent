@@ -6,6 +6,12 @@ import {
   countRepeatedFourGrams,
   countRepeatedOpeners,
 } from './phrase-ledger.js';
+import {
+  buildTurnAnatomy,
+  summarizeLatency,
+  type LatencySummary,
+  type TurnAnatomy,
+} from './latency-anatomy.js';
 import type { PipelineSnapshot, PreemptiveCounters } from './pipeline-observer.js';
 import { hasRegisterTouch } from './register-tracker.js';
 import { isRestartOf } from './repeat-guard.js';
@@ -57,6 +63,10 @@ export interface TurnMetric {
   charactersCount?: number;
   /** TTS only: the SDK's verdict that this synthesis was thrown away. Excluded from pace. */
   cancelled?: boolean;
+  /** `turn_opener` only: which sound opened the step — ack | nod | hesitation | silent. */
+  kind?: string;
+  /** `turn_opener` only: the predicates that fed the decision, as `name=0/1` flags. */
+  reason?: string;
 }
 
 /** One line of the conversation, either side of it. */
@@ -642,6 +652,17 @@ export interface CallReportJson {
       maxMs: number | null;
       samples: number;
     };
+    /**
+     * THE SAME WAIT, SPLIT BY WHAT CAUSED IT — because the pooled median above describes a
+     * population that does not exist.
+     *
+     * On the 2026-09-03 production call `deadAir.medianMs` read 1529ms across six turns that ran
+     * 553 / 1439 / 1478 / 1578 / 2877 / 3113. Three different waits with three different fixes,
+     * and no median over them is a fact about the call. This splits them: a turn whose audio beat
+     * the model's first token, a turn where it did not, and a turn that ran a tool and so paid a
+     * second inference. See latency-anatomy.ts.
+     */
+    latency: LatencySummary;
   };
   /**
    * THE ACTUAL CONVERSATION — both sides of it.
@@ -652,6 +673,8 @@ export interface CallReportJson {
    */
   transcript: TranscriptLine[];
   metrics: TurnMetric[];
+  /** One row per caller turn, grouped out of `metrics`. See summary.latency. */
+  turns: TurnAnatomy[];
   /** Every tool the LLM invoked, in order, with duration and outcome. Empty pre-Phase-4. */
   toolCalls: ToolCallLog[];
   /** Provable per-call compliance facts (recording notice, AI disclosure). */
@@ -1294,6 +1317,10 @@ export class CallReport {
     const agentLines = this.#transcript.filter((t) => t.role === 'assistant').map((t) => t.text);
 
     const agentGaps = this.#agentGaps();
+    // Derived from `#metrics` and `#toolCalls`, which are already final at this point. Kept in the
+    // report as well as summarised, so the split can be re-read per turn without re-deriving the
+    // grouping — and so a future change to the grouping cannot silently restate an old call.
+    const turnAnatomy = buildTurnAnatomy(this.#metrics, this.#toolCalls);
 
     return {
       room: this.#room,
@@ -1393,9 +1420,11 @@ export class CallReport {
           maxMs: this.#deadAir.length ? Math.max(...this.#deadAir) : null,
           samples: this.#deadAir.length,
         },
+        latency: summarizeLatency(turnAnatomy),
       },
       transcript: this.#transcript,
       metrics: this.#metrics,
+      turns: turnAnatomy,
       toolCalls: this.#toolCalls,
       compliance: this.#compliance,
       usage: this.#usage,

@@ -32,6 +32,7 @@
     "voice:clarity": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/clarity-ab.ts",
     "stt:shadow": "node --env-file=.env scripts/analyze-shadow-stt.mjs",
     "call:report": "node scripts/show-call-report.mjs",
+    "latency:anatomy": "tsx scripts/latency-anatomy.ts",
     "call:fetch:db": "node scripts/fetch-db-calls.mjs",
     "call:stats": "node scripts/call-stats.mjs",
     "bench:tts": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/latency-bench.ts tts",

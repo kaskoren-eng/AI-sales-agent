@@ -105,6 +105,48 @@ if (d && d.samples > 0) {
   console.log('\nWHAT THE CALLER SAT THROUGH\n  not measured (report predates the dead-air metric)');
 }
 
+// THE SAME WAIT, SPLIT BY CAUSE — because the median above pools populations that do not mix.
+//
+// The 2026-09-03 production call reported a median of 1529ms over six turns that ran 553 / 1439 /
+// 1478 / 1578 / 2877 / 3113. Reading that as "the call was 1.5s" is how a month of latency work got
+// argued from a number that described no turn on the call. Three classes, three different fixes:
+// a turn whose audio beat the model's first token, a turn where it did not, and a turn that ran a
+// tool and paid a second inference for it.
+const lat = s.latency;
+if (lat && lat.turns > 0) {
+  console.log('\nWHY IT WAS THAT LONG  (same wait, split by what caused it)\n');
+  console.log('  class            turns    p50     p75     p90   model 1st token   tts 1st byte');
+  const label = {
+    receipt_early: 'she spoke first',
+    no_receipt: 'waited for GPT',
+    tool_step: 'ran a tool',
+    unknown: 'not classified',
+  };
+  for (const [k, v] of Object.entries(lat.byClass)) {
+    if (!v || v.n === 0) continue;
+    console.log(
+      `  ${(label[k] ?? k).padEnd(15)}  ${String(v.n).padStart(5)}  ${ms(v.deadAirP50).padStart(5)}  ` +
+        `${ms(v.deadAirP75).padStart(5)}  ${ms(v.deadAirP90).padStart(5)}  ` +
+        `${ms(v.modelTtftP50).padStart(15)}  ${ms(v.ttsTtfbP50).padStart(13)}`,
+    );
+  }
+  // THE NUMBER THAT DECIDES WHETHER SUB-1s IS REACHABLE ON A TURN AT ALL. The model's first token
+  // is ~1s and not tunable (known-issues §3), so a turn that waits for it cannot clear the budget
+  // however fast everything else gets. Only a turn she opens herself can.
+  if (lat.audioBeforeFirstTokenSamples > 0) {
+    console.log(
+      `\n  she started speaking before GPT's first token on ${lat.audioBeforeFirstTokenPct}% of ` +
+        `${lat.audioBeforeFirstTokenSamples} turns`,
+    );
+    console.log('  (a turn that waits for GPT starts at ~1.3s at best — the receipt is the only sub-1s route)');
+  }
+  console.log('\n  Per-turn table:  npm run latency:anatomy');
+} else if (d && d.samples > 0) {
+  // The report was written before the split existed. It can still be produced from the metrics it
+  // carries — by the same code, offline — so say where rather than showing nothing.
+  console.log('\nWHY IT WAS THAT LONG\n  not in this report (predates it) — run:  npm run latency:anatomy');
+}
+
 // THE SILENCE THE NUMBER ABOVE CANNOT SEE, and until 2026-08-31 nobody was shown it.
 //
 // `deadAir` stops its stopwatch at her FIRST audio of a turn, and it never starts at all when the
