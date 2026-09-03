@@ -104,10 +104,19 @@ describe('end-call reason vocabulary', () => {
     expect(LLM_END_REASONS).not.toContain('no_answer');
     expect(LLM_END_REASONS).not.toContain('voicemail');
     expect(LLM_END_REASONS).not.toContain('handoff_requested');
+    // 2026-09-03: the mid-call-disconnect listener's reason. It is here for the same reason the
+    // other three are — a value the model could pick would stop meaning what it means.
+    expect(LLM_END_REASONS).not.toContain('caller_hung_up');
     expect(END_CALL_REASONS).toContain('no_answer');
     expect(END_CALL_REASONS).toContain('voicemail');
     expect(END_CALL_REASONS).toContain('handoff_requested');
-    expect(SYSTEM_END_REASONS).toEqual(['no_answer', 'voicemail', 'handoff_requested']);
+    expect(END_CALL_REASONS).toContain('caller_hung_up');
+    expect(SYSTEM_END_REASONS).toEqual([
+      'no_answer',
+      'voicemail',
+      'handoff_requested',
+      'caller_hung_up',
+    ]);
   });
 
   it('the tool rejects a system-only reason the model tried to self-select', async () => {

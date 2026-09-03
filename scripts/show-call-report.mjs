@@ -217,6 +217,28 @@ if (cut > 0) {
 } else {
   console.log(`  CUT YOU OFF         0   clean — she waited for you every time`);
 }
+// Mid-call disconnect (2026-09-03). `undefined` on any report written before the listener shipped,
+// and rendered as nothing rather than as "she was not hung up on" — an old report cannot say.
+// Note that `false` here means BOTH "nobody hung up" and "VOICE_DISCONNECT_TRACKING was off", which
+// is why the flag's state belongs beside this line whenever it is quoted.
+if (s.callerHungUp === true) {
+  const stage = s.hungUpAtStage ?? 'unknown';
+  console.log(`  CALLER HUNG UP mid-${stage}   <-- THE LINE WENT DEAD; NOBODY SAID GOODBYE`);
+  console.log('');
+  if (stage === 'opening') {
+    console.log('      During the greeting — a wrong number or a mis-dial. Recorded only: no callback');
+    console.log('      was raised and the owner was NOT paged, deliberately.');
+  } else {
+    console.log(
+      `      callback row: ${s.disconnectCallbackId ?? 'NONE (see disconnect_callback_failed in the log)'}`,
+    );
+    console.log(
+      `      owner alerted: ${s.disconnectAlertSent ? 'yes' : 'NO — unconfigured owner, or the queue was down'}`,
+    );
+  }
+} else if (s.callerHungUp === false) {
+  console.log('  CALLER HUNG UP      no   the call reached a deliberate ending');
+}
 // Tool-call leaks (2026-08-31). `undefined` on any report written before the guard shipped, and
 // that is deliberately NOT rendered as 0 — an old report cannot say anything about a metric that
 // did not exist when it was written.

@@ -90,6 +90,12 @@ import { ShadowSTT } from './stt/shadow-stt.js';
 import { DeepdubTTS } from './tts/deepdub.tts.js';
 import { buildAgentTools } from './tools/index.js';
 import { runEndCallTeardown } from './tools/end-call.tool.js';
+import {
+  handleCallerDisconnect,
+  isAlertableHangupStage,
+  registerDisconnectListener,
+  type HangupStage,
+} from './disconnect.js';
 import { buildToolRuntime, isDidRefusal, type ToolRuntimeContext } from './tools/tool-context.js';
 import { enqueueLiveKitCallAnalysis } from '../../../queues/call-analysis.queue.js';
 import { meterCall } from '../../billing/usage.service.js';
@@ -1411,11 +1417,77 @@ export default defineAgent({
       });
     }
 
+    // ── MID-CALL DISCONNECT ───────────────────────────────────────────────────────────
+    //
+    // The caller put the phone down and, until this listener existed, NOTHING in the system saw
+    // it: end_reason stayed NULL, no lead was flagged, no callback was raised, nobody was told —
+    // and a NULL end reason is excluded from the booking-rate denominator, so a silent hangup made
+    // the number look better. Koren: *"אסור שהוא ייפול בין הכיסאות"*.
+    //
+    // Registered only when the flag is on, so OFF is byte-for-byte the previous behaviour — not
+    // "the handler returns early", which still changes what the event loop does.
+    //
+    // TWO PHASES, deliberately split. The MARK is synchronous, inside the handler: `endReason` and
+    // the report field are set before anything can await, so a worker that is killed before its
+    // shutdown hook runs still leaves the per-turn report flush carrying the fact. The WRITES (the
+    // callbacks row, the owner ping) happen in the shutdown callback below, where `runtime.db` is
+    // still open and is closed only after — starting them here would race that close.
+    let hungUpAtStage: HangupStage | null = null;
+    registerDisconnectListener(ctx.room, RoomEvent.ParticipantDisconnected, {
+      enabled: env.VOICE_DISCONNECT_TRACKING,
+      // Only the CALLER counts. `waitForParticipant()` above returned the remote participant this
+      // call is with; the agent's own identity and any web-call observer are somebody else leaving.
+      callerIdentity: participant.identity,
+      getEndReason: () => runtime?.endReason ?? null,
+      setEndReason: (reason) => {
+        if (runtime) runtime.endReason = reason;
+      },
+      isTerminal: () => callState?.isTerminal(),
+      markTerminal: () => callState?.markTerminal(),
+      currentStage: () => callState?.stage,
+      hadCallerTurn: () => report.lastCallerTurn() !== null,
+      onHangup: (stage) => {
+        hungUpAtStage = stage;
+        report.recordCallerHangup(stage);
+      },
+      roomName: ctx.room.name,
+    });
+
     // Write the call report when the call ends. This is the ONLY durable record of a call today —
     // the call_learnings row it really belongs in is Phase 4, and the payload shape here matches
     // that column exactly so the move is a one-liner.
     ctx.addShutdownCallback(async () => {
       if (shadow) report.attachShadow(shadow.snapshot());
+
+      // THE HANGUP'S DURABLE HALF — first, because everything below reads `report.toJson()` and
+      // these four fields have to be in it. A hangup during `opening` is a wrong number: recorded,
+      // and nothing more. `discovery` onward raises the callback row and pings the owner.
+      //
+      // `runtime` is the tool gate; without it there is no DB connection and no tenant settings, so
+      // a gate-closed call records the hangup and can do nothing else about it (already logged).
+      if (hungUpAtStage && runtime && isAlertableHangupStage(hungUpAtStage)) {
+        try {
+          const outcome = await handleCallerDisconnect(runtime, { stage: hungUpAtStage });
+          report.recordDisconnectOutcome({
+            alertSent: outcome.alertChannels.length > 0,
+            callbackId: outcome.callbackId,
+          });
+          console.log(
+            'disconnect_handled',
+            JSON.stringify({
+              tenantId: runtime.tenantId,
+              stage: hungUpAtStage,
+              attributed: outcome.attributed,
+              callbackId: outcome.callbackId,
+              channels: outcome.alertChannels,
+            }),
+          );
+        } catch (err) {
+          // handleCallerDisconnect already try/catches every step; this is the belt on the braces,
+          // because a rejection HERE would cost the call_learnings row written further down.
+          console.error('disconnect_handling_failed', err instanceof Error ? err.message : String(err));
+        }
+      }
 
       // Hand the LiveKit logger back its own methods. AFTER the report is serialized below would
       // be equally correct (the counters are already tallied), but a wrapper left installed across

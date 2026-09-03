@@ -158,6 +158,20 @@ export interface CallbackDefaults {
   hardFloor: { earliest: string; latest: string };
   /** What `at_time` means when a day was named but no hour was. */
   defaultTimeHhmm: string;
+  /**
+   * How long after a MID-CALL DISCONNECT we try again — the `disconnected` kind's rung 1, which
+   * nobody asked for and which therefore always goes through the proactive window.
+   *
+   * Short on purpose, and short is the risk. A live conversation that stopped without an ending is
+   * most often a dropped line or an interruption, and the honest move there is to ring back while
+   * he still remembers the call. It is NOT 3 hours like a soft defer, because a soft defer is a
+   * lead who chose to end the conversation and this is a lead who did not choose anything.
+   *
+   * The case against: a caller who hung up because he had had enough is indistinguishable from a
+   * dropped line at this end, and he gets rung back in a quarter of an hour. That is Koren's call
+   * to make by ear, not a number to defend in code — flagged in the handoff, one edit to change.
+   */
+  disconnectedDelayMinutes: number;
   /** Bounds on `in_minutes`, mirroring the tool schema (5 minutes … 14 days). */
   minInMinutes: number;
   maxInMinutes: number;
@@ -177,6 +191,7 @@ export const CALLBACK_DEFAULTS: CallbackDefaults = {
   proactiveFriday: { start: '09:00', end: '13:00' },
   hardFloor: { earliest: '07:00', latest: '23:00' },
   defaultTimeHhmm: '10:00',
+  disconnectedDelayMinutes: 15,
   minInMinutes: 5,
   maxInMinutes: 14 * 24 * 60,
   finalMessageChannel: 'whatsapp',

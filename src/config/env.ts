@@ -877,6 +877,20 @@ const envSchema = z.object({
   // The gate is load-bearing. Re-earning pacing on DeepDub needs a different mechanism entirely,
   // not this tag.
   VOICE_VOICE_MODES_ENABLED: envBool(false),
+  // MID-CALL DISCONNECT TRACKING (2026-09-03). Until this shipped, a caller who put the phone down
+  // in the middle of the conversation produced NOTHING: a NULL end reason, no lead flag, no alert,
+  // and — because a NULL reason is excluded from the metrics denominator — a booking rate that
+  // quietly counted the call as if it had never happened. Koren: "אסור שהוא ייפול בין הכיסאות".
+  //
+  // ON: the room's ParticipantDisconnected event, when nothing else has already ended the call,
+  // sets end_reason='caller_hung_up'; a hangup at `discovery` or later also raises a `callbacks`
+  // row (kind 'disconnected') and pings the owner. A hangup during the opening greeting is recorded
+  // and nothing more — that is a wrong number, not a lost lead.
+  //
+  // DEFAULT OFF, and OFF is byte-for-byte today's behaviour: the listener is not even registered.
+  // It writes a callbacks row and sends an owner message on a live call, and neither has yet
+  // happened on a real one. See voice-livekit/disconnect.ts.
+  VOICE_DISCONNECT_TRACKING: envBool(false),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),

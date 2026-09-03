@@ -446,6 +446,27 @@ export interface CallReportJson {
      */
     callStage: { final: string | null; history: Array<{ stage: string; atMs: number }> };
     /**
+     * THE CALLER PUT THE PHONE DOWN, and until 2026-09-03 nothing in this system could see it.
+     *
+     * `callerHungUp` is set from the room's ParticipantDisconnected event when nothing else had
+     * already ended the call — see disconnect.ts for the discriminator and the one latent hole it
+     * guards against. `hungUpAtStage` is where the conversation had reached: `opening` is a wrong
+     * number or a mis-dial and is deliberately recorded WITHOUT raising anything, while `discovery`
+     * or later is the case Koren asked for — *"אסור שהוא ייפול בין הכיסאות"* — and raises both.
+     *
+     * `disconnectAlertSent` and `disconnectCallbackId` say what actually HAPPENED as a result, which
+     * is the half a log line cannot answer afterwards: an alert that was never queued and an alert
+     * that was queued to a tenant with no owner configured look identical from outside.
+     *
+     * All four are false/null on every call where the caller did not hang up, and on every call run
+     * with VOICE_DISCONNECT_TRACKING off — which is not the same as "did not hang up", and is why
+     * the flag's state belongs in the handoff whenever these numbers are read.
+     */
+    callerHungUp: boolean;
+    hungUpAtStage: string | null;
+    disconnectAlertSent: boolean;
+    disconnectCallbackId: string | null;
+    /**
      * The five mandatory answers she ended up holding, and how many times she asked for each.
      *
      * `null` on a call that ran without fact memory. Identity fields report `true` rather than a
@@ -870,6 +891,28 @@ export class CallReport {
   recordCallStage(final: string, history: Array<{ stage: string; atMs: number }>): void {
     this.#callStage = final;
     this.#callStageHistory = history.map((h) => ({ stage: h.stage, atMs: h.atMs }));
+  }
+
+  #callerHungUp = false;
+  #hungUpAtStage: string | null = null;
+  #disconnectAlertSent = false;
+  #disconnectCallbackId: string | null = null;
+
+  /**
+   * The caller hung up mid-conversation, and where the call had got to. Written SYNCHRONOUSLY from
+   * the ParticipantDisconnected listener — the report is flushed after every turn, so recording it
+   * at the moment it happens means the fact survives even a worker that never runs its shutdown
+   * hook. See disconnect.ts.
+   */
+  recordCallerHangup(stage: string): void {
+    this.#callerHungUp = true;
+    this.#hungUpAtStage = stage;
+  }
+
+  /** What the disconnect handling actually managed to do — written at shutdown, after the writes. */
+  recordDisconnectOutcome(outcome: { alertSent: boolean; callbackId: string | null }): void {
+    this.#disconnectAlertSent = outcome.alertSent;
+    this.#disconnectCallbackId = outcome.callbackId;
   }
 
   #pauses = 0;
@@ -1328,6 +1371,10 @@ export class CallReport {
           samples: [...this.#pauseSamples],
         },
         callStage: { final: this.#callStage, history: [...this.#callStageHistory] },
+        callerHungUp: this.#callerHungUp,
+        hungUpAtStage: this.#hungUpAtStage,
+        disconnectAlertSent: this.#disconnectAlertSent,
+        disconnectCallbackId: this.#disconnectCallbackId,
         facts: this.#facts ? { ...this.#facts } : null,
         pauseTagsDropped: this.#pauseTagsDropped,
         bracketTagsDropped: this.#bracketTagsDropped,

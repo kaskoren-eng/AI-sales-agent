@@ -142,6 +142,7 @@ export async function buildTestApp(
     VOICE_STOP_ANNOUNCE_GUARD_ENABLED: true,
     VOICE_PRODUCT_CLAIM_SLANG_GUARD: true,
     VOICE_VOICE_MODES_ENABLED: false,
+    VOICE_DISCONNECT_TRACKING: false,
     ...opts.envOverrides,
   };
 

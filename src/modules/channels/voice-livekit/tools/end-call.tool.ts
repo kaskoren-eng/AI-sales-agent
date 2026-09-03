@@ -44,12 +44,29 @@ export const LLM_END_REASONS = [
 ] as const;
 
 /**
- * Reasons set ONLY by code — a reflex (silence → no_answer, answering machine → voicemail) or the
- * request_human_handoff tool (→ handoff_requested) — never offered to the model HERE. Kept out of
- * end_call's enum so the LLM can't self-select them; the reflexes in agent.ts and the handoff tool
- * write `rt.endReason` directly.
+ * THE CALLER PUT THE PHONE DOWN mid-conversation — nobody said goodbye. Set by the
+ * ParticipantDisconnected listener in agent.ts, and ONLY when nothing else had already claimed the
+ * ending; `disconnect.ts` holds the discriminator and the reasoning behind it.
  */
-export const SYSTEM_END_REASONS = ['no_answer', 'voicemail', 'handoff_requested'] as const;
+export const CALLER_HUNGUP_END_REASON = 'caller_hung_up';
+
+/**
+ * Reasons set ONLY by code — a reflex (silence → no_answer, answering machine → voicemail), the
+ * request_human_handoff tool (→ handoff_requested), or the caller hanging up (→ caller_hung_up) —
+ * never offered to the model HERE. Kept out of end_call's enum so the LLM can't self-select them;
+ * the reflexes in agent.ts, the handoff tool and the disconnect listener write `rt.endReason`
+ * directly.
+ *
+ * `caller_hung_up` in particular must never be offered: letting her label a call SHE ended as a
+ * hang-up would destroy the one thing this value means — that the conversation stopped without
+ * either side finishing it.
+ */
+export const SYSTEM_END_REASONS = [
+  'no_answer',
+  'voicemail',
+  'handoff_requested',
+  CALLER_HUNGUP_END_REASON,
+] as const;
 
 /** The full analytics/CRM vocabulary: what the model can pick PLUS what reflexes set. */
 export const END_CALL_REASONS = [...LLM_END_REASONS, ...SYSTEM_END_REASONS] as const;

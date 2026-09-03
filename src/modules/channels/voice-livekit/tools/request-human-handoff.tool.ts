@@ -3,13 +3,13 @@ import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { leads } from '../../../../db/schema/index.js';
 import { meterLead } from '../../../billing/usage.service.js';
-import { enqueueOutbound } from '../../../../queues/outbound-sender.queue.js';
 import { END_DISCLOSURE_INSTRUCTION, hasAiDisclosure } from '../compliance/ai-disclosure.js';
 import type { KnownFacts } from '../call-state.js';
 import { phoneSuffix } from './book-meeting.tool.js';
-import { resolveHandoffSettings, type HandoffSettings } from './handoff-settings.js';
+import { resolveHandoffSettings } from './handoff-settings.js';
 import { runEndCallTeardown } from './end-call.tool.js';
-import { timeboxedEnqueue, timedTool, type ToolRuntimeContext } from './tool-context.js';
+import { notifyOwner } from './owner-notify.js';
+import { timedTool, type ToolRuntimeContext } from './tool-context.js';
 
 /**
  * request_human_handoff(reason) — the answer to "אני רוצה לדבר עם בן אדם".
@@ -233,96 +233,6 @@ export function handoffReasonLine(input: {
     .slice(0, 900);
 }
 
-/**
- * Queues the owner notifications per `settings.handoff.notify`. Every failure path is a log line,
- * never a thrown error — the lead must hear the handoff line regardless of our plumbing. Returns
- * which channels were actually queued (for the truthful tool result).
- */
-async function notifyOwner(
-  rt: ToolRuntimeContext,
-  cfg: HandoffSettings,
-  alert: {
-    leadName: string | null;
-    leadPhone: string | null;
-    reason: string;
-    wants?: string | null;
-    established?: string | null;
-    leadUrl: string | null;
-    leadId: string | null;
-  },
-): Promise<Array<'whatsapp' | 'email'>> {
-  const queued: Array<'whatsapp' | 'email'> = [];
-  if (!rt.outboundQueue) {
-    console.warn('handoff_notify_skipped', JSON.stringify({ tenantId: rt.tenantId, reason: 'no_queue' }));
-    return queued;
-  }
-  const text = handoffAlertText(alert);
-
-  if (cfg.notify.includes('whatsapp') && cfg.ownerPhone) {
-    try {
-      await timeboxedEnqueue(() =>
-        enqueueOutbound(rt.outboundQueue!, {
-          tenantId: rt.tenantId,
-          channel: 'whatsapp',
-          to: cfg.ownerPhone!,
-          content: text,
-          template: {
-            key: 'handoff_alert',
-            variables: {
-              '1': alert.leadName ?? 'לא ידוע',
-              '2': alert.leadPhone ?? 'לא ידוע',
-              // The whole summary on one line — see handoffReasonLine. The approved template has
-              // four slots and a variable cannot contain a newline, so it rides in this one.
-              '3': handoffReasonLine(alert),
-              ...(alert.leadUrl ? { '4': alert.leadUrl } : {}),
-            },
-          },
-          leadId: alert.leadId ?? undefined,
-          // notifyRole:'owner' → the outbound worker treats the configured owner phone as consent
-          // (they put their own number in settings); the 24h-window/template logic still applies.
-          metadata: { source: 'voice-livekit', callId: rt.callId, notifyRole: 'owner' },
-        }),
-      );
-      queued.push('whatsapp');
-    } catch (err) {
-      console.warn(
-        'handoff_notify_failed',
-        JSON.stringify({ tenantId: rt.tenantId, channel: 'whatsapp', error: err instanceof Error ? err.message : String(err) }),
-      );
-    }
-  }
-
-  if (cfg.notify.includes('email') && cfg.ownerEmail) {
-    try {
-      await timeboxedEnqueue(() =>
-        enqueueOutbound(rt.outboundQueue!, {
-          tenantId: rt.tenantId,
-          channel: 'email',
-          to: cfg.ownerEmail!,
-          subject: `🔔 ליד מבקש שיחה עם נציג${alert.leadName ? ` — ${alert.leadName}` : ''}`,
-          content: text.split('\n').join('<br>'),
-          leadId: alert.leadId ?? undefined,
-          metadata: { source: 'voice-livekit', callId: rt.callId, notifyRole: 'owner' },
-        }),
-      );
-      queued.push('email');
-    } catch (err) {
-      console.warn(
-        'handoff_notify_failed',
-        JSON.stringify({ tenantId: rt.tenantId, channel: 'email', error: err instanceof Error ? err.message : String(err) }),
-      );
-    }
-  }
-
-  if (queued.length === 0) {
-    console.warn(
-      'handoff_owner_not_notified',
-      JSON.stringify({ tenantId: rt.tenantId, callId: rt.callId, configured: { phone: !!cfg.ownerPhone, email: !!cfg.ownerEmail } }),
-    );
-  }
-  return queued;
-}
-
 /** What the LLM is told after the handoff is recorded and the hang-up is armed. */
 export function handoffInstruction(ownerName: string | null, needsAiDisclosure = false): string {
   const who = ownerName
@@ -382,14 +292,33 @@ export function requestHumanHandoffTool(rt: ToolRuntimeContext) {
           rt.callState?.facts,
           args.context?.slice(0, MAX_CONTEXT_CHARS),
         );
-        await notifyOwner(rt, cfg, {
+        const alert = {
           leadName: flagged.leadName,
           leadPhone: flagged.leadPhone,
           reason,
           wants,
           established,
           leadUrl: leadDashboardUrl(rt, flagged.leadId),
+        };
+        // Everything that used to be hard-coded INSIDE notifyOwner is now passed to the shared
+        // version verbatim — same body, same subject, same template slots, same log prefix.
+        // See owner-notify.ts for why it moved, and why this file's tests were left untouched.
+        await notifyOwner(rt, cfg, {
           leadId: flagged.leadId,
+          text: handoffAlertText(alert),
+          subject: `🔔 ליד מבקש שיחה עם נציג${alert.leadName ? ` — ${alert.leadName}` : ''}`,
+          template: {
+            key: 'handoff_alert',
+            variables: {
+              '1': alert.leadName ?? 'לא ידוע',
+              '2': alert.leadPhone ?? 'לא ידוע',
+              // The whole summary on one line — see handoffReasonLine. The approved template has
+              // four slots and a variable cannot contain a newline, so it rides in this one.
+              '3': handoffReasonLine(alert),
+              ...(alert.leadUrl ? { '4': alert.leadUrl } : {}),
+            },
+          },
+          logPrefix: 'handoff',
         });
 
         // 3. End the call exactly the way end_call does — shared choreography, shared disclosure rule.
