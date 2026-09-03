@@ -274,7 +274,7 @@ p{margin:0}
 .int div.soon{background:transparent; color:var(--slate); border-style:dashed}
 .int div.soon::after{content:attr(data-note); display:block; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--slate); margin-block-start:6px; opacity:.8}
 [dir="rtl"] .int div.soon::after{font-family:var(--body); letter-spacing:normal; text-transform:none}
-.int__note{margin-block-start:26px; font-size:15px; color:var(--slate); line-height:1.75; max-width:760px}
+.int__note{margin-block-start:26px; font-size:15px; color:var(--slate); line-height:1.75; max-width:760px; margin-inline:auto; text-align:center}
 
 /* ============ PRICING ============ */
 .price{display:grid; grid-template-columns:.85fr 1.15fr; gap:24px; margin-block-start:48px; align-items:start}
@@ -1082,9 +1082,9 @@ em, i, .tl-quote{font-style:normal}
 /* ---- onboarding: what actually happens after they sign ---- */
 .onb{margin-block-start:var(--sp-sub)}
 .onb h3{font-family:var(--display); font-size:clamp(22px,3vw,32px); font-weight:300;
-  letter-spacing:-.03em; margin-block-end:10px}
-.onb__lede{color:var(--slate); font-size:17px; font-weight:300; max-width:760px;
-  margin-block-end:34px}
+  letter-spacing:-.03em; margin-block-end:10px; text-align:center}
+.onb__lede{color:var(--slate); font-size:17px; font-weight:300; max-width:720px;
+  margin-block-end:34px; margin-inline:auto; text-align:center}
 .onb__grid{display:grid; grid-template-columns:repeat(5,1fr); gap:16px}
 .onb__step{background:var(--surface); border:1px solid var(--mist); border-radius:var(--r);
   padding:22px 20px; position:relative}
@@ -1095,7 +1095,8 @@ em, i, .tl-quote{font-style:normal}
   margin-block-end:6px}
 .onb__step p{color:var(--slate); font-size:14px}
 .onb__sig{margin-block-start:22px; padding:18px 22px; border-radius:var(--r);
-  background:var(--sunken); font-size:15.5px; display:flex; gap:12px; align-items:center}
+  background:var(--sunken); font-size:15.5px; display:flex; gap:12px; align-items:center;
+  justify-content:center; text-align:center}
 .onb__sig svg{flex-shrink:0}
 .onb__sig b{font-weight:600}
 
