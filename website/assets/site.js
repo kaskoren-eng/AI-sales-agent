@@ -272,13 +272,13 @@
 
   var PLANS = he ? [
     { name:'פיילוט',   kick:'PILOT',      was:'799',   price:'649',   min:'500',    calls:'1' },
-    { name:'התחלה',    kick:'START',      was:'1,490', price:'1,190', min:'1,100',  calls:'2' },
+    { name:'התחלה',    kick:'START',      was:'1,490', price:'1,190', min:'1,100',  calls:'2', popular:'הבחירה הפופולרית ביותר' },
     { name:'צמיחה',    kick:'GROWTH',     was:'2,390', price:'1,990', min:'2,500',  calls:'3' },
     { name:'סקייל',    kick:'SCALE',      was:'3,990', price:'3,590', min:'5,000',  calls:'4' },
     { name:'אנטרפרייז', kick:'ENTERPRISE', was:'',      price:'לפי אפיון', min:'5,000+', calls:'4-6', custom:true }
   ] : [
     { name:'Pilot',      kick:'PILOT',      was:'799',   price:'649',   min:'500',    calls:'1' },
-    { name:'Start',      kick:'START',      was:'1,490', price:'1,190', min:'1,100',  calls:'2' },
+    { name:'Start',      kick:'START',      was:'1,490', price:'1,190', min:'1,100',  calls:'2', popular:'The most popular choice' },
     { name:'Growth',     kick:'GROWTH',     was:'2,390', price:'1,990', min:'2,500',  calls:'3' },
     { name:'Scale',      kick:'SCALE',      was:'3,990', price:'3,590', min:'5,000',  calls:'4' },
     { name:'Enterprise', kick:'ENTERPRISE', was:'',      price:'Custom', min:'5,000+', calls:'4-6', custom:true }
@@ -311,6 +311,7 @@
     b.type = 'button';
     b.setAttribute('role', 'tab');
     b.textContent = p.name;
+    if (p.popular) b.setAttribute('data-pop', '');
     b.addEventListener('click', function(){ show(i); });
     seg.appendChild(b);
     btns.push(b);
@@ -334,6 +335,9 @@
       ? '<em>' + L.setupCustom + '</em>'
       : '<s>' + L.setupWas + '</s> <b>' + L.setupNow + '</b> <em>' + L.setupFine + '</em>';
     if (code) code.textContent = 'PLAN 0' + (i + 1) + ' / 0' + PLANS.length;
+    box.classList.toggle('is-pop', !!p.popular);
+    var pt = box.querySelector('.pr__poptxt');
+    if (pt && p.popular) pt.textContent = p.popular;
 
     [price, sub, facts, was].forEach(function(el){
       el.classList.remove('pr-fade'); void el.offsetWidth; el.classList.add('pr-fade');
