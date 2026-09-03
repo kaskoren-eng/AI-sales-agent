@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { formatDayHe } from '../tools/israel-time.js';
 import { TOOL_NAMES } from '../tools/index.js';
 import { ACKNOWLEDGEMENTS_HE } from './acknowledgements.he.js';
 import {
@@ -205,6 +206,24 @@ describe('Keren Phase 4 — tools-mode prompt', () => {
     expect(TOOLS_PROMPT).toMatch(/for THAT DAY ONLY/u);
     expect(TOOLS_PROMPT).toMatch(/Offer the free RANGE/u);
     expect(TOOLS_PROMPT).toContain('יש לי פנוי מעשר עד שלוש');
+  });
+
+  it('the offer she is shown says the DATE, not just the weekday (Koren, 2026-09-03)', () => {
+    // The defect was never missing data: `check_calendar_availability` has always headed each day
+    // with `formatDayHe`'s full label, and the booking CONFIRMATION has always spoken it. What was
+    // missing is that the prompt modelled an utterance containing only an hour range, and the model
+    // imitates the example it is given — so the date the tool handed her never reached the caller.
+    //
+    // This asserts the example is the FUNCTION'S OWN OUTPUT, not Hebrew invented for the prompt.
+    // That is the point: the words she will now say in the offer are words she already says in the
+    // confirmation. If `formatDayHe`'s shape ever moves, this fails rather than drifting apart.
+    const label = formatDayHe('2026-07-30T08:00:00.000Z', new Date('2026-07-29T10:00:00Z'));
+    expect(label).toBe('מחר, יום חמישי, 30 ביולי'); // guards the assertion below against a vacuous pass
+    expect(TOOLS_PROMPT).toContain(label);
+    // …and it is the OFFER that carries it: the label sits immediately in front of the range.
+    expect(TOOLS_PROMPT).toContain(`${label}, יש לי פנוי מעשר עד שלוש`);
+    // The instruction, not only the example — "say the whole label, not the weekday alone".
+    expect(TOOLS_PROMPT).toMatch(/not the weekday on its own/u);
   });
 
   it('hours are spoken as colloquial words, never digits (Koren, 2026-08-27)', () => {

@@ -28,7 +28,32 @@ import {
  * If one of these fails, the question is never "update the fixture". It is "which live call did I
  * just change".
  *
- * Regenerated 2026-09-01 (LATEST), on `feature/voice-call4-conclusions`. **Four files this time,
+ * Regenerated 2026-09-03 (LATEST), on `feature/voice-full-date`. **ONE LINE, in two of the four
+ * files, and it is the smallest kind of prompt change there is: the rule was right and its WORKED
+ * EXAMPLE was short.**
+ *
+ * WHICH LIVE CALL DID I JUST CHANGE — none, and the honest provenance is Koren's instruction
+ * rather than a recording: *"כשהיא מציעה שעות או קובעת — שתגיד את התאריך המלא, לא רק את היום בשבוע."*
+ *
+ *   • **Step 4 booking mechanics, rule 3 — the offer example now carries the day label.** The data
+ *     was never missing: `check_calendar_availability` heads every day with `formatDayHe`'s full
+ *     label ("מחר, יום חמישי, 30 ביולי") and the booking confirmation has spoken it since
+ *     the tool existed. The rule modelled *"יש לי פנוי מעשר עד שלוש"* — an hour range and
+ *     nothing else — and the model imitates the example, so the date died between the tool result
+ *     and her mouth. The example is now `formatDayHe`'s own output in front of the same range.
+ *
+ * **No new Hebrew was written for this.** The added words are the exact string she already speaks
+ * when confirming a booking, reaching one more place — which is why it ships without a listening
+ * round. The half of the fix that is NOT in these fixtures is the `check_calendar_availability`
+ * tool result, which modelled the same short sentence and now models the same long one.
+ *
+ * `diff` on the golden files: line 459 in `prompt-default-tools.txt` and
+ * `prompt-default-tools-noobjection.txt`, and nothing else. `prompt-default-notools.txt` is
+ * byte-identical — the no-tools variant has no calendar and models no offer — and so is the
+ * greeting. And the standing caveat holds: these fixtures prove the instruction is in the text,
+ * never that gpt-5.4 says the date on turn thirty of a real call. Only a call shows that.
+ *
+ * Regenerated before that on 2026-09-01, on `feature/voice-call4-conclusions`. **Four files this time,
  * and one of them is the greeting — which had been byte-identical through every merge since
  * 2026-08-17. That is deliberate and it is the point of this note.**
  *
