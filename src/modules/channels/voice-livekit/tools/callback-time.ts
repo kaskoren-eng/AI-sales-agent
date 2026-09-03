@@ -412,8 +412,27 @@ function windowFor(ctx: CallbackWindowContext): CallbackWindow {
   return ctx.requestedByLead && ctx.attempt <= 1 ? 'honored' : 'proactive';
 }
 
+/**
+ * The per-tenant half of the window rules — `tenants.settings.callbacks`, resolved by
+ * `callback-settings.ts`.
+ *
+ * THE HARD FLOOR IS DELIBERATELY NOT IN THIS TYPE. A tenant can narrow or widen the hours it rings
+ * strangers during the day; it cannot move the 23:00–07:00 boundary, Saturday, or an Israeli
+ * holiday, because a floor you can turn down to 03:00 is not a floor. Same class of rule as
+ * opt-out. Anything reachable through this interface is a preference; everything the floor covers
+ * is law, and law lives in `CALLBACK_DEFAULTS` where no settings blob can reach it.
+ */
+export interface CallbackWindowConfig {
+  proactiveWeekday: { start: string; end: string };
+  proactiveFriday: { start: string; end: string };
+}
+
 /** The allowed minute range on a given Israel weekday, or null if the whole day is closed. */
-function allowedMinutes(weekday: number, window: CallbackWindow): { from: number; to: number } | null {
+function allowedMinutes(
+  weekday: number,
+  window: CallbackWindow,
+  cfg: CallbackWindowConfig,
+): { from: number; to: number } | null {
   if (weekday === 6) return null; // Saturday — hard floor, never overridden
   if (window === 'honored') {
     return {
@@ -421,8 +440,8 @@ function allowedMinutes(weekday: number, window: CallbackWindow): { from: number
       to: minutesOf(CALLBACK_DEFAULTS.hardFloor.latest),
     };
   }
-  const cfg = weekday === 5 ? CALLBACK_DEFAULTS.proactiveFriday : CALLBACK_DEFAULTS.proactiveWeekday;
-  return { from: minutesOf(cfg.start), to: minutesOf(cfg.end) };
+  const w = weekday === 5 ? cfg.proactiveFriday : cfg.proactiveWeekday;
+  return { from: minutesOf(w.start), to: minutesOf(w.end) };
 }
 
 /**
@@ -442,6 +461,12 @@ export function clampToWindow(
   dueAt: Date,
   ctx: CallbackWindowContext,
   now: Date,
+  /**
+   * Per-tenant proactive hours. Defaults to `CALLBACK_DEFAULTS`, so every existing caller keeps
+   * exactly the behaviour it had. The hard floor is never taken from here — see
+   * `CallbackWindowConfig`.
+   */
+  cfg: CallbackWindowConfig = CALLBACK_DEFAULTS,
 ): ClampedCallbackTime {
   const window = windowFor(ctx);
   const reasons: CallbackClampReason[] = [];
@@ -471,7 +496,7 @@ export function clampToWindow(
       continue;
     }
     // Non-null: allowedMinutes returns null only for Saturday, handled immediately above.
-    const range = allowedMinutes(weekday, window)!;
+    const range = allowedMinutes(weekday, window, cfg)!;
 
     if (dayOffset === 0) {
       const mins = israelMinutesOfDay(candidate);
@@ -504,8 +529,93 @@ export function planCallbackTime(
   intent: CallbackIntent,
   ctx: CallbackWindowContext,
   now: Date,
+  cfg: CallbackWindowConfig = CALLBACK_DEFAULTS,
 ): ResolvedCallbackTime & ClampedCallbackTime {
   const resolved = resolveCallbackDueAt(intent, now);
-  const clamped = clampToWindow(resolved.dueAt, ctx, now);
+  const clamped = clampToWindow(resolved.dueAt, ctx, now, cfg);
   return { ...resolved, ...clamped };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. Climbing the ladder — §7. Used by the callback worker after a dial nobody answered.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `attempt` counts dials MADE, so the ordinal of the dial we are about to schedule or place is
+ * always one more than that. Naming it is the point: reading `attempt` straight into
+ * `CallbackWindowContext` schedules rung 2 of an explicit callback inside the HONORED window, and
+ * rings a lead at 22:00 on a night he never asked about.
+ *
+ * `windowFor` treats 0 and 1 alike (both mean "rung 1"), which is exactly why that mistake is
+ * invisible on the first dial and only shows up on the second.
+ */
+export function dialOrdinal(attemptsMade: number): number {
+  return attemptsMade + 1;
+}
+
+/**
+ * The same Israel-local wall-clock time, `days` BUSINESS days later.
+ *
+ * Saturday and every date in `ISRAEL_HOLIDAYS` are skipped and do not count. Friday DOES count —
+ * it is a working day in Israel, a short one, and the proactive window already knows that
+ * (09:00–13:00). The clock time is preserved through `israelInstantAt`, so a DST transition inside
+ * the span moves the instant rather than the hour: "same hour, next business day" stays true.
+ */
+export function addIsraelBusinessDays(from: Date, days: number): Date {
+  const minutes = israelMinutesOfDay(from);
+  let cursor = from;
+  let remaining = Math.max(0, Math.round(days));
+  // Bounded for the same reason clampToWindow is: a loop that walks the calendar must be provably
+  // finite even if the holiday list is one day edited into nonsense.
+  for (let guard = 0; remaining > 0 && guard < MAX_ADVANCE_DAYS * 2; guard += 1) {
+    cursor = israelInstantAt(cursor, 1, minutes);
+    if (israelWeekday(cursor) === 6 || isIsraelHoliday(cursor)) continue;
+    remaining -= 1;
+  }
+  return cursor;
+}
+
+export interface NextRungPlan {
+  rung: CallbackRung;
+  /**
+   * RAW. This has not been through `clampToWindow` yet, and it must be before it reaches
+   * `callbacks.due_at` — the rung offsets know nothing about Shabbat or the night floor.
+   */
+  dueAt: Date;
+}
+
+/**
+ * The next rung after `attemptsMade` dials, or `null` when the ladder is finished.
+ *
+ * Null is the whole point of the ladder: after the last rung the lead is left alone. A caller that
+ * treats null as "try again anyway" has removed the feature.
+ */
+export function nextRung(
+  kind: CallbackKind,
+  attemptsMade: number,
+  from: Date,
+): NextRungPlan | null {
+  const ladder = CALLBACK_LADDERS[kind] ?? CALLBACK_LADDER_SOFT_DEFER;
+  // attemptsMade dials done → the next rung is at index attemptsMade (rung numbers are 1-based).
+  const rung = ladder[attemptsMade];
+  if (!rung) return null;
+  return { rung, dueAt: applyRungOffset(from, rung.offset) };
+}
+
+function applyRungOffset(from: Date, offset: CallbackRungOffset): Date {
+  switch (offset.unit) {
+    case 'minutes':
+      return new Date(from.getTime() + offset.value * MINUTE_MS);
+    case 'hours':
+      return new Date(from.getTime() + offset.value * 60 * MINUTE_MS);
+    case 'business_days':
+      return addIsraelBusinessDays(from, offset.value);
+    case 'lead_time':
+    default:
+      // Unreachable: `lead_time` is rung 1 of the explicit ladder, and rung 1 is never reached
+      // through `nextRung` (which is only asked after at least one dial). If it ever is, the
+      // honest answer is the soft-defer rung-1 gap rather than "now" — a callback scheduled for
+      // the instant a dial just failed is a redial, not a rung.
+      return softDeferRungOne(from).dueAt;
+  }
 }

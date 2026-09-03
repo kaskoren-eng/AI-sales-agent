@@ -26,6 +26,7 @@ import { createCsvImportWorker } from './queues/workers/csv-import.worker.js';
 import { createCallAnalysisWorker } from './queues/workers/call-analysis.worker.js';
 import { createMeetingRemindersWorker } from './queues/workers/meeting-reminders.worker.js';
 import { createAirtableLeadPushWorker } from './queues/workers/airtable-lead-push.worker.js';
+import { startCallbacksWorker } from './queues/workers/callbacks.worker.js';
 import { WhatsAppService } from './modules/channels/whatsapp/whatsapp.service.js';
 import { EmailService } from './modules/channels/email/email.service.js';
 import { LiveKitVoiceService } from './modules/channels/voice-livekit/voice-livekit.service.js';
@@ -335,6 +336,20 @@ export async function buildApp(): Promise<FastifyInstance> {
     logger: app.log,
   });
 
+  // Rings back the leads who asked to be rung back. Gated by VOICE_CALLBACK_WORKER (default OFF)
+  // INSIDE startCallbacksWorker, which returns null rather than constructing a Worker — so OFF is
+  // a real no-op, provable by running it, rather than a worker that starts and returns early.
+  const callbacksWorker = startCallbacksWorker({
+    enabled: env.VOICE_CALLBACK_WORKER,
+    db: app.db,
+    env,
+    redis: app.redis,
+    deadLetterQueue: app.queues.deadLetter,
+    callbacksQueue: app.queues.callbacks,
+    voiceLivekit: voiceLivekitService,
+    logger: app.log,
+  });
+
   // Pushes new PLATFORM_TENANT_ID leads onto ClickScales' own Airtable sales board. Runs even
   // when AIRTABLE_LEADS_* is unset — the worker skips each job loudly rather than the queue
   // silently filling up with work nothing will ever drain.
@@ -353,6 +368,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     await callAnalysisWorker.close();
     await meetingRemindersWorker.close();
     await airtableLeadPushWorker.close();
+    if (callbacksWorker) await callbacksWorker.close();
   });
 
   return app;

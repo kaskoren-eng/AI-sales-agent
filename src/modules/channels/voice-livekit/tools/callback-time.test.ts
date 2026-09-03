@@ -4,8 +4,11 @@ import {
   CALLBACK_LADDERS,
   CALLBACK_LADDER_EXPLICIT,
   CALLBACK_LADDER_SOFT_DEFER,
+  addIsraelBusinessDays,
   clampToWindow,
+  dialOrdinal,
   israelInstantAt,
+  nextRung,
   planCallbackTime,
   resolveCallbackDueAt,
 } from './callback-time.js';
@@ -414,5 +417,156 @@ describe('the ladder is data, and it says what §7 says', () => {
     expect(CALLBACK_DEFAULTS.proactiveWeekday).toEqual({ start: '09:00', end: '20:00' });
     expect(CALLBACK_DEFAULTS.proactiveFriday).toEqual({ start: '09:00', end: '13:00' });
     expect(CALLBACK_DEFAULTS.hardFloor).toEqual({ earliest: '07:00', latest: '23:00' });
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Climbing the ladder - added with the callback worker (F1.3)
+// -----------------------------------------------------------------------------
+
+describe('dialOrdinal', () => {
+  it('a fresh row (0 dials) is asking about dial 1; after one dial it is asking about dial 2', () => {
+    expect(dialOrdinal(0)).toBe(1);
+    expect(dialOrdinal(1)).toBe(2);
+    expect(dialOrdinal(2)).toBe(3);
+  });
+
+  it('THE REGRESSION: rung 2 must fall OUT of the honored window, and only the ordinal does that', () => {
+    // 2026-09-07T19:00:00Z is Monday 22:00 in Tel Aviv. `windowFor` treats attempt 0 and 1 alike
+    // (both mean "rung 1"), so passing the raw `attempt` after one dial keeps 22:00 honored.
+    const at2200 = new Date('2026-09-07T19:00:00.000Z');
+    const ctx = { requestedByLead: true };
+    const attemptsMade = 1;
+
+    const wrong = clampToWindow(at2200, { ...ctx, attempt: attemptsMade }, at2200);
+    const right = clampToWindow(at2200, { ...ctx, attempt: dialOrdinal(attemptsMade) }, at2200);
+
+    expect(wrong.window).toBe('honored');
+    expect(wrong.moved).toBe(false);
+    expect(right.window).toBe('proactive');
+    // Pushed to Tuesday 09:00 Israel.
+    expect(right.dueAt.toISOString()).toBe('2026-09-08T06:00:00.000Z');
+  });
+});
+
+describe('addIsraelBusinessDays', () => {
+  const MON_NOON = new Date('2026-09-07T09:00:00.000Z'); // Monday 12:00 Israel
+
+  it('keeps the wall-clock hour', () => {
+    expect(addIsraelBusinessDays(MON_NOON, 1).toISOString()).toBe('2026-09-08T09:00:00.000Z');
+    expect(addIsraelBusinessDays(MON_NOON, 3).toISOString()).toBe('2026-09-10T09:00:00.000Z');
+  });
+
+  it('Saturday does not count', () => {
+    const THU = new Date('2026-09-03T09:00:00.000Z'); // Thursday 12:00 Israel
+    // Friday IS a working day in Israel, so +1 is Friday; +2 skips Saturday and lands on Sunday.
+    expect(addIsraelBusinessDays(THU, 1).toISOString()).toBe('2026-09-04T09:00:00.000Z');
+    expect(addIsraelBusinessDays(THU, 2).toISOString()).toBe('2026-09-06T09:00:00.000Z');
+  });
+
+  it('Israeli holidays do not count either - Rosh Hashana 2026 costs the same as a weekend', () => {
+    // From Wednesday 2026-09-09: Thu 10 is one; Fri 11 and Sat 12 are Rosh Hashana; Sun 13 is two;
+    // Mon 14 is three.
+    const WED = new Date('2026-09-09T09:00:00.000Z');
+    expect(addIsraelBusinessDays(WED, 3).toISOString()).toBe('2026-09-14T09:00:00.000Z');
+  });
+
+  it('zero and negative are identities, not a walk backwards through the calendar', () => {
+    expect(addIsraelBusinessDays(MON_NOON, 0).toISOString()).toBe(MON_NOON.toISOString());
+    expect(addIsraelBusinessDays(MON_NOON, -3).toISOString()).toBe(MON_NOON.toISOString());
+  });
+
+  it('survives the autumn DST transition with the hour intact - 2026-10-25, IDT to IST', () => {
+    // Friday 2026-10-23 12:00 Israel is 09:00Z (IDT). Two business days later is Monday the 26th,
+    // by which time Israel is UTC+2, so the same 12:00 is 10:00Z. Adding 48h would say 09:00Z and
+    // ring an hour early.
+    const FRI = new Date('2026-10-23T09:00:00.000Z');
+    expect(addIsraelBusinessDays(FRI, 2).toISOString()).toBe('2026-10-26T10:00:00.000Z');
+  });
+});
+
+describe('nextRung', () => {
+  const MON_NOON = new Date('2026-09-07T09:00:00.000Z');
+
+  it('after one dial on an explicit callback, rung 2 is +45 minutes', () => {
+    const plan = nextRung('explicit', 1, MON_NOON);
+    expect(plan?.rung.rung).toBe(2);
+    expect(plan?.dueAt.toISOString()).toBe('2026-09-07T09:45:00.000Z');
+  });
+
+  it('after two dials, rung 3 is the next business day at the same hour', () => {
+    const plan = nextRung('explicit', 2, MON_NOON);
+    expect(plan?.rung.rung).toBe(3);
+    expect(plan?.dueAt.toISOString()).toBe('2026-09-08T09:00:00.000Z');
+  });
+
+  it('a soft defer climbs +1 then +3 business days', () => {
+    expect(nextRung('soft_defer', 1, MON_NOON)?.dueAt.toISOString()).toBe('2026-09-08T09:00:00.000Z');
+    expect(nextRung('soft_defer', 2, MON_NOON)?.dueAt.toISOString()).toBe('2026-09-10T09:00:00.000Z');
+  });
+
+  it('a disconnected callback uses the soft-defer ladder', () => {
+    expect(nextRung('disconnected', 1, MON_NOON)?.dueAt.toISOString()).toBe(
+      nextRung('soft_defer', 1, MON_NOON)?.dueAt.toISOString(),
+    );
+  });
+
+  it('AND THEN IT STOPS - after the last rung there is no next one', () => {
+    expect(nextRung('explicit', 3, MON_NOON)).toBeNull();
+    expect(nextRung('soft_defer', 3, MON_NOON)).toBeNull();
+    expect(nextRung('not_reached', 9, MON_NOON)).toBeNull();
+  });
+
+  it('rung 1 is never asked for through here - a dial has always been made by then', () => {
+    // Defensive only: index 0 of the explicit ladder is `lead_time`, which has no arithmetic. If
+    // it is ever reached it must not resolve to "now", because that is a redial, not a rung.
+    const plan = nextRung('explicit', 0, MON_NOON);
+    expect(plan?.dueAt.getTime()).toBeGreaterThan(MON_NOON.getTime());
+  });
+});
+
+describe('clampToWindow - per-tenant proactive hours', () => {
+  it('honours a tenant narrowing', () => {
+    const at1830 = new Date('2026-09-07T15:30:00.000Z'); // Monday 18:30 Israel
+    const cfg = {
+      proactiveWeekday: { start: '10:00', end: '17:00' },
+      proactiveFriday: { start: '09:00', end: '13:00' },
+    };
+    const out = clampToWindow(at1830, { requestedByLead: false, attempt: 1 }, at1830, cfg);
+    expect(out.moved).toBe(true);
+    // Pushed to 10:00 Tuesday Israel.
+    expect(out.dueAt.toISOString()).toBe('2026-09-08T07:00:00.000Z');
+  });
+
+  it('the HARD FLOOR is not in the config and cannot be widened by it', () => {
+    const at0400 = new Date('2026-09-07T01:00:00.000Z'); // Monday 04:00 Israel
+    const cfg = {
+      proactiveWeekday: { start: '00:00', end: '23:59' },
+      proactiveFriday: { start: '00:00', end: '23:59' },
+    };
+    // A lead who asked for it gets the honored window, which is the hard floor 07:00-23:00 - the
+    // tenant's 00:00 start is irrelevant, because `requestedByLead` selects the floor, not the cfg.
+    const honored = clampToWindow(at0400, { requestedByLead: true, attempt: 1 }, at0400, cfg);
+    expect(honored.dueAt.toISOString()).toBe('2026-09-07T04:00:00.000Z'); // 07:00 Israel
+    expect(honored.reasons).toContain('night_floor');
+  });
+
+  it('Saturday is refused whatever the tenant configures', () => {
+    const SAT = new Date('2026-09-05T09:00:00.000Z');
+    const cfg = {
+      proactiveWeekday: { start: '00:00', end: '23:59' },
+      proactiveFriday: { start: '00:00', end: '23:59' },
+    };
+    const out = clampToWindow(SAT, { requestedByLead: true, attempt: 1 }, SAT, cfg);
+    expect(out.reasons).toContain('shabbat');
+    expect(out.dueAt.getTime()).toBeGreaterThan(SAT.getTime());
+  });
+
+  it('with no config it behaves exactly as it did - every existing caller is untouched', () => {
+    const at2100 = new Date('2026-09-07T18:00:00.000Z'); // Monday 21:00 Israel
+    const ctx = { requestedByLead: false, attempt: 1 };
+    expect(clampToWindow(at2100, ctx, at2100).dueAt.toISOString()).toBe(
+      clampToWindow(at2100, ctx, at2100, CALLBACK_DEFAULTS).dueAt.toISOString(),
+    );
   });
 });

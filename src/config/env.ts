@@ -891,6 +891,16 @@ const envSchema = z.object({
   // It writes a callbacks row and sends an owner message on a live call, and neither has yet
   // happened on a real one. See voice-livekit/disconnect.ts.
   VOICE_DISCONNECT_TRACKING: envBool(false),
+  // THE CALLBACK WORKER (2026-09-03). `callbacks` rows have existed since the disconnect work
+  // landed, and nothing has ever dialled one: the promise was durable and unkept. This flag
+  // starts the BullMQ worker that reads a row at its due instant and rings the lead back,
+  // climbing the fixed 3-rung ladder and then STOPPING.
+  //
+  // DEFAULT OFF, and OFF means the worker is never constructed — not started-and-idle. It places
+  // real outbound calls to real people from a queue nobody is watching, which is a thing to turn
+  // on deliberately, per environment, after the first live callback has been watched end to end.
+  // The queue itself is always created; with this off it simply stays empty.
+  VOICE_CALLBACK_WORKER: envBool(false),
   // LiveKit SIP outbound trunk (dials leads through Zadarma). Created with `lk sip outbound
   // create`; the Zadarma SIP username/password live inside the trunk on LiveKit's side, not here.
   LIVEKIT_SIP_OUTBOUND_TRUNK_ID: z.string().min(1).optional(),
