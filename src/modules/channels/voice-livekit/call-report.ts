@@ -63,6 +63,8 @@ export interface TurnMetric {
   charactersCount?: number;
   /** TTS only: the SDK's verdict that this synthesis was thrown away. Excluded from pace. */
   cancelled?: boolean;
+  /** `voice_path` only: when the voice node was entered, on the caller's clock. -1 = not waiting. */
+  enteredMs?: number;
   /** `turn_opener` only: which sound opened the step — ack | nod | hesitation | silent. */
   kind?: string;
   /** `turn_opener` only: the predicates that fed the decision, as `name=0/1` flags. */

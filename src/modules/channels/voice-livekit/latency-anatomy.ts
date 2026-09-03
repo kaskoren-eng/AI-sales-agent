@@ -32,6 +32,7 @@ export interface AnatomyMetric {
   promptTokens?: number | undefined;
   promptCachedTokens?: number | undefined;
   cancelled?: boolean | undefined;
+  enteredMs?: number | undefined;
   kind?: string | undefined;
   reason?: string | undefined;
 }
@@ -72,6 +73,13 @@ export interface TurnAnatomy {
   modelTtftMs: number | null;
   /** First non-cancelled TTS first-byte in the turn. */
   ttsTtfbMs: number | null;
+  /**
+   * When the voice node was ENTERED, on the caller's clock — i.e. when the SDK finally handed this
+   * reply to the audio path. Everything before it is scheduling; everything after is synthesis.
+   */
+  voiceEnteredMs: number | null;
+  /** When the first text left the guard for the TTS, on the same clock. */
+  textToVoiceMs: number | null;
   /** Inference steps that produced tokens. Above 1 means a tool forced a second generation. */
   inferenceSteps: number;
   /** Preemptive drafts cancelled before their first token (LiveKit's -1 sentinel). */
@@ -111,6 +119,7 @@ const STAGE = {
   llm: 'llm_metrics',
   tts: 'tts_metrics',
   opener: 'turn_opener',
+  voicePath: 'voice_path',
 } as const;
 
 /** `first_audio_frame` reports this when the caller had not stopped — the greeting, or a barge-in. */
@@ -160,6 +169,10 @@ export function buildTurnAnatomy(
     );
     const modelTtft = num(inWindow.find((m) => m.stage === STAGE.modelTtft)?.durationMs);
     const ttsTtfb = num(inWindow.find((m) => m.stage === STAGE.tts && m.cancelled !== true)?.ttfbMs);
+    // Same sentinel as first_audio_frame: -1 means the caller was not waiting, not "instant".
+    const voicePath = inWindow.find(
+      (m) => m.stage === STAGE.voicePath && num(m.durationMs) !== NO_CALLER_CLOCK,
+    );
 
     const audioBeforeFirstToken =
       firstAudio === null || modelTtft === null ? null : firstAudio < modelTtft;
@@ -183,6 +196,11 @@ export function buildTurnAnatomy(
       firstAudioMs: firstAudio,
       modelTtftMs: modelTtft,
       ttsTtfbMs: ttsTtfb,
+      voiceEnteredMs: (() => {
+        const v = num(voicePath?.enteredMs);
+        return v === null || v === NO_CALLER_CLOCK ? null : v;
+      })(),
+      textToVoiceMs: num(voicePath?.durationMs),
       // A step that produced no token is a cancelled draft, counted on its own line instead.
       inferenceSteps: llm.filter((m) => num(m.ttftMs) !== NO_CALLER_CLOCK).length,
       draftsDiscarded: llm.filter((m) => num(m.ttftMs) === NO_CALLER_CLOCK).length,

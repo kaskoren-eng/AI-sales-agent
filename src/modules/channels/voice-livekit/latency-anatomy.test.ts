@@ -175,6 +175,27 @@ describe('buildTurnAnatomy — the numbers that used to lie', () => {
     expect(withoutTts!.unexplainedMs).toBeNull();
   });
 
+  it('brackets the wait with the voice node entry and the text reaching it', () => {
+    const turns = buildTurnAnatomy([
+      m(1000, 'eou_metrics', { endOfUtteranceDelayMs: 350 }),
+      m(1400, 'voice_path', { enteredMs: 1285, durationMs: 1290 }),
+      m(1500, 'first_audio_frame', { durationMs: 1578 }),
+    ]);
+    expect(turns[1]!.voiceEnteredMs).toBe(1285);
+    expect(turns[1]!.textToVoiceMs).toBe(1290);
+    // The decomposition the report could not do: 1285ms of scheduling, then ~290ms of synthesis.
+    expect(turns[1]!.firstAudioMs! - turns[1]!.textToVoiceMs!).toBe(288);
+  });
+
+  it('treats the voice path sentinel as "the caller was not waiting", not as instant', () => {
+    const turns = buildTurnAnatomy([
+      m(1000, 'eou_metrics', { endOfUtteranceDelayMs: 350 }),
+      m(1400, 'voice_path', { enteredMs: -1, durationMs: -1 }),
+    ]);
+    expect(turns[1]!.voiceEnteredMs).toBeNull();
+    expect(turns[1]!.textToVoiceMs).toBeNull();
+  });
+
   it('carries the opener decision and its inputs through when the build records them', () => {
     const turns = buildTurnAnatomy([
       m(1000, 'eou_metrics', { endOfUtteranceDelayMs: 350 }),

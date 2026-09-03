@@ -78,12 +78,13 @@ if (chosen.length > 1) {
 
 function printTurns(turns: readonly TurnAnatomy[]): void {
   console.log(
-    '\n  turn   at      eou   deadAir  1stAudio  modelTtft  ttsTtfb  unexpl  steps  drafts  tokens(cached)  opener        class          tools',
+    '\n  turn   at      eou   deadAir  1stAudio  enterVc  txt2Vc  modelTtft  ttsTtfb  unexpl  steps  drafts  tokens(cached)  opener        class          tools',
   );
   for (const t of turns) {
     const label = t.index === 0 ? 'greet' : String(t.index).padStart(5);
     console.log(
       `  ${label}  ${s(t.atMs, 6)}  ${s(t.eouMs, 5)}  ${s(t.deadAirMs, 7)}  ${s(t.firstAudioMs, 8)}  ` +
+        `${s(t.voiceEnteredMs, 7)}  ${s(t.textToVoiceMs, 6)}  ` +
         `${s(t.modelTtftMs, 9)}  ${s(t.ttsTtfbMs, 7)}  ${s(t.unexplainedMs, 6)}  ${String(t.inferenceSteps).padStart(5)}  ` +
         `${String(t.draftsDiscarded).padStart(6)}  ${tokens(t)}  ${(t.opener ?? '-').padEnd(12)}  ` +
         `${t.klass.padEnd(13)}  ${t.toolNames.join(',') || '-'}${t.toolMs ? ` (${t.toolMs}ms)` : ''}`,
