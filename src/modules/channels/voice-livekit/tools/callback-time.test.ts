@@ -494,15 +494,64 @@ describe('nextRung', () => {
     expect(plan?.dueAt.toISOString()).toBe('2026-09-07T09:45:00.000Z');
   });
 
-  it('after two dials, rung 3 is the next business day at the same hour', () => {
+  // ROTATION, not "the same hour" — changed 2026-09-04 on Koren's instruction. He was dialled at
+  // noon and was not there; the next business day asks the afternoon instead. MON_NOON is 12:00
+  // Israel, which is before the 13:00 split, so it counts as morning and rotates to the 16:00
+  // afternoon anchor = 13:00Z.
+  it('after two dials, rung 3 is the next business day in the OTHER half of the day', () => {
     const plan = nextRung('explicit', 2, MON_NOON);
     expect(plan?.rung.rung).toBe(3);
-    expect(plan?.dueAt.toISOString()).toBe('2026-09-08T09:00:00.000Z');
+    expect(plan?.rung.timeOfDay).toBe('rotate');
+    expect(plan?.dueAt.toISOString()).toBe('2026-09-08T13:00:00.000Z');
   });
 
-  it('a soft defer climbs +1 then +3 business days', () => {
-    expect(nextRung('soft_defer', 1, MON_NOON)?.dueAt.toISOString()).toBe('2026-09-08T09:00:00.000Z');
-    expect(nextRung('soft_defer', 2, MON_NOON)?.dueAt.toISOString()).toBe('2026-09-10T09:00:00.000Z');
+  it('a soft defer climbs +1 then +3 business days, rotating the half of the day each time', () => {
+    expect(nextRung('soft_defer', 1, MON_NOON)?.dueAt.toISOString()).toBe('2026-09-08T13:00:00.000Z');
+    expect(nextRung('soft_defer', 2, MON_NOON)?.dueAt.toISOString()).toBe('2026-09-10T13:00:00.000Z');
+  });
+
+  // THE REGRESSION THIS ROTATION EXISTS TO PREVENT: three dials at the one hour he has already
+  // demonstrated he cannot take a call is one chance taken three times, not three chances.
+  it('a lead dialled in the AFTERNOON is chased the next morning, and vice versa', () => {
+    // 16:00 Israel on that Monday = 13:00Z — after the split, so "afternoon".
+    const monAfternoon = new Date('2026-09-07T13:00:00.000Z');
+    expect(nextRung('soft_defer', 1, monAfternoon)?.dueAt.toISOString()).toBe(
+      '2026-09-08T07:00:00.000Z', // 10:00 Israel — the morning anchor
+    );
+    // And back again from that morning attempt.
+    const tueMorning = new Date('2026-09-08T07:00:00.000Z');
+    expect(nextRung('soft_defer', 1, tueMorning)?.dueAt.toISOString()).toBe(
+      '2026-09-09T13:00:00.000Z', // 16:00 Israel — the afternoon anchor
+    );
+  });
+
+  it('rung 1 of a soft defer is +3 hours and does NOT rotate — a gap is a gap', () => {
+    expect(nextRung('soft_defer', 0, MON_NOON)?.dueAt.toISOString()).toBe('2026-09-07T12:00:00.000Z');
+  });
+
+  it('a tenant ladder overrides the shipped one, per kind', () => {
+    const ladders = {
+      not_reached: [
+        { rung: 1, offset: { unit: 'hours', value: 1 }, window: 'proactive', channel: 'call' },
+      ] as const,
+    };
+    expect(nextRung('not_reached', 0, MON_NOON, { ladders })?.dueAt.toISOString()).toBe(
+      '2026-09-07T10:00:00.000Z',
+    );
+    // The kind the tenant did NOT customise still climbs the default ladder.
+    expect(nextRung('soft_defer', 0, MON_NOON, { ladders })?.dueAt.toISOString()).toBe(
+      '2026-09-07T12:00:00.000Z',
+    );
+    // And a one-rung ladder ENDS after one rung, whatever maxAttempts says.
+    expect(nextRung('not_reached', 1, MON_NOON, { ladders })).toBeNull();
+  });
+
+  it('a tenant may move the anchors the rotation lands on', () => {
+    const dayParts = { morning: '08:00', afternoon: '18:00', split: '12:00' };
+    // MON_NOON is 12:00 Israel, which with this split is already afternoon → rotate to 08:00.
+    expect(nextRung('soft_defer', 1, MON_NOON, { dayParts })?.dueAt.toISOString()).toBe(
+      '2026-09-08T05:00:00.000Z',
+    );
   });
 
   it('a disconnected callback uses the soft-defer ladder', () => {

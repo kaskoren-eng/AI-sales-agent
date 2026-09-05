@@ -17,6 +17,8 @@ import type { FastifyBaseLogger } from 'fastify';
 // The status-transition guard is shared with the voice CRM-sync path — one source of truth.
 // The chat qualifier only ever attempts the original stepwise edges, all still allowed there.
 import { canTransition } from '../../modules/leads/lead-status.js';
+import { classifyStopSignal, type StopClassifier } from '../../modules/leads/stop-signals.js';
+import { applyStopSignal } from '../../modules/leads/stop-guard.js';
 import { meterLead } from '../../modules/billing/usage.service.js';
 
 interface WorkerDeps {
@@ -26,6 +28,12 @@ interface WorkerDeps {
   outboundQueue: Queue;
   flowExecutorQueue: Queue;
   deadLetterQueue: Queue;
+  /**
+   * Optional — when absent a stop signal still lands on the lead, it just cannot remove the
+   * queued BullMQ job. `callbacks.worker.ts` re-checks both flags at fire time, so the guarantee
+   * holds either way; this only saves a pointless wake-up.
+   */
+  callbacksQueue?: Queue;
   logger?: FastifyBaseLogger;
 }
 
@@ -33,6 +41,20 @@ export function createMessageProcessorWorker(deps: WorkerDeps) {
   const { db, env, redis, outboundQueue, flowExecutorQueue, deadLetterQueue, logger } = deps;
 
   const aiEngine = env.OPENAI_API_KEY ? new AIEngineService(env) : null;
+
+  /**
+   * The LLM half of the stop guard. Null when there is no OpenAI key, and `classifyStopSignal`
+   * then runs on the deterministic phrase lists alone — which is the point of having them.
+   */
+  const stopClassifier: StopClassifier | null = aiEngine
+    ? {
+        complete: ({ systemPrompt, userText }) =>
+          aiEngine.generateResponse({
+            systemPrompt,
+            conversationHistory: [{ role: 'user', content: userText }],
+          }),
+      }
+    : null;
 
   const worker = new Worker<MessageProcessorJob>(
     'message-processor',
@@ -43,9 +65,68 @@ export function createMessageProcessorWorker(deps: WorkerDeps) {
       const { lead: initialLead, isNew: isNewLead } = await findOrCreateLead(db, tenantId, channel, from);
       let lead = initialLead;
 
+      // 1b. DOES HE WANT US TO STOP? (Koren, 2026-09-04)
+      //
+      // Runs BEFORE the terminal-status early return below, and before the lead-intake flow, on
+      // purpose. Two bugs live in doing it later:
+      //   · a `qualified` lead who writes "stop calling me" used to return at the guard below and
+      //     his opt-out was never recorded — status is not a reason to ignore a DNC instruction;
+      //   · a brand-new WhatsApp lead whose FIRST message is "תפסיקו לשלוח לי" used to trigger the
+      //     lead-intake flow, which calls him.
+      // See `src/modules/leads/stop-signals.ts` for the three tiers.
+      const stopSignal = await classifyStopSignal(content ?? '', stopClassifier);
+      if (stopSignal.verdict !== 'continue') {
+        const stopConversation = await findOrCreateConversation(db, tenantId, lead.id, channel, channelRef);
+        // Stored first: the message that ended the conversation is the evidence for having ended it.
+        await db.insert(messages).values({
+          tenantId,
+          conversationId: stopConversation.id,
+          direction: 'inbound',
+          role: 'lead',
+          content,
+          contentType,
+        });
+        const applied = await applyStopSignal(
+          { db, callbacksQueue: deps.callbacksQueue ?? null, logger },
+          {
+            tenantId,
+            leadId: lead.id,
+            currentStatus: lead.status,
+            followupStoppedAt: lead.followupStoppedAt,
+            signal: stopSignal,
+            channel,
+          },
+        );
+        // NO REPLY IS GENERATED. Answering someone who just asked us to stop is the complaint we
+        // are trying to avoid, and a confirmation message is new outbound Hebrew that has not been
+        // through a listening round. Flagged in the handoff as the one open question here.
+        return {
+          leadId: lead.id,
+          conversationId: stopConversation.id,
+          stopped: stopSignal.verdict,
+          action: applied.action,
+        };
+      }
+
       // Skip processing if lead is already in a terminal state
       if (lead.status === 'qualified' || lead.status === 'disqualified') {
         return { leadId: lead.id, skipped: true, reason: `lead is ${lead.status}` };
+      }
+
+      // He is talking to us again, so a standing soft stop is over. No-op unless one is set.
+      if (lead.followupStoppedAt) {
+        await applyStopSignal(
+          { db, callbacksQueue: deps.callbacksQueue ?? null, logger },
+          {
+            tenantId,
+            leadId: lead.id,
+            currentStatus: lead.status,
+            followupStoppedAt: lead.followupStoppedAt,
+            signal: stopSignal,
+            channel,
+          },
+        );
+        lead = { ...lead, followupStoppedAt: null, followupStopReason: null };
       }
 
       // 2. Find or create conversation

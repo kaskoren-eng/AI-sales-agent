@@ -220,10 +220,29 @@ describe('markLeadOptedOut — the DNC mark, tenant-scoped on every path', () =>
     expect(updates[0]).toMatchObject({ status: LEAD_STATUS_OPTED_OUT });
   });
 
-  it('other reasons never touch the lead status', async () => {
+  /**
+   * CHANGED 2026-09-04. `not_interested` used to be inert, and that was the bug: a lead who
+   * declined on the phone was chased three more times by the callback ladder because he had not
+   * used the words that trigger `opt_out`. It now writes the SOFT stop — the ladder ends, and his
+   * status is untouched, because refusing the offer is not forbidding contact.
+   */
+  it('not_interested writes the SOFT stop, and never the DNC status', async () => {
     const { rt, updates, inserts } = fakeRt({ leadId: 'lead-1' });
     const { ctx } = fakeCtx();
     await runTool(rt, 'not_interested', ctx);
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({ followupStopReason: 'voice:not_interested' });
+    expect(updates[0]!.followupStoppedAt).toBeInstanceOf(Date);
+    expect(updates[0]).not.toHaveProperty('status');
+    // No lead is invented for an unknown caller here — that is the opt-out path's job alone.
+    expect(inserts).toHaveLength(0);
+  });
+
+  it('a reason that is neither opt_out nor not_interested still touches nothing', async () => {
+    const { rt, updates, inserts } = fakeRt({ leadId: 'lead-1' });
+    const { ctx } = fakeCtx();
+    await runTool(rt, 'not_qualified', ctx);
+    // `not_qualified` is OUR judgement about him, not his about us.
     expect(updates).toHaveLength(0);
     expect(inserts).toHaveLength(0);
   });

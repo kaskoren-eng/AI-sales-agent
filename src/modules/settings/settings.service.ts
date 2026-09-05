@@ -10,6 +10,10 @@ import {
 import { resolveTollFraudSettings, type TollFraudSettings } from '../calls/spend-guard.js';
 import { resolveCrmSyncSettings, type CrmSyncSettings } from '../integrations/crm-sync.settings.js';
 import { readAgentPersona, type AgentPersona } from '../channels/voice-livekit/persona.js';
+import {
+  resolveCallbackSettings,
+  type CallbackSettings,
+} from '../channels/voice-livekit/tools/callback-settings.js';
 
 export interface BusinessProfile {
   companyName: string;
@@ -114,6 +118,62 @@ export class SettingsService {
       .where(eq(tenants.id, tenantId));
 
     return readAgentPersona(settings);
+  }
+
+  /**
+   * THE FOLLOW-UP SETTINGS — `tenants.settings.callbacks`.
+   *
+   * Returned RESOLVED, never raw: a tenant that has configured nothing still sees the ladder its
+   * agent is actually running, which is the only version of this screen that can be reasoned
+   * about. The resolver is the same one the worker calls at fire time, so what the operator reads
+   * here is what will happen tonight — including every fallback a malformed override triggered.
+   */
+  async getCallbackSettings(tenantId: string): Promise<{ settings: CallbackSettings; configured: boolean }> {
+    const [tenant] = await this.db
+      .select({ settings: tenants.settings })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+
+    if (!tenant) throw new NotFoundError('Tenant', tenantId);
+
+    const settings = getTenantSettings(tenant.settings);
+    return {
+      settings: resolveCallbackSettings(settings),
+      configured: !!settings.callbacks && typeof settings.callbacks === 'object',
+    };
+  }
+
+  /**
+   * Writes the tenant's follow-up configuration, then returns it AS RESOLVED.
+   *
+   * Returning the resolved value rather than the stored patch is the point: every boundary in
+   * `callback-settings.ts` is a silent clamp — a ladder of six rungs falls back to the default, a
+   * `maxAttempts` of 9 becomes 5 — and an operator who does not see that happen will believe a
+   * ladder is live that never was.
+   */
+  async saveCallbackSettings(
+    tenantId: string,
+    patch: Record<string, unknown>,
+  ): Promise<CallbackSettings> {
+    const [tenant] = await this.db
+      .select({ settings: tenants.settings })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+
+    if (!tenant) throw new NotFoundError('Tenant', tenantId);
+
+    const settings = getTenantSettings(tenant.settings);
+    const stored = (settings.callbacks ?? {}) as Record<string, unknown>;
+    settings.callbacks = { ...stored, ...patch };
+
+    await this.db
+      .update(tenants)
+      .set({ settings, updatedAt: new Date() })
+      .where(eq(tenants.id, tenantId));
+
+    return resolveCallbackSettings(settings);
   }
 
   async saveBusinessProfile(tenantId: string, profile: BusinessProfile): Promise<BusinessProfile> {

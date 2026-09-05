@@ -355,3 +355,121 @@ describe('message-processor worker', () => {
     expect(jobData.content.length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * THE STOP GUARDRAIL, on the inbound text path (Koren, 2026-09-04).
+ *
+ * Until this existed, `opted_out` had exactly one writer in the codebase — the voice agent's
+ * `end_call` tool — so a lead who typed "תפסיקו לשלוח לי" into WhatsApp was dialled by the
+ * callback ladder the next morning. There is no OpenAI key in these deps, which is deliberate:
+ * every guarantee below must hold on the deterministic phrase lists alone.
+ */
+describe('message-processor worker — when the lead says stop', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    capturedProcessors.length = 0;
+  });
+
+  function stopDeps(lead: any) {
+    const deps = makeDeps();
+    const { db } = deps;
+    let n = 0;
+    db.select.mockImplementation(() => {
+      n++;
+      if (n === 1) return db._selectChain([lead]);
+      if (n === 2) return db._selectChain([SAMPLE_CONV]);
+      return db._selectChain(HISTORY_ROWS);
+    });
+    db.insert.mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{}]) }) });
+    db.update.mockReturnValue({ set: vi.fn().mockReturnThis(), where: vi.fn().mockResolvedValue([]) });
+    return deps;
+  }
+
+  /** Every `set({...})` payload written to any table during the run. */
+  function setsFrom(db: any): Record<string, unknown>[] {
+    return db.update.mock.results
+      .map((r: any) => r.value?.set?.mock?.calls?.[0]?.[0])
+      .filter(Boolean);
+  }
+
+  it('a do-not-call message opts the lead out and sends NO reply', async () => {
+    const deps = stopDeps({ ...SAMPLE_LEAD, status: 'contacted' });
+    createMessageProcessorWorker(deps as any);
+    const out = await capturedProcessors[0](makeWhatsAppJob({ content: 'תפסיקו לשלוח לי הודעות' }));
+
+    expect(out).toMatchObject({ stopped: 'hard_stop', action: 'opted_out' });
+    expect(setsFrom(deps.db).some((s) => s.status === 'opted_out')).toBe(true);
+    // Replying to somebody who just told us to stop is the complaint we are avoiding.
+    expect(enqueueOutbound).not.toHaveBeenCalled();
+  });
+
+  it('THE BUG THIS FIXES: a QUALIFIED lead can still opt out', async () => {
+    // The terminal-status early return used to fire first, so a `qualified` lead's do-not-call
+    // request was read, dropped on the floor, and never recorded anywhere.
+    const deps = stopDeps({ ...SAMPLE_LEAD, status: 'qualified' });
+    createMessageProcessorWorker(deps as any);
+    const out = await capturedProcessors[0](makeWhatsAppJob({ content: 'אל תתקשרו אליי יותר' }));
+
+    expect(out).toMatchObject({ stopped: 'hard_stop' });
+    expect(setsFrom(deps.db).some((s) => s.status === 'opted_out')).toBe(true);
+  });
+
+  it('"לא מעוניין" is a SOFT stop — the ladder ends, the person is not blacklisted', async () => {
+    const deps = stopDeps({ ...SAMPLE_LEAD, status: 'contacted' });
+    createMessageProcessorWorker(deps as any);
+    const out = await capturedProcessors[0](makeWhatsAppJob({ content: 'לא מעוניין תודה' }));
+
+    expect(out).toMatchObject({ stopped: 'soft_stop', action: 'followup_stopped' });
+    const sets = setsFrom(deps.db);
+    expect(sets.some((s) => s.followupStoppedAt instanceof Date)).toBe(true);
+    // Crucially NOT opted out: he refused the offer, he did not forbid contact.
+    expect(sets.some((s) => s.status === 'opted_out')).toBe(false);
+  });
+
+  it('"תתקשר אליי מחר" is NOT a stop — it is the callback the whole model exists for', async () => {
+    const deps = stopDeps({ ...SAMPLE_LEAD, status: 'contacted' });
+    createMessageProcessorWorker(deps as any);
+    const out = await capturedProcessors[0](
+      makeWhatsAppJob({ content: 'אני עסוק עכשיו, תתקשר אליי מחר בבוקר' }),
+    );
+
+    expect(out).not.toHaveProperty('stopped');
+    expect(setsFrom(deps.db).some((s) => s.status === 'opted_out')).toBe(false);
+  });
+
+  it('a lead who comes back has his soft stop lifted', async () => {
+    const deps = stopDeps({
+      ...SAMPLE_LEAD,
+      status: 'contacted',
+      followupStoppedAt: new Date('2026-09-01T10:00:00.000Z'),
+    });
+    createMessageProcessorWorker(deps as any);
+    await capturedProcessors[0](makeWhatsAppJob({ content: 'רגע, כמה זה עולה?' }));
+
+    expect(setsFrom(deps.db).some((s) => s.followupStoppedAt === null)).toBe(true);
+  });
+
+  it('a BRAND NEW lead whose first message is "stop" does not get the lead-intake flow', async () => {
+    // The intake flow calls him. Detecting the stop after it would ring somebody who had just
+    // asked, in writing, not to be rung.
+    const deps = makeDeps();
+    const { db } = deps;
+    let n = 0;
+    db.select.mockImplementation(() => {
+      n++;
+      if (n === 1) return db._selectChain([]); // no lead → one is created
+      if (n === 2) return db._selectChain([SAMPLE_CONV]);
+      return db._selectChain(HISTORY_ROWS);
+    });
+    db.insert.mockReturnValue({
+      values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ ...SAMPLE_LEAD, status: 'new' }]) }),
+    });
+    db.update.mockReturnValue({ set: vi.fn().mockReturnThis(), where: vi.fn().mockResolvedValue([]) });
+
+    createMessageProcessorWorker(deps as any);
+    const out = await capturedProcessors[0](makeWhatsAppJob({ content: 'STOP' }));
+
+    expect(out).toMatchObject({ stopped: 'hard_stop' });
+    expect(out).not.toHaveProperty('triggeredFlow');
+  });
+});

@@ -117,6 +117,30 @@ async function cancelPendingCallbacksOnOptOut(
  * inbound callers are matched by phone; an unknown caller gets a minimal lead row created so the
  * opt-out SURVIVES — a DNC request we can't attach to anyone is a legal problem waiting to recur.
  */
+/**
+ * THE SOFT STOP, on the voice path. The sibling of `markLeadOptedOut` above and deliberately much
+ * smaller: no lead is created for an unknown caller here, because "not interested" from a number
+ * we cannot attach to anybody is not a legal obligation and an orphan row would be noise.
+ *
+ * Cancels the pending callback too — a promise to ring him back that he has just declined.
+ */
+export async function markFollowupStopped(
+  rt: ToolRuntimeContext,
+  reason: string,
+): Promise<'lead_updated' | 'no_identity'> {
+  if (!rt.leadId) return 'no_identity';
+  await rt.db
+    .update(leads)
+    .set({ followupStoppedAt: new Date(), followupStopReason: reason, updatedAt: new Date() })
+    .where(and(eq(leads.id, rt.leadId), eq(leads.tenantId, rt.tenantId)));
+  await cancelCallbacksForLead(rt, rt.leadId, 'cancelled:followup_stopped');
+  console.log(
+    'followup_stopped',
+    JSON.stringify({ tenantId: rt.tenantId, leadId: rt.leadId, reason }),
+  );
+  return 'lead_updated';
+}
+
 export async function markLeadOptedOut(
   rt: ToolRuntimeContext,
 ): Promise<'lead_updated' | 'lead_created' | 'no_identity'> {
@@ -293,6 +317,24 @@ export function endCallTool(rt: ToolRuntimeContext) {
             console.log('lead_opted_out', JSON.stringify({ tenantId: rt.tenantId, outcome }));
           } catch (err) {
             console.error('opt_out_mark_failed', err instanceof Error ? err.message : String(err));
+          }
+        }
+
+        // THE SOFT STOP (Koren, 2026-09-04). `not_interested` means he declined the offer, and
+        // until now it stopped nothing: the callback ladder chased him three more times because he
+        // had not used the words that trigger `opt_out`. It is NOT a DNC — his status is untouched
+        // and one message from him lifts it — but it does end the follow-ups.
+        //
+        // `not_qualified` is deliberately absent: that is OUR judgement about him, not his about
+        // us, and a lead we ruled out is not a lead who asked us to stop.
+        if (reason === 'not_interested' && rt.leadId) {
+          try {
+            await markFollowupStopped(rt, 'voice:not_interested');
+          } catch (err) {
+            console.error(
+              'followup_stop_mark_failed',
+              err instanceof Error ? err.message : String(err),
+            );
           }
         }
 

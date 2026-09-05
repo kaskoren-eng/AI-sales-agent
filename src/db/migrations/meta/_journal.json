@@ -134,6 +134,13 @@
       "when": 1788393600000,
       "tag": "0019_callbacks",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788566400000,
+      "tag": "0020_lead_followup_stop",
+      "breakpoints": true
     }
   ]
 }

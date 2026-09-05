@@ -106,12 +106,49 @@ export type CallbackRungOffset =
   | { unit: 'hours'; value: number }
   | { unit: 'business_days'; value: number };
 
+/**
+ * WHICH PART OF THE DAY A RUNG AIMS AT (Koren, 2026-09-04).
+ *
+ * *"לא באותה שעה כמו שניסה אותו ולא היה זמין — הוא מנסה בשעות הבוקר אם התקשר בצהריים, וההיפך."*
+ *
+ * The gap this closes: `addIsraelBusinessDays` preserves the wall-clock hour by design, so a lead
+ * who could not answer at 11:00 was rung again at 11:00 the next business day and 11:00 the one
+ * after. Three dials at the one hour he demonstrably cannot take calls is not three chances, it is
+ * one chance taken three times.
+ *
+ *   `keep`       the previous attempt's hour, unchanged. What every rung did before this existed,
+ *                and still right for a same-day rung: +3 hours means +3 hours.
+ *   `rotate`     the other half of the day from the last attempt — morning ⇄ afternoon.
+ *   `morning` /
+ *   `afternoon`  a fixed half, for a tenant who knows its own leads.
+ *
+ * The anchors are `CallbackDayParts`, and every one of them still goes through `clampToWindow`
+ * afterwards: an anchor is a preference and the window is a rule.
+ */
+export type CallbackTimeOfDay = 'keep' | 'rotate' | 'morning' | 'afternoon';
+
 export interface CallbackRung {
   /** 1-based, matching the `attempt` column once the dial has been made. */
   rung: number;
   offset: CallbackRungOffset;
+  /**
+   * NOT TENANT-CONFIGURABLE, and the one field of a rung that is not. `honored` is the wide
+   * 07:00–23:00 window, and it exists for exactly one case: an hour the LEAD named. A tenant that
+   * could write `window: 'honored'` on rung 3 of its own ladder would be dialling strangers at
+   * 22:30 on an hour nobody asked for — which is the exact thing the two-window split was built to
+   * prevent. `resolveCallbackLadders` never reads this from settings; it stamps `proactive` on
+   * every rung it parses, and only `CALLBACK_LADDER_EXPLICIT` rung 1 is ever `honored`.
+   */
   window: CallbackWindow;
+  /**
+   * ⚠️ SET ON EVERY RUNG AND READ BY NOBODY. `callbacks.worker.ts` dials unconditionally. Every
+   * rung says `'call'`, so it is correct by coincidence rather than by design, and the first
+   * WhatsApp rung added here would place a phone call while every test stayed green. The dispatch
+   * must be fixed BEFORE this becomes a union — which is also why a tenant cannot set it.
+   */
   channel: 'call';
+  /** Defaults to `'keep'` where absent, which is the behaviour every rung had before this field. */
+  timeOfDay?: CallbackTimeOfDay;
 }
 
 /**
@@ -122,14 +159,32 @@ export interface CallbackRung {
 export const CALLBACK_LADDER_EXPLICIT: readonly CallbackRung[] = [
   { rung: 1, offset: { unit: 'lead_time' }, window: 'honored', channel: 'call' },
   { rung: 2, offset: { unit: 'minutes', value: 45 }, window: 'proactive', channel: 'call' },
-  { rung: 3, offset: { unit: 'business_days', value: 1 }, window: 'proactive', channel: 'call' },
+  {
+    rung: 3,
+    offset: { unit: 'business_days', value: 1 },
+    window: 'proactive',
+    channel: 'call',
+    // He named an hour and was not there at it, twice. The next dial asks a different half of
+    // the day rather than the one he has already failed to take a call in.
+    timeOfDay: 'rotate',
+  },
 ];
 
-/** B — "לא עכשיו", no time given. Nobody chose these instants, so all three are proactive. */
+/**
+ * B — "לא עכשיו", no time given, AND the default follow-up ladder for a lead who does not answer
+ * at all (`not_reached`). The shape Koren specified on 2026-09-04:
+ *
+ *   3 hours  →  1 business day, the OTHER half of the day  →  3 business days, rotating again  →
+ *   stop, and mark the lead unreachable.
+ *
+ * Nobody chose any of these instants, so all three are proactive.
+ */
 export const CALLBACK_LADDER_SOFT_DEFER: readonly CallbackRung[] = [
-  { rung: 1, offset: { unit: 'hours', value: 3 }, window: 'proactive', channel: 'call' },
-  { rung: 2, offset: { unit: 'business_days', value: 1 }, window: 'proactive', channel: 'call' },
-  { rung: 3, offset: { unit: 'business_days', value: 3 }, window: 'proactive', channel: 'call' },
+  // Same-day: +3 hours means +3 hours. Rotating a three-hour gap onto a fixed anchor would turn
+  // "later this afternoon" into a specific o'clock nobody asked for.
+  { rung: 1, offset: { unit: 'hours', value: 3 }, window: 'proactive', channel: 'call', timeOfDay: 'keep' },
+  { rung: 2, offset: { unit: 'business_days', value: 1 }, window: 'proactive', channel: 'call', timeOfDay: 'rotate' },
+  { rung: 3, offset: { unit: 'business_days', value: 3 }, window: 'proactive', channel: 'call', timeOfDay: 'rotate' },
 ];
 
 /**
@@ -144,9 +199,28 @@ export const CALLBACK_LADDERS: Readonly<Record<CallbackKind, readonly CallbackRu
   disconnected: CALLBACK_LADDER_SOFT_DEFER,
 };
 
+/**
+ * The two halves of a working day, and the line between them. Used only by `timeOfDay` —
+ * a rung marked `rotate` lands on one of these anchors instead of keeping the last attempt's hour.
+ *
+ * These are PREFERENCES, per-tenant, unlike the hard floor: a business whose leads are reachable
+ * at 08:00 and 18:00 is making a legitimate choice, and an anchor outside the tenant's own calling
+ * window is simply pulled back into it by `clampToWindow` like any other instant.
+ */
+export interface CallbackDayParts {
+  /** Where a `morning` rung aims. */
+  morning: string;
+  /** Where an `afternoon` rung aims. */
+  afternoon: string;
+  /** Before this, an attempt counts as "morning"; at or after it, "afternoon". */
+  split: string;
+}
+
 export interface CallbackDefaults {
   /** Dials, not rungs-plus-message. After this many the state becomes `exhausted`. */
   maxAttempts: number;
+  /** Anchors for `timeOfDay` rungs. */
+  dayParts: CallbackDayParts;
   /** Proactive window, Sunday–Thursday, Israel local wall clock. */
   proactiveWeekday: { start: string; end: string };
   /** Proactive window, Friday — the Israeli short day. */
@@ -187,6 +261,9 @@ export interface CallbackDefaults {
  */
 export const CALLBACK_DEFAULTS: CallbackDefaults = {
   maxAttempts: 3,
+  // 10:00 and 16:00 sit inside the default 09:00–20:00 window with room on both sides, so the
+  // clamp does not quietly undo the rotation; 13:00 splits the day where an Israeli lunch does.
+  dayParts: { morning: '10:00', afternoon: '16:00', split: '13:00' },
   proactiveWeekday: { start: '09:00', end: '20:00' },
   proactiveFriday: { start: '09:00', end: '13:00' },
   hardFloor: { earliest: '07:00', latest: '23:00' },
@@ -585,21 +662,84 @@ export interface NextRungPlan {
 }
 
 /**
+ * Which half of the day an instant falls in, per the tenant's own split.
+ * Exported for the tests and for anything that wants to explain a rotation in a log line.
+ */
+export function israelDayPart(instant: Date, parts: CallbackDayParts): 'morning' | 'afternoon' {
+  return israelMinutesOfDay(instant) < minutesOf(parts.split) ? 'morning' : 'afternoon';
+}
+
+/**
+ * Move `target` onto the day-part anchor a rung asks for, keeping its DATE.
+ *
+ * `lastAttempt` is the instant the previous dial went out — the thing `rotate` rotates AWAY from.
+ * It is a separate parameter rather than read off `target` because by the time this is called
+ * `target` has already had the offset applied, and for a business-day offset the two share an hour
+ * only by accident of `addIsraelBusinessDays` preserving it.
+ */
+export function applyTimeOfDay(
+  target: Date,
+  lastAttempt: Date,
+  timeOfDay: CallbackTimeOfDay | undefined,
+  parts: CallbackDayParts = CALLBACK_DEFAULTS.dayParts,
+): Date {
+  if (!timeOfDay || timeOfDay === 'keep') return target;
+
+  const wanted =
+    timeOfDay === 'rotate'
+      ? israelDayPart(lastAttempt, parts) === 'morning'
+        ? 'afternoon'
+        : 'morning'
+      : timeOfDay;
+
+  const anchor = wanted === 'morning' ? parts.morning : parts.afternoon;
+  // dayOffset 0 relative to `target` — the rung already chose the DAY; this only sets the hour on
+  // it, DST-safely, through the same arithmetic every other instant in this module goes through.
+  const anchored = israelInstantAt(target, 0, minutesOf(anchor));
+
+  // Setting an hour can move an instant BACKWARDS: a same-day rung fired at 18:00 and rotated to
+  // the 10:00 morning anchor lands this morning, in the past. `clampToWindow` would then read it
+  // as `in_past`, pull it to `now`, and dial the lead within the second — a "follow up tomorrow
+  // morning" that rings immediately. The next day's anchor is what the rung actually meant.
+  // Reachable only from a tenant-authored ladder; the shipped ones rotate on business-day rungs.
+  if (anchored.getTime() <= lastAttempt.getTime()) {
+    return israelInstantAt(anchored, 1, minutesOf(anchor));
+  }
+  return anchored;
+}
+
+/**
+ * A tenant's ladders, as resolved from `tenants.settings.callbacks`. Partial on purpose: a tenant
+ * that customised only `not_reached` keeps the shipped defaults for the other three kinds.
+ */
+export interface CallbackLadderConfig {
+  ladders?: Partial<Record<CallbackKind, readonly CallbackRung[]>>;
+  dayParts?: CallbackDayParts;
+}
+
+/**
  * The next rung after `attemptsMade` dials, or `null` when the ladder is finished.
  *
  * Null is the whole point of the ladder: after the last rung the lead is left alone. A caller that
- * treats null as "try again anyway" has removed the feature.
+ * treats null as "try again anyway" has removed the feature — and that is true of a TENANT ladder
+ * too, which is why the length ceiling lives in `callback-settings.ts` rather than here.
+ *
+ * `from` is the instant of the dial that just failed: both the base the offset is added to and the
+ * hour a `rotate` rung rotates away from.
  */
 export function nextRung(
   kind: CallbackKind,
   attemptsMade: number,
   from: Date,
+  cfg: CallbackLadderConfig = {},
 ): NextRungPlan | null {
-  const ladder = CALLBACK_LADDERS[kind] ?? CALLBACK_LADDER_SOFT_DEFER;
+  const ladder = cfg.ladders?.[kind] ?? CALLBACK_LADDERS[kind] ?? CALLBACK_LADDER_SOFT_DEFER;
   // attemptsMade dials done → the next rung is at index attemptsMade (rung numbers are 1-based).
   const rung = ladder[attemptsMade];
   if (!rung) return null;
-  return { rung, dueAt: applyRungOffset(from, rung.offset) };
+  const offsetApplied = applyRungOffset(from, rung.offset);
+  const dueAt = applyTimeOfDay(offsetApplied, from, rung.timeOfDay, cfg.dayParts);
+  return { rung, dueAt };
 }
 
 function applyRungOffset(from: Date, offset: CallbackRungOffset): Date {

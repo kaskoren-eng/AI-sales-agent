@@ -249,6 +249,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     outboundQueue: app.queues.outboundSender,
     flowExecutorQueue: app.queues.flowExecutor,
     deadLetterQueue: app.queues.deadLetter,
+    // So an inbound "stop calling me" can unqueue the dial it was going to get, not just flag it.
+    callbacksQueue: app.queues.callbacks,
     logger: app.log,
   });
 
