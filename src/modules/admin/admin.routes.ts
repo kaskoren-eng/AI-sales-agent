@@ -10,6 +10,7 @@ import { recordAudit } from '../../shared/audit.js';
 import { syncInboundTrunkNumbers } from './sip-trunk.service.js';
 import { toE164 } from '../../shared/phone-number.js';
 import { phoneNumbers } from '../../db/schema/index.js';
+import { adminCallsRoutes } from './admin-calls.routes.js';
 
 export async function adminRoutes(app: FastifyInstance) {
   const admin = new AdminService(app.db);
@@ -17,6 +18,10 @@ export async function adminRoutes(app: FastifyInstance) {
 
   // Every admin route requires the operator key.
   app.addHook('onRequest', requireAdmin(app));
+
+  // Per-call voice reports + the cross-tenant call list. Registered HERE, inside the plugin, so the
+  // hook above covers them — one level up they would be unauthenticated. Pinned by test.
+  await app.register(adminCallsRoutes);
 
   // --- Monitoring ---
   app.get('/overview', async () => admin.overview());
