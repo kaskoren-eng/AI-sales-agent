@@ -884,40 +884,76 @@ async function benchTtft(env: Env): Promise<void> {
     console.log(`  ${a.label.padEnd(44)} ${String(ms ?? '—').padStart(5)}ms  ${delta.padStart(8)}    ${tok}`);
   }
 
-  // THE VERDICT IS COMPUTED, NOT NARRATED. Every earlier bench in this file that left the reader to
-  // interpret its own table got interpreted wrong at least once.
-  console.log('\n  --- what this says ---');
+  // THE VERDICT IS AN INTERVAL, NOT A THRESHOLD — and the first version of it was wrong.
+  //
+  // That version compared each arm's median against the baseline and called any gap under a
+  // hardcoded 75ms "inside noise". At the default three runs per arm that was not a measurement,
+  // it was a coin flip dressed as a finding, and it was reported to Koren as "prompt length is not
+  // the cost" — full stop, in those words. He pushed back that shortening the prompt is the one
+  // optimisation every guide recommends, and he was right to: at n=3, with a within-arm spread of
+  // ~250ms, this instrument could not have seen an effect smaller than about 300ms.
+  //
+  // A bootstrap interval over the difference of medians says only what the data supports. Where
+  // the interval spans zero the arm is UNPROVEN at this sample size — which is not the same as
+  // zero — and the interval's own far end states how large an effect could still be hiding. At
+  // --runs=12 that turned two "noise" rows into real ones: the cache (+35ms) and the tool
+  // definitions (+89ms), the second being the largest prompt-side cost we have and the one no
+  // guide mentions.
+  console.log('\n  --- what this says (95% bootstrap interval on the difference of medians) ---\n');
   if (base === null) {
     console.log('  The baseline arm produced no token. Nothing above is safe to read.');
     return;
   }
-  const NOISE = 75; // the band bench:tier already established for this model on this prompt
-  const verdict = (key: string, cheap: string, real: string): void => {
-    const ms = median(samples[key]!);
-    if (ms === null) return;
-    console.log(Math.abs(base - ms) < NOISE ? cheap.replace('{d}', String(base - ms)) : real.replace('{d}', String(base - ms)));
-  };
-  const cold = median(samples.cold!);
-  if (cold !== null) {
+  console.log('  arm                                          difference vs the production shape');
+  for (const a of arms) {
+    if (a.key === 'prod') continue;
+    const v = samples[a.key]!;
+    if (v.length < 3) continue;
+    const [lo, hi] = bootstrapMedianDiff(v, samples.prod!);
+    const d = (median(v) ?? 0) - base;
+    const proven = lo > 0 || hi < 0;
+    const sign = (n: number): string => `${n > 0 ? '+' : ''}${n}`;
     console.log(
-      `  The cache is worth ${cold - base}ms. Anything that changes the prompt PREFIX pays that once per\n` +
-        '  call, on the first turn — a reason to keep the prefix STABLE, which is not the same as small.',
+      `  ${a.label.padEnd(44)} ${`${sign(d)}ms`.padStart(7)}  [${sign(lo)}, ${sign(hi)}]  ` +
+        `${proven ? 'REAL' : 'unproven at this n'}`,
     );
   }
-  verdict(
-    'no-tail',
-    '  THE COACH NOTE IS FREE ({d}ms, inside noise). Trimming the tail buys nothing — do not spend\n  a session on it.',
-    '  THE UNCACHED TAIL COSTS {d}ms. This is the cheap lever: the note is something we generate,\n  not an instruction Koren approved, so it can be trimmed without touching behaviour.',
-  );
-  verdict(
-    'sys-30',
-    "  PROMPT LENGTH IS NOT THE COST ({d}ms at 30% of the prompt, inside noise). Cutting instructions\n  would spend Koren's judgement for no latency at all.",
-    "  PROMPT LENGTH COSTS {d}ms at 30% of it. The lever is real — and it is the agent's behaviour,\n  so every cut is Koren's, line by line, against this number.",
+  console.log(
+    '\n  An interval that spans zero has NOT shown an effect, and its far end is the most that could\n' +
+      '  still be hiding. Raise --runs= to narrow it before believing either direction.',
   );
   console.log(
     `\n  For the budget: a turn that waits for the model lands at about ttft + tts first byte + 180ms.\n` +
       `  At ${base}ms, with preemptive TTS hiding the voice, that is ~${base + 180}ms of silence.`,
   );
+}
+
+/**
+ * 95% bootstrap interval on `median(a) - median(b)`.
+ *
+ * Resampling rather than a t-test because these are medians of a skewed, heavy-tailed distribution
+ * — one queued request put a 1269ms sample next to a 705ms one in the same arm — and a test that
+ * assumed normality would report a precision the data does not have. Seeded, so two readings of one
+ * run agree with each other.
+ */
+function bootstrapMedianDiff(a: number[], b: number[], iterations = 4000): [number, number] {
+  let seed = 7;
+  const rand = (): number => {
+    // Mulberry32 — deterministic, and short enough to read.
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const drawMedian = (v: number[]): number =>
+    median(Array.from({ length: v.length }, () => v[Math.floor(rand() * v.length)]!)) ?? 0;
+  const diffs = Array.from({ length: iterations }, () => drawMedian(a) - drawMedian(b)).sort(
+    (x, y) => x - y,
+  );
+  return [
+    Math.round(diffs[Math.floor(0.025 * iterations)]!),
+    Math.round(diffs[Math.floor(0.975 * iterations)]!),
+  ];
 }
 
 function median(v: number[]): number | null {
