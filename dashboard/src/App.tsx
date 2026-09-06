@@ -43,6 +43,8 @@ const Simulator = lazyPage(() => import('./pages/Simulator.js').then((m) => ({ d
 const AdminLayout = lazyPage(() => import('./pages/admin/AdminLayout.js').then((m) => ({ default: m.AdminLayout })))
 const AdminOverview = lazyPage(() => import('./pages/admin/AdminOverview.js').then((m) => ({ default: m.AdminOverview })))
 const AdminTenants = lazyPage(() => import('./pages/admin/AdminTenants.js').then((m) => ({ default: m.AdminTenants })))
+const AdminCalls = lazyPage(() => import('./pages/admin/AdminCalls.js').then((m) => ({ default: m.AdminCalls })))
+const AdminCallReport = lazyPage(() => import('./pages/admin/AdminCallReport.js').then((m) => ({ default: m.AdminCallReport })))
 
 // Dev-only primitives inventory. Lazy + DEV-guarded so it never enters the prod bundle.
 const Styleguide = import.meta.env.DEV ? lazyPage(() => import('./pages/Styleguide.js').then((m) => ({ default: m.Styleguide }))) : null
@@ -70,6 +72,8 @@ export default function App() {
         <Route path="/admin" element={<Lazy><AdminLayout /></Lazy>}>
           <Route index element={<Lazy><AdminOverview /></Lazy>} />
           <Route path="tenants" element={<Lazy><AdminTenants /></Lazy>} />
+          <Route path="calls" element={<Lazy><AdminCalls /></Lazy>} />
+          <Route path="calls/:id" element={<Lazy><AdminCallReport /></Lazy>} />
         </Route>
         {/* Tenant dashboard — everything behind it requires a signed-in user. */}
         <Route path="/*" element={<AuthGate><TenantShell /></AuthGate>} />

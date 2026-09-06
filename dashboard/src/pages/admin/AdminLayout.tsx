@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { ShieldCheck, LayoutDashboard, Building2, LogOut, Lock } from 'lucide-react'
+import { ShieldCheck, LayoutDashboard, Building2, Phone, LogOut, Lock } from 'lucide-react'
+import { LanguageSwitcher } from '../../components/LanguageSwitcher.js'
 import { getAdminKey, clearAdminKey, verifyAdminKey } from '../../lib/admin-api.js'
 
 /**
@@ -29,6 +30,7 @@ export function AdminLayout() {
 const NAV = [
   { to: '/admin', label: 'Overview', icon: <LayoutDashboard size={18} strokeWidth={1.6} />, end: true },
   { to: '/admin/tenants', label: 'Tenants', icon: <Building2 size={18} strokeWidth={1.6} /> },
+  { to: '/admin/calls', label: 'Calls', icon: <Phone size={18} strokeWidth={1.6} /> },
 ]
 
 function AdminRail() {
@@ -76,9 +78,14 @@ function AdminTopBar({ onSignOut }: { onSignOut: () => void }) {
           Super-admin
         </span>
       </div>
-      <button onClick={onSignOut} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 14px', borderRadius: '10px', border: '1px solid var(--border-default)', background: 'transparent', color: 'var(--text-secondary)', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
-        <LogOut size={15} strokeWidth={1.7} /> Sign out
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        {/* The call report is bilingual; without this the console had no way to reach Hebrew
+            short of leaving for the tenant dashboard's settings page. */}
+        <LanguageSwitcher />
+        <button onClick={onSignOut} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 14px', borderRadius: '10px', border: '1px solid var(--border-default)', background: 'transparent', color: 'var(--text-secondary)', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+          <LogOut size={15} strokeWidth={1.7} /> Sign out
+        </button>
+      </div>
     </header>
   )
 }

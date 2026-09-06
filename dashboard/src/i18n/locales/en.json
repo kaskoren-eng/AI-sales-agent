@@ -602,5 +602,137 @@
       "title": "No calls in this range",
       "note": "Once the agent takes calls, volume, outcomes and latency appear here."
     }
+  },
+  "adminCall": {
+    "list": {
+      "title": "Calls",
+      "lede": "Every call on record, newest first. A call carries a report only if the voice engine wrote one.",
+      "onlyWithReport": "Only calls with a report",
+      "cols": {
+        "when": "When",
+        "tenant": "Tenant",
+        "room": "Room",
+        "duration": "Length",
+        "status": "Status",
+        "outcome": "Outcome",
+        "report": "Report"
+      },
+      "hasReport": "Yes",
+      "noReport": "None",
+      "open": "Open",
+      "loading": "Loading…",
+      "empty": "No calls on record yet.",
+      "emptyFiltered": "No call on record carries a report yet.",
+      "error": "Could not load calls"
+    },
+    "report": {
+      "back": "Back to calls",
+      "title": "Call report",
+      "notFound": "No such call",
+      "notFoundNote": "This id matches no call on record.",
+      "error": "Could not load the call report",
+      "absence": {
+        "no_report": {
+          "title": "No report for this call",
+          "note": "Only calls completed by the LiveKit voice engine write a report. This one predates the engine, ran on the retired one, or ended before the agent could save it. Nothing was measured for this call, so nothing is shown — the figures below would be zeros, and a zero would look like a measurement."
+        },
+        "no_learnings_row": {
+          "title": "No record for this call",
+          "note": "The call exists but nothing was ever written about it."
+        }
+      },
+      "meta": {
+        "tenant": "Tenant",
+        "room": "Room",
+        "when": "When",
+        "duration": "Length",
+        "status": "Status",
+        "outcome": "Outcome",
+        "endReason": "Ended because",
+        "caller": "Caller",
+        "recording": "Recording",
+        "recordingStored": "Stored with the provider",
+        "recordingNone": "Not stored",
+        "recordingNote": "There is no player: the audio lives with the provider and this dashboard has no route that serves it."
+      },
+      "verdict": {
+        "title": "What happened",
+        "pass": "Pass",
+        "warn": "Watch",
+        "fail": "Fail",
+        "note": "Only what this report actually measured. A check the report could not answer is left out rather than shown as a pass.",
+        "id": {
+          "cut_offs": "She talked over the caller",
+          "fragmented_turns": "Fragmented turns",
+          "duplicate_replies": "Repeated herself",
+          "tool_call_leaks": "Spoke a tool call out loud",
+          "false_booking_claims": "Claimed a booking that did not happen",
+          "recording_notice": "Recording notice",
+          "ai_disclosure": "AI disclosure",
+          "tool_failures": "Tool failures",
+          "tool_budget": "Tools over budget",
+          "caller_hung_up": "Caller hung up",
+          "dead_air_budget": "Dead air",
+          "booking_outcome": "How it ended"
+        }
+      },
+      "figures": {
+        "title": "The numbers",
+        "duration": "Length",
+        "turnsHeard": "Her turns",
+        "turnsMeasured": "Turns measured",
+        "firstAudioMedian": "Median reply",
+        "deadAirP90": "p90 dead air",
+        "worstCase": "Worst case",
+        "endOfTurn": "End of turn",
+        "promptCache": "Prompt cache",
+        "note": "The median covers only turns where the caller was actually waiting. Turns he was not waiting for — the greeting, a barge-in, a reply she began before he finished — are left out rather than counted as zero."
+      },
+      "byClass": {
+        "title": "Where the time went",
+        "note": "A single median over a whole call describes no turn on it: a turn with an early receipt, a turn without one, and a turn that ran a tool are three different populations with three different fixes.",
+        "turns": "turns",
+        "deadAir": "dead air p50",
+        "modelTtft": "model first token",
+        "ttsTtfb": "speech first byte",
+        "audioBeforeFirstToken": "Audio started before the model's first token",
+        "ofSamples": "on {{n}} of {{total}} turns that could be judged",
+        "name": {
+          "receipt_early": "She answered before the model had spoken",
+          "no_receipt": "No early receipt",
+          "tool_step": "Ran a tool",
+          "unknown": "Could not be classified"
+        }
+      },
+      "tools": {
+        "title": "Tools she used",
+        "none": "No tool ran on this call.",
+        "absent": "This build did not record tool calls.",
+        "overBudget": "over the {{ms}} ms budget",
+        "failed": "failed"
+      },
+      "transcript": {
+        "title": "Transcript",
+        "lede": "The number beside each of her turns is how long the caller waited, from the moment he stopped talking until she made a sound.",
+        "legend": {
+          "fast": "Under a second",
+          "mid": "One to two seconds",
+          "slow": "Over two seconds",
+          "notMeasured": "Not measured"
+        },
+        "notMeasured": "not measured",
+        "callerNotWaiting": "The caller was not waiting for this one — the greeting, a barge-in, or a turn she began before he finished.",
+        "notRecorded": "This build recorded no first-audio sample for this turn.",
+        "empty": "This report carries no transcript.",
+        "badgesSuppressed": "This report has no end-of-turn events, so a reply cannot be attributed to the turn that caused it. The transcript is shown without per-turn timings rather than with timings that might belong to the wrong line.",
+        "turnsFromReport": "Per-turn figures are the ones stored in the report: it carries no raw metrics to recompute from."
+      },
+      "raw": {
+        "summaryTitle": "Everything else the report recorded",
+        "summaryNote": "The agent's own summary block, verbatim. A counter the voice agent starts writing tomorrow appears here with no change to this page.",
+        "configTitle": "Pipeline and configuration",
+        "usageTitle": "Usage"
+      }
+    }
   }
 }
