@@ -13,6 +13,7 @@ import {
   formatSlotHe,
 } from './israel-time.js';
 import { timedTool, type ToolRuntimeContext } from './tool-context.js';
+import { settleLeadWrites } from './lead-writes.js';
 
 /**
  * book_meeting — the moment "קבעתי לך" becomes TRUE.
@@ -178,6 +179,10 @@ export async function executeBookMeeting(
   let dbOk = true;
   let scheduledCallId: string | null = null;
   try {
+    // The row first, if capture_lead_info is still writing it. Without this the upsert below runs
+    // concurrently with the chain's own insert, both find no lead for this phone, and the booking
+    // lands on a duplicate. See lead-writes.ts.
+    await settleLeadWrites(rt);
     const leadId = await upsertLead(
       rt.db,
       rt.tenantId,

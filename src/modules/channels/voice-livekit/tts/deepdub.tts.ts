@@ -10,6 +10,7 @@ import {
 import type { AudioFrame } from '@livekit/rtc-node';
 import { DeepdubClient } from '@deepdub/node';
 import { CircuitBreaker } from '../../../../shared/circuit-breaker.js';
+import { FixedLineAudio, buildFixedLineAllowlist } from './fixed-line-audio.js';
 import type { Env } from '../../../../config/env.js';
 
 /**
@@ -88,6 +89,11 @@ export interface DeepdubTTSOptions {
   realtime: boolean;
   eu: boolean;
   accentRatio: number;
+  /**
+   * The fixed-line audio cache, when it is switched on. Absent = every generation goes to the
+   * vendor, which is exactly the behaviour that shipped. See tts/fixed-line-audio.ts.
+   */
+  audioCache?: FixedLineAudio | undefined;
 }
 
 /** Builds DeepDub options from env, failing loudly if the flag is on but the key/voice is missing. */
@@ -99,6 +105,10 @@ export function deepdubOptions(env: Env): DeepdubTTSOptions {
     throw new Error('VOICE_TTS_PROVIDER=deepdub requires DEEPDUB_VOICE_PROMPT_ID');
   }
   return {
+    // ONE cache per TTS instance, i.e. per worker process: it fills on first use and is warm for
+    // every call that worker takes afterwards. Deliberately not pre-rendered at boot — a lazy fill
+    // costs one ordinary generation and cannot make the worker slow to start.
+    ...(env.VOICE_TTS_AUDIO_CACHE ? { audioCache: new FixedLineAudio(buildFixedLineAllowlist()) } : {}),
     apiKey: env.DEEPDUB_API_KEY,
     voicePromptId: env.DEEPDUB_VOICE_PROMPT_ID,
     model: env.DEEPDUB_MODEL,
@@ -210,9 +220,30 @@ export class DeepdubTTS extends tts.TTS {
    * nothing was emitted yet — replaying a half-spoken sentence would stutter, which is worse.
    */
   async generate(text: string, emit: (pcm: Buffer) => void, isCancelled: () => boolean): Promise<void> {
+    // THE LINES SHE SAYS IN EVERY CALL, SERVED FROM MEMORY. Only constants in this repo are
+    // eligible — never anything the model wrote — and the key carries the exact pointing, so two
+    // spellings of one word can never be served for each other. See tts/fixed-line-audio.ts.
+    const cache = this.#opts.audioCache;
+    const key = cache?.keyFor(this.#opts.voicePromptId, text) ?? null;
+    if (cache && key) {
+      const hit = cache.get(key);
+      if (hit) {
+        // Emitted synchronously: there is no request, so there is no first byte to wait for. That
+        // is the whole saving — 224-314ms on DeepDub, in front of a caller who is waiting.
+        for (const pcm of hit) {
+          if (isCancelled()) return;
+          emit(pcm);
+        }
+        return;
+      }
+    }
+
     let emitted = false;
+    // Captured only for a cacheable line, so an ordinary reply pays one null check and nothing else.
+    const captured: Buffer[] | null = key ? [] : null;
     const guardedEmit = (pcm: Buffer): void => {
       emitted = true;
+      captured?.push(pcm);
       emit(pcm);
     };
     try {
@@ -223,8 +254,15 @@ export class DeepdubTTS extends tts.TTS {
         'deepdub_generation_retry',
         JSON.stringify({ error: asError(e).message, textLen: text.length }),
       );
+      // The retry only runs when NOTHING was emitted, so this is belt and braces — but a fragment
+      // spliced onto the second attempt's audio would be cached as a stutter and repeated for the
+      // rest of the worker's life, and that is not a failure worth leaving to a neighbouring branch.
+      captured?.splice(0);
       await this.#generateOnce(text, guardedEmit, isCancelled);
     }
+    // Only a generation that RAN TO COMPLETION is kept. A cancelled one is half a word, and half a
+    // word in the cache is half a word on every call after it.
+    if (cache && key && captured && !isCancelled()) cache.put(key, captured);
   }
 
   /**

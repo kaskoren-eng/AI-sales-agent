@@ -1,5 +1,6 @@
 import { llm } from '@livekit/agents';
 import { z } from 'zod';
+import { queueLeadWrite } from './lead-writes.js';
 import { mergeLeadQualification, upsertLead } from './lead-store.js';
 import { timedTool, type ToolRuntimeContext } from './tool-context.js';
 
@@ -125,21 +126,11 @@ export async function executeCaptureLeadInfo(
     rejected: [],
   };
 
-  const leadId = await upsertLead(
-    rt.db,
-    rt.tenantId,
-    { leadId: rt.leadId, callerPhone: rt.callerPhone },
-    {
-      name: verdict.accepted.name?.trim(),
-      email: verdict.accepted.email?.trim().toLowerCase(),
-      phone: verdict.accepted.phone,
-    },
-  );
-  if (!leadId) {
-    throw new llm.ToolError('Could not save right now. Continue the call normally; nothing was lost from the conversation.');
-  }
-  // Later tools (book_meeting, end_call's opt-out) reuse the resolved lead instead of re-matching.
-  rt.leadId = leadId;
+  const contact = {
+    name: verdict.accepted.name?.trim(),
+    email: verdict.accepted.email?.trim().toLowerCase(),
+    phone: verdict.accepted.phone,
+  };
 
   const patch: Record<string, unknown> = {};
   if (args.business_type) patch.business_type = args.business_type;
@@ -157,13 +148,54 @@ export async function executeCaptureLeadInfo(
 
   if (Object.keys(patch).length > 0) {
     patch.updated_from_call = rt.callId;
-    await mergeLeadQualification(
+  }
+
+  /**
+   * The two round-trips, as one unit of work.
+   *
+   * IDENTICAL EITHER WAY except for who waits: the same upsert, the same merge, the same
+   * `rt.leadId`. Only the awaiting differs — see lead-writes.ts for why the ordering and the
+   * settle points are what make the async path safe.
+   */
+  const persist = async (): Promise<string | null> => {
+    const leadId = await upsertLead(
       rt.db,
       rt.tenantId,
-      leadId,
-      patch,
-      args.qualification ? QUALIFICATION_SCORE_FLOOR[args.qualification] : undefined,
+      { leadId: rt.leadId, callerPhone: rt.callerPhone },
+      contact,
     );
+    if (!leadId) return null;
+    // Later tools (book_meeting, end_call's opt-out) reuse the resolved lead instead of re-matching.
+    rt.leadId = leadId;
+    if (Object.keys(patch).length > 0) {
+      await mergeLeadQualification(
+        rt.db,
+        rt.tenantId,
+        leadId,
+        patch,
+        args.qualification ? QUALIFICATION_SCORE_FLOOR[args.qualification] : undefined,
+      );
+    }
+    return leadId;
+  };
+
+  // `=== true` rather than a truthiness check, and read through `?.`: eight test fixtures build
+  // this context by hand without an `env`, and the safe reading of "no configuration" is the
+  // awaited path that shipped, not the new one.
+  if (rt.env?.VOICE_ASYNC_LEAD_WRITES === true) {
+    // The caller is on the phone. Everything below this line is in-memory, and every word this
+    // tool returns was decided by the identity guard above, so the reply can be written while the
+    // row is still being saved.
+    queueLeadWrite(rt, 'capture_lead_info', async () => {
+      const leadId = await persist();
+      if (!leadId) {
+        // Same condition the awaited path reports to the model. Here nobody is listening, so it
+        // has to be counted — see leadWriteFailures on the report.
+        throw new Error('upsertLead returned no id');
+      }
+    });
+  } else if ((await persist()) === null) {
+    throw new llm.ToolError('Could not save right now. Continue the call normally; nothing was lost from the conversation.');
   }
 
   // Mirror the gathered facts into the state machine's working memory ("what we know so far") and

@@ -74,3 +74,62 @@ describe('deepdubCircuit — the breaker exists and is named', () => {
     expect(deepdubCircuit.getState()).toBe('CLOSED');
   });
 });
+
+/**
+ * THE FIXED-LINE AUDIO CACHE, at the only boundary that matters: `generate()`.
+ *
+ * The unit tests for eligibility live in fixed-line-audio.test.ts. These prove the two things that
+ * can only be seen from inside the adapter — that a hit reaches the caller without a vendor round
+ * trip at all, and that anything not on the allowlist still goes to the vendor exactly as before.
+ */
+describe('DeepdubTTS — serving a fixed line from memory', () => {
+  const cachedEnv = { ...baseEnv, VOICE_TTS_AUDIO_CACHE: true } as unknown as Env;
+
+  it('attaches a cache only when the flag is on', () => {
+    expect(deepdubOptions(baseEnv).audioCache).toBeUndefined();
+    expect(deepdubOptions(cachedEnv).audioCache).toBeDefined();
+  });
+
+  it('serves a stored line without touching the network', async () => {
+    const opts = deepdubOptions(cachedEnv);
+    const cache = opts.audioCache!;
+    const key = cache.keyFor(opts.voicePromptId, 'בסדר.')!;
+    cache.put(key, [Buffer.from([1, 2]), Buffer.from([3, 4])]);
+
+    const got: Buffer[] = [];
+    // There is no socket in a unit test, so reaching the vendor would REJECT. Resolving is the
+    // proof that nothing was dialed — and that is the entire saving: no request, no first byte.
+    await new DeepdubTTS(opts).generate('בסדר.', (pcm) => got.push(pcm), () => false);
+
+    expect(Buffer.concat(got)).toEqual(Buffer.from([1, 2, 3, 4]));
+  });
+
+  it('stops mid-playback when the turn is cancelled', async () => {
+    const opts = deepdubOptions(cachedEnv);
+    const cache = opts.audioCache!;
+    const key = cache.keyFor(opts.voicePromptId, 'בסדר.')!;
+    cache.put(key, [Buffer.from([1]), Buffer.from([2]), Buffer.from([3])]);
+
+    const got: Buffer[] = [];
+    let cancelled = false;
+    await new DeepdubTTS(opts).generate(
+      'בסדר.',
+      (pcm) => {
+        got.push(pcm);
+        cancelled = true; // the caller barged in after the first chunk
+      },
+      () => cancelled,
+    );
+    expect(got).toHaveLength(1);
+  });
+
+  it('cannot serve anything the model wrote, whatever is in the cache', () => {
+    const opts = deepdubOptions(cachedEnv);
+    // Asserted at the KEY rather than by calling generate(): generate() on ineligible text would
+    // dial DeepDub, and a unit suite that reaches the network is slow and flaky offline — the
+    // first version of this case measured 737ms and a real 403. A null key is the same guarantee,
+    // because with no key there is no cache branch to take, and it costs nothing.
+    expect(opts.audioCache!.keyFor(opts.voicePromptId, 'אנחנו עוזרים לעסקים.')).toBeNull();
+    expect(opts.audioCache!.keyFor(opts.voicePromptId, 'עמית')).toBeNull();
+  });
+});

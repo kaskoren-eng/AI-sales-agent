@@ -258,6 +258,27 @@ class ClickScalesAgent extends voice.Agent {
    */
   onModelFirstToken: ((ms: number) => void) | null = null;
 
+  /**
+   * WHICH SOUND OPENED THIS STEP, and the inputs that decided it — for the call report only.
+   *
+   * The per-turn latency table can see that audio arrived late; it cannot see whether that was a
+   * DECISION (Koren's round-19 verdict suppresses the receipt on a question turn) or a FAULT
+   * (a receipt was chosen and something held it). Those have opposite fixes, and for a month the
+   * question was argued from pooled medians that could not tell them apart.
+   *
+   * `kind` is the decision itself, taken off the object `chooseTurnOpener` returned — a witness,
+   * not a re-derivation. `inputs` are the predicates that fed it, recomputed from the same pure
+   * classifiers: they say what the state WAS, and deliberately do not claim which branch fired.
+   * If the two ever disagree the report shows both rather than reconciling them.
+   */
+  onTurnOpener: ((kind: string, inputs: string) => void) | null = null;
+
+  /**
+   * The voice node's two timestamps on the caller's clock: when it was entered, and when the first
+   * text left the guard for the TTS. Both null when the caller was not waiting (the greeting).
+   */
+  onVoicePath: ((enteredMs: number | null, firstChunkMs: number | null) => void) | null = null;
+
   /** Null when the per-tenant tool gate is closed — the guard then behaves exactly as pre-Phase-4. */
   readonly toolRuntime: ToolRuntimeContext | null;
 
@@ -579,6 +600,19 @@ class ClickScalesAgent extends voice.Agent {
     // ttsNode reads this to decide whether an armed hesitation may share the breath, and to record
     // what the caller heard at the head of the reply.
     this.#opener = opener;
+    // The report's copy. Recomputed rather than hoisted out of the call above, so this adds a
+    // line and changes none: every predicate here is a pure classifier over the same strings, so
+    // calling it twice cannot alter what she says. See onTurnOpener.
+    this.onTurnOpener?.(
+      opener.kind,
+      [
+        `asked=${bit(env.VOICE_ACK_SKIP_ON_QUESTION && callerTurnAwaitsAnswer(currentCallerTurn))}`,
+        `needsTime=${bit(!env.VOICE_ACK_ONLY_WHEN_NEEDED || callerTurnNeedsThinkingTime(currentCallerTurn))}`,
+        `shared=${bit(env.VOICE_ACK_EARNED_ENABLED && callerSharedSubstance(currentCallerTurn))}`,
+        `afterTool=${bit(afterToolCall)}`,
+        `dictation=${bit(env.VOICE_DICTATION_NOD_ENABLED && isDictationTurn(this.lastUserUtterance))}`,
+      ].join(' '),
+    );
     if (opener.kind === 'nod') {
       // Logged because it is invisible otherwise: the nod and the receipt are both one short word
       // at the head of a reply, and only this line says which act she performed.
@@ -686,6 +720,15 @@ class ClickScalesAgent extends voice.Agent {
     // whether our sentence buffering is the cost or whether the delay is downstream of us.
     const startedAt = Date.now();
     let llmFirstChunk = -1;
+    // WHEN THE VOICE NODE WAS ENTERED, on the CALLER's clock — the timestamp the decomposition was
+    // missing. Dead air is caller-stop -> first audio, and the report could name only the two ends
+    // of it. On the 2026-09-03 call a turn that DID speak a receipt still started 1578ms in, with
+    // TTS reporting 293ms of that: something spent ~900ms between the turn committing and the text
+    // reaching this node, and no instrument spanned it. `preemptiveTts: false` is the leading
+    // suspect (the SDK only starts the segment task after the speech handle is scheduled —
+    // agent_activity.js:2008), but a suspect is not a measurement, and two theories about this
+    // exact gap have already been wrong.
+    const enteredAt = this.msSinceUserStopped?.() ?? null;
 
     // The acknowledgement is already committed to audio by the time the model writes its opener,
     // so if the model opens with the same word we cannot un-say ours — we drop theirs instead.
@@ -848,6 +891,12 @@ class ClickScalesAgent extends voice.Agent {
               `latency audio_path llmFirstChunk=${llmFirstChunk} guardFirstOut=${ms} ` +
                 `heldMs=${ms - llmFirstChunk} sinceCallerStopped=${waited ?? -1}`,
             );
+            // ...AND INTO THE REPORT. This line has existed since 2026-08-16 and has only ever
+            // gone to stdout, so the question it answers could not be asked of any past call —
+            // the fifth measurement in this module built and never wired. Together with
+            // `enteredAt` it brackets the gap: text reaching the voice late means the hole is
+            // upstream (scheduling), text arriving on time means it is the synthesis.
+            this.onVoicePath?.(enteredAt, waited);
           },
         ),
         () => this.onSilentReply?.(),
@@ -880,6 +929,11 @@ class ClickScalesAgent extends voice.Agent {
       (ms) => this.onFirstAudioFrame?.(ms),
     ) as unknown as NonNullable<Awaited<ReturnType<voice.Agent['ttsNode']>>>;
   }
+}
+
+/** `1`/`0` — the report's flags are read by eye in a fixed-width table, not parsed. */
+function bit(v: boolean): string {
+  return v ? '1' : '0';
 }
 
 /**
@@ -1938,6 +1992,17 @@ export default defineAgent({
     // caller's silence goes: a first frame close to dead air means the audio was produced late,
     // and one far below it means the audio was ready and something downstream held it.
     agent.onFirstAudioFrame = (ms) => report.recordMetric('first_audio_frame', { durationMs: ms });
+    // WHY a turn opened the way it did — the other half of the first-audio number above. Without
+    // it the table can only say the audio was late, and "she chose not to speak first" reads
+    // identically to "she chose to and it was held".
+    agent.onTurnOpener = (kind, inputs) => report.recordMetric('turn_opener', { kind, reason: inputs });
+    agent.onVoicePath = (enteredMs, firstChunkMs) =>
+      report.recordMetric('voice_path', {
+        // `-1` for "the caller was not waiting", the same sentinel first_audio_frame uses, so the
+        // two are read the same way and neither can be mistaken for a fast turn.
+        enteredMs: enteredMs ?? -1,
+        durationMs: firstChunkMs ?? -1,
+      });
     agent.onPauses = (count, spoken) => report.recordPauses(count, spoken);
     agent.onPauseTagDropped = (count) => report.recordPauseTagDropped(count);
     agent.onBracketTagDropped = (count) => report.recordBracketTagDropped(count);

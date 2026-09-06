@@ -116,6 +116,8 @@ async function buildAuthTestApp(db: ReturnType<typeof createMockDb>, redis = mak
     VOICE_ACK_LEDGER_ENABLED: true,
     VOICE_REGISTER_NUDGE_ENABLED: true,
     VOICE_FACT_MEMORY_ENABLED: true,
+    VOICE_ASYNC_LEAD_WRITES: true,
+    VOICE_TTS_AUDIO_CACHE: true,
     VOICE_ASK_INTENT_ENABLED: true,
     VOICE_NEGATION_SAFETY: true,
     VOICE_PHRASE_LEDGER_ENABLED: true,

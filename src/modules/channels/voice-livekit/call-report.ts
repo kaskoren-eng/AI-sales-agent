@@ -6,6 +6,12 @@ import {
   countRepeatedFourGrams,
   countRepeatedOpeners,
 } from './phrase-ledger.js';
+import {
+  buildTurnAnatomy,
+  summarizeLatency,
+  type LatencySummary,
+  type TurnAnatomy,
+} from './latency-anatomy.js';
 import type { PipelineSnapshot, PreemptiveCounters } from './pipeline-observer.js';
 import { hasRegisterTouch } from './register-tracker.js';
 import { isRestartOf } from './repeat-guard.js';
@@ -57,6 +63,12 @@ export interface TurnMetric {
   charactersCount?: number;
   /** TTS only: the SDK's verdict that this synthesis was thrown away. Excluded from pace. */
   cancelled?: boolean;
+  /** `voice_path` only: when the voice node was entered, on the caller's clock. -1 = not waiting. */
+  enteredMs?: number;
+  /** `turn_opener` only: which sound opened the step — ack | nod | hesitation | silent. */
+  kind?: string;
+  /** `turn_opener` only: the predicates that fed the decision, as `name=0/1` flags. */
+  reason?: string;
 }
 
 /** One line of the conversation, either side of it. */
@@ -683,6 +695,25 @@ export interface CallReportJson {
       maxMs: number | null;
       samples: number;
     };
+    /**
+     * THE SAME WAIT, SPLIT BY WHAT CAUSED IT — because the pooled median above describes a
+     * population that does not exist.
+     *
+     * On the 2026-09-03 production call `deadAir.medianMs` read 1529ms across six turns that ran
+     * 553 / 1439 / 1478 / 1578 / 2877 / 3113. Three different waits with three different fixes,
+     * and no median over them is a fact about the call. This splits them: a turn whose audio beat
+     * the model's first token, a turn where it did not, and a turn that ran a tool and so paid a
+     * second inference. See latency-anatomy.ts.
+     */
+    latency: LatencySummary;
+    /**
+     * Background lead writes that failed (VOICE_ASYNC_LEAD_WRITES). Zero on every healthy call.
+     *
+     * Non-zero means facts the lead gave were lost while he heard "saved" — the price of not
+     * making him wait for the database, and the number that decides whether that price is real.
+     * See tools/lead-writes.ts.
+     */
+    leadWriteFailures: number;
   };
   /**
    * THE ACTUAL CONVERSATION — both sides of it.
@@ -693,6 +724,8 @@ export interface CallReportJson {
    */
   transcript: TranscriptLine[];
   metrics: TurnMetric[];
+  /** One row per caller turn, grouped out of `metrics`. See summary.latency. */
+  turns: TurnAnatomy[];
   /** Every tool the LLM invoked, in order, with duration and outcome. Empty pre-Phase-4. */
   toolCalls: ToolCallLog[];
   /** Provable per-call compliance facts (recording notice, AI disclosure). */
@@ -1029,6 +1062,8 @@ export class CallReport {
   recordMetric(stage: string, m: Record<string, unknown>): void {
     const pick = (k: string): number | undefined =>
       typeof m[k] === 'number' ? Math.round(m[k] as number) : undefined;
+    const text = (k: string): string | undefined =>
+      typeof m[k] === 'string' ? (m[k] as string).slice(0, 200) : undefined;
 
     this.#metrics.push({
       atMs: Date.now() - this.#startedAt,
@@ -1041,7 +1076,14 @@ export class CallReport {
       promptCachedTokens: pick('promptCachedTokens'),
       audioDurationMs: pick('audioDurationMs'),
       charactersCount: pick('charactersCount'),
+      enteredMs: pick('enteredMs'),
       cancelled: typeof m.cancelled === 'boolean' ? m.cancelled : undefined,
+      // STRINGS, and they need their own picker: this method whitelists NUMBERS, so the first
+      // version of `turn_opener` recorded nineteen metrics with `kind: undefined` on both of them.
+      // The field was passed, accepted, and dropped — the same shape as every other measurement in
+      // this module that was built and never reached the report. Caught by reading a real run.
+      kind: text('kind'),
+      reason: text('reason'),
     });
   }
 
@@ -1374,6 +1416,10 @@ export class CallReport {
     const agentLines = this.#transcript.filter((t) => t.role === 'assistant').map((t) => t.text);
 
     const agentGaps = this.#agentGaps();
+    // Derived from `#metrics` and `#toolCalls`, which are already final at this point. Kept in the
+    // report as well as summarised, so the split can be re-read per turn without re-deriving the
+    // grouping — and so a future change to the grouping cannot silently restate an old call.
+    const turnAnatomy = buildTurnAnatomy(this.#metrics, this.#toolCalls);
 
     return {
       room: this.#room,
@@ -1480,9 +1526,12 @@ export class CallReport {
           maxMs: this.#deadAir.length ? Math.max(...this.#deadAir) : null,
           samples: this.#deadAir.length,
         },
+        latency: summarizeLatency(turnAnatomy),
+        leadWriteFailures: this.#metrics.filter((m) => m.stage === 'lead_write_failed').length,
       },
       transcript: this.#transcript,
       metrics: this.#metrics,
+      turns: turnAnatomy,
       toolCalls: this.#toolCalls,
       compliance: this.#compliance,
       usage: this.#usage,

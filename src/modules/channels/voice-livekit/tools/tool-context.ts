@@ -146,6 +146,21 @@ export interface ToolRuntimeContext {
   /** Set by book_meeting on success; cleared never (one meeting per call). */
   lastBooking: LastBooking | null;
   /**
+   * The call's ordered chain of database writes that the CALLER is not waiting for
+   * (`VOICE_ASYNC_LEAD_WRITES`). Undefined until the first one is queued.
+   *
+   * ORDERED, not parallel: two `capture_lead_info` calls a second apart both upsert the same lead,
+   * and running them concurrently is how you get two rows for one caller. Chaining also means the
+   * second write sees the first one's `rt.leadId`.
+   *
+   * Every tool that needs the row to EXIST — book_meeting, end_call, the handoff, the
+   * confirmations — must `await settleLeadWrites(rt)` before reading `rt.leadId`. Skipping that is
+   * the one way this optimisation can corrupt data rather than merely lose it.
+   */
+  pendingLeadWrites?: Promise<void>;
+  /** Background writes that failed, for the call report. A lost write must never be silent. */
+  leadWriteFailures?: number;
+  /**
    * Called when a calendar tool fails because the tenant's Google grant is dead (`invalid_grant`).
    *
    * Fire-and-forget by contract: marking the connection revoked is bookkeeping for the dashboard,

@@ -5,6 +5,7 @@
  *   npm run bench:llm     time-to-first-TOKEN for every candidate LLM, on our real prompt
  *   npm run bench:path    WHERE the reply is held before she starts speaking (guard vs downstream)
  *   npm run bench:tier    is VOICE_LLM_SERVICE_TIER=priority worth ~2x the token price?
+ *   npm run bench:ttft    what the model's first token actually depends on (prompt size? tail? cache?)
  *
  * WHAT WE ARE ACTUALLY OPTIMISING. After the caller stops speaking he waits through three things:
  *
@@ -37,6 +38,8 @@ import * as openai from '@livekit/agents-plugin-openai';
 import { loadEnv } from '../../../../config/env.js';
 import { HarnessVoice, describeEngine, type EngineOverride } from './tts-engine.js';
 import { SYSTEM_PROMPT_HE } from '../prompts/system-prompt.he.js';
+import { buildSystemPrompt } from '../prompts/system-prompt.he.js';
+import { buildAgentTools } from '../tools/index.js';
 import { guardStream } from '../speech-guard.js';
 import { toPhoneWav, toStudioWav } from './wav.js';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -696,6 +699,263 @@ async function benchTier(env: Env): Promise<void> {
   console.log('  Judge it on latency, not on the bill.');
 }
 
+/**
+ * `npm run bench:ttft` — WHAT THE MODEL'S FIRST TOKEN ACTUALLY DEPENDS ON.
+ *
+ * THE QUESTION, and why it is now the only one that matters. Dead air on a turn where she waits
+ * for GPT decomposes exactly (latency-anatomy.ts, four production calls):
+ *
+ *     dead air 1479ms  =  model first token 1090  +  tts first byte 224  +  ~165 pipeline
+ *
+ * Preemptive TTS removes the middle term. The pipeline term is already thin. So every remaining
+ * millisecond between here and a one-second turn is in the FIRST TOKEN — and we send ~17,000
+ * prompt tokens to get it, 94% of them served from OpenAI's cache.
+ *
+ * Nobody has measured whether that size costs anything. Two very different worlds hide behind the
+ * same 1090ms:
+ *
+ *   - if the cost is the UNCACHED TAIL (~1k tokens: the coach note, the last turns), it can be
+ *     trimmed without changing a single instruction — pure engineering, and Koren need not approve
+ *     a word of it;
+ *   - if the cost is TOTAL SIZE, the lever is the prompt itself, which IS the agent's behaviour,
+ *     and every cut is his call line by line.
+ *
+ * WHY NOT `bench:llm`. That one sends the system prompt plus ONE message. A real turn carries
+ * thirty items of history and a note glued to the tail, and the difference is not academic: the
+ * two-message shape is exactly what made `gpt-5.4-mini` look faster than gpt-5.4 in a benchmark
+ * before it proved slower on a real call and broke Hebrew gender (known-issues §3). A bench whose
+ * shape is wrong does not measure a smaller version of the truth; it measures something else.
+ *
+ * METHOD — the three ways this measurement could lie, and what stops each:
+ *
+ *  1. OpenAI's latency drifts over minutes, so arms are INTERLEAVED and rotated, never grouped.
+ *     Grouping is how an earlier endpointing A/B in this repo produced a confident result from two
+ *     identical arms.
+ *  2. The cache is a PREFIX cache, so every arm that changes the prompt starts cold. Each arm is
+ *     warmed once, unmeasured, before any run counts — otherwise "smaller prompt" and "cold cache"
+ *     are measured as one thing, and the smaller prompt loses on someone else's cost.
+ *  3. A cache hit is never assumed: each run reads `promptTokens` and `promptCachedTokens` back off
+ *     the stream's own usage and the table prints them, so an arm whose cache did not warm is
+ *     visible instead of silently averaged in.
+ *
+ * Costs ~30 requests of mostly-cached input and stops at the first token, so completion tokens are
+ * ~1 each. Cents, not dollars.
+ */
+async function benchTtft(env: Env): Promise<void> {
+  // `--model=` so a model can be judged on the shape it will actually run in. THE POINT of this
+  // bench: `bench:llm` compares models on a system prompt plus one message, and that shape is what
+  // made gpt-5.4-mini look faster than gpt-5.4 before it lost on a real call (known-issues §3).
+  const modelFlag = process.argv.find((a) => a.startsWith('--model='))?.slice('--model='.length);
+  const model = modelFlag ?? env.VOICE_LLM_MODEL ?? env.AI_MODEL;
+  console.log(`FIRST TOKEN — what does it actually depend on? (${model}, ${RUNS} interleaved runs/arm)\n`);
+
+  /** Caller turns and replies at the length they really are, repeated to build history. */
+  const HISTORY_PAIR: Array<[string, string]> = [
+    ['היי, אה... ראיתי את המודעה שלכם ולא בדיוק הבנתי מה אתם עושים.', 'בסדר. אנחנו בונים סוכנת קולית שעונה לפניות ומתאמת פגישות. במה אתה עוסק?'],
+    ['יש לי עסק קטן, אנחנו מוכרים ריהוט לבית — גם אונליין וגם חנות אחת.', 'הבנתי אותך. מי עונה לפניות אצלכם היום?'],
+    ['המזכירה עונה עד ארבע, אחרי זה זה נופל.', 'אוקי. וכמה פניות ביום בערך מגיעות?'],
+    ['שבע-שמונה ביום, לפעמים יותר בסופי שבוע.', 'אמ. ומה קורה לפניות שמגיעות בערב?'],
+    ['הן פשוט מחכות לבוקר, וחלק מהן כבר קנו במקום אחר.', 'טוב, הבנתי. זה בדיוק מה שאנחנו פותרים.'],
+  ];
+
+  /** The coach note as production writes it: ONE system item at the tail, never cached. */
+  const coachNote = (bytes: number): string => {
+    const unit = 'אל תחזרי על הניסוח הזה. הלקוח כבר אמר לך את השם שלו. שאלת כבר על התהליך. ';
+    return bytes === 0 ? '' : unit.repeat(Math.ceil(bytes / unit.length)).slice(0, bytes);
+  };
+
+  const build = (opts: { systemFrac: number; historyPairs: number; tailBytes: number; cold?: boolean }) => {
+    const ctx = llmBase.ChatContext.empty();
+    // TRUNCATION IS FOR SIZE ONLY. Cutting the prompt mid-sentence would make a terrible prompt; it
+    // is a perfectly good way to ask "does length cost time". Nothing here is a proposed prompt.
+    const sys = SYSTEM_PROMPT_HE.slice(0, Math.floor(SYSTEM_PROMPT_HE.length * opts.systemFrac));
+    // A unique prefix makes the cache miss by construction — that is what the cold arm measures.
+    ctx.addMessage({ role: 'system', content: opts.cold ? `${Date.now()}-${Math.random()}\n${sys}` : sys });
+    for (let i = 0; i < opts.historyPairs; i++) {
+      const [user, assistant] = HISTORY_PAIR[i % HISTORY_PAIR.length]!;
+      ctx.addMessage({ role: 'user', content: user });
+      ctx.addMessage({ role: 'assistant', content: assistant });
+    }
+    if (opts.tailBytes > 0) ctx.addMessage({ role: 'system', content: coachNote(opts.tailBytes) });
+    ctx.addMessage({ role: 'user', content: HEBREW_TURN });
+    return ctx;
+  };
+
+  // 15 pairs = 30 history items, the shape a real call carries by mid-conversation. Tail sizes are
+  // the MEASURED coach note on production calls: median 1.2-1.8KB, largest seen 4756B.
+  const arms: Array<{ key: string; label: string; make: () => llmBase.ChatContext }> = [
+    { key: 'prod', label: 'production shape (30 history + 1.5KB note)', make: () => build({ systemFrac: 1, historyPairs: 15, tailBytes: 1500 }) },
+    { key: 'no-tail', label: 'same, with NO coach note', make: () => build({ systemFrac: 1, historyPairs: 15, tailBytes: 0 }) },
+    { key: 'tail-4.7k', label: 'same, with the LARGEST note seen (4.7KB)', make: () => build({ systemFrac: 1, historyPairs: 15, tailBytes: 4756 }) },
+    { key: 'no-history', label: 'full prompt + note, NO history', make: () => build({ systemFrac: 1, historyPairs: 0, tailBytes: 1500 }) },
+    { key: 'sys-60', label: 'system prompt cut to 60%', make: () => build({ systemFrac: 0.6, historyPairs: 15, tailBytes: 1500 }) },
+    { key: 'sys-30', label: 'system prompt cut to 30%', make: () => build({ systemFrac: 0.3, historyPairs: 15, tailBytes: 1500 }) },
+    { key: 'cold', label: 'production shape, CACHE COLD', make: () => build({ systemFrac: 1, historyPairs: 15, tailBytes: 1500, cold: true }) },
+  ];
+
+  /**
+   * THE ARM THE FIRST RUN WAS MISSING, and it is the one that matters.
+   *
+   * Every arm above sends NO TOOLS and a prompt built with `toolsEnabled: false` — because
+   * `SYSTEM_PROMPT_HE` is. A production turn ships seven tool definitions with their JSON schemas
+   * AND the prompt's tool section, and the model must decide whether to call one before it writes
+   * a word. The first run measured 802ms here against 992-1090ms on real calls; a 200-300ms gap
+   * between a bench and production is exactly the shape of a missing input, not of network jitter.
+   *
+   * The runtime is a cast stub on purpose: a tool's SCHEMA is fixed at definition, and only its
+   * `execute` closure touches `rt`. Nothing here is executed.
+   */
+  const toolsPrompt = buildSystemPrompt({ toolsEnabled: true });
+  const agentTools = buildAgentTools({} as never);
+  const buildWithTools = () => {
+    const ctx = llmBase.ChatContext.empty();
+    ctx.addMessage({ role: 'system', content: toolsPrompt });
+    for (let i = 0; i < 15; i++) {
+      const [user, assistant] = HISTORY_PAIR[i % HISTORY_PAIR.length]!;
+      ctx.addMessage({ role: 'user', content: user });
+      ctx.addMessage({ role: 'assistant', content: assistant });
+    }
+    ctx.addMessage({ role: 'system', content: coachNote(1500) });
+    ctx.addMessage({ role: 'user', content: HEBREW_TURN });
+    return ctx;
+  };
+  arms.push({ key: 'tools', label: 'PRODUCTION: 7 tools attached + tool prompt', make: buildWithTools });
+
+  const samples: Record<string, number[]> = Object.fromEntries(arms.map((a) => [a.key, []]));
+  const usage: Record<string, { prompt: number; cached: number }> = {};
+  let lastUsage: { prompt: number; cached: number } | null = null;
+
+  const once = async (make: () => llmBase.ChatContext, withTools = false): Promise<number | null> => {
+    const client = new openai.LLM({
+      model,
+      ...(env.VOICE_LLM_REASONING_EFFORT ? { reasoningEffort: env.VOICE_LLM_REASONING_EFFORT } : {}),
+      ...(env.VOICE_LLM_SERVICE_TIER ? { serviceTier: env.VOICE_LLM_SERVICE_TIER } : {}),
+    });
+    const started = Date.now();
+    let ttft: number | null = null;
+    try {
+      const stream = client.chat({
+        chatCtx: make(),
+        ...(withTools ? { toolCtx: llmBase.toToolContext(agentTools) } : {}),
+      });
+      for await (const chunk of stream) {
+        if (chunk.usage) lastUsage = { prompt: chunk.usage.promptTokens, cached: chunk.usage.promptCachedTokens };
+        // Usage arrives in the FINAL chunk, so the loop cannot stop at the first token if the token
+        // counts are to be read at all. It keeps draining; only `ttft` is the measurement.
+        if (ttft === null && chunk.delta?.content) ttft = Date.now() - started;
+      }
+      await stream.close?.();
+    } catch (e) {
+      console.log(`    FAILED — ${e instanceof Error ? e.message.slice(0, 70) : String(e)}`);
+    }
+    return ttft;
+  };
+
+  console.log('  warming each arm once (a prefix cache makes every changed prompt start cold)...');
+  for (const a of arms) {
+    // The cold arm is warmed too: its prefix is unique per call so warming changes nothing for it,
+    // and skipping it would leave it with a different number of preceding requests than the rest.
+    lastUsage = null;
+    await once(a.make, a.key === 'tools');
+    if (lastUsage) usage[a.key] = lastUsage;
+  }
+
+  for (let i = 0; i < RUNS; i++) {
+    // Rotated each round, so no arm systematically owns the same position in the minute.
+    const order = [...arms.slice(i % arms.length), ...arms.slice(0, i % arms.length)];
+    const row: string[] = [];
+    for (const a of order) {
+      lastUsage = null;
+      const ms = await once(a.make, a.key === 'tools');
+      if (ms !== null) samples[a.key]!.push(ms);
+      if (lastUsage) usage[a.key] = lastUsage;
+      row.push(`${a.key} ${ms ?? '—'}ms`);
+    }
+    console.log(`  run ${i + 1}   ${row.join('   ')}`);
+  }
+
+  const base = median(samples.prod!);
+  console.log('\n  arm                                          ttft     vs prod    prompt tokens (cached)');
+  for (const a of arms) {
+    const ms = median(samples[a.key]!);
+    const u = usage[a.key];
+    const delta = ms === null || base === null ? '' : ms === base ? '—' : `${ms - base > 0 ? '+' : ''}${ms - base}ms`;
+    const tok = u ? `${u.prompt} (${Math.round((u.cached / Math.max(1, u.prompt)) * 100)}%)` : '?';
+    console.log(`  ${a.label.padEnd(44)} ${String(ms ?? '—').padStart(5)}ms  ${delta.padStart(8)}    ${tok}`);
+  }
+
+  // THE VERDICT IS AN INTERVAL, NOT A THRESHOLD — and the first version of it was wrong.
+  //
+  // That version compared each arm's median against the baseline and called any gap under a
+  // hardcoded 75ms "inside noise". At the default three runs per arm that was not a measurement,
+  // it was a coin flip dressed as a finding, and it was reported to Koren as "prompt length is not
+  // the cost" — full stop, in those words. He pushed back that shortening the prompt is the one
+  // optimisation every guide recommends, and he was right to: at n=3, with a within-arm spread of
+  // ~250ms, this instrument could not have seen an effect smaller than about 300ms.
+  //
+  // A bootstrap interval over the difference of medians says only what the data supports. Where
+  // the interval spans zero the arm is UNPROVEN at this sample size — which is not the same as
+  // zero — and the interval's own far end states how large an effect could still be hiding. At
+  // --runs=12 that turned two "noise" rows into real ones: the cache (+35ms) and the tool
+  // definitions (+89ms), the second being the largest prompt-side cost we have and the one no
+  // guide mentions.
+  console.log('\n  --- what this says (95% bootstrap interval on the difference of medians) ---\n');
+  if (base === null) {
+    console.log('  The baseline arm produced no token. Nothing above is safe to read.');
+    return;
+  }
+  console.log('  arm                                          difference vs the production shape');
+  for (const a of arms) {
+    if (a.key === 'prod') continue;
+    const v = samples[a.key]!;
+    if (v.length < 3) continue;
+    const [lo, hi] = bootstrapMedianDiff(v, samples.prod!);
+    const d = (median(v) ?? 0) - base;
+    const proven = lo > 0 || hi < 0;
+    const sign = (n: number): string => `${n > 0 ? '+' : ''}${n}`;
+    console.log(
+      `  ${a.label.padEnd(44)} ${`${sign(d)}ms`.padStart(7)}  [${sign(lo)}, ${sign(hi)}]  ` +
+        `${proven ? 'REAL' : 'unproven at this n'}`,
+    );
+  }
+  console.log(
+    '\n  An interval that spans zero has NOT shown an effect, and its far end is the most that could\n' +
+      '  still be hiding. Raise --runs= to narrow it before believing either direction.',
+  );
+  console.log(
+    `\n  For the budget: a turn that waits for the model lands at about ttft + tts first byte + 180ms.\n` +
+      `  At ${base}ms, with preemptive TTS hiding the voice, that is ~${base + 180}ms of silence.`,
+  );
+}
+
+/**
+ * 95% bootstrap interval on `median(a) - median(b)`.
+ *
+ * Resampling rather than a t-test because these are medians of a skewed, heavy-tailed distribution
+ * — one queued request put a 1269ms sample next to a 705ms one in the same arm — and a test that
+ * assumed normality would report a precision the data does not have. Seeded, so two readings of one
+ * run agree with each other.
+ */
+function bootstrapMedianDiff(a: number[], b: number[], iterations = 4000): [number, number] {
+  let seed = 7;
+  const rand = (): number => {
+    // Mulberry32 — deterministic, and short enough to read.
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const drawMedian = (v: number[]): number =>
+    median(Array.from({ length: v.length }, () => v[Math.floor(rand() * v.length)]!)) ?? 0;
+  const diffs = Array.from({ length: iterations }, () => drawMedian(a) - drawMedian(b)).sort(
+    (x, y) => x - y,
+  );
+  return [
+    Math.round(diffs[Math.floor(0.025 * iterations)]!),
+    Math.round(diffs[Math.floor(0.975 * iterations)]!),
+  ];
+}
+
 function median(v: number[]): number | null {
   if (v.length === 0) return null;
   const s = [...v].sort((a, b) => a - b);
@@ -714,6 +974,7 @@ async function main(): Promise<void> {
     if (what === 'llm' || what === 'all') await benchLlm(env);
     if (what === 'path') await benchPath(env);
     if (what === 'tier') await benchTier(env);
+    if (what === 'ttft') await benchTtft(env);
   } finally {
     // Every engine this run leased, released. DeepDub holds a two-socket pool per instance and
     // nothing else will close it — an unclosed pool keeps the event loop alive and the bench ends

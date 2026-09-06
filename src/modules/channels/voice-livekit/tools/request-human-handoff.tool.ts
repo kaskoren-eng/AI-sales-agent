@@ -11,6 +11,7 @@ import { resolveHandoffSettings } from './handoff-settings.js';
 import { runEndCallTeardown } from './end-call.tool.js';
 import { notifyOwner } from './owner-notify.js';
 import { timedTool, type ToolRuntimeContext } from './tool-context.js';
+import { settleLeadWrites } from './lead-writes.js';
 
 /**
  * request_human_handoff(reason) — the answer to "אני רוצה לדבר עם בן אדם".
@@ -93,6 +94,9 @@ export async function flagLeadHandoffRequested(rt: ToolRuntimeContext): Promise<
   leadPhone: string | null;
 }> {
   const now = new Date();
+  // The owner's alert names this lead; a row the background chain has not written yet would send
+  // an alert about nobody. See lead-writes.ts.
+  await settleLeadWrites(rt);
 
   if (rt.leadId) {
     const rows = await rt.db
