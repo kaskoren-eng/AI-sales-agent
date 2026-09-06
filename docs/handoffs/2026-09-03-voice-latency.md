@@ -147,3 +147,122 @@ VOICE lane only, plus four shared files touched additively: `src/config/env.ts` 
 (`src/test/helpers.ts`, `src/plugins/auth.test.ts`) gained the new env key, which the compiler
 required. **New env key claimed: `VOICE_ASYNC_LEAD_WRITES` (VOICE).** No migration, no
 `tenants.settings` key.
+
+---
+
+# 2026-09-06 — the prompt is not the lever, and the fixed lines are
+
+Same session, continued after Koren's decisions: (a) a word chosen by the CODE without conversational
+context is a bigger risk than latency, so it is the LAST option and not the first; (b) run the
+preemptive-TTS test on production; (c) evaluate the techniques in an LLM-latency article he sent.
+
+## 1. `bench:ttft` — and the answer that saved a session's work
+
+`bench:llm` sends the system prompt plus ONE message. A real turn carries thirty items of history
+and a note glued to the tail. That difference is not academic — it is what made `gpt-5.4-mini` look
+faster than gpt-5.4 before it lost on a real call (known-issues §3). So the production-shaped bench
+was built: arms interleaved and rotated, each warmed separately (the cache is a PREFIX cache, so
+every changed prompt starts cold), and every arm's cache state read back off the stream's own usage
+rather than assumed.
+
+```
+production shape (30 history + 1.5KB note)   777ms   13234 tokens (99% cached)
+no coach note                                753ms   -24ms
+largest note ever seen (4.7KB)               769ms    -8ms
+no history at all                            801ms   +24ms
+system prompt cut to 60%                     819ms   +42ms
+system prompt cut to 30%                     714ms   -63ms    4736 tokens
+CACHE COLD                                   784ms    +7ms       0% cached
+7 tools attached + tool prompt               843ms   +66ms   16455 tokens
+```
+
+**Cutting the prompt by 64% moves the first token by less than the noise band.** So does deleting the
+history, so does the largest coach note we have ever generated, and so does missing the cache
+entirely. The tool definitions are the only input that reads above zero, and they are worth ~66ms.
+
+Then the control that settles it, run separately: a **ten-token** prompt measured **1068ms**, and a
+1200-token prompt **1033ms**, on the same machine within minutes of the 777ms above. Time to first
+token is a fixed vendor-side cost — queue, model start, network — and is not a function of anything
+we put in the prompt.
+
+**Two consequences, and the first is the valuable one:**
+
+- **Trimming the prompt is dead as a latency lever.** It was the obvious next move and it would have
+  cost Koren line-by-line judgement over the agent's behaviour to buy nothing.
+- **The prompt cache saves MONEY, not time** (0% cached measured +7ms). Keep it for the bill, and
+  keep the PREFIX stable — but never justify a prompt decision by latency again.
+
+`--model=` was added so a model can be judged on the shape it will actually run in. That knob is
+Koren's; the instrument is now honest.
+
+## 2. The article, evaluated against our own numbers
+
+Koren sent a general LLM-latency guide. Ten techniques; against measurement most are already done or
+dead here: streaming (shipped, and we go further — sentence by sentence into the TTS), token
+reduction (dead, above), `max_tokens` (touches output; we are measured on the FIRST token), batching
+(would ADD latency at one request per turn), parallelisation (done — the async lead writes), RAG
+(irrelevant), speculative decoding (not ours to control).
+
+**One idea in it was right and we were not doing it: caching.** Not response caching — every turn is
+unique — but the audio for the lines that are not unique at all.
+
+## 3. The fixed-line audio cache (`8a9f74c`)
+
+A handful of the words the caller hears are not written by the model: the five acknowledgements, the
+thinking fillers, the dictation nods, the six silence reflexes. They are constants in this repo,
+screened by ear over a dozen rounds, spoken verbatim — and each was a fresh vendor generation at
+224-314ms of first byte. On a turn that opens with an acknowledgement that is most of the 553ms.
+
+Now synthesised once per worker and served from memory, behind `VOICE_TTS_AUDIO_CACHE` (default on).
+
+**It creates no new seam**, which is the thing to check rather than assume: the adapter already
+generates one sentence per call to `generate()`, so the acknowledgement and the sentence after it
+were always two generations with a join between them. What it DOES change is that the clip is fixed
+rather than redrawn — per-generation variance for that word disappears within a worker's lifetime.
+**That is a thing to hear, not to reason about, and the flip stays gated on Koren's ear.**
+
+The design decision worth keeping: **an allowlist, not a frequency cache.** A cache that learned what
+repeats would eventually hold a caller's name, a phone number read back, an email spelled out — audio
+of a real person's details, in memory, replayable on someone else's call. Eligibility is exactly
+`buildFixedLineAllowlist()`, and a test asserts model text and caller details cannot enter.
+
+Three silent failures handled: the key matches through NIQQUD but stores the EXACT text (the guard
+points words on their way to the vendor, so an exact-match cache would miss on precisely these lines
+— and a cache that never hits looks identical to one switched off); a SILENT generation is never
+stored (both vendors answer an unusable request with silence rather than an error); a CANCELLED
+generation is never stored (half a word cached is half a word forever).
+
+The greeting is deliberately not eligible: assembled per tenant, so not a constant, and nobody is
+waiting on it.
+
+## 4. Where the budget stands now
+
+```
+dead air  =  first token  +  tts first byte  +  ~180ms pipeline
+             ~990 (prod)     224-314            measured
+```
+
+| lever | state | worth |
+|---|---|---|
+| async lead writes | built, needs deploy | ~1s on tool turns |
+| preemptive TTS | secret flip, requested | ~270ms on GPT-bound turns |
+| fixed-line audio cache | built, needs an ear | ~270ms on receipt turns |
+| endpointing 350 to 250 | secret, after the above | 100ms everywhere |
+| prompt trimming | **DEAD — measured** | 0 |
+| faster model | Koren's knob, instrument ready | unknown |
+| a code-chosen opener | **last resort by his decision** | ~900ms |
+
+**Honest projection: ~1.2s for a turn that waits for GPT, not 1.0s.** The first token is a fixed
+vendor cost of ~800-1000ms and nothing we own moves it. Sub-second exists only on a turn she opens
+herself — the option he has ranked last, and rightly: a word chosen without context is a permanent
+risk against a temporary annoyance.
+
+## 5. Still open
+
+- The preemptive-TTS production test was requested from the supervisor session; no confirmation yet
+  that it ran. It needs no deploy and no merge.
+- The ~200ms between this bench (777-843ms) and production (992-1090ms) is unexplained. Not the
+  prompt — that is now measured from both ends. Candidates: the worker's event loop under live
+  audio, and the route out of eu-central. Named rather than guessed.
+- Nothing on this branch has been heard on a call. The audio cache in particular must be listened to
+  before it reaches a lead.
