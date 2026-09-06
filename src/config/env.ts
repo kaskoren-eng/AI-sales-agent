@@ -538,6 +538,20 @@ const envSchema = z.object({
   // rebuildable (`npm run usage:reconcile`), so this buys a second of the caller's time against a
   // worse message on an outage. `false` restores the awaited writes exactly.
   VOICE_ASYNC_LEAD_WRITES: envBool(true),
+  // Kill-switch for serving the FIXED lines from memory instead of regenerating them at the vendor
+  // (tts/fixed-line-audio.ts, 2026-09-06). The five acknowledgements, the thinking fillers, the
+  // dictation nods and the silence reflexes are constants in this repo, spoken verbatim in every
+  // call, and each one costs a fresh DeepDub generation — 224-314ms of first byte, measured on
+  // production calls, in front of a caller who is waiting. Cached, that goes to roughly zero, and
+  // on a turn that opens with an acknowledgement it is most of the 553ms.
+  //
+  // Only module constants are eligible: nothing the model wrote and nothing a caller said can enter
+  // the cache, so no lead's name or number is ever held as audio. It creates no new seam — the
+  // adapter already generates one sentence per call, so the acknowledgement and the sentence after
+  // it were always two generations with a join between them. What it does change is that the clip
+  // is fixed rather than redrawn per call, and THAT is a thing to hear before it ships.
+  // `false` regenerates every line exactly as before.
+  VOICE_TTS_AUDIO_CACHE: envBool(true),
   // Kill-switch for counting her discovery questions BY INTENT rather than by literal phrasing
   // (fact-memory.ts, 2026-09-02). On the 14:56 call of 2026-09-01 she asked what his business is
   // five times and the counter saw three, and she asked who answers his enquiries four times and
