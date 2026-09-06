@@ -266,3 +266,81 @@ risk against a temporary annoyance.
   audio, and the route out of eu-central. Named rather than guessed.
 - Nothing on this branch has been heard on a call. The audio cache in particular must be listened to
   before it reaches a lead.
+
+---
+
+# 2026-09-06 (later) — OpenAI's own guide, two bugs it found, and the tool-step change
+
+Koren sent OpenAI's latency-optimization guide. Read against our measurements rather than against
+intuition, it did three things.
+
+## 1. It settles the prompt-length argument
+
+> *"cutting 50% of your prompt may only result in a 1–5% latency improvement"* — OpenAI, same page.
+
+We measured **−29ms on 785ms = 3.7%**, cutting 64%. Inside their own published band. The number was
+right; calling it "dead" was too absolute — it is 3.7%, not zero. The practical conclusion stands,
+and now rests on two independent sources instead of one bench.
+
+## 2. Two real bugs, both found by reading the guide against the code
+
+**The fixed-line audio cache never survived a call (`353dae1`).** `buildSessionComponents()` runs
+inside `entry` — once per CALL, not once per worker — so the cache built in `deepdubOptions()` was
+discarded with the caller who filled it, and every caller paid the vendor again for her first
+acknowledgement. A feature that looked switched on, measured as switched off, and said nothing
+either way. My own comment in that file claimed "per worker" and was wrong. Now module-scoped; the
+regression test asserts two `deepdubOptions()` calls share one cache.
+
+**No call report recorded the service tier (`3100c68`).** The session's central finding is that TTFT
+is a fixed vendor cost (~990ms). `VOICE_LLM_SERVICE_TIER` is the one setting aimed at it — and it is
+a cloud secret, and `lk agent secrets` lists names without values. So the single lever on the largest
+block of the caller's wait was unreadable from the data it changes. That is the `preemptiveTts`
+mistake, one measurement later. Both it and `VOICE_LLM_REASONING_EFFORT` are now stamped on every
+report. **Somebody should confirm the cloud value is actually `priority`.**
+
+## 3. The tool-step change (`1e00db8`) — approved by Koren, and scoped
+
+The guide's "make fewer requests" names our worst turn class exactly:
+
+```
+ordinary turn   dead air  512ms    modelTtft   979ms   (one inference)
+tool turn       dead air 3627ms    modelTtft  1835ms   (TWO — TTFT paid twice)
+```
+
+`VOICE_SPEAK_WITH_CAPTURE` (default on, prompt-only) tells her to say her reply in the SAME step
+that calls `capture_lead_info`, instead of producing a words-less step.
+
+**Read this before widening it.** The instruction names ONE tool on purpose. `capture_lead_info`
+only stores, so its result never shapes a word. `check_calendar_availability` and `book_meeting` are
+the opposite kind of tool — what they return IS the next sentence — and letting her speak ahead of
+those manufactures the "קבעתי לך" failure Step 4 spends a page forbidding. **The scope is the safety
+argument, not a detail.**
+
+Koren's second condition is in the prompt too: the caller must never be able to tell the tool fired
+— no "רגע, אני רושמת", no "שמרתי", and no gap standing in for them.
+
+### What to listen for on the verification call
+
+1. **Does she speak twice in one turn?** The follow-up step after the tool returns can still produce
+   words. The clean fix is in `turn-opener.ts` (drop the post-tool hesitation when the tool step had
+   words) and this branch is under instruction not to touch that file — so it is named, not fixed.
+2. **`toolCallLeaks` in the report.** Inviting content into a tool step may make the model more
+   likely to write the payload as text. The guard already scrubs and counts it; the count is the
+   number to read.
+3. **The filler on tool steps disappears** — `pairFillerOnEmptyStep` only fires on a words-less
+   step. That is correct (the silence it covered is gone) but it is an audible change.
+
+Revert for any of these: `VOICE_SPEAK_WITH_CAPTURE=false`, one secret, no deploy.
+
+## Where the budget stands
+
+| lever | state | worth |
+|---|---|---|
+| async lead writes | built, needs deploy | ~1s on tool turns |
+| speak with capture | **built, needs an ear** | ~470-900ms on tool turns |
+| fixed-line audio cache | built + fixed, needs an ear | ~270ms on receipt turns |
+| preemptive TTS | secret flip, still not run | ~270ms on GPT-bound turns |
+| endpointing 350→250 | secret, after the above | 100ms everywhere |
+| service tier | **unverified in production** | unknown, aimed at the right thing |
+| prompt trimming | dead — 3.7%, twice measured | ~0 |
+| a code-chosen opener | last resort by Koren's decision | ~900ms |
