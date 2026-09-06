@@ -190,7 +190,8 @@ export async function verifyAdminKey(key: string): Promise<boolean> {
  * nothing on the page may either.
  */
 export type FirstAudio =
-  | { state: 'measured'; ms: number }
+  /** `source` names which instrument produced the number — they are not interchangeable evidence. */
+  | { state: 'measured'; ms: number; source: 'first_audio_frame' | 'dead_air' }
   | { state: 'caller_not_waiting' }
   | { state: 'not_recorded' }
 

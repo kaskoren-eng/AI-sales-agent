@@ -21,10 +21,12 @@ import {
  * sentence saying so instead of a grid of zeros. A zero looks like a measurement, and this repo has
  * shipped several instruments whose failure mode was a comfortable number in place of nothing.
  *
- * The per-turn badge is `first_audio_frame` — the caller stopped talking, and this is how long
- * until she made a sound. The server has already classified it; this page only renders the three
- * states it is given, and renders NOTHING at all on a line that has no badge (a dash there would
- * claim a measurement was attempted on a line that was never a turn opener).
+ * The per-turn badge answers one question — the caller stopped talking, how long until she made a
+ * sound. The server has already classified it, including WHICH of the two instruments produced the
+ * number (`first_audio_frame` on newer builds, the dead-air clock on older ones), and the tooltip
+ * says so. This page only renders the states it is handed, and renders NOTHING at all on a line
+ * that has no badge — a dash there would claim a measurement was attempted on a line that was
+ * never a turn opener.
  */
 
 const CARD: React.CSSProperties = {
@@ -236,7 +238,9 @@ function Figures({ view, isHebrew, t }: { view: CallReportView; isHebrew: boolea
     { key: 'duration', value: formatDuration(view.raw.durationSec) },
     { key: 'turnsHeard', value: numOr(s.turnsHeard) },
     { key: 'turnsMeasured', value: all ? String(all.n) : '—' },
-    { key: 'firstAudioMedian', value: ms(all?.firstAudioP50 ?? null), hero: true },
+    // Either instrument for the same wait — see the FirstAudio union. Older reports only have
+    // the second, and blanking the headline figure on them would hide a call that was measured.
+    { key: 'firstAudioMedian', value: ms(all?.firstAudioP50 ?? all?.deadAirP50 ?? null), hero: true },
     { key: 'deadAirP90', value: ms(all?.deadAirP90 ?? null) },
     { key: 'worstCase', value: ms(asNum(s.worstCaseMs)) },
     { key: 'endOfTurn', value: ms(asNum(s.endOfTurnMedianMs)) },
@@ -440,6 +444,7 @@ function Badge({ fa, t }: { fa: FirstAudio; t: T }) {
     return (
       <span
         dir="ltr"
+        title={t(`adminCall.report.transcript.source.${fa.source}`)}
         style={{
           fontFamily: 'var(--font-mono)',
           fontVariantNumeric: 'tabular-nums',

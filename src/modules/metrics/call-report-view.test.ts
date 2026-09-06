@@ -132,7 +132,7 @@ describe('the per-turn latency badge', () => {
     const badged = badgedLines(view);
     expect(badged).toHaveLength(3);
     expect(badged.map((l) => l.text)).toEqual(['greeting', 'her first reply', 'her second reply']);
-    expect(badged[1]!.firstAudio).toEqual({ state: 'measured', ms: 900 });
+    expect(badged[1]!.firstAudio).toEqual({ state: 'measured', ms: 900, source: 'first_audio_frame' });
   });
 
   it('leaves a continuation line in the same turn unbadged rather than repeating the number', () => {
@@ -173,17 +173,48 @@ describe('the per-turn latency badge', () => {
       transcript: [line(1500, 'assistant', 'instant', 1100)],
     };
     const view = buildCallReportView(report)!;
-    expect(view.transcript[0]!.firstAudio).toEqual({ state: 'measured', ms: 0 });
+    expect(view.transcript[0]!.firstAudio).toEqual({ state: 'measured', ms: 0, source: 'first_audio_frame' });
   });
 
   it('says "not recorded" when the build wrote no first-audio sample for the turn', () => {
     const report = {
       summary: {},
       metrics: [eou(1000)],
-      transcript: [line(1500, 'assistant', 'no sample exists', 1100)],
+      transcript: [line(1500, 'assistant', 'neither instrument recorded this turn', 1100)],
     };
     const view = buildCallReportView(report)!;
     expect(view.transcript[0]!.firstAudio).toEqual({ state: 'not_recorded' });
+  });
+
+  it('falls back to the dead-air clock, and says which instrument gave the number', () => {
+    // Of the 61 reports captured up to 2026-09-02, exactly one carries first_audio_frame and 23
+    // carry dead_air. Preferring the first and refusing the second would blank the badge on
+    // nearly every call on record, so the older instrument is read and labelled.
+    const report = {
+      summary: {},
+      metrics: [eou(1000), { atMs: 1100, stage: 'dead_air', durationMs: 1350 }],
+      transcript: [line(2000, 'assistant', 'measured the older way', 1100)],
+    };
+    const view = buildCallReportView(report)!;
+    expect(view.transcript[0]!.firstAudio).toEqual({
+      state: 'measured',
+      ms: 1350,
+      source: 'dead_air',
+    });
+  });
+
+  it('lets "he was not waiting" beat a dead-air number, because both cannot be true', () => {
+    const report = {
+      summary: {},
+      metrics: [
+        eou(1000),
+        firstAudio(1100, -1),
+        { atMs: 1150, stage: 'dead_air', durationMs: 900 },
+      ],
+      transcript: [line(2000, 'assistant', 'a barge-in', 1100)],
+    };
+    const view = buildCallReportView(report)!;
+    expect(view.transcript[0]!.firstAudio).toEqual({ state: 'caller_not_waiting' });
   });
 
   it('gives a line landing exactly on a boundary to the turn that boundary opens', () => {
@@ -206,7 +237,7 @@ describe('the per-turn latency badge', () => {
     };
     const view = buildCallReportView(report)!;
     expect(view.transcript[0]!.turnIndex).toBe(1);
-    expect(view.transcript[0]!.firstAudio).toEqual({ state: 'measured', ms: 700 });
+    expect(view.transcript[0]!.firstAudio).toEqual({ state: 'measured', ms: 700, source: 'first_audio_frame' });
   });
 
   it('does not let a silent tool step take the badge off the line that made the sound', () => {
@@ -220,7 +251,7 @@ describe('the per-turn latency badge', () => {
     };
     const view = buildCallReportView(report)!;
     expect(view.transcript[0]!.firstAudio).toBeNull();
-    expect(view.transcript[1]!.firstAudio).toEqual({ state: 'measured', ms: 800 });
+    expect(view.transcript[1]!.firstAudio).toEqual({ state: 'measured', ms: 800, source: 'first_audio_frame' });
   });
 
   it('suppresses every badge when no end-of-turn event was found at all', () => {

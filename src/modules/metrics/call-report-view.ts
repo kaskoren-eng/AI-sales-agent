@@ -56,10 +56,19 @@ const DEAD_AIR_MIN_SAMPLES = 6;
  * a measurement, and folding it into an absence would be the same lie in the other direction.
  */
 export type FirstAudio =
-  | { state: 'measured'; ms: number }
+  /**
+   * `source` names the instrument, because there are two and they are not interchangeable
+   * evidence. `latency-anatomy.ts` documents `deadAirMs` as "caller stopped -> her first audio
+   * out, from the session's own state transitions" and `firstAudioMs` as "the same wait, measured
+   * at the audio frame inside ttsNode" — the same quantity, measured in two places. Of the 61 call
+   * reports captured up to 2026-09-02, exactly one carries `first_audio_frame` and 23 carry
+   * `dead_air`, so preferring the first and refusing the second would print "not recorded" on
+   * almost every call we have. The page shows the number and says which instrument produced it.
+   */
+  | { state: 'measured'; ms: number; source: 'first_audio_frame' | 'dead_air' }
   /** The `-1` sentinel: the greeting, a barge-in, or a turn she began before he finished. */
   | { state: 'caller_not_waiting' }
-  /** This build recorded no usable first-audio sample for the turn. */
+  /** This build recorded no usable sample of the wait for this turn. */
   | { state: 'not_recorded' };
 
 export interface ReportTranscriptLine {
@@ -332,12 +341,16 @@ export function joinTranscriptToTurns(
 }
 
 /**
- * Which of the three things this turn's badge can honestly say.
+ * Which of the things this turn's badge can honestly say, in strict order of evidence.
  *
- * The sentinel is never named here. `buildTurnAnatomy` already skips `-1` when it picks a sample,
- * so a turn that HAS first-audio samples and still reports `firstAudioMs === null` is a turn whose
- * samples were all the sentinel — the caller was not waiting. Deriving it that way instead of
- * comparing against `-1` keeps the constant private to VOICE, where a change to it stays correct.
+ * THE SENTINEL OUTRANKS THE FALLBACK. `buildTurnAnatomy` already skips `-1` when it picks a
+ * sample, so a turn that HAS first-audio samples and still reports `firstAudioMs === null` is a
+ * turn whose samples were all the sentinel — an explicit statement that the caller was not
+ * waiting. That statement beats any dead-air number that might also be lying around: "he wasn't
+ * waiting" and "he waited 900ms" cannot both be true, and the explicit signal is the one to trust.
+ *
+ * The sentinel is never named here. Deriving it from the fact that the anatomy skipped every
+ * sample keeps `-1` private to VOICE, where a change to it stays correct.
  */
 function classifyFirstAudio(
   turn: TurnAnatomy,
@@ -345,7 +358,9 @@ function classifyFirstAudio(
   to: number,
   metrics: readonly AnatomyMetric[],
 ): FirstAudio {
-  if (turn.firstAudioMs !== null) return { state: 'measured', ms: turn.firstAudioMs };
+  if (turn.firstAudioMs !== null) {
+    return { state: 'measured', ms: turn.firstAudioMs, source: STAGE_FIRST_AUDIO };
+  }
 
   const samples = metrics.filter(
     (m) => m.stage === STAGE_FIRST_AUDIO && m.atMs >= from && m.atMs < to,
@@ -353,6 +368,13 @@ function classifyFirstAudio(
   if (samples.length > 0 && samples.every((s) => numOrNull(s.durationMs) !== null)) {
     return { state: 'caller_not_waiting' };
   }
+
+  // The other instrument for the same wait. Every report older than the ttsNode probe has this and
+  // nothing else, and refusing it would blank the badge on nearly every call on record.
+  if (turn.deadAirMs !== null) {
+    return { state: 'measured', ms: turn.deadAirMs, source: 'dead_air' };
+  }
+
   return { state: 'not_recorded' };
 }
 
@@ -391,7 +413,11 @@ export function buildVerdicts(input: {
     });
   };
 
-  const leakReasons = asArray(summary.toolCallLeakReasons);
+  // An empty reasons list is not a reason. Attaching `reasons: ''` puts a label on the card with
+  // nothing after it, which reads as a value that failed to load.
+  const leakReasons = (asArray(summary.toolCallLeakReasons) ?? []).filter(
+    (x): x is string => typeof x === 'string' && x.length > 0,
+  );
   const restarted = numOrNull(summary.restartedReplies);
 
   counter('cut_offs', 'cutOffs');
@@ -404,9 +430,7 @@ export function buildVerdicts(input: {
   counter(
     'tool_call_leaks',
     'toolCallLeaks',
-    leakReasons === null
-      ? undefined
-      : { reasons: leakReasons.filter((x): x is string => typeof x === 'string').join(', ') },
+    leakReasons.length === 0 ? undefined : { reasons: leakReasons.join(', ') },
   );
   counter('false_booking_claims', 'falseBookingClaims');
 

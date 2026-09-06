@@ -721,6 +721,10 @@
           "notMeasured": "Not measured"
         },
         "notMeasured": "not measured",
+        "source": {
+          "first_audio_frame": "Measured at the audio frame, from the moment he stopped talking.",
+          "dead_air": "Measured from the session's own state transitions. This build had no audio-frame probe, so this is the same wait read off the other instrument."
+        },
         "callerNotWaiting": "The caller was not waiting for this one — the greeting, a barge-in, or a turn she began before he finished.",
         "notRecorded": "This build recorded no first-audio sample for this turn.",
         "empty": "This report carries no transcript.",
