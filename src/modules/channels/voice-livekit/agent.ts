@@ -858,7 +858,10 @@ class ClickScalesAgent extends voice.Agent {
     // THE LAST BLIND SPOT, and the reason two theories in a row were wrong.
     //
     // We know the acknowledgement's TEXT reaches the voice ~530ms after the caller stops, and that
-    // Cartesia reports ~240ms to first byte. That predicts sound at ~770ms. The caller waits
+    // Cartesia REPORTED ~240ms to first byte. (Past tense on purpose: this investigation predates
+    // the 2026-09-02 DeepDub flip, and the arithmetic below is a record of it, not a live
+    // prediction. The instrument it produced is engine-agnostic; the numbers in it are not.)
+    // That predicted sound at ~770ms. The caller waits
     // ~1690ms. Turning preemptive TTS off moved that by 180ms — i.e. it was not the cause, and I
     // had no instrument that could have told me so beforehand.
     //
@@ -1298,7 +1301,11 @@ export default defineAgent({
       // `cancelled` is the SDK's own verdict on whether this inference was paid for and thrown
       // away (`LLMMetrics.cancelled` / `TTSMetrics.cancelled`, both set from the generation's abort
       // signal). It is the direct measurement of preemptive waste — and for TTS it arrives with
-      // `charactersCount`, i.e. the actual Cartesia bill for audio nobody heard. Fed in before the
+      // `charactersCount`, i.e. the actual bill for audio nobody heard — charged by whichever
+      // engine `VOICE_TTS_PROVIDER` selected, which is DeepDub by default since 2026-09-02. The
+      // metric itself comes from LiveKit's `SynthesizeStream` base class (charactersCount is the
+      // input text's length), so it is emitted identically by the official Cartesia/ElevenLabs
+      // plugins and by our hand-written DeepDub adapter. Fed in before the
       // `timings.length` gate below, which drops events that happen to carry no timing.
       preemptive.noteMetrics(m);
 

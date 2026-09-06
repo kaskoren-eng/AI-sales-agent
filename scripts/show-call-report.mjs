@@ -73,6 +73,15 @@ if (r.pipeline) {
   console.log(`  endpointing         ${p.endpointingMinDelayMs}-${p.endpointingMaxDelayMs}ms (${p.endpointingMode ?? '?'})`);
   console.log(`  preemptive gen      ${onOff(p.preemptiveGeneration)}   |   preemptive TTS  ${onOff(p.preemptiveTts)}`);
   console.log(`  components          stt=${p.sttLabel ?? '?'}  llm=${p.llmLabel ?? '?'}  tts=${p.ttsLabel ?? '?'}`);
+  // WHICH ENGINE ASKED FOR, and whether anyone chose it. `components` above is the plugin the SDK
+  // ended up holding; this is the env key that selected it plus its source, which is the pair that
+  // answers "who is billing for the discarded drafts below". Printed only when the report carries
+  // it — a report written before VOICE_TTS_PROVIDER joined the observed keys cannot answer this,
+  // and a blank is honest where a guess would not be.
+  const ttsProvider = r.pipeline.configured?.VOICE_TTS_PROVIDER;
+  if (ttsProvider) {
+    console.log(`  tts engine          ${ttsProvider.value} (${ttsProvider.source === 'env' ? 'chosen on this host' : 'CODE DEFAULT — nobody set it'})`);
+  }
   console.log(`  VAD                 ${p.vadAttached ? 'ours, attached' : 'MISSING'}${p.vadIsSdkDefault ? '  <-- SDK DEFAULT, our VOICE_VAD_* settings did not apply' : ''}`);
   // Never printed as a boolean: nothing below this layer reports whether the filter is processing
   // audio. See pipeline-observer.ts and the 2026-08-30 handoff.
@@ -169,7 +178,14 @@ if (s.preemptive) {
   if (t.cancelled > 0) {
     // Cancelled TTS means a barge-in when preemptive TTS is OFF, and also discarded drafts when it
     // is ON — check the PIPELINE block above for which regime this call ran in.
-    console.log(`  TTS thrown away     ${t.cancelled} synthesis(es), ${t.charactersDiscarded} of ${t.charactersSynthesized} characters`);
+    // Name the engine that billed for them. Characters, never money: DeepDub's per-character
+    // price has not been checked against an invoice, so converting this to a cost here would be
+    // inventing the one number nobody has.
+    const billedBy = r.pipeline?.resolved?.ttsLabel;
+    console.log(
+      `  TTS thrown away     ${t.cancelled} synthesis(es), ${t.charactersDiscarded} of ${t.charactersSynthesized} characters` +
+        (billedBy ? `  (billed by ${billedBy})` : ''),
+    );
   }
   const l = s.preemptive.llm;
   if (l.cancelled > 0) {
@@ -192,7 +208,11 @@ if (dup > 0) {
   console.log('');
   console.log('      This is what makes her sound broken — not latency, not the voice. She talks');
   console.log('      over herself and buries the caller in duplicated speech. Cause: preemptive');
-  console.log('      TTS speaking the DRAFT reply and then the real one. Set VOICE_PREEMPTIVE_TTS=false.');
+  console.log('      TTS speaking the DRAFT reply and then the real one. Set VOICE_PREEMPTIVE_TTS=false');
+  console.log('      IN `.env` (or in the cloud secret set) — NOT as a shell export. loadEnv() runs');
+  console.log('      dotenv with override:true, so a key present in `.env` beats anything exported,');
+  console.log('      silently. That is how this exact flag ran as TRUE for weeks while reading false.');
+  console.log('      Then confirm it from the PIPELINE block above, never from the file you edited.');
 } else if (dup === 0) {
   console.log('  SHE REPEATED HERSELF  0   she said each thing once');
 }

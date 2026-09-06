@@ -391,8 +391,32 @@ const envSchema = z.object({
   VOICE_VAD_MIN_SILENCE_MS: z.coerce.number().int().nonnegative().default(250),
   VOICE_ENDPOINTING_MIN_DELAY_MS: z.coerce.number().int().nonnegative().default(200),
   VOICE_ENDPOINTING_MAX_DELAY_MS: z.coerce.number().int().positive().default(2000),
-  // Run TTS on the draft reply before the turn is confirmed, so Cartesia's ~390ms doesn't land
-  // on top of the endpointing wait. Costs Cartesia characters on drafts we discard.
+  // Run TTS on the draft reply before the turn is confirmed, so the synthesis hides behind the
+  // endpointing wait instead of landing on top of it. Costs characters on drafts we discard.
+  //
+  // NOT PROVIDER-GATED, on any engine. This is a LiveKit session option
+  // (`turnHandling.preemptiveGeneration.preemptiveTts`) applied to whatever `buildTTS()` returned;
+  // nothing in voice-livekit branches it on `VOICE_TTS_PROVIDER`. The mechanism and the cost are
+  // the same on Cartesia, DeepDub and ElevenLabs — only the per-character bill changes.
+  //
+  // THE NUMBERS, WITH THEIR PROVENANCE, because this comment used to state Cartesia's in the
+  // present tense and Cartesia stopped being the engine on 2026-09-02:
+  //   Cartesia  ~390ms / ~466ms first byte — HISTORICAL. Measured before the flip; kept because
+  //             the "it made things worse" verdict in agent.config.ts was reached against them.
+  //   DeepDub   403ms median in-call ttfb (17 segments, 324-589) on a LOCAL verification call,
+  //             2026-09-02; 466ms warm median / 696ms p95 on `bench:tts` the same day
+  //             (docs/handoffs/2026-09-02-voice-breathing.md). BOTH carry a laptop's RTT.
+  //             NO cloud-production DeepDub ttfb has ever been recorded — that is the open gap,
+  //             and it is why no single number here is "the" DeepDub figure.
+  // Every one of these is a dated measurement of one setup. Do not quote one without saying which.
+  //
+  // WHAT IT ACTUALLY DID ON A GIVEN CALL is read back per call and never inferred from this file
+  // or from a shell variable — dotenv runs with `override: true` above, so a shell export loses to
+  // a key present in `.env`, which is how this exact flag ran as TRUE for weeks while reading
+  // false (see the envBool comment at the top). The honest source is the call report:
+  // `pipeline.resolved.preemptiveTts` (read off the live session) and
+  // `pipeline.configured.VOICE_PREEMPTIVE_TTS` (value + whether it was chosen or defaulted).
+  // See src/modules/channels/voice-livekit/pipeline-observer.ts.
   VOICE_PREEMPTIVE_TTS: envBool(false),
   // How long the caller must stop producing new words before we draft a reply from what they have
   // said so far. VOICE_TURN_DETECTION=stt only — see stt/soniox.stt.ts withPausePreflight.

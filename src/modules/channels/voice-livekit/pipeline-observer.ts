@@ -404,7 +404,14 @@ export interface PreemptiveCounters {
   llm: { completed: number; cancelled: number; cancelledPromptTokens: number };
   /**
    * TTS drafts. `TTSMetrics.cancelled` + `charactersCount` is the only direct measurement of what
-   * preemptive TTS costs: the characters Cartesia synthesized into a reply nobody heard.
+   * preemptive TTS costs: the characters the ENGINE synthesized into a reply nobody heard.
+   *
+   * Engine-agnostic by construction — both fields are emitted by LiveKit's `SynthesizeStream`
+   * base class (`charactersCount` is the input text's length), not by any plugin, so the count is
+   * identical on the official Cartesia/ElevenLabs plugins and on our hand-written DeepDub adapter.
+   * WHO IT BILLS is `pipeline.resolved.ttsLabel` on the same report — DeepDub by default since
+   * 2026-09-02, and its per-character price has never been checked against an invoice, so this
+   * counter is characters, not shekels.
    *
    * READ IT NEXT TO `pipeline.resolved.preemptiveTts`. With preemptive TTS OFF a cancelled
    * synthesis means a barge-in (the caller interrupted her); with it ON it also includes discarded

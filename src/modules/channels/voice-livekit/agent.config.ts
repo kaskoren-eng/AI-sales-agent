@@ -146,18 +146,35 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
         // discarded and regenerated — 15 times in one call. Trimming now happens between turns
         // instead (agent.ts `trimHistory`), and invalidations dropped 15 -> 1.
         enabled: true,
-        // Same idea for TTS: start synthesising the draft before the turn is confirmed, so
-        // Cartesia's ~466ms hides behind the endpointing wait rather than landing on top of it.
-        // That 466ms is now the single largest block of dead air the caller still hears.
+        // Same idea for TTS: start synthesising the draft before the turn is confirmed, so the
+        // TTS first-byte wait hides behind the endpointing wait rather than landing on top of it.
         //
-        // IT WAS SWITCHED OFF FOR A BAD REASON. Phase 2 measured it as WORSE (TTS ttfb 390->550ms)
-        // — but that was measured while preemptive generation was broken, so every preemptive TTS
-        // was synthesising a draft that was then thrown away: pure wasted load, which is exactly
-        // what a slowdown looks like. The measurement described a bug, not the feature. Now that
-        // drafts survive, it is worth a real test.
+        // THIS IS ENGINE-AGNOSTIC, unlike `VOICE_VOICE_MODES_ENABLED` next door. It is a LiveKit
+        // session option applied to whatever `buildTTS()` returned; there is no `=== 'cartesia'`
+        // anywhere on this path. The only provider gate in this module is `pausesSupported()` in
+        // voice-mode.ts, and it guards `<break>` tags, not this.
         //
-        // Cost: Cartesia characters on discarded drafts (a caller who resumes mid-pause). At
-        // ~$0.02/min of TTS that is noise next to half a second of the caller's time.
+        // THE FIGURES BELOW ARE HISTORICAL AND MUST BE READ AS SUCH. Cartesia's ~466ms first byte
+        // was the largest remaining block of dead air WHEN CARTESIA WAS THE ENGINE — it has not
+        // been since 2026-09-02, when VOICE_TTS_PROVIDER's default became `deepdub`. DeepDub's
+        // own ttfb has been measured only from a laptop (403ms in-call median, 466ms bench warm
+        // median, both 2026-09-02 — see the VOICE_PREEMPTIVE_TTS comment in env.ts for
+        // provenance). No cloud-production figure exists, so nobody can currently say how much
+        // dead air this hides on the engine that is actually serving calls.
+        //
+        // IT WAS SWITCHED OFF FOR A BAD REASON. Phase 2 measured it as WORSE (TTS ttfb 390->550ms,
+        // Cartesia) — but that was measured while preemptive generation was broken, so every
+        // preemptive TTS was synthesising a draft that was then thrown away: pure wasted load,
+        // which is exactly what a slowdown looks like. The measurement described a bug, not the
+        // feature. Now that drafts survive, it is worth a real test — on DeepDub, in the cloud.
+        //
+        // Cost: synthesis characters on discarded drafts (a caller who resumes mid-pause), billed
+        // by whichever engine is serving. The old "~$0.02/min, therefore noise" arithmetic was
+        // Cartesia's list price; DeepDub's per-character price has never been checked against an
+        // invoice, so the cost side of this trade is currently UNQUANTIFIED rather than small.
+        // What a call actually wasted is measured, not assumed: `summary.preemptive.tts`
+        // (`cancelled`, `charactersDiscarded`) in the call report, alongside the engine that
+        // billed it (`pipeline.resolved.ttsLabel`).
         preemptiveTts: env.VOICE_PREEMPTIVE_TTS,
       },
     },
@@ -165,11 +182,17 @@ export function buildSessionComponents(env: Env, vad: silero.VAD): voice.AgentSe
 }
 
 /**
- * The voice. CARTESIA sonic-3, and it is not a free choice — it is the ONLY model that speaks
- * Hebrew intelligibly down a phone line.
+ * HISTORICAL — the Cartesia-era TTS selection record. Kept because the reasoning still holds and
+ * the ElevenLabs verdict below is still load-bearing; the CONCLUSION is superseded.
  *
- * MEASURED, by synthesizing Hebrew, squeezing it through an 8kHz phone band, and transcribing it
- * back with Soniox (`npm run bench:tts`, then the intelligibility check):
+ * It used to open "The voice. CARTESIA sonic-3, and it is not a free choice — it is the ONLY model
+ * that speaks Hebrew intelligibly down a phone line." That was true when it was written and is not
+ * true now: DeepDub won a blind Hebrew A/B 6:1 and became the default engine on 2026-09-02
+ * (`VOICE_TTS_PROVIDER` defaults to `deepdub`). The sentence survived the flip unchanged, which is
+ * how a comment ends up naming the wrong engine to the next person who reads it.
+ *
+ * MEASURED (Cartesia era), by synthesizing Hebrew, squeezing it through an 8kHz phone band, and
+ * transcribing it back with Soniox (`npm run bench:tts`, then the intelligibility check):
  *
  *   cartesia/sonic-3      ~455ms ttfb   intelligible
  *   cartesia/sonic-3.5    ~388ms ttfb   intelligible, no faster in practice
@@ -238,9 +261,15 @@ export function buildTTS(env: Env, override?: PersonaTts | null): ttsBase.TTS {
 }
 
 function buildTTSFromEnv(env: Env): ttsBase.TTS {
-  // DeepDub, behind the flag. Won a blind Hebrew A/B (6:1) on quality + native gender at cost parity,
-  // realtime model ~125ms. NOT default — this branch only fires on VOICE_TTS_PROVIDER=deepdub, so
-  // Cartesia keeps serving until a decision is made. One env var to revert. See tts/deepdub.tts.ts.
+  // DeepDub. Won a blind Hebrew A/B (6:1) on quality + native gender at cost parity, realtime
+  // model ~125ms. THIS IS THE DEFAULT BRANCH as of 2026-09-02 — `VOICE_TTS_PROVIDER` defaults to
+  // `deepdub` (see env.ts, where the default is documented as a safety mechanism against a
+  // `--with-secrets` deploy silently handing production back to Cartesia). The Cartesia fallthrough
+  // at the bottom of this function now fires only when someone asks for it explicitly.
+  //
+  // (This comment used to read "NOT default ... so Cartesia keeps serving until a decision is
+  // made." The decision was made; the comment was not updated. One env var still reverts it.)
+  // See tts/deepdub.tts.ts.
   if (env.VOICE_TTS_PROVIDER === 'deepdub') {
     return new DeepdubTTS(deepdubOptions(env));
   }

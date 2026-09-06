@@ -15,12 +15,17 @@ why `agent.ts` must never be imported by anything.
 caller audio ─→ Silero VAD (is someone talking?)
              ─→ Soniox stt-rt-v5   (speech → Hebrew text, streaming; semantic end-of-turn)
              ─→ OpenAI gpt-5.4     (text → reply, streaming)
-             ─→ Cartesia sonic-3   (reply → Hebrew audio, streaming)
+             ─→ DeepDub dd-etts-3.2 (reply → Hebrew audio, streaming)
 ```
 
 STT is **Soniox, not OpenAI** — semantic WER 4.3% vs 34.9% on real Hebrew calls. Do not "fix"
-it back. A DeepDub TTS adapter exists behind `VOICE_TTS_PROVIDER` and is deliberately not the
-default. See `docs/phase-4-known-issues.md` before changing either.
+it back.
+
+TTS is **DeepDub since 2026-09-02** — `VOICE_TTS_PROVIDER` defaults to `deepdub` after it won a
+blind Hebrew A/B 6:1. Cartesia and ElevenLabs adapters remain behind the same env var. This line
+used to say the opposite ("a DeepDub adapter exists ... and is deliberately not the default"),
+which was true until the flip and then sat here misinforming people; if you flip the engine again,
+this paragraph is part of the change. See `docs/phase-4-known-issues.md` before touching either.
 
 ## Files
 
