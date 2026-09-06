@@ -90,6 +90,17 @@ Two agents work this repo simultaneously. Respect your lane:
 
 **DASHBOARD agent** — owns: `dashboard/**`, `src/modules/admin/**`, `src/modules/metrics/**`, `docs/phase-5-dashboard-*`, `brand_assets/**`. Branches: `feature/dashboard-*`.
 
+  **CLAIMED 2026-09-06 — an active DASHBOARD session holds `feature/dashboard-call-report`**, building
+  the per-call report page specified in `docs/spec-admin-call-report-page.md`. That spec recorded the
+  lane as unowned (the last `dashboard/**` commit was `975c496`, 2026-08-26); this is the claim it
+  asked for. New files in scope: `src/modules/metrics/call-report-view.ts`,
+  `src/modules/metrics/call-report.service.ts`, `src/modules/admin/admin-calls.routes.ts`, and the
+  `/admin/calls` + `/admin/calls/:id` pages. **`src/modules/calls/**` is deliberately NOT touched:**
+  Koren scoped the report to the operator console only (2026-09-06), so the split-ownership module
+  needs no additive tenant route after all. The one cross-lane dependency is a read-only *import* of
+  `buildTurnAnatomy` / `summarizeLatency` from `src/modules/channels/voice-livekit/latency-anatomy.ts`
+  — imported, never edited, so the `-1` sentinel rule stays owned by VOICE in one place.
+
 **WEBSITE** — `website/**` (marketing site + Netlify functions). De-facto third territory; whoever picks it up says so. Branch: `feature/website-*`.
 
 **INTEGRATIONS** — `src/modules/integrations/**` (Monday, Airtable, Google Sheets, Google Calendar connection, CSV, `crm-sync.service.ts`). **Claimed 2026-08-27** — it had no owner, which is how three separate Airtable code paths grew without anyone reconciling them. De-facto fourth territory, same rule as WEBSITE: whoever picks it up says so here. VOICE keeps `crm-sync.service.ts` (Workstream B) and the `update_airtable` / `update_monday` flow-executor step handlers. Branch: `feature/airtable-*`, `feature/crm-*`.
