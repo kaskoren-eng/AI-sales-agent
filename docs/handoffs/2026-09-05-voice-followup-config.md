@@ -172,10 +172,25 @@ a lead nobody rings back is not.
 Also fixed in passing: disconnect read `CALLBACK_DEFAULTS` directly and so ignored the tenant's own
 `disconnectedDelayMinutes`. It now resolves tenant settings like every other caller.
 
-### 3. Schema drift is off your laptop
+### 3. Schema drift is off your laptop — and the check itself was broken
 
-New `schema-drift` job in `guardrails.yml` — `ubuntu-latest` already has Docker, which was the whole
-dependency. **Advisory on its first pass** (`continue-on-error: true`), exactly as the territory
+New `schema-drift` job in `guardrails.yml` — `ubuntu-latest` already has Docker, which was the
+whole dependency.
+
+**Its first run failed, and not on drift.** Exit 2, "could not run the check", `psql` unable to
+find the unix socket. The official postgres image runs initdb against a TEMPORARY server on the
+socket, then stops it and starts the real one; the script's single `pg_isready` answered 0 against
+that bootstrap server and the migrations landed in the gap while it restarted. On a laptop the
+1-second retries straddle the restart by luck — which is why nobody had ever seen it. A CI runner
+is fast enough to lose the race every time.
+
+Fixed by probing with the query the migrations are about to run, not a liveness ping, and requiring
+three consecutive successes. So the honest summary of moving this into CI is: **the first thing it
+found was that `npm run db:drift` had never been exercised anywhere but a slow laptop.**
+
+
+
+**Advisory on its first pass** (`continue-on-error: true`), exactly as the territory
 check was introduced and for the same reason: nobody has ever run this in CI, and if `main` already
 carries drift a blocking job stops every open PR at once. **Flip it to blocking the first time it is
 seen green on main**, then add it to branch protection.
