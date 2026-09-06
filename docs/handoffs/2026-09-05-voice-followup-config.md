@@ -99,9 +99,9 @@ bug: a `qualified` lead's do-not-call used to be dropped on the floor, and a bra
 first message was "STOP" used to trigger the flow that calls him. On the voice side,
 `end_call('not_interested')` now writes the soft stop.
 
-**No reply is generated to a stopped lead.** Answering someone who just asked us to stop is the
-complaint we are avoiding, and a confirmation message would be new outbound Hebrew that has not been
-through a listening round. **Open question for Koren** — see §5.
+**No AI reply is generated to a stopped lead** — answering someone who just asked us to stop is the
+complaint we are avoiding. One fixed confirmation line IS sent, approved 2026-09-06; the copy and
+its three rules are in §5.
 
 ---
 
@@ -127,31 +127,77 @@ a value that is set correctly, looks right, and is never read.
 
 ---
 
-## 5. Questions for architect / Koren
+## 5. Decisions — ANSWERED by Koren, 2026-09-06
 
-1. **A confirmation message on a stop?** Right now a lead who says "הסר" gets silence. A one-line
-   "הוסרת, לא נפנה אליך יותר" is standard practice and is the proof we honoured it — but it is new
-   outbound Hebrew and needs a listening round. Ship it, or leave the silence?
-2. **`disconnectedDelayMinutes: 15`** is still the number nobody has judged by ear. A caller who hung
-   up because he had had enough is indistinguishable from a dropped line, and he gets rung back in a
-   quarter of an hour.
-3. **The dashboard screen.** Koren chose "engine + API now, dashboard after". The DASHBOARD session
-   needs `GET`/`PUT /api/v1/settings/callbacks` — the shape is in §1 and the response is already the
-   resolved config, so the screen can render what is actually running.
+| # | Question | His answer | Built |
+|---|---|---|---|
+| 1 | Confirmation message on a stop? | **Ship it** | `STOP_CONFIRMATIONS` in `stop-signals.ts`, sent from `message-processor.worker.ts` |
+| 2 | `disconnectedDelayMinutes: 15`? | **Three hours** — and if the lead asked for a specific time, his time | default 15 → **180**; `disconnect.ts` now writes NO row when one is already pending |
+| 3 | The dashboard screen | *not a question* — it was a note for the DASHBOARD session | — |
+
+### 1. The confirmation line
+
+Two fixed strings, one per tier. **Sent only on the channel he just wrote on**, which is why no
+WhatsApp template is needed — his own message opened the 24-hour window seconds earlier. There is
+deliberately **no** confirmation for a stop heard on a VOICE call: the agent already says goodbye
+out loud, and a text afterwards is a second contact, not an acknowledgement.
+
+```
+hard_stop:  קיבלנו. הסרנו אותך מרשימת הפניות ולא ניצור קשר שוב.
+soft_stop:  תודה על העדכון, לא נטריד יותר. אם משהו ישתנה, אנחנו כאן.
+```
+
+Three rules the copy obeys, each pinned by a test: **gender-neutral** (Hebrew forces a second-person
+choice and we do not know the lead's — the last message he ever gets from us is the worst place to
+guess), **never sells** (no link, no offer, no question mark: a confirmation that sells is a contact,
+and a contact is what he just forbade), **one sentence**. A confirmation that fails to send is logged
+and swallowed — the stop is already recorded, and a throw here would be a BullMQ retry that re-runs
+the whole stop path.
+
+### 2. Three hours, and his own time wins
+
+The 15-minute ring-back is gone. The argument for it was that a dropped line should be rung back
+while he still remembers the call; the argument against — already admitted in the old comment — is
+that a caller who hung up because he had had enough is indistinguishable from a dropped line at this
+end. Koren judged it by ear.
+
+The second half of his answer was not a number. `disconnect.ts` used to insert its row
+**unconditionally**, so a lead who had said "תתקשר אליי ב-16:00" and then lost the line ended up with
+**two** pending callbacks — breaking the one-live-callback invariant — and got rung at +3h, hours
+before the hour he actually chose. It now checks for any pending callback first and writes nothing
+when one exists. The owner ping still fires either way, and the alert no longer claims a ring-back
+was scheduled when it was not. A FAILED lookup writes the row anyway: a duplicate is recoverable,
+a lead nobody rings back is not.
+
+Also fixed in passing: disconnect read `CALLBACK_DEFAULTS` directly and so ignored the tenant's own
+`disconnectedDelayMinutes`. It now resolves tenant settings like every other caller.
+
+### 3. Schema drift is off your laptop
+
+New `schema-drift` job in `guardrails.yml` — `ubuntu-latest` already has Docker, which was the whole
+dependency. **Advisory on its first pass** (`continue-on-error: true`), exactly as the territory
+check was introduced and for the same reason: nobody has ever run this in CI, and if `main` already
+carries drift a blocking job stops every open PR at once. **Flip it to blocking the first time it is
+seen green on main**, then add it to branch protection.
 
 ---
 
 ## Verification
 
 - `npm run typecheck` · `npm run build` — exit 0
-- Full suite: **140 files, 2170 passing, 0 failing** (+55 new: 38 stop-signals, 8 stop-guard, 6
-  message-processor, 8 worker, 9 settings, 7 callback-time)
+- Full suite: **141 files, 2181 passing, 0 failing** (+66 new)
 - `scripts/ci/migration-claims-check.sh` — OK (highest 0020, next free 0021)
 - `scripts/ci/territory-check.sh` — OK, VOICE lane + shared files only
-- ⚠️ **`npm run db:drift` NOT RUN — Docker is not available on this machine.** Migration 0020 is
-  hand-written and was verified against the schema by eye (two columns + one index, names and types
-  match). It must be run before merge.
+- ⚠️ **`npm run db:drift` still NOT RUN locally — Docker Desktop is installed on Koren's machine
+  (29.7.2) but the daemon is not running.** Migration 0020 is hand-written and eye-verified against
+  the schema (two columns + one index). The new CI job is exactly the fix for this and will run it
+  on the PR.
 
-Three tests were CHANGED rather than added, all asserting behaviour this branch deliberately
-reverses: two "at the same hour" ladder assertions (now rotate), one `maxAttempts` ceiling of 3 (now
-5), and `end_call('not_interested')` "never touches the lead" (now writes the soft stop).
+Tests CHANGED rather than added, all asserting behaviour this branch deliberately reverses: two
+"same hour" ladder assertions (now rotate), one `maxAttempts` ceiling of 3 (now 5),
+`end_call('not_interested')` "never touches the lead" (now writes the soft stop), and the stop path's
+"sends NO reply" (now sends one fixed line).
+
+One test HARNESS was fixed, not just its assertions: `disconnect.test.ts`'s `fakeDb` answered every
+`select` with the lead row regardless of table, so the new pending-callback lookup made every
+disconnect look like it already had one. It is table-aware now.

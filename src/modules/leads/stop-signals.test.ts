@@ -3,6 +3,8 @@ import {
   classifyStopSignal,
   detectStopPhrase,
   normalizeForStopMatch,
+  stopConfirmationText,
+  STOP_CONFIRMATIONS,
   type StopClassifier,
 } from './stop-signals.js';
 
@@ -173,5 +175,37 @@ describe('classifyStopSignal — the two layers, and what happens when one is mi
   it('an empty message is never a stop', async () => {
     expect((await classifyStopSignal('', null)).verdict).toBe('continue');
     expect((await classifyStopSignal('   ', null)).verdict).toBe('continue');
+  });
+});
+
+describe('stopConfirmationText — the one line we send back', () => {
+  it('confirms a hard stop, because for a do-not-call the confirmation IS the record', () => {
+    expect(stopConfirmationText('hard_stop')).toBe('קיבלנו. הסרנו אותך מרשימת הפניות ולא ניצור קשר שוב.');
+  });
+
+  it('confirms a soft stop more gently, and leaves the door open', () => {
+    expect(stopConfirmationText('soft_stop')).toContain('לא נטריד יותר');
+  });
+
+  it('says nothing at all on continue', () => {
+    expect(stopConfirmationText('continue')).toBeNull();
+  });
+
+  /**
+   * Hebrew forces a gender choice in the second person and we do not know the lead's. The last
+   * message a lead ever receives from us is the worst possible place to guess wrong.
+   */
+  it('is gender-neutral — no second-person inflection in either line', () => {
+    for (const line of Object.values(STOP_CONFIRMATIONS)) {
+      expect(line).not.toMatch(/תשנה|תשני|מעוניין |מעוניינת |שלך[ךם]?\b/);
+    }
+  });
+
+  it('never sells: no link, no offer, no invitation to reply', () => {
+    for (const line of Object.values(STOP_CONFIRMATIONS)) {
+      expect(line).not.toMatch(/http|www\.|\?/);
+      // One sentence-ish: a confirmation that runs on is a conversation.
+      expect(line.length).toBeLessThan(90);
+    }
   });
 });

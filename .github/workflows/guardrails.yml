@@ -27,3 +27,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: scripts/ci/migration-claims-check.sh
+
+  schema-drift:
+    name: Schema drift (migrations vs schema)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # ADVISORY ON ITS FIRST PASS, exactly like the territory check above and for the same reason:
+    # nobody has ever run this in CI, and if `main` already carries drift a blocking job would
+    # stop every open PR at once. Flip `continue-on-error` to false the first time it is seen
+    # green on main, then add it to branch protection's required checks.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # drizzle-kit is invoked by the script to build the schema-side reference; Docker is already
+      # on ubuntu-latest, which is the whole point of moving this off a developer's laptop.
+      - run: npm ci
+
+      - name: Replay every migration into a throwaway Postgres and diff it against the schema
+        run: npm run db:drift

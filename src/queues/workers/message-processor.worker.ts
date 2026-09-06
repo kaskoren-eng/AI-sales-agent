@@ -17,7 +17,11 @@ import type { FastifyBaseLogger } from 'fastify';
 // The status-transition guard is shared with the voice CRM-sync path — one source of truth.
 // The chat qualifier only ever attempts the original stepwise edges, all still allowed there.
 import { canTransition } from '../../modules/leads/lead-status.js';
-import { classifyStopSignal, type StopClassifier } from '../../modules/leads/stop-signals.js';
+import {
+  classifyStopSignal,
+  stopConfirmationText,
+  type StopClassifier,
+} from '../../modules/leads/stop-signals.js';
 import { applyStopSignal } from '../../modules/leads/stop-guard.js';
 import { meterLead } from '../../modules/billing/usage.service.js';
 
@@ -97,14 +101,46 @@ export function createMessageProcessorWorker(deps: WorkerDeps) {
             channel,
           },
         );
-        // NO REPLY IS GENERATED. Answering someone who just asked us to stop is the complaint we
-        // are trying to avoid, and a confirmation message is new outbound Hebrew that has not been
-        // through a listening round. Flagged in the handoff as the one open question here.
+        // ONE LINE BACK, AND ONLY ONE (Koren approved, 2026-09-06). No AI reply is generated —
+        // answering someone who just asked us to stop is the complaint we are avoiding — but a
+        // fixed confirmation is sent, because for a do-not-call request the confirmation IS the
+        // record that we honoured it. Copy and its three rules: `stop-signals.ts`.
+        //
+        // The 24h WhatsApp window needs no template here: his own message opened it seconds ago.
+        const confirmation = stopConfirmationText(stopSignal.verdict);
+        if (confirmation) {
+          try {
+            await db.insert(messages).values({
+              tenantId,
+              conversationId: stopConversation.id,
+              direction: 'outbound',
+              role: 'agent',
+              content: confirmation,
+              contentType: 'text',
+            });
+            await enqueueOutbound(outboundQueue, {
+              tenantId,
+              channel,
+              to: from,
+              content: confirmation,
+              conversationId: stopConversation.id,
+            });
+          } catch (err) {
+            // The STOP is already recorded and is what matters. A confirmation we could not send
+            // must never turn into a BullMQ retry that re-runs the whole stop path.
+            logger?.error(
+              { event: 'stop_confirmation_failed', tenantId, leadId: lead.id, err: String(err) },
+              'Could not send the stop confirmation',
+            );
+          }
+        }
+
         return {
           leadId: lead.id,
           conversationId: stopConversation.id,
           stopped: stopSignal.verdict,
           action: applied.action,
+          confirmationSent: !!confirmation,
         };
       }
 

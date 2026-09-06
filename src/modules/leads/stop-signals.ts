@@ -357,3 +357,35 @@ function parseVerdict(raw: string): StopSignal | null {
     return null;
   }
 }
+
+/**
+ * WHAT WE SAY BACK TO SOMEBODY WHO ASKED US TO STOP (Koren approved, 2026-09-06).
+ *
+ * Until this existed a lead who wrote "הסר" got silence, which is both cold and — for a do-not-call
+ * request — evidentially weak: the confirmation IS the record that we honoured it, on the channel
+ * he used, at a timestamp anyone can read back.
+ *
+ * THREE RULES THIS COPY OBEYS, and each one is a trap avoided:
+ *
+ *   1. GENDER-NEUTRAL. We do not know whether the lead is male or female, and Hebrew makes you
+ *      choose in the second person. "אם משהו ישתנה" rather than "אם תשנה את דעתך"; "הסרנו אותך"
+ *      rather than anything inflected. A wrong gender on the last message a lead ever gets from us
+ *      is the one place it is least forgivable.
+ *   2. NO AGENT NAME, no company voice, no offer, no link. A confirmation that sells is a
+ *      contact, and a contact is the thing he just forbade.
+ *   3. ONE SENTENCE. There is no reply to invite and no conversation to continue.
+ *
+ * ONLY EVER SENT ON THE CHANNEL HE JUST WROTE ON — which is why the 24-hour WhatsApp window is
+ * open by construction and no template is needed: his own message opened it seconds ago. There is
+ * deliberately NO confirmation for a stop heard on a VOICE call: the agent already says goodbye
+ * out loud, and a text arriving afterwards is a second contact, not an acknowledgement.
+ */
+export const STOP_CONFIRMATIONS: Readonly<Record<'hard_stop' | 'soft_stop', string>> = {
+  hard_stop: 'קיבלנו. הסרנו אותך מרשימת הפניות ולא ניצור קשר שוב.',
+  soft_stop: 'תודה על העדכון, לא נטריד יותר. אם משהו ישתנה, אנחנו כאן.',
+};
+
+/** The line to send back, or null when the verdict is `continue` and nothing is owed. */
+export function stopConfirmationText(verdict: StopVerdict): string | null {
+  return verdict === 'continue' ? null : STOP_CONFIRMATIONS[verdict];
+}

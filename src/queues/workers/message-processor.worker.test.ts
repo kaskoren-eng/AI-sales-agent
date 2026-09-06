@@ -392,15 +392,37 @@ describe('message-processor worker — when the lead says stop', () => {
       .filter(Boolean);
   }
 
-  it('a do-not-call message opts the lead out and sends NO reply', async () => {
+  it('a do-not-call message opts the lead out and confirms it in one fixed line', async () => {
     const deps = stopDeps({ ...SAMPLE_LEAD, status: 'contacted' });
     createMessageProcessorWorker(deps as any);
     const out = await capturedProcessors[0](makeWhatsAppJob({ content: 'תפסיקו לשלוח לי הודעות' }));
 
     expect(out).toMatchObject({ stopped: 'hard_stop', action: 'opted_out' });
     expect(setsFrom(deps.db).some((s) => s.status === 'opted_out')).toBe(true);
-    // Replying to somebody who just told us to stop is the complaint we are avoiding.
-    expect(enqueueOutbound).not.toHaveBeenCalled();
+    // ONE fixed line back — approved 2026-09-06. For a do-not-call the confirmation is the record
+    // that we honoured it, on the channel he used, at a timestamp anyone can read back.
+    expect(enqueueOutbound).toHaveBeenCalledOnce();
+    expect((enqueueOutbound as any).mock.calls[0][1].content).toBe(
+      'קיבלנו. הסרנו אותך מרשימת הפניות ולא ניצור קשר שוב.',
+    );
+  });
+
+  it('the confirmation is a FIXED line — no AI reply is generated for a stopped lead', async () => {
+    const deps = stopDeps({ ...SAMPLE_LEAD, status: 'contacted' });
+    createMessageProcessorWorker(deps as any);
+    await capturedProcessors[0](makeWhatsAppJob({ content: 'הסר אותי מהרשימה' }));
+    // The normal path's mocked AI answer is 'AI response text'. It must never reach him.
+    expect((enqueueOutbound as any).mock.calls[0][1].content).not.toContain('AI response');
+  });
+
+  it('a failed confirmation does NOT undo the stop or retry the job', async () => {
+    const deps = stopDeps({ ...SAMPLE_LEAD, status: 'contacted' });
+    (enqueueOutbound as any).mockRejectedValueOnce(new Error('redis down'));
+    createMessageProcessorWorker(deps as any);
+    // Resolves rather than throwing: a throw here is a BullMQ retry that re-runs the stop path.
+    const out = await capturedProcessors[0](makeWhatsAppJob({ content: 'אל תתקשרו אליי יותר' }));
+    expect(out).toMatchObject({ stopped: 'hard_stop' });
+    expect(setsFrom(deps.db).some((s) => s.status === 'opted_out')).toBe(true);
   });
 
   it('THE BUG THIS FIXES: a QUALIFIED lead can still opt out', async () => {

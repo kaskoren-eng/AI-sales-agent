@@ -220,6 +220,9 @@ interface FakeDbOpts {
   leadRow?: { id: string; name: string | null; phone: string | null } | null;
   failCallbackInsert?: boolean;
   failLeadLookup?: boolean;
+  /** This lead is already owed a callback — his own requested time, usually. */
+  pendingCallback?: boolean;
+  failPendingLookup?: boolean;
 }
 
 function fakeDb(opts: FakeDbOpts = {}) {
@@ -228,10 +231,17 @@ function fakeDb(opts: FakeDbOpts = {}) {
   const leadUpdates: Record<string, unknown>[] = [];
 
   const db = {
+    // TABLE-AWARE since 2026-09-06. `handleCallerDisconnect` now makes TWO selects — the lead, and
+    // a check for a callback this lead is already owed — and a mock that answered both with the
+    // lead row made every disconnect look like it had a pending callback.
     select: vi.fn(() => ({
-      from: () => ({
+      from: (table: unknown) => ({
         where: () => ({
           limit: async () => {
+            if (table === callbacks) {
+              if (opts.failPendingLookup) throw new Error('db down');
+              return opts.pendingCallback ? [{ id: 'cb-existing' }] : [];
+            }
             if (opts.failLeadLookup) throw new Error('db down');
             return opts.leadRow ? [opts.leadRow] : [];
           },
@@ -587,5 +597,59 @@ describe('disconnectAlertText', () => {
     });
     expect(text).toContain('בזמן תיאום הפגישה');
     expect(text).not.toMatch(/scheduling/u);
+  });
+});
+
+/**
+ * KOREN, 2026-09-06: *"אם הלקוח ביקש זמן ספציפי אז לפי מה שביקש."*
+ *
+ * A lead who said "תתקשר אליי ב-16:00" and then lost the line keeps 16:00. Writing a disconnect
+ * row over the top of it would give one lead TWO pending callbacks — the invariant that
+ * `schedule_callback`'s supersede exists to hold — and would ring him hours before the hour he
+ * actually chose.
+ */
+describe('handleCallerDisconnect — a time the lead asked for outranks ours', () => {
+  it('writes NO disconnect callback when one is already pending', async () => {
+    const { rt, callbackInserts } = fakeRt({
+      leadId: 'lead-1',
+      leadRow: { id: 'lead-1', name: 'דנה', phone: '+972501234567' },
+      pendingCallback: true,
+    });
+    const out = await handleCallerDisconnect(rt, { stage: 'discovery', now: MIDDAY });
+
+    expect(callbackInserts).toHaveLength(0);
+    expect(out.callbackId).toBeNull();
+    expect(out.dueAt).toBeNull();
+    // Still attributed — the lead is known and the owner ping below still has somebody to name.
+    expect(out.attributed).toBe(true);
+  });
+
+  it('still pings the owner — a dropped call is worth a human even when the dial is booked', async () => {
+    const { rt, added } = fakeRt({
+      leadId: 'lead-1',
+      leadRow: { id: 'lead-1', name: 'דנה', phone: '+972501234567' },
+      pendingCallback: true,
+      settings: { handoff: OWNER },
+    });
+    await handleCallerDisconnect(rt, { stage: 'discovery', now: MIDDAY });
+    expect(added.length).toBeGreaterThan(0);
+    // …and the alert does NOT claim we scheduled a ring-back, because this time we did not.
+    expect(String(added[0]!.data.content)).not.toContain('נחזור אליו אוטומטית');
+  });
+
+  it('a FAILED pending lookup writes the callback anyway — a duplicate beats a dropped lead', async () => {
+    const { rt, callbackInserts } = fakeRt({
+      leadId: 'lead-1',
+      leadRow: { id: 'lead-1', name: 'דנה', phone: '+972501234567' },
+      failPendingLookup: true,
+    });
+    await handleCallerDisconnect(rt, { stage: 'discovery', now: MIDDAY });
+    expect(callbackInserts).toHaveLength(1);
+  });
+
+  it('the default delay is THREE HOURS, not fifteen minutes', () => {
+    // Koren judged the 15-minute ring-back by ear and rejected it: a caller who hung up because he
+    // had had enough is indistinguishable from a dropped line at this end.
+    expect(CALLBACK_DEFAULTS.disconnectedDelayMinutes).toBe(180);
   });
 });

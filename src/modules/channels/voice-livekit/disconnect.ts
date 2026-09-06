@@ -4,6 +4,7 @@ import { meterLead } from '../../billing/usage.service.js';
 import type { CallStage } from './call-state.js';
 import { phoneSuffix } from './tools/book-meeting.tool.js';
 import { CALLBACK_DEFAULTS, clampToWindow } from './tools/callback-time.js';
+import { resolveCallbackSettings } from './tools/callback-settings.js';
 import { CALLER_HUNGUP_END_REASON } from './tools/end-call.tool.js';
 import { resolveHandoffSettings } from './tools/handoff-settings.js';
 import { notifyOwner } from './tools/owner-notify.js';
@@ -475,14 +476,58 @@ export async function handleCallerDisconnect(
   const lastTurn = rt.report.lastCallerTurn();
   const lastQuote = lastTurn?.text?.trim().slice(0, MAX_QUOTE_CHARS) || null;
 
-  // WHEN. Resolved from the defaults, then put through the SAME clamp every other callback goes
-  // through, with `requestedByLead: false` — nobody asked for this time, so the proactive window
-  // and the hard floor both apply and a 23:40 disconnect is not rung back at 23:55.
-  const raw = new Date(now.getTime() + CALLBACK_DEFAULTS.disconnectedDelayMinutes * 60_000);
-  const clamped = clampToWindow(raw, { requestedByLead: false, attempt: 0 }, now);
+  // -- HIS OWN TIME OUTRANKS OURS (Koren, 2026-09-06) -------------------------------------------
+  //
+  // *"אם הלקוח ביקש זמן ספציפי אז לפי מה שביקש."* If he said "תתקשר אליי ב-16:00" and the line then
+  // dropped, 16:00 is still the answer. Writing a disconnect row over the top of it would give one
+  // lead TWO pending callbacks — breaking the one-live-callback invariant that the supersede in
+  // `schedule_callback` exists to maintain — and would ring him at an hour nobody chose, hours
+  // before the hour he did.
+  //
+  // Deliberately NOT narrowed to `kind='explicit'`: any pending callback means something is
+  // already owed to this lead, and a second row is wrong whatever wrote the first.
+  //
+  // The OWNER PING at the end of this function still fires either way — a dropped call is worth
+  // telling a human about even when the dial is already on the books.
+  let hasPendingCallback = false;
+  try {
+    const pending = await rt.db
+      .select({ id: callbacks.id })
+      .from(callbacks)
+      .where(
+        and(
+          eq(callbacks.tenantId, rt.tenantId),
+          eq(callbacks.leadId, who.leadId),
+          eq(callbacks.state, 'pending'),
+        ),
+      )
+      .limit(1);
+    hasPendingCallback = pending.length > 0;
+    if (hasPendingCallback) {
+      console.log(
+        'disconnect_callback_skipped_pending',
+        JSON.stringify({ tenantId: rt.tenantId, callId: rt.callId, callbackId: pending[0]!.id }),
+      );
+    }
+  } catch (err) {
+    // A failed lookup must not cost us the callback — fall through and write one. A duplicate row
+    // is recoverable (the worker supersedes); a lead nobody rings back is not.
+    console.error(
+      'disconnect_pending_lookup_failed',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+
+  // WHEN. The TENANT's delay (3 hours by default since 2026-09-06), then the SAME clamp every
+  // other callback goes through, with `requestedByLead: false` — nobody asked for this time, so
+  // the proactive window and the hard floor both apply and a 23:40 disconnect is not rung at 23:55.
+  const cbCfg = resolveCallbackSettings(rt.settings);
+  const raw = new Date(now.getTime() + cbCfg.disconnectedDelayMinutes * 60_000);
+  const clamped = clampToWindow(raw, { requestedByLead: false, attempt: 0 }, now, cbCfg);
 
   let callbackId: string | null = null;
-  try {
+  // Skipped entirely when something is already owed to him — see the pending check above.
+  if (!hasPendingCallback) try {
     const inserted = await rt.db
       .insert(callbacks)
       .values({
