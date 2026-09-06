@@ -1172,6 +1172,10 @@ export default defineAgent({
       sttModel: env.STT_PROVIDER === 'soniox' ? env.SONIOX_MODEL : env.OPENAI_REALTIME_MODEL,
       turnDetection: env.VOICE_TURN_DETECTION,
       llmModel: env.VOICE_LLM_MODEL ?? env.AI_MODEL,
+      // 'unset' rather than '' — an empty string in a report reads as "not recorded", and the
+      // whole point is to tell a tier we are not buying apart from a tier we forgot to record.
+      llmServiceTier: env.VOICE_LLM_SERVICE_TIER ?? 'unset',
+      llmReasoningEffort: env.VOICE_LLM_REASONING_EFFORT ?? 'unset',
       // The report must name the engine that actually spoke — a DeepDub call labeled sonic-3
       // sends whoever reads the latency numbers chasing the wrong provider.
       ttsModel:

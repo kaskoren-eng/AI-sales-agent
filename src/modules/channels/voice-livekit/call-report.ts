@@ -174,6 +174,18 @@ export interface CallReportJson {
     sttModel: string;
     turnDetection: string;
     llmModel: string;
+    /**
+     * The two knobs aimed straight at TIME TO FIRST TOKEN — which the 2026-09-06 bench established
+     * is a fixed vendor-side cost (~990ms in production) that nothing in the prompt moves. They are
+     * cloud secrets, and `lk agent secrets` lists names without values, so before this line the
+     * only lever that can touch the largest block of the caller's wait was unreadable from the
+     * data. Same mistake as `preemptiveTts` below, one measurement later.
+     *
+     * Optional only so the test fixtures that build a report by hand need not carry them; the
+     * agent always passes both, as 'unset' when the env var is absent.
+     */
+    llmServiceTier?: string;
+    llmReasoningEffort?: string;
     ttsModel: string;
   };
   /**
