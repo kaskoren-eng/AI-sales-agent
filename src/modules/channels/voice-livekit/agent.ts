@@ -1805,6 +1805,9 @@ export default defineAgent({
           // the enforcement can never describe different rules.
           factMemory: env.VOICE_FACT_MEMORY_ENABLED,
           negationSafety: env.VOICE_NEGATION_SAFETY,
+          // She keeps talking while capture_lead_info saves, rather than spending a whole extra
+          // inference in silence. Prompt-only, and deliberately named at ONE tool — see the option.
+          speakWithCapture: env.VOICE_SPEAK_WITH_CAPTURE,
           noPreamble: env.VOICE_NO_PREAMBLE_ENABLED,
           // The three tests Step 3 must pass before it may disqualify anybody. Prompt-only —
           // there is no code path that disqualifies, which is why the 79-second sign-off on the

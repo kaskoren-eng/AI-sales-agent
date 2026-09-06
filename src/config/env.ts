@@ -538,6 +538,18 @@ const envSchema = z.object({
   // rebuildable (`npm run usage:reconcile`), so this buys a second of the caller's time against a
   // worse message on an outage. `false` restores the awaited writes exactly.
   VOICE_ASYNC_LEAD_WRITES: envBool(true),
+  // SHE TALKS WHILE SHE SAVES (Koren, 2026-09-06). A step that calls `capture_lead_info` and writes
+  // no words makes the caller pay the model's time-to-first-token TWICE in one turn — once to
+  // decide to save, once to speak — and that is measured: tool turns run modelTtft 1835ms against
+  // 979ms on an ordinary turn, dead air 3627ms against 512ms. The prompt now tells her to say the
+  // reply in the SAME step as the call.
+  //
+  // Scoped to `capture_lead_info` ALONE, and the scope is the whole safety argument: that tool only
+  // stores, so its result never shapes a word. `check_calendar_availability` and `book_meeting` are
+  // the opposite — their results ARE the next sentence, and speaking ahead of them is how "קבעתי
+  // לך" gets said about a meeting that does not exist. The prompt says so explicitly.
+  // `false` restores the silent tool step exactly.
+  VOICE_SPEAK_WITH_CAPTURE: envBool(true),
   // Kill-switch for serving the FIXED lines from memory instead of regenerating them at the vendor
   // (tts/fixed-line-audio.ts, 2026-09-06). The five acknowledgements, the thinking fillers, the
   // dictation nods and the silence reflexes are constants in this repo, spoken verbatim in every

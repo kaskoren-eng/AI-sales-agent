@@ -1277,3 +1277,54 @@ describe('rule 5 — abandon the field, keep the meeting', () => {
     expect(off).toMatch(/name, phone and email \(see above\) BEFORE you call `book_meeting`/u);
   });
 });
+
+describe('speaking while capture_lead_info saves (VOICE_SPEAK_WITH_CAPTURE)', () => {
+  const on = buildSystemPrompt({ toolsEnabled: true });
+  const off = buildSystemPrompt({ toolsEnabled: true, speakWithCapture: false });
+
+  it('tells her to speak in the same step, and to keep the saving out of it', () => {
+    // Koren's two conditions, 2026-09-06: talk through the tool call, and never let the caller
+    // hear WHAT she is doing — only the part of the reply that was always meant for him.
+    expect(on).toMatch(/Say your reply in the SAME step that calls it/u);
+    expect(on).toMatch(/ALONGSIDE your words, never instead of them/u);
+    expect(on).toMatch(/He must never be able to tell it happened/u);
+    expect(on).toContain('רגע, אני רושמת');
+    expect(on).toContain('שמרתי');
+  });
+
+  it('IS SCOPED TO ONE TOOL — the whole safety argument, not a detail', () => {
+    // capture_lead_info only stores, so its result never shapes a word and there is nothing to be
+    // wrong about. The calendar and booking tools are the reverse: what they RETURN is what she
+    // says next. A version of this that let her talk ahead of them would be manufacturing the
+    // failure Step 4 spends a page forbidding — "קבעתי לך" about a meeting nobody made.
+    expect(on).toMatch(/applies to `capture_lead_info` and to nothing else/u);
+    expect(on).toMatch(
+      /`check_calendar_availability` and `book_meeting` are the opposite kind of tool/u,
+    );
+    expect(on).toMatch(/you wait for the result and only then speak/u);
+    // And the standing prohibition it leans on is still there, untouched by this section.
+    expect(on).toMatch(/"קבעתי לך" becomes true ONLY when the tool succeeded/u);
+  });
+
+  it('KILL-SWITCH: false restores the previous instruction and NOTHING else moves', () => {
+    expect(off).not.toMatch(/SAME step that calls it/u);
+    expect(off).not.toMatch(/He must never be able to tell it happened/u);
+    // PURELY ADDITIVE, proved by reconstruction: cut the section out of the on render and what is
+    // left must be the off render, byte for byte. An assertion that merely counted the difference
+    // would pass just as happily if the flag had also moved a line somewhere else in the prompt.
+    const end = 'is how a booking gets announced that was never made.';
+    const section = on.slice(on.indexOf('\n\n**Say your reply'), on.indexOf(end) + end.length);
+    expect(section).not.toBe('');
+    expect(on.replace(section, '')).toBe(off);
+    // The pre-change sentence survives verbatim — the flag appends, it does not rewrite.
+    for (const p of [on, off]) {
+      expect(p).toMatch(/It is silent and instant: never announce it, never invent values/u);
+    }
+  });
+
+  it('says nothing at all on a call with the tool gate closed', () => {
+    // The prompt and the tool set must always agree. A tools-less call that was told to speak
+    // alongside a tool it does not have is exactly the improvisation buildSystemPrompt warns about.
+    expect(buildSystemPrompt({ toolsEnabled: false })).not.toMatch(/SAME step that calls it/u);
+  });
+});

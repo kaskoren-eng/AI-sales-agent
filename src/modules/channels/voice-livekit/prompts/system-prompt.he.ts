@@ -71,6 +71,7 @@ import {
  * system-prompt.test.ts imports both and asserts it. */
 const CHECK = 'check_calendar_availability';
 const BOOK = 'book_meeting';
+const CAPTURE = 'capture_lead_info';
 
 /**
  * How she opens a reply, which depends on whether we are speaking an acknowledgement for her.
@@ -1624,6 +1625,7 @@ export function buildSystemPrompt({
   salesModel = false,
   outbound = null,
   bookWithoutEmail = true,
+  speakWithCapture = true,
   whatsappHandbackNumber = '',
   acknowledgements = ACKNOWLEDGEMENTS_HE,
   voiceModes = false,
@@ -1645,6 +1647,18 @@ export function buildSystemPrompt({
   /** `VOICE_FACT_MEMORY_ENABLED`. False drops the Call Memory section, so the prompt and the code
    * enforcement (fact-memory.ts) are never on different sides of the same switch. */
   factMemory?: boolean;
+  /**
+   * `VOICE_SPEAK_WITH_CAPTURE`. True → she is told to say her reply in the SAME step that calls
+   * `capture_lead_info`, instead of producing a words-less step and making the caller wait for the
+   * model's first token a second time in one turn.
+   *
+   * The instruction names that ONE tool on purpose. `capture_lead_info` only stores, so its result
+   * never shapes a word and there is nothing to be wrong about. The calendar and booking tools are
+   * the reverse — their results ARE the next sentence — and a version of this that let her speak
+   * ahead of them would be manufacturing the "קבעתי לך" failure that Step 4 spends a page
+   * forbidding. False restores the pre-2026-09-06 instruction byte for byte.
+   */
+  speakWithCapture?: boolean;
   /** `VOICE_NEGATION_SAFETY`. False drops the "Say It So It Cannot Be Misheard" section AND
    * restores the five fixed lines to their pre-2026-08-30 wording, so the rollback is exact. */
   negationSafety?: boolean;
@@ -1848,7 +1862,8 @@ ${buildCall4Guidance(companyName, spokenRegister)}` : '';
     handoffSection: HANDOFF_SECTION_TOOLS,
     endCallOptOut: 'Then immediately call `end_call` with reason "opt_out".',
     captureInstruction:
-      '\nAs you learn facts about the lead — business type, pain point, budget, timeline, contact details, or your hot/warm/cold read — call `capture_lead_info` to save them. It is silent and instant: never announce it, never invent values, and call it again whenever a fact changes. His NAME, phone and email are the exception: save them once, and change a saved one only when he corrects you out loud — then set `is_correction`.',
+      '\nAs you learn facts about the lead — business type, pain point, budget, timeline, contact details, or your hot/warm/cold read — call `capture_lead_info` to save them. It is silent and instant: never announce it, never invent values, and call it again whenever a fact changes. His NAME, phone and email are the exception: save them once, and change a saved one only when he corrects you out loud — then set `is_correction`.' +
+      (speakWithCapture ? SPEAK_WITH_CAPTURE : ''),
     step4: buildStep4Tools(persona.handoffPerson, bookWithoutEmail, whatsappHandbackNumber),
     objectionPlaybook: objectionHandling
       ? `\n\n---\n\n## Objection Handling\n\n${buildObjectionPlaybook(persona.handoffPerson, call4)}`
@@ -1860,6 +1875,18 @@ ${buildCall4Guidance(companyName, spokenRegister)}` : '';
     mindsetRebuttal,
   });
 }
+
+/**
+ * Appended to `captureInstruction` under `VOICE_SPEAK_WITH_CAPTURE`. See the option's doc comment
+ * for why exactly one tool is named here, and why the scope IS the safety argument.
+ */
+const SPEAK_WITH_CAPTURE = `
+
+**Say your reply in the SAME step that calls it.** The tool goes out ALONGSIDE your words, never instead of them: react, answer, ask what you were going to ask — exactly what you would have said if there had been nothing to save — and let \`${CAPTURE}\` travel with it. A step that saves and says nothing leaves him a second of silence in the middle of his own sentence being answered, and he has no way to account for it.
+
+**He must never be able to tell it happened.** Do not put the saving into words, and do not leave a gap where the words should be: not "רגע, אני רושמת", not "שמרתי", not "שנייה", not a trailing pause standing in for them. The saving is yours. The only thing that reaches him is the part of the reply that was always meant for him.
+
+**This applies to \`${CAPTURE}\` and to nothing else.** \`${CHECK}\` and \`${BOOK}\` are the opposite kind of tool: what they return IS what you say next — the free hours, a meeting that now exists — so you wait for the result and only then speak. Talking ahead of those is how a booking gets announced that was never made.`;
 
 /** The pre-Phase-4 prompt — what every call gets while the tenant's tool gate is closed. */
 export const SYSTEM_PROMPT_HE = buildSystemPrompt({ toolsEnabled: false });
