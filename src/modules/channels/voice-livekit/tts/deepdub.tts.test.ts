@@ -107,13 +107,15 @@ describe('DeepdubTTS — serving a fixed line from memory', () => {
   it('stops mid-playback when the turn is cancelled', async () => {
     const opts = deepdubOptions(cachedEnv);
     const cache = opts.audioCache!;
-    const key = cache.keyFor(opts.voicePromptId, 'בסדר.')!;
+    // A different line from the case above ON PURPOSE: the cache is process-wide now, so cases
+    // that share a line share state, and one would be reading the other's audio.
+    const key = cache.keyFor(opts.voicePromptId, 'אוקי.')!;
     cache.put(key, [Buffer.from([1]), Buffer.from([2]), Buffer.from([3])]);
 
     const got: Buffer[] = [];
     let cancelled = false;
     await new DeepdubTTS(opts).generate(
-      'בסדר.',
+      'אוקי.',
       (pcm) => {
         got.push(pcm);
         cancelled = true; // the caller barged in after the first chunk
@@ -121,6 +123,20 @@ describe('DeepdubTTS — serving a fixed line from memory', () => {
       () => cancelled,
     );
     expect(got).toHaveLength(1);
+  });
+
+  it('SURVIVES THE CALL THAT FILLED IT — the point of the whole feature', () => {
+    // buildSessionComponents() runs inside `entry`, i.e. once per CALL, so the TTS and its options
+    // are rebuilt for every caller. A cache scoped to the instance would be discarded with the call
+    // that paid for it, and every caller would wait for the vendor on her first acknowledgement —
+    // a feature that looks switched on, measures as switched off, and says nothing either way.
+    const first = deepdubOptions(cachedEnv);
+    const second = deepdubOptions(cachedEnv);
+    expect(second.audioCache).toBe(first.audioCache);
+
+    const key = first.audioCache!.keyFor(first.voicePromptId, 'אמ.')!;
+    first.audioCache!.put(key, [Buffer.from([7])]);
+    expect(second.audioCache!.get(key)).toEqual([Buffer.from([7])]);
   });
 
   it('cannot serve anything the model wrote, whatever is in the cache', () => {

@@ -96,6 +96,17 @@ export interface DeepdubTTSOptions {
   audioCache?: FixedLineAudio | undefined;
 }
 
+let fixedLineAudio: FixedLineAudio | undefined;
+
+/**
+ * The process-wide fixed-line cache. See the note in deepdubOptions for why this is not per
+ * instance: the TTS is rebuilt for every call, the audio it holds is identical across all of them.
+ */
+function sharedFixedLineAudio(): FixedLineAudio {
+  fixedLineAudio ??= new FixedLineAudio(buildFixedLineAllowlist());
+  return fixedLineAudio;
+}
+
 /** Builds DeepDub options from env, failing loudly if the flag is on but the key/voice is missing. */
 export function deepdubOptions(env: Env): DeepdubTTSOptions {
   if (!env.DEEPDUB_API_KEY) {
@@ -105,10 +116,13 @@ export function deepdubOptions(env: Env): DeepdubTTSOptions {
     throw new Error('VOICE_TTS_PROVIDER=deepdub requires DEEPDUB_VOICE_PROMPT_ID');
   }
   return {
-    // ONE cache per TTS instance, i.e. per worker process: it fills on first use and is warm for
-    // every call that worker takes afterwards. Deliberately not pre-rendered at boot — a lazy fill
-    // costs one ordinary generation and cannot make the worker slow to start.
-    ...(env.VOICE_TTS_AUDIO_CACHE ? { audioCache: new FixedLineAudio(buildFixedLineAllowlist()) } : {}),
+    // ONE cache per WORKER PROCESS, deliberately not per TTS instance: buildSessionComponents()
+    // runs inside `entry`, i.e. once per CALL, so an instance-scoped cache would be thrown away
+    // with the call that filled it and every caller would pay the first generation again. Module
+    // scope is safe because the voice id comes from env and is fixed for the process — and the key
+    // carries the voice regardless. Fills lazily; a boot-time render could only make the worker
+    // slow to start, and prewarm() has the socket covered.
+    ...(env.VOICE_TTS_AUDIO_CACHE ? { audioCache: sharedFixedLineAudio() } : {}),
     apiKey: env.DEEPDUB_API_KEY,
     voicePromptId: env.DEEPDUB_VOICE_PROMPT_ID,
     model: env.DEEPDUB_MODEL,
