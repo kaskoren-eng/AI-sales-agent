@@ -39,6 +39,7 @@
     "bench:llm": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/latency-bench.ts llm",
     "bench:path": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/latency-bench.ts path",
     "bench:tier": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/latency-bench.ts tier",
+    "bench:ttft": "tsx --env-file=.env src/modules/channels/voice-livekit/testing/latency-bench.ts ttft",
     "call:fetch": "node scripts/fetch-cloud-calls.mjs",
     "agent:deploy": "node scripts/deploy-agent.mjs deploy",
     "agent:logs": "lk agent logs",
