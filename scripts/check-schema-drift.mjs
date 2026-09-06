@@ -30,6 +30,9 @@ const CONTAINER = 'schema-drift-check';
 const PORT = 55433;
 const run = (cmd, args, opts = {}) =>
   execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
+/** A real blocking sleep. `node -e 'setTimeout(...)'` relies on a pending timer holding the event
+ *  loop open, which is both indirect and one process spawn per second of waiting. */
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 const psql = (sql) =>
   run('docker', ['exec', CONTAINER, 'psql', '-U', 'postgres', '-d', 'audit', '-tAF|', '-c', sql]);
 
@@ -68,16 +71,32 @@ try {
     '-p', `${PORT}:5432`, 'postgres:16-alpine',
   ]);
 
-  let ready = false;
-  for (let i = 0; i < 60 && !ready; i++) {
+  // READINESS IS NOT ONE `pg_isready` (fixed 2026-09-06, on this check's first ever CI run).
+  //
+  // The official postgres image runs initdb against a TEMPORARY server first, on the unix socket
+  // only, then shuts it down and starts the real one. A single `pg_isready` answers 0 against that
+  // bootstrap server, and the migrations then land in the gap while it restarts:
+  //
+  //     psql: error: connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed:
+  //     No such file or directory
+  //
+  // which is exit 2 ("could not run the check") reported as if the tool were broken rather than
+  // the database not being up. On a laptop the container is slow enough that the 1-second retries
+  // usually straddle the restart by luck; a CI runner is fast enough to lose that race every time.
+  //
+  // So: probe with the QUERY the migrations are about to run, not with a liveness ping, and
+  // require it to succeed three times in a row — the restart cannot hide inside that.
+  let streak = 0;
+  for (let i = 0; i < 90 && streak < 3; i++) {
     try {
-      run('docker', ['exec', CONTAINER, 'pg_isready', '-U', 'postgres']);
-      ready = true;
+      run('docker', ['exec', CONTAINER, 'psql', '-U', 'postgres', '-d', 'audit', '-c', 'select 1']);
+      streak += 1;
     } catch {
-      execFileSync(process.execPath, ['-e', 'setTimeout(()=>{},1000)']);
+      streak = 0;
     }
+    if (streak < 3) sleep(1000);
   }
-  if (!ready) throw new Error('postgres never became ready');
+  if (streak < 3) throw new Error('postgres never became ready');
 
   run('docker', ['exec', CONTAINER, 'sh', '-c', 'rm -rf /mig && mkdir -p /mig']);
   run('docker', ['cp', 'src/db/migrations/.', `${CONTAINER}:/mig/`]);

@@ -49,6 +49,7 @@ interface LeadRowState {
   name: string | null;
   phone: string | null;
   email: string | null;
+  followupStoppedAt: Date | null;
 }
 
 const CB = (over: Partial<CallbackRowState> = {}): CallbackRowState => ({
@@ -70,6 +71,7 @@ const LEAD = (over: Partial<LeadRowState> = {}): LeadRowState => ({
   name: 'דנה',
   phone: '+972501234567',
   email: null,
+  followupStoppedAt: null,
   ...over,
 });
 
@@ -391,15 +393,38 @@ describe('processCallback — dialling', () => {
     expect(lastCbState(writes)).toBe('exhausted');
   });
 
-  it('a soft defer climbs its own ladder — rung 2 is +1 business day at the same hour', async () => {
+  it('a soft defer climbs its own ladder — rung 2 is +1 business day in the OTHER half of the day', async () => {
     const { deps, writes } = makeDeps(
       { callback: CB({ kind: 'soft_defer', requestedByLead: false }), lead: LEAD() },
       MON_NOON,
       { dial: async () => { throw new Error('no answer'); } },
     );
     await processCallback(deps, job());
-    // Monday noon + 1 business day = Tuesday noon Israel.
-    expect((cbWrites(writes)[1]!.set.dueAt as Date).toISOString()).toBe('2026-09-08T09:00:00.000Z');
+    // Monday NOON + 1 business day, rotated: he was not there at midday, so Tuesday asks the
+    // afternoon anchor (16:00 Israel = 13:00Z) rather than midday again. Koren, 2026-09-04.
+    expect((cbWrites(writes)[1]!.set.dueAt as Date).toISOString()).toBe('2026-09-08T13:00:00.000Z');
+  });
+
+  it("THE TENANT'S ladder is climbed, not the shipped one", async () => {
+    const { deps, writes } = makeDeps(
+      {
+        callback: CB({ kind: 'soft_defer', requestedByLead: false }),
+        lead: LEAD(),
+        settings: {
+          callbacks: {
+            ladders: {
+              soft_defer: [{ after: { hours: 3 } }, { after: { hours: 2 } }],
+            },
+          },
+        },
+      },
+      MON_NOON,
+      { dial: async () => { throw new Error('no answer'); } },
+    );
+    await processCallback(deps, job());
+    // Monday 12:00 Israel + 2 hours = 14:00 Israel = 11:00Z — inside the proactive window, so the
+    // clamp leaves it alone. The shipped ladder would have said the next business day.
+    expect((cbWrites(writes)[1]!.set.dueAt as Date).toISOString()).toBe('2026-09-07T11:00:00.000Z');
   });
 });
 
@@ -473,5 +498,84 @@ describe('classifyDialFailure', () => {
     expect(classifyDialFailure(new Error('sip status 486'))).toBe('busy');
     expect(classifyDialFailure(new Error('Busy Everywhere'))).toBe('busy');
     expect(classifyDialFailure(new Error('answering machine detected'))).toBe('voicemail');
+  });
+});
+
+describe('processCallback — the STOP guardrail (Koren, 2026-09-04)', () => {
+  /**
+   * The soft tier of `stop-signals.ts`. He said "לא מעוניין" in WhatsApp twenty minutes after this
+   * job was queued. Fire time is the only moment that can know that.
+   */
+  it('a lead who asked us to stop following up is NEVER dialled', async () => {
+    const { deps, dial, writes } = makeDeps(
+      { callback: CB(), lead: LEAD({ followupStoppedAt: new Date('2026-09-07T08:40:00.000Z') }) },
+      MON_NOON,
+    );
+    const out = await processCallback(deps, job());
+    expect(out).toEqual({ outcome: 'skipped', detail: 'followup_stopped' });
+    expect(dial).not.toHaveBeenCalled();
+    expect(lastCbState(writes)).toBe('cancelled');
+    // And the dashboard must not keep promising a call that will never happen.
+    expect(writes.some((w) => w.table === 'leads' && w.set.nextCallbackAt === null)).toBe(true);
+  });
+
+  it('the stop is checked BEFORE the calling window — not dialling beats deferring', async () => {
+    // 23:30, outside every window. Without the ordering this would defer and keep the row alive.
+    const { deps, writes } = makeDeps(
+      { callback: CB(), lead: LEAD({ followupStoppedAt: MON_NOON }) },
+      MON_2330,
+    );
+    expect((await processCallback(deps, job())).detail).toBe('followup_stopped');
+    expect(lastCbState(writes)).toBe('cancelled');
+  });
+
+  it('opt-out still outranks it — a hard stop is not a soft stop', async () => {
+    const { deps, writes } = makeDeps(
+      { callback: CB(), lead: LEAD({ status: 'opted_out', followupStoppedAt: MON_NOON }) },
+      MON_NOON,
+    );
+    expect((await processCallback(deps, job())).detail).toBe('opted_out');
+    expect(lastCbState(writes)).toBe('cancelled');
+  });
+});
+
+describe('processCallback — the end of the ladder marks the LEAD, not just the row', () => {
+  const noAnswer = { dial: async () => { throw new Error('no answer'); } };
+
+  it('the last unanswered dial writes leads.status = unreachable', async () => {
+    const { deps, writes } = makeDeps(
+      { callback: CB({ attempt: 2 }), lead: LEAD() },
+      MON_NOON,
+      noAnswer,
+    );
+    expect((await processCallback(deps, job({ attempt: 2 }))).outcome).toBe('exhausted');
+    expect(writes.some((w) => w.table === 'leads' && w.set.status === 'unreachable')).toBe(true);
+  });
+
+  it('a dial that is NOT the last one leaves the status alone', async () => {
+    const { deps, writes } = makeDeps({ callback: CB(), lead: LEAD() }, MON_NOON, noAnswer);
+    expect((await processCallback(deps, job())).outcome).toBe('retry_scheduled');
+    expect(writes.some((w) => w.table === 'leads' && w.set.status === 'unreachable')).toBe(false);
+  });
+
+  it('a lead further along the pipeline is NOT walked backwards by a failed dial', async () => {
+    // `qualified` has no edge to `unreachable` — he booked, then missed a courtesy callback.
+    const { deps, writes } = makeDeps(
+      { callback: CB({ attempt: 2 }), lead: LEAD({ status: 'qualified' }) },
+      MON_NOON,
+      noAnswer,
+    );
+    await processCallback(deps, job({ attempt: 2 }));
+    expect(writes.some((w) => w.table === 'leads' && w.set.status === 'unreachable')).toBe(false);
+  });
+
+  it('an opted-out lead is never relabelled unreachable', async () => {
+    const { deps, writes } = makeDeps(
+      { callback: CB({ attempt: 2 }), lead: LEAD({ status: 'opted_out' }) },
+      MON_NOON,
+      noAnswer,
+    );
+    await processCallback(deps, job({ attempt: 2 }));
+    expect(writes.some((w) => w.table === 'leads' && w.set.status === 'unreachable')).toBe(false);
   });
 });

@@ -50,6 +50,66 @@ const zadarmaSettingsSchema = z.object({
   phoneNumber: z.string().min(7).max(20),
 });
 
+
+/**
+ * THE FOLLOW-UP LADDER, as a tenant may write it (Koren, 2026-09-04: the follow-ups must be
+ * configurable per client, from inside their own system).
+ *
+ * What is NOT here is the design:
+ *   · no `window` on a rung — `honored` (07:00–23:00) belongs to an hour the LEAD named, and a
+ *     tenant that could stamp it on its own rungs would be cold-calling strangers at 22:30;
+ *   · no `channel` on a rung — the worker still dials unconditionally, so accepting one would
+ *     promise a WhatsApp follow-up and place a phone call;
+ *   · no hard floor, no Shabbat, no holidays. Those are not settings.
+ *
+ * `.strict()` on both objects so a client that sends one of those gets a 400 instead of a field
+ * that silently does nothing. The resolver clamps everything else, and the response is the
+ * RESOLVED config so the operator sees what actually took effect.
+ */
+const callbackRungSchema = z
+  .object({
+    after: z
+      .object({
+        minutes: z.number().int().positive().optional(),
+        hours: z.number().int().positive().optional(),
+        businessDays: z.number().int().positive().optional(),
+      })
+      .strict()
+      .refine((o) => [o.minutes, o.hours, o.businessDays].filter((v) => v !== undefined).length === 1, {
+        message: 'each rung needs exactly one of minutes, hours or businessDays',
+      }),
+    // 'rotate' is the one Koren asked for by name: if the last attempt was in the morning, try the
+    // afternoon, and the other way round. 'keep' repeats the previous attempt's hour.
+    timeOfDay: z.enum(['keep', 'rotate', 'morning', 'afternoon']).optional(),
+  })
+  .strict();
+
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected HH:MM');
+
+const callbackSettingsSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    // Five is a boundary, not a preference: a tenant may choose how many times to follow up and
+    // may not choose "until he answers". See MAX_ATTEMPTS_CEILING.
+    maxAttempts: z.number().int().min(1).max(5).optional(),
+    proactiveWeekday: z.object({ start: hhmm, end: hhmm }).strict().optional(),
+    proactiveFriday: z.object({ start: hhmm, end: hhmm }).strict().optional(),
+    dayParts: z.object({ morning: hhmm, afternoon: hhmm, split: hhmm }).strict().optional(),
+    disconnectedDelayMinutes: z.number().int().min(1).max(24 * 60).optional(),
+    ladders: z
+      .object({
+        // `explicit` describes the RETRIES only — rung 1 is the time the lead himself named and
+        // is prepended by the resolver.
+        explicit: z.array(callbackRungSchema).max(5).optional(),
+        soft_defer: z.array(callbackRungSchema).max(5).optional(),
+        not_reached: z.array(callbackRungSchema).max(5).optional(),
+        disconnected: z.array(callbackRungSchema).max(5).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 export async function settingsRoutes(app: FastifyInstance) {
   const service = new SettingsService(app.db, app.env.ENCRYPTION_KEY);
 
@@ -98,6 +158,31 @@ export async function settingsRoutes(app: FastifyInstance) {
 
     const persona = await service.saveAgentPersona(tenantId, result.data);
     return reply.status(200).send({ ok: true, persona, resolvedGreeting: buildGreeting(persona) });
+  });
+
+
+  // --- Follow-ups (the callback ladder this tenant's agent runs) ---
+
+  app.get('/callbacks', async (request) => {
+    const tenantId = (request as any).tenantId as string;
+    const { settings, configured } = await service.getCallbackSettings(tenantId);
+    return { settings, configured };
+  });
+
+  app.put('/callbacks', async (request, reply) => {
+    const tenantId = (request as any).tenantId as string;
+    const result = callbackSettingsSchema.safeParse(request.body);
+    if (!result.success) {
+      const issue = result.error.issues[0];
+      throw new ValidationError(
+        issue ? `${issue.path.join('.') || 'body'}: ${issue.message}` : 'Invalid input',
+      );
+    }
+
+    // The RESOLVED config comes back, not the patch: every clamp in callback-settings.ts is silent
+    // by design, and an operator who cannot see one fire will believe a ladder is live that is not.
+    const settings = await service.saveCallbackSettings(tenantId, result.data);
+    return reply.status(200).send({ ok: true, settings });
   });
 
   // --- Zadarma ---

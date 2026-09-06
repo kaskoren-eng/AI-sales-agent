@@ -17,6 +17,7 @@ import {
   resolveCallbackSettings,
   type CallbackSettings,
 } from '../../modules/channels/voice-livekit/tools/callback-settings.js';
+import { canTransition } from '../../modules/leads/lead-status.js';
 import { callbackJobId, enqueueCallback, type CallbackJob } from '../callbacks.queue.js';
 import { handleDeadLetter } from '../dead-letter.js';
 
@@ -36,6 +37,8 @@ import { handleDeadLetter } from '../dead-letter.js';
  *      superseded callback is a NORMAL outcome here, not a failure: one live callback per lead
  *      means the older row is expected to lose;
  *   2. `lead.status === 'opted_out'` → NEVER dial. Unconditional. No tenant setting reaches this;
+ *  2b. `lead.followup_stopped_at` is set → cancelled. The soft tier of `stop-signals.ts`: he told
+ *      some channel he is not interested after this row was written;
  *   3. the lead has since booked a meeting → cancelled, and the reason recorded;
  *   4. the tenant turned callbacks off since the row was written → skip, leave it pending;
  *   5. the window (§4) → DEFER, never drop and never dial outside it;
@@ -189,10 +192,15 @@ interface LeadRow {
   name: string | null;
   phone: string | null;
   email: string | null;
+  /** The soft stop — set when he said "not interested" on any channel. See `stop-signals.ts`. */
+  followupStoppedAt: Date | null;
 }
 
 /** Free-text cap on `callbacks.reason`, so a chatty provider error cannot grow the row unbounded. */
 const MAX_REASON_CHARS = 500;
+
+/** Kept next to the other lead-status literal this file knows about, for the same reason. */
+const LEAD_STATUS_UNREACHABLE = 'unreachable';
 
 /**
  * Append a note to `reason` instead of overwriting it. The original reason
@@ -236,6 +244,29 @@ export async function processCallback(
       .where(and(eq(leads.id, leadId), eq(leads.tenantId, data.tenantId)));
   };
 
+  /**
+   * THE END OF THE LADDER, ON THE LEAD (Koren, 2026-09-04).
+   *
+   * Before this, a finished ladder was visible only on the `callbacks` row — the lead stayed
+   * `contacted` forever and no list, filter or report could tell "we are still working him" from
+   * "we rang three times and he was never there".
+   *
+   * Guarded by `canTransition`, not written blindly: `opted_out` and `qualified` are further along
+   * than this and must not be walked back by a dial that failed. A blocked transition is normal and
+   * silent — the callback row still records `exhausted` either way.
+   */
+  const markLeadUnreachable = async (leadId: string, current: string): Promise<void> => {
+    if (!canTransition(current, LEAD_STATUS_UNREACHABLE)) return;
+    await db
+      .update(leads)
+      .set({ status: LEAD_STATUS_UNREACHABLE, updatedAt: now })
+      .where(and(eq(leads.id, leadId), eq(leads.tenantId, data.tenantId)));
+    logger?.info(
+      { event: 'lead_unreachable', ...base, leadId },
+      'Follow-up ladder finished with no answer — lead marked unreachable',
+    );
+  };
+
   // -- 1. The row is the truth about whether this callback still stands ------------------------
   const rows = (await db
     .select({
@@ -275,6 +306,7 @@ export async function processCallback(
       name: leads.name,
       phone: leads.phone,
       email: leads.email,
+      followupStoppedAt: leads.followupStoppedAt,
     })
     .from(leads)
     .where(and(eq(leads.id, row.leadId), eq(leads.tenantId, data.tenantId)))
@@ -294,6 +326,20 @@ export async function processCallback(
       'Callback cancelled — lead opted out. Never dialled.',
     );
     return { outcome: 'skipped', detail: 'opted_out' };
+  }
+  // -- 2b. He said he is not interested, on some channel, since this row was written -------------
+  // The SOFT tier of `stop-signals.ts`. Not a status and not permanent — but for as long as it
+  // stands, chasing him is exactly what he asked us to stop doing. Checked here as well as at the
+  // moment he said it, because he may have said it to a different channel minutes after this job
+  // was queued, and fire time is the only moment that is authoritative.
+  if (lead.followupStoppedAt) {
+    await setRow({ state: 'cancelled', reason: appendReason(row.reason, 'followup_stopped') });
+    await setLeadPointer(lead.id, null);
+    logger?.info(
+      { event: 'callback_cancelled_followup_stopped', ...base },
+      'Callback cancelled — the lead asked us to stop following up',
+    );
+    return { outcome: 'skipped', detail: 'followup_stopped' };
   }
 
   // -- 3. A lead who has since booked is not chased --------------------------------------------
@@ -342,6 +388,7 @@ export async function processCallback(
     // Backstop. Reaching here means a job outlived its ladder — the row is already finished.
     await setRow({ state: 'exhausted' });
     await setLeadPointer(lead.id, null);
+    await markLeadUnreachable(lead.id, lead.status);
     return { outcome: 'exhausted', detail: 'already_at_max' };
   }
 
@@ -490,6 +537,7 @@ export async function processCallback(
     if (attemptsMade >= maxAttempts) {
       await setRow({ state: 'exhausted', attempt: attemptsMade, lastOutcome: outcome, reason });
       await setLeadPointer(lead.id, null);
+      await markLeadUnreachable(lead.id, lead.status);
       logger?.info(
         { event: 'callback_exhausted', ...base, attempts: attemptsMade },
         'Callback ladder finished — the lead is left alone',
@@ -497,11 +545,17 @@ export async function processCallback(
       return { outcome: 'exhausted', detail: `${outcome}:${attemptsMade}` };
     }
 
-    const plan = nextRung(row.kind as CallbackKind, attemptsMade, now);
+    // The TENANT's ladder, not the shipped one — resolved at fire time like every other rule here,
+    // so an operator who lengthens or re-times the follow-ups changes the rows already in flight.
+    const plan = nextRung(row.kind as CallbackKind, attemptsMade, now, {
+      ladders: cfg.ladders,
+      dayParts: cfg.dayParts,
+    });
     if (!plan) {
       // The ladder is shorter than maxAttempts. The ladder wins: stopping is the feature.
       await setRow({ state: 'exhausted', attempt: attemptsMade, lastOutcome: outcome, reason });
       await setLeadPointer(lead.id, null);
+      await markLeadUnreachable(lead.id, lead.status);
       return { outcome: 'exhausted', detail: `${outcome}:ladder_end` };
     }
 
