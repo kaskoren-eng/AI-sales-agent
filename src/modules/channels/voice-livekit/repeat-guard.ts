@@ -139,7 +139,7 @@ export function callerAskedToRepeat(text: string | null | undefined): boolean {
 /**
  * WHAT SHE HAS ALREADY SENT TO THE TTS, sentence by sentence.
  *
- * Recorded at the point text is handed to Cartesia rather than when the message commits, because
+ * Recorded at the point text is handed to the TTS rather than when the message commits, because
  * that is the only place that sees a sentence which was interrupted before it finished — and an
  * interrupted sentence is precisely the one about to be said again.
  *

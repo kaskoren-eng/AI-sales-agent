@@ -43,8 +43,9 @@ import { openerKey } from '../spoken-openers.js';
  *     *"היא אומרת 'או-ה' במקום 'אהההה' אחיד"*. Eight spellings were offered, including three
  *     pointed ones and the `אהההה` he proposed himself; he chose none of them and took a DIFFERENT
  *     SOUND. `אמ` closes the lips instead of opening the throat, so there is no second syllable for
- *     Cartesia to put a break into — the failure mode was structural, and no spelling of `אהה`
- *     could have fixed it.
+ *     the engine to put a break into — the failure mode was structural, and no spelling of `אהה`
+ *     could have fixed it. (Heard on Cartesia sonic-3.5, round 10, 2026-08. Not re-heard on
+ *     DeepDub since the 2026-09-02 flip.)
  *   - `אוקיי.` → **`אוקי.`** (card `a1`, variant B), the single yod.
  *   - `בסדר.` — **KEPT**, explicitly (card `a2`). Pinned in acknowledgements.test.ts so a later
  *     tidy-up cannot quietly drop it.

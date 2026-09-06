@@ -68,13 +68,16 @@ latency tts_metrics ttfbMs=96 durationMs=740
 ## Required env
 
 `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `OPENAI_API_KEY`, `SONIOX_API_KEY`,
-`STT_PROVIDER=soniox`, `CARTESIA_API_KEY`, `CARTESIA_VOICE_ID_PRIMARY`. See `.env.example`.
+`STT_PROVIDER=soniox`, and the keys for whichever engine `VOICE_TTS_PROVIDER` names.
+On the default (`deepdub`) that is `DEEPDUB_API_KEY` + `DEEPDUB_VOICE_PROMPT_ID` — `deepdubOptions()`
+throws without them. On the `cartesia` rollback it is `CARTESIA_API_KEY` + `CARTESIA_VOICE_ID_PRIMARY`.
+See `.env.example`.
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Greeting sounds English-accented | `CARTESIA_VOICE_ID_PRIMARY` is not a Hebrew voice | Pick one at <https://play.cartesia.ai/voices> (filter: Hebrew), or try `CARTESIA_VOICE_ID_SECONDARY` |
+| Greeting sounds English-accented | The configured voice is not a Hebrew one | On `deepdub`: check `DEEPDUB_VOICE_PROMPT_ID` and `DEEPDUB_LOCALE=he-IL`. On the `cartesia` rollback: `CARTESIA_VOICE_ID_PRIMARY` is not a Hebrew voice — pick one at <https://play.cartesia.ai/voices> (filter: Hebrew), or try `CARTESIA_VOICE_ID_SECONDARY` |
 | Long pause before the agent answers | Silence-timer end-of-turn (measured 1.3–2.5s). **The multilingual turn detector does NOT support Hebrew** — see the PHASE 2 comment in `agent.config.ts` for what does | Try OpenAI `semantic_vad` |
 | Agent replies to the wrong thing | Hebrew transcription is off | Confirm `STT_PROVIDER=soniox` — the OpenAI STT path is far worse in Hebrew (34.9% vs 4.3% semantic WER) |
 | LLM errors on the first turn | `gpt-5.4` may need the Responses API | Swap `openai.LLM` → `openai.responses.LLM` in `agent.config.ts` |

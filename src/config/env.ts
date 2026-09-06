@@ -149,7 +149,10 @@ const envSchema = z.object({
   LIVEKIT_URL: z.string().url().optional(),
   LIVEKIT_API_KEY: z.string().min(1).optional(),
   LIVEKIT_API_SECRET: z.string().min(1).optional(),
-  // Cartesia — Hebrew TTS. sonic-3 is the ONLY model that speaks Hebrew: sonic, sonic-2,
+  // Cartesia — Hebrew TTS. ONLY READ WHEN `VOICE_TTS_PROVIDER=cartesia`, which is the rollback
+  // engine rather than the default since 2026-09-02. Everything below still works; nothing below
+  // is on the path of a call today.
+  // sonic-3 is the ONLY model that speaks Hebrew: sonic, sonic-2,
   // sonic-lite and sonic-turbo all return zero audio for `he` (silently — no error).
   // So the low-latency sonic-turbo is NOT an option for us. Verify: npm run voice:ab -- <model>
   CARTESIA_API_KEY: z.string().min(1).optional(),
@@ -233,27 +236,37 @@ const envSchema = z.object({
   // caller and cannot affect the live path — see stt/shadow-stt.ts.
   SHADOW_STT_ENABLED: envBool(false),
 
-  // How we reach Cartesia: straight to them with our own key, or through LiveKit's inference gateway.
+  // How we reach CARTESIA: straight to them with our own key, or through LiveKit's inference
+  // gateway. READ ONLY ON THE CARTESIA BRANCH of `buildTTSFromEnv` — with `VOICE_TTS_PROVIDER` at
+  // its 2026-09-02 default of `deepdub` this knob is inert however it is set. DeepDub has no
+  // gateway equivalent: it is our own adapter, one route only.
   //
   // SAME MODEL, SAME VOICE, SAME QUALITY — only the route differs. The gateway holds a warm pooled
   // websocket, which is the whole point: our direct plugin appears to pay connection setup more
-  // often, and Cartesia's time-to-first-audio is ~455ms on live calls against ~300ms through the
-  // gateway on the bench (`npm run bench:tts`).
+  // often.
+  //
+  // HISTORICAL, measured while Cartesia was the engine (pre-2026-09-02): time-to-first-audio
+  // ~455ms on live calls against ~300ms through the gateway on the bench (`npm run bench:tts`).
+  // Those are Cartesia numbers about Cartesia routes and say nothing about the engine serving now.
   //
   // The cost of 'inference' is that LiveKit becomes the middleman and bills for it — the exact
-  // vendor lock-in this whole migration was meant to escape. It is here because ~150ms of the
+  // vendor lock-in this whole migration was meant to escape. It was here because ~150ms of the
   // caller's silence is worth more than architectural purity, and because it is one env var to
   // revert. If it does not actually win on a real call, go back to 'cartesia'.
   VOICE_TTS_ROUTE: z.enum(['cartesia', 'inference']).default('cartesia'),
 
-  // Which TTS engine speaks. 'cartesia' is the shipped default and does not move without a decision.
-  // 'deepdub' selects the self-built DeepDub adapter (tts/deepdub.tts.ts) — added because DeepDub
-  // won a blind A/B on Hebrew quality and native gender at cost parity, with a realtime model that
-  // the dashboard reports at ~125ms TTFB (faster than Cartesia's ~250ms). Strangler-fig: both live
-  // side by side behind this flag, exactly like STT_PROVIDER, so a bad call is one env var to revert.
-  // 'elevenlabs' selects the official @livekit/agents-plugin-elevenlabs (eleven_flash_v2_5) — added
-  // for a real-call A/B against Cartesia on Hebrew voice quality. Same strangler-fig rule: opt-in
-  // behind this flag, one env var to revert, Cartesia stays the shipped default until a decision.
+  // Which TTS engine speaks.
+  // 'deepdub' IS THE SHIPPED DEFAULT — the self-built adapter (tts/deepdub.tts.ts), chosen because
+  // it won a blind A/B on Hebrew quality and native gender at cost parity, with a realtime model
+  // the vendor's dashboard reports at ~125ms TTFB against ~250ms for Cartesia (both vendor-
+  // reported, neither one of ours).
+  // 'cartesia' selects the engine that served production 2026-07-29 → 2026-09-02. IT IS THE
+  // ROLLBACK PATH AND IS KEPT ON PURPOSE: adapter, options, tests and the `pausesSupported()`
+  // gate all still work, so one env var puts it back.
+  // 'elevenlabs' selects the official @livekit/agents-plugin-elevenlabs (eleven_flash_v2_5) —
+  // added for a real-call A/B on Hebrew voice quality, and not adopted.
+  // Strangler-fig: all three live side by side behind this flag, exactly like STT_PROVIDER, so a
+  // bad call is one env var to revert.
   // DEEPDUB IS THE DEFAULT SINCE 2026-09-02, by Koren's decision on three real cloud calls:
   // "דיפדאב הרבה יותר טוב בהכל מאשר קרטסיה... יותר זורמת, יותר מהירה, ויודע לדבר עברית הרבה יותר טוב."
   //
@@ -493,16 +506,25 @@ const envSchema = z.object({
   // It bought nothing and cost the cache. Off by default. Set a positive number to re-enable it if a
   // call ever runs long enough to threaten the context window — but know what you are giving up.
   VOICE_MAX_HISTORY_ITEMS: z.coerce.number().int().nonnegative().default(0),
-  // Cartesia speech rate. THE lever for phone intelligibility: a phone line is 8kHz, which
-  // destroys the high frequencies that carry consonants, so a fast delivery turns to mush.
-  // Slowing down gives the listener's ear time to reconstruct them.
-  // Cartesia's actual range is 0.6 (slowest) .. 1.5 (fastest); 1.0 is normal. Out-of-range values
-  // are rejected and Cartesia returns an EMPTY audio stream with only a DEBUG log — no error, no
-  // throw. The agent simply goes silent. Do not guess this range.
+  // CARTESIA-ONLY, AND THAT IS NOT A FOOTNOTE. `VOICE_TTS_SPEED` and `VOICE_TTS_VOLUME` are read
+  // in exactly two places — `cartesiaOptions()` and the inference route's `modelOptions` — both on
+  // the Cartesia branch. The DeepDub adapter sends neither and the ElevenLabs path does not carry
+  // them. So on the 2026-09-02 default engine THESE TWO ARE INERT: changing them changes no sound
+  // any caller hears. `testing/clarity-ab.ts` refuses to run its A/B for this reason, and
+  // `tts-engine.ts` prints the asymmetry as `leverNote`.
+  //
+  // WHAT THEY DID WHILE CARTESIA SERVED (2026-07-29 → 2026-09-02): speech rate was THE lever for
+  // phone intelligibility. A phone line is 8kHz, which destroys the high frequencies that carry
+  // consonants, so a fast delivery turns to mush; slowing down gives the listener's ear time to
+  // reconstruct them. Cartesia's actual range is 0.6 (slowest) .. 1.5 (fastest); 1.0 is normal.
+  // Out-of-range values are rejected and Cartesia returns an EMPTY audio stream with only a DEBUG
+  // log — no error, no throw. The agent simply goes silent. Do not guess this range.
+  //
+  // NOTE FOR ANY ROLLBACK: the tuned values live in the deployed secret set, not here.
   VOICE_TTS_SPEED: z.coerce.number().min(0.6).max(1.5).default(1),
-  // Cartesia output volume (sonic-3 accepts 0.5 .. 2.0). A phone line has a low dynamic range;
-  // a quiet voice sits too close to the line noise and gets lost. Louder = more intelligible,
-  // up to the point of clipping.
+  // Cartesia output volume (sonic-3 accepts 0.5 .. 2.0) — CARTESIA-ONLY and inert on the current
+  // engine, exactly as VOICE_TTS_SPEED above. A phone line has a low dynamic range; a quiet voice
+  // sits too close to the line noise and gets lost. Louder = more intelligible, up to clipping.
   VOICE_TTS_VOLUME: z.coerce.number().min(0.5).max(2).default(1),
   // Reasoning budget for the voice LLM. gpt-5.4 accepts: none | low | medium | high | xhigh.
   // NOT 'minimal' — that is a different model family's value, and sending it kills the call with
@@ -699,8 +721,8 @@ const envSchema = z.object({
   // previous behaviour is the defect. See book-meeting.tool.ts.
   VOICE_BOOK_WITHOUT_EMAIL: envBool(true),
   // Kill-switch for the tool-call leak guard (2026-08-31). On the 13:52 production call the model
-  // emitted a tool call as plain assistant TEXT in the final channel and Cartesia read all of it
-  // aloud for NINETEEN SECONDS — "to=functions.capture_lead_info", a run of Chinese glitch tokens,
+  // emitted a tool call as plain assistant TEXT in the final channel and the TTS (Cartesia, the
+  // engine at the time) read all of it aloud for NINETEEN SECONDS — "to=functions.capture_lead_info", a run of Chinese glitch tokens,
   // and the caller's own business type, pain point and qualification as raw JSON. The capture never
   // executed. ON: nothing shaped like a tool call, a harmony control token, a JSON object or an
   // unspeakable CJK run may reach the TTS on ANY path (replies, preemptive drafts, reflex lines),
@@ -920,7 +942,7 @@ const envSchema = z.object({
   // What replaced it is `<break time="…"/>`, which round 17 settled at three lengths in three
   // positions. ONE FLAG, TWO HALVES: the prompt section that teaches where a pause belongs, and
   // the guard stage that validates what she wrote. They must move together in BOTH directions —
-  // a prompt asking for tags whose validator is off would send unchecked tags to Cartesia, and a
+  // a prompt asking for tags whose validator is off would send unchecked tags to the TTS, and a
   // validator without the prompt is a rule about something she was never asked to do.
   //
   // OFF does not merely skip the stage: it DELETES every tag. See voice-mode.ts.

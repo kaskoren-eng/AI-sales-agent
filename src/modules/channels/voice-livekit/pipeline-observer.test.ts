@@ -249,7 +249,8 @@ describe('PreemptiveObserver — proving the drafts fired', () => {
 
     const snap = observer.snapshot();
     expect(snap.llm).toEqual({ completed: 1, cancelled: 1, cancelledPromptTokens: 3800 });
-    // charactersDiscarded IS the Cartesia bill for audio nobody heard — the cost side of the
+    // charactersDiscarded IS the bill for audio nobody heard, charged by whichever engine
+    // VOICE_TTS_PROVIDER selected — the cost side of the
     // preemptive-TTS question, measured rather than argued.
     expect(snap.tts).toEqual({
       completed: 1,

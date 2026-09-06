@@ -1722,7 +1722,8 @@ export function buildSystemPrompt({
    *
    * The same flag gates the guard stage that strips that marker. They must never be on different
    * sides of the switch: a prompt that asks for a marker whose stripper is off is a prompt that
-   * makes Cartesia read double brackets out loud to a lead. Defaults FALSE.
+   * makes the TTS read double brackets out loud to a lead — measured on both engines, which
+   * speak unrecognised markup rather than ignoring it (bracket-net.ts). Defaults FALSE.
    */
   voiceModes?: boolean;
 }): string {

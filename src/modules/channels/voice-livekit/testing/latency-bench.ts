@@ -11,7 +11,9 @@
  *
  *   end-of-turn   ~400ms   deciding he finished          (Soniox endpoint, delay 1000ms)
  *   LLM ttft      ~974ms   GPT thinking                  (the dominant term — and irreducible)
- *   TTS ttfb      ~217ms   the voice starting to speak   (Cartesia sonic-3.5, measured in prod)
+ *   TTS ttfb      ~217ms   the voice starting to speak   (Cartesia sonic-3.5 in prod — HISTORICAL,
+ *                                                         pre-2026-09-02; no cloud DeepDub ttfb
+ *                                                         has ever been recorded)
  *
  * SINCE 2026-09-02 THE TTS ARM FOLLOWS `VOICE_TTS_PROVIDER` rather than assuming Cartesia, and it
  * carries a DeepDub arm alongside the Cartesia ones. The row matching the configured engine is

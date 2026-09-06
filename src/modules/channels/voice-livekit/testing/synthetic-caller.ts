@@ -287,7 +287,11 @@ export class SyntheticCaller {
             bucketStartedAt ??= now - (frame.samplesPerChannel / CAPTURE_RATE) * 1000;
             bucket.push(pcm);
           }
-          // Cartesia never emits digital silence mid-utterance, so any non-silent frame is speech.
+          // ⚠️ THE PREMISE HERE IS CARTESIA'S, AND THE HARNESS NO LONGER RUNS ON CARTESIA BY
+          // DEFAULT. Cartesia never emitted digital silence mid-utterance, so any non-silent frame
+          // was speech. Whether DeepDub (the engine since 2026-09-02) does the same has never been
+          // checked — if it emits true digital silence between words, this heuristic under-counts
+          // agent speech and the harness's timings drift. Unverified, flagged rather than assumed.
           // Silence still gets captured above — dropping it would splice the recording.
           if (isSilent(frame)) continue;
           if (agentAudioAt === null) agentAudioAt = now;

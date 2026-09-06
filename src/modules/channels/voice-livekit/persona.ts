@@ -43,7 +43,10 @@ export interface PersonaFaqEntry {
 /**
  * Per-tenant voice. OPERATOR-MANAGED (see `settings-policy.ts`): a wrong `voiceId` is not a
  * cosmetic mistake, it is a silent empty audio stream on a live call — Cartesia and ElevenLabs
- * both fail that way rather than erroring. Tenants pick a voice by asking; they cannot type an id.
+ * were both observed failing that way rather than erroring. On DeepDub (the engine since
+ * 2026-09-02) a MISSING `DEEPDUB_VOICE_PROMPT_ID` throws in `deepdubOptions()`, but a
+ * present-and-wrong one has never been tested — so assume the same silent failure until it has.
+ * Tenants pick a voice by asking; they cannot type an id.
  */
 export interface PersonaTts {
   provider?: 'cartesia' | 'deepdub' | 'elevenlabs';

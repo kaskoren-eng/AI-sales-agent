@@ -514,8 +514,8 @@ export interface CallReportJson {
      * Bracketed tokens deleted because they were not an approved pause length.
      *
      * MUST BE ZERO. Non-zero does not mean a caller heard a tag — the net is inside the guard,
-     * upstream of Cartesia. It means the model wrote a duration or a tag nobody has ever listened
-     * to, and a tag Cartesia does not recognise is one it READS OUT LOUD. Only 0.15s, 0.25s and
+     * upstream of the TTS. It means the model wrote a duration or a tag nobody has ever listened
+     * to, and a tag the engine does not recognise is one it READS OUT LOUD. Only 0.15s, 0.25s and
      * 0.35s have been heard; treat any non-zero reading as a defect, not as the guard working.
      */
     pauseTagsDropped: number;
@@ -579,11 +579,15 @@ export interface CallReportJson {
     /**
      * HOW LONG A CHARACTER TAKES TO SAY, across the call — the instrument for any pacing work.
      *
-     * `phase-4-known-issues.md` §9 recorded that Cartesia's Hebrew output is NOT deterministic:
+     * `phase-4-known-issues.md` §9 recorded that CARTESIA's Hebrew output was NOT deterministic:
      * the same sentence came back at 2.9s / 4.1s / 4.5s / 7.1s across four takes, and one
      * three-second sentence arrived as 15.3s of five speech bursts. Nobody ever measured that
      * against text length, so nobody knows how wide the noise is — which means nobody can tell a
      * deliberate speed change from the engine having a bad turn.
+     *
+     * THAT WAS MEASURED ON CARTESIA, BEFORE THE 2026-09-02 FLIP. DeepDub's take-to-take variation
+     * has never been measured, so the noise floor `spread` is read against is currently UNKNOWN on
+     * the engine actually serving. Read the number; do not import Cartesia's 2x as its threshold.
      *
      * `spread` is max/min. It is the number to read FIRST when judging any rhythm feature: if the
      * engine's own variation on one call is 2x, a deliberate 0.90 -> 0.84 change (7%) is not

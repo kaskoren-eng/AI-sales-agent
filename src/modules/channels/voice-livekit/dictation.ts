@@ -60,11 +60,14 @@
  *
  * ── WHY THE NIQQUD IS NOT DECORATION, AND WHY TWO OF THESE WOULD DIE WITHOUT speech-guard.ts ──
  *
- * `guardSpeech` strips every Hebrew point before the text reaches Cartesia, because MODEL-emitted
+ * `guardSpeech` strips every Hebrew point before the text reaches the TTS, because MODEL-emitted
  * pointing is unreliable (known-issues §13). The nod is injected by `llmNode` into the reply stream,
  * so it meets that strip like any other text — and two of these three carry marks:
  *
- *   `אֶמ.`  stripped → `אמ.`   and **`אמ.` synthesized ALONE is silence.** Measured on round 11:
+ *   `אֶמ.`  stripped → `אמ.`   and **`אמ.` synthesized ALONE is silence.** Measured on round 11,
+ *                              ON CARTESIA sonic-3.5 (2026-08), and never re-measured since the
+ *                              2026-09-02 DeepDub flip — so the exemption below is justified by a
+ *                              Cartesia-era number. Numbers from that round:
  *                              0.16s, peak 49 of 32767. Koren heard clip `n1_A` and rejected it.
  *                              The segol is the difference between 0.16s of nothing and 1.04s of a
  *                              nod. Without the exemption in speech-guard.ts this bank member is

@@ -26,8 +26,8 @@ import { normaliseBrackets } from './bracket-net.js';
  *
  *    `NO_RESPONSE_NEEDED` is inherited from the previous voice platform, where emitting it made
  *    the platform stay silent. Our stack has no such convention, so the string went straight to
- *    Cartesia and Cartesia read it aloud, in English, to a Hebrew caller who had just asked her to
- *    hold on. Nothing in a prompt will stop this reliably — the model is doing exactly what it was
+ *    the TTS — Cartesia, the engine at the time — and was read aloud, in English, to a Hebrew
+ *    caller who had just asked her to hold on. Nothing in a prompt will stop this reliably — the model is doing exactly what it was
  *    told. The platform has to honour it, so we honour it here.
  *
  *    The prompt (system-prompt.he.ts) still instructs the model to emit it for holds. That is
@@ -63,14 +63,16 @@ import { normaliseBrackets } from './bracket-net.js';
  *     לך    = le-KHA   (m)  /  lakh     (f)
  *     אותך  = ot-KHA   (m)  /  ot-AKH   (f)
  *
- * Same letters. Only the vowels differ, and Hebrew does not write vowels. So Cartesia has to GUESS
- * — and Koren's report is that it guesses at random: "אותה מילה, פעם זכר פעם נקבה." A male lead
+ * Same letters. Only the vowels differ, and Hebrew does not write vowels. So the TTS has to GUESS
+ * — and Koren's report, on Cartesia sonic-3.5 in 2026-08, was that it guesses at random: "אותה
+ * מילה, פעם זכר פעם נקבה." A male lead
  * hears himself addressed as a woman, halfway through a sentence, unpredictably.
  *
  * The LLM is innocent. It writes the correct word every time; the transcript is always right. Only
  * the caller's ear can catch this.
  *
- * WHAT DID NOT WORK: FULL niqqud (שֶׁלְּךָ) — pointing every syllable. Cartesia still mispronounced
+ * WHAT DID NOT WORK (measured on Cartesia sonic-3.5, 2026-08-26): FULL niqqud (שֶׁלְּךָ) — pointing
+ * every syllable. Cartesia still mispronounced
  * with it in the prompt, and fully-pointed sentences came out distorted and 1.3–2.4× longer
  * (tests/hebrew-tts-niqqud-ab, docs/phase-4-known-issues.md §13). The FIRST shipped fix respelled
  * the suffix phonetically ("שלכה") — it worked, and it lost the round-3 listening A/B.
@@ -272,7 +274,7 @@ export function applyPronunciationFixes(text: string): string {
 
 /**
  * Forces the 2nd-person pronouns to be PRONOUNCED in the given gender, without changing a word the
- * LLM chose. Applied to what Cartesia is asked to say — never to what is stored, logged or
+ * LLM chose. Applied to what the TTS is asked to say — never to what is stored, logged or
  * transcribed. The gender comes from AddressGenderTracker (masculine until proven feminine).
  */
 export function forceAddressGender(text: string, gender: AddressGender = 'm'): string {
@@ -480,8 +482,10 @@ const NO_RESPONSE = /NO_RESPONSE_NEEDED/gi;
 
 /**
  * Hebrew niqqud + cantillation marks (U+0591–U+05C7 — the same range stripped in
- * normalizeFillerWord). MODEL-emitted niqqud is unreliable on Cartesia — full pointing came out
- * distorted (known-issues §13), and the model points words we never verified. So anything the LLM
+ * normalizeFillerWord). MODEL-emitted niqqud was MEASURED unreliable on Cartesia — full pointing
+ * came out distorted (2026-08-26, known-issues §13) — and the model points words we never
+ * verified. It has NOT been re-measured on DeepDub; the strip stays regardless because it is the
+ * fail-safe direction on any engine, removing only marks nobody listened to. So anything the LLM
  * pointed is stripped before the text reaches the TTS. The VERIFIED single marks this file injects
  * (round 3 — see the gender note above) are the one exception, which is purely an ordering rule:
  * guardSpeech strips FIRST, then applies the tables. Reversing that order silently erases every
@@ -897,7 +901,7 @@ export async function* guardStream(
      *
      * FALSE does not mean "skip this stage" — it means DELETE every tag. She is only asked to
      * write pauses when the flag is up, so with it down a tag is the model doing something nobody
-     * sanctioned, and an unrecognised tag is one Cartesia reads out loud. See voice-mode.ts.
+     * sanctioned, and an unrecognised tag is one the TTS reads out loud. See voice-mode.ts.
      */
     voiceModes?: boolean;
     /** Called once per sentence that carried approved pauses, with how many. */
@@ -1118,7 +1122,7 @@ export async function* guardStream(
  *
  * THE ACK IS YIELDED BEFORE ANY BUFFERING. That ordering is the entire feature — holding it even
  * briefly to inspect what follows would give back the ~1s this exists to win. Only the model's
- * first word is buffered, and only after the acknowledgement is already on its way to Cartesia,
+ * first word is buffered, and only after the acknowledgement is already on its way to the TTS,
  * where the wait is free.
  *
  * THE FIRST VERSION MATCHED `buffer.startsWith(ack + ' ')` AND THAT WAS EXACTLY WRONG. Text is
@@ -1190,7 +1194,7 @@ export async function* dropAckEcho(
   let buffer = opening.slice(cut).replace(/^\s+/u, '');
   let done = false;
 
-  // Now — and only now, with the acknowledgement already on its way to Cartesia — buffer the
+  // Now — and only now, with the acknowledgement already on its way to the TTS — buffer the
   // model's first word so an echoed opener can be removed. Bounded, because this wait is free
   // only for as long as it stays short.
   while (buffer.length <= 40 && !wordBoundary.test(buffer)) {
@@ -1432,7 +1436,7 @@ export function guardSpeech(
   //
   // RUNS UNCONDITIONALLY, unlike every other optional stage here, and that is deliberate: with the
   // feature OFF this DELETES every tag rather than skipping. She is not asked for pauses when the
-  // flag is down, so a tag is the model doing something nobody sanctioned, and a tag Cartesia
+  // flag is down, so a tag is the model doing something nobody sanctioned, and a tag the engine
   // does not recognise is one it reads out loud. See voice-mode.ts.
   {
     const p = normalisePauses(out, { enabled: opts.voiceModes === true });
@@ -1586,7 +1590,8 @@ export function guardSpeech(
     }
   }
 
-  // Strip any niqqud the MODEL emitted — unverified pointing is unreliable on Cartesia. MUST run
+  // Strip any niqqud the MODEL emitted — measured unreliable on Cartesia (2026-08-26), never
+  // re-measured on DeepDub, and fail-safe on any engine. MUST run
   // BEFORE the fixes below, which inject this file's own verified marks; reversed, it erases them.
   // Only logs when it actually removed something, so it stays quiet on the common (unpointed) case.
   //
@@ -1600,7 +1605,7 @@ export function guardSpeech(
   }
 
   // LAST, so they apply to the rewritten text too. Purely PRONUNCIATION fixes — they change how
-  // Cartesia says the word, never which word the LLM chose. See forceAddressGender().
+  // the TTS says the word, never which word the LLM chose. See forceAddressGender().
   out = forceAddressGender(out, opts.addressGender ?? 'm');
   out = applyPronunciationFixes(out);
 
@@ -1615,7 +1620,7 @@ export function guardSpeech(
   // the model's raw output for that turn is gone and the input that produced it is unrecoverable;
   // the two candidate rules (`stripIntroduction`, `dropAckEcho`) both return '' or a clean slice on
   // every trace I could reconstruct. Rather than guess at a cause, this closes the CLASS: whatever
-  // upstream produces it, punctuation with no word in it never reaches Cartesia. Cheap, total, and
+  // upstream produces it, punctuation with no word in it never reaches the TTS. Cheap, total, and
   // it cannot mask the producer — `interventions` names it every time it fires.
   //
   // (What it is NOT: the `אמ.`-in-isolation near-silence left open on rounds 10/11. Checked against

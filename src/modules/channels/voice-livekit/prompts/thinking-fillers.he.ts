@@ -25,13 +25,16 @@
  * production pipeline actually speaks them in
  * (`tests/hebrew-tts-niqqud-ab/index-round10.html`, cards `f2`–`f5`) and moved every one:
  *
+ * THE CARRIER WAS CARTESIA sonic-3.5 — round 10 ran in 2026-08, before the 2026-09-02 flip. None of
+ * the four verdicts below has been re-heard on DeepDub.
+ *
  *   `אממ...`  → `אֶממ...`   (f3, D — segol on the alef)
  *   `רגע...`  → `רֶגַע...`  (f4, B — pointed)
  *   `שנייה...` → `שניה...`  (f5, B — defective spelling, one yod)
  *   `אה...`   → `אֶה...`    (f2, D — segol)
  *
  * ⚠️ THE NIQQUD IN THREE OF THESE DOES NOT SURVIVE THE PIPELINE ON ITS OWN. `guardSpeech` strips
- * every Hebrew point before the text reaches Cartesia, because MODEL-emitted pointing is unreliable
+ * every Hebrew point before the text reaches the TTS, because MODEL-emitted pointing is unreliable
  * (known-issues §13) — and the injected filler goes through `guardStream` like any other text, so a
  * mark written here alone would be silently erased and Koren's verdict silently reverted. What makes
  * it reach the voice is `PRONUNCIATION_FIXES` in speech-guard.ts, which re-applies these three
